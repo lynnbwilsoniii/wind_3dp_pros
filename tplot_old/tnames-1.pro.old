@@ -1,0 +1,119 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   tnames.pro
+;  PURPOSE  :   Returns an array of "TPLOT" names specified by the input filters.  
+;                 This routine accepts wildcard characters.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               tplot_com.pro
+;               strfilter.pro
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               S            :  Scalar match string (i.e. '*B3*')
+;               N            :  Scalar defining the number of matched strings
+;
+;  EXAMPLES:    
+;               nam = tnames('wi*')
+;
+;  KEYWORDS:    
+;               INDEX        :  Set to a named variable to return the indices of the
+;                                 TPLOT names desired/returned
+;               ALL          :  If set, all TPLOT names are returned
+;               TPLOT        :  If set, all TPLOT names are returned
+;               CREATE_TIME  :  Set to a named variable to return the times in which
+;                                 the TPLOT variables were created
+;               TRANGE       :  Set to a named variable to return the time ranges
+;                                 of the TPLOT variables in question
+;               DTYPE        :  Set to a named variable to return the data types of
+;                                 the TPLOT variables in question
+;               DATAQUANTS   :  If set, then the entire array of current stored TPLOT 
+;                                 data quantities is returned
+;
+;   CHANGED:  1)  Davin Larson changed something...        [11/01/2002   v1.0.8]
+;             2)  Re-wrote and cleaned up                  [08/16/2009   v1.1.0]
+;             3)  Fixed a typo in man page                 [08/19/2009   v1.1.1]
+;             4)  THEMIS software update includes:
+;                 a)  Altered syntax with TPLOT keyword handling
+;                 b)  Forced ind to be a scalar if only 1 element
+;                 c)  Added keyword:  DATAQUANTS
+;                                                          [09/08/2009   v1.2.0]
+;
+;   CREATED:  Feb 1999
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  09/08/2009   v1.2.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION tnames,s,n,INDEX=ind,ALL=all,TPLOT=tplot,CREATE_TIME=create_time, $
+                    TRANGE=trange,DTYPE=dtype,DATAQUANTS=dataquants
+
+@tplot_com
+IF KEYWORD_SET(tplot) THEN BEGIN
+   s   = ''
+   str_element,tplot_vars,'SETTINGS.VARNAMES',s
+;   s   = tplot_vars.SETTINGS.VARNAMES
+   all = 1
+ENDIF
+
+ndq = N_ELEMENTS(data_quants) - 1L
+n   = 0
+ind = 0
+
+IF (ndq LE 0) THEN GOTO, JUMP_DONE  ; no data
+names = data_quants.NAME
+
+styp  = SIZE(s,/TYPE)
+sdim  = SIZE(s,/N_DIMENSIONS)
+IF (styp EQ 0L) THEN s = '*'  ; return all names
+
+styp  = SIZE(s,/TYPE)
+IF (styp EQ 7L) THEN BEGIN    ; => String input
+  IF (sdim EQ 0) THEN sa = STRSPLIT(s,' ',/EXTRACT) ELSE sa = s
+  IF (NOT KEYWORD_SET(all)) THEN BEGIN
+    ind = strfilter(names[1:*],sa,COUNT=n,/INDEX) + 1L
+    GOTO,JUMP_DONE
+  ENDIF ELSE BEGIN
+    FOR i=0L, N_ELEMENTS(sa) - 1L DO BEGIN
+      sel = strfilter(names[1:*],sa[i],/INDEX)
+      ind = (i EQ 0) ? sel : [ind,sel]
+    ENDFOR
+    ind += 1L
+    w    = WHERE(ind GT 0,n)
+    IF (n NE 0) THEN BEGIN
+      ind = ind[w]
+      GOTO,JUMP_DONE
+    ENDIF
+    ind = 0
+    GOTO,JUMP_DONE
+  ENDELSE
+ENDIF
+
+IF (styp LE 5L) THEN BEGIN
+  i = ROUND(s)
+  w = WHERE(i GE 1L AND i LE ndq,n)
+  IF (n NE 0) THEN ind = i[w]
+  GOTO,JUMP_DONE
+ENDIF
+;=========================================================================================
+JUMP_DONE:
+;=========================================================================================
+create_time = 0
+trange      = 0
+dtype       = 0
+IF (n EQ 0) THEN RETURN, ''
+IF (N_ELEMENTS(ind) EQ 1) THEN ind = ind[0]
+create_time = data_quants[ind].CREATE_TIME
+trange      = data_quants[ind].TRANGE
+dtype       = data_quants[ind].DTYPE
+IF KEYWORD_SET(dataquants) THEN RETURN, data_quants[ind]
+RETURN,names[ind]
+END

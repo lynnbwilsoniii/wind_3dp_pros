@@ -1,0 +1,263 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   dot_prod_angle.pro
+;  PURPOSE  :   This routine finds the angle between two arrays of input vectors.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               format_2d_vec.pro
+;               unit_vec.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               V1           :  [N,3]-Element [long/float/double] array of vectors
+;               V2           :  [N,3]-Element [long/float/double] array of vectors
+;
+;  EXAMPLES:    
+;               ;;  Two orthogonal vectors
+;               v1  = [1d0,0d0,0d0]
+;               v2  = [0d0,1d0,0d0]
+;               th  = dot_prod_angle(v1,v2)
+;               PRINT,';;',th
+;               ;;       90.000000
+;
+;               ;;  Two oblique vectors
+;               v1  = [1d0,1d0,0d0]
+;               v2  = [0d0,1d0,0d0]
+;               th  = dot_prod_angle(v1,v2)
+;               PRINT,';;',th
+;               ;;       45.000000
+;
+;  KEYWORDS:    
+;               NAN          :  If set, routine will ignore non-finite values
+;                                 [Default = FALSE]
+;               RADIANS      :  If set, routine will return the angles between
+;                                 V1 and V2 in radians instead of degrees
+;                                 [Default = FALSE]
+;               TH_0_90      :  If set, routine will constrain returned angles to values
+;                                 between 0-90 degrees by choosing the following:
+;                                   th = th < (18d1 - th)
+;                                 [Default = FALSE]
+;               PLANE        :  Scalar [string] defining the plane in which the user
+;                                 wishes to find the angle between V1 and V2.
+;                                 Meaning, if PLANE='xy', then only the 1st two
+;                                 components of V1 and V2 are used in the dot-product.
+;                                 Accepted inputs are:
+;                                   'xy'
+;                                   'xz'
+;                                   'yz'
+;                                 [Default = FALSE]
+;
+;   CHANGED:  1)  Fixed an issue that occurred when one of the inputs was a single
+;                   vector while the other was an array of vectors
+;                                                                   [03/19/2014   v1.0.1]
+;             2)  Routine can now handle complex inputs for V1 and/or V2
+;                                                                   [03/19/2014   v1.0.2]
+;             3)  Fixed an issue with the initial error handling when (N MOD 3) = 0
+;                                                                   [07/14/2014   v1.0.3]
+;
+;   NOTES:      
+;               1)  Either both inputs are [N,3]-element arrays or only one is while
+;                     the other is a [3]-element array.  However, if V1 is an
+;                     [N,3]-element array and V2 is an [M,3]-element array, where
+;                     N does not equal M, then the routine will return a zero.
+;               2)  Order matters if either vector has finite complex values because:
+;                     (V1 . V2) = V1_i x (V2_i)*
+;                     where z* is the complex conjugate of z.
+;               3)  The angle between two vectors, if complex, is given by:
+;                     Cos(ø) = Re[ ∑ V1_i x (V2_i)* ]/( |V1| |V2| )
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  01/27/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/14/2014   v1.0.3
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION dot_prod_angle,v1,v2,NAN=nan,RADIANS=radians,TH_0_90=th_0_90,PLANE=plane
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Error messages
+noinput_mssg   = 'No input was supplied...'
+incorne_mssg   = 'DP:  Incorrect number of elements.  One of the dimensions must be equal to 3.'
+incordm_mssg   = 'Incorrect dimensions...  Either both inputs are [N,3]-element arrays or one is and the other is a [3]-element array...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() NE 2) OR (N_ELEMENTS(v1) EQ 0) OR (N_ELEMENTS(v2) EQ 0)
+IF (test) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;  LBW III  07/14/2014   v1.0.3
+temp1          = TOTAL((SIZE(v1,/DIMENSIONS) MOD 3) NE 0)
+temp2          = TOTAL((SIZE(v2,/DIMENSIONS) MOD 3) NE 0)
+szd1           = (temp1[0] NE 1) AND (temp1[0] NE 0)
+szd2           = (temp2[0] NE 1) AND (temp2[0] NE 0)
+;szd1           = TOTAL((SIZE(v1,/DIMENSIONS) MOD 3) NE 0) NE 1
+;szd2           = TOTAL((SIZE(v2,/DIMENSIONS) MOD 3) NE 0) NE 1
+;;  Define tests to check if one of the inputs has only 3 elements
+nev1           = (N_ELEMENTS(v1) NE 3)
+nev2           = (N_ELEMENTS(v2) NE 3)
+test           = (szd1 AND nev1) OR (szd2 AND nev2)
+IF (test) THEN BEGIN
+  MESSAGE,incorne_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Force the input vectors to be [N,3]-element arrays
+;;----------------------------------------------------------------------------------------
+fv1            = format_2d_vec(v1)
+fv2            = format_2d_vec(v2)
+szd1           = SIZE(fv1,/DIMENSIONS)
+szd2           = SIZE(fv2,/DIMENSIONS)
+test           = (szd1[0] NE szd2[0]) AND ((szd1[0] NE 1) OR (szd2[0] NE 1))
+IF (test) THEN BEGIN
+  ;;  Check to see if one of the inputs is a single vector
+  test           = (szd1[0] NE szd2[0]) AND ((szd1[0] EQ 1) OR (szd2[0] EQ 1))
+  IF (test) THEN BEGIN
+    IF (szd1[0] EQ 1) THEN BEGIN
+      ;;  V1 is a [3]-element vector => convert to 2D
+      fv1f = REPLICATE(1d0,szd2[0]) # fv1
+      fv2f = fv2
+    ENDIF ELSE BEGIN
+      ;;  V2 is a [3]-element vector => convert to 2D
+      fv1f = fv1
+      fv2f = REPLICATE(1d0,szd1[0]) # fv2
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;;  Input format is incorrect
+    MESSAGE,incordm_mssg[0],/INFORMATIONAL,/CONTINUE
+    RETURN,0
+;    fv1f = fv1
+;    fv2f = fv2
+  ENDELSE
+ENDIF ELSE BEGIN
+  fv1f = fv1
+  fv2f = fv2
+ENDELSE
+;;;  Check if one is only a [3]-element vector
+;test           = (szd1[0] NE szd2[0])
+;IF (test) THEN BEGIN
+;  IF (szd1[0] EQ 1) THEN BEGIN
+;    ;;  V1 is a [3]-element vector => convert to 2D
+;    fv1f = REPLICATE(1d0,szd2[0]) # fv1
+;    fv2f = fv2
+;  ENDIF ELSE BEGIN
+;    ;;  V2 is a [3]-element vector => convert to 2D
+;    fv1f = fv1
+;    fv2f = REPLICATE(1d0,szd2[0]) # fv2
+;  ENDELSE
+;ENDIF ELSE BEGIN
+;  fv1f = fv1
+;  fv2f = fv2
+;ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Check if user only wants to consider a 2D plane
+;;----------------------------------------------------------------------------------------
+test           = KEYWORD_SET(plane) AND (SIZE(plane,/TYPE) EQ 7)
+IF (test) THEN BEGIN
+  CASE STRLOWCASE(plane[0]) OF
+    'xy'  :  BEGIN
+      ;;  Angle between projection onto XY-Plane
+      fv1f[*,2] = 0d0
+      fv2f[*,2] = 0d0
+    END
+    'xz'  :  BEGIN
+      ;;  Angle between projection onto XZ-Plane
+      fv1f[*,1] = 0d0
+      fv2f[*,1] = 0d0
+    END
+    'yz'  :  BEGIN
+      ;;  Angle between projection onto YZ-Plane
+      fv1f[*,0] = 0d0
+      fv2f[*,0] = 0d0
+    END
+    ELSE  :  ;;  Do nothing
+  ENDCASE
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Calculate the dot product
+;;----------------------------------------------------------------------------------------
+;;  Check for complex values
+test           = (TOTAL(IMAGINARY(fv1f)) EQ 0) AND (TOTAL(IMAGINARY(fv2f)) EQ 0)
+IF (test) THEN BEGIN
+  ;;  Inputs are real
+  ;;--------------------------------------------------------------------------------------
+  ;;  Calculate the unit vectors
+  ;;--------------------------------------------------------------------------------------
+  uv1            = unit_vec(fv1f)
+  uv2            = unit_vec(fv2f)
+  ;;  Calculate the dot product
+  v1_dot_v2      = TOTAL(uv1*uv2,2L,NAN=nan)
+ENDIF ELSE BEGIN
+  ;;  Inputs have finite imaginary parts
+  ;;--------------------------------------------------------------------------------------
+  ;;  Calculate the magnitudes of the input vectors
+  ;;--------------------------------------------------------------------------------------
+  magv1          = mag__vec(fv1f,/TWO)
+  magv2          = mag__vec(fv2f,/TWO)
+  ;;  Calculate the dot product
+  v1_dot_v2      = REAL_PART(TOTAL(fv1f*CONJ(fv2f),2L,NAN=nan))/(magv1*magv2)
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Calculate the dot product
+;;----------------------------------------------------------------------------------------
+;v1_dot_v2      = TOTAL(uv1*CONJ(uv2),2L,NAN=nan)
+;v1_dot_v2      = TOTAL(uv1*uv2,2L,NAN=nan)
+;;----------------------------------------------------------------------------------------
+;;  Calculate the angle between the two vectors
+;;----------------------------------------------------------------------------------------
+test           = (ABS(v1_dot_v2) GT 1)
+bad            = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN MESSAGE,'unit_vec.pro seems to have failed...?',/INFORMATIONAL,/CONTINUE
+IF (bd GT 0) THEN v1_dot_v2[bad] = d  ;;  remove for now [if this happens, something is wrong]
+;;  Calculate angle [radians]
+theta          = ACOS(v1_dot_v2)
+IF KEYWORD_SET(th_0_90) THEN theta = theta < (!DPI - theta)
+IF KEYWORD_SET(radians) THEN theta = theta ELSE theta *= (18d1/!DPI)  ;;  TRUE:radians   FALSE:radians --> degrees
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,theta
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

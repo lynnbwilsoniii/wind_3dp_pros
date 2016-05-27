@@ -1,0 +1,151 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   fix_vbulk_ions.pro
+;  PURPOSE  :   This routine attempts to find the "true" bulk flow velocity vector
+;                 for a given ion velocity distribution by assuming the peak value
+;                 of the data corresponds to the center of the main core component.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               conv_units.pro
+;               energy_to_vel.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT        :  Scalar structure associated with a known THEMIS ESA Burst
+;                               data structure [see get_th?_peib.pro, ? = a-f]
+;                               or a Wind/3DP PESA High Burst data structure
+;                               [see get_phb.pro]
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  This routine assumes the distribution has already been transformed
+;                     into the first guess at the bulk flow rest frame.  The
+;                     [THETA,PHI]-angle bins must be in the same coordinate basis as
+;                     the vectors associated with the structure tags VSW and MAGF.
+;               2)  The routine transform_vframe_3d.pro already did the following:
+;                         V' = V - V_sw
+;                   This routine finds the peak of the distribution and then the
+;                     corresponding velocity, V_peak, that defines this peak, then
+;                     defines:
+;                         V" = V' - V_peak = V - (V_sw + V_peak)
+;                     and then returns V_new = (V_sw + V_peak).
+;
+;   CREATED:  08/08/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/08/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION fix_vbulk_ions,data
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+;; => Dummy error messages
+notstr_msg     = 'Must be an IDL structure...'
+notvdf_msg     = 'Must be an ion velocity distribution IDL structure...'
+;;----------------------------------------------------------------------------------------
+;; => Check input structure format
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN RETURN,0b
+str       = data[0]   ;; => in case it is an array of structures of the same format
+IF (SIZE(str,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test0      = test_wind_vs_themis_esa_struct(str,/NOM)
+test       = (test0.(0) + test0.(1)) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Convert to phase (velocity) space density
+;;----------------------------------------------------------------------------------------
+dat       = conv_units(str,'df')
+;;----------------------------------------------------------------------------------------
+;; => Define DAT structure parameters
+;;----------------------------------------------------------------------------------------
+n_e       = dat.NENERGY             ;; => # of energy bins [ = E]
+n_a       = dat.NBINS               ;; => # of angle bins  [ = A]
+kk        = n_e*n_a
+ind_2d    = INDGEN(n_e,n_a)         ; => original indices of angle bins
+
+energy    = dat.ENERGY              ; => Energy bin values [eV]
+df_dat    = dat.DATA                ; => Data values [data.UNITS_NAME]
+
+phi       = dat.PHI                 ; => Azimuthal angle (from sun direction) [deg]
+dphi      = dat.DPHI                ; => Uncertainty in phi
+theta     = dat.THETA               ; => Poloidal angle (from ecliptic plane) [deg]
+dtheta    = dat.DTHETA              ; => Uncertainty in theta
+
+tacc      = dat.DT                  ; => Accumulation time [s] of each angle bin
+t0        = dat.TIME[0]             ; => Unix time at start of 3DP sample period
+t1        = dat.END_TIME[0]         ; => Unix time at end of 3DP sample period
+del_t     = t1[0] - t0[0]           ; => Total time of data sample
+;;----------------------------------------------------------------------------------------
+;; => Reform 2D arrays into 1D
+;;      K = E * A
+;;----------------------------------------------------------------------------------------
+phi_1d    = REFORM(phi,kk)
+the_1d    = REFORM(theta,kk)
+dat_1d    = SMOOTH(REFORM(df_dat,kk),3L,/EDGE_TRUNCATE,/NAN)
+;dat_1d    = REFORM(df_dat,kk)
+ener_1d   = REFORM(energy,kk)
+ind_1d    = REFORM(ind_2d,kk)
+;;----------------------------------------------------------------------------------------
+;; => Convert [Energies,Angles]  -->  Velocities
+;;----------------------------------------------------------------------------------------
+;; => Magnitude of velocities from energy (km/s)
+nvmag     = energy_to_vel(ener_1d,dat[0].MASS[0])
+coth      = COS(the_1d*!DPI/18d1)
+sith      = SIN(the_1d*!DPI/18d1)
+coph      = COS(phi_1d*!DPI/18d1)
+siph      = SIN(phi_1d*!DPI/18d1)
+;; => Define directions
+swfv      = DBLARR(kk,3L)              ;;  [K,3]-Element array
+swfv[*,0] = nvmag*coth*coph            ;; => Define X-Velocity per energy per data bin
+swfv[*,1] = nvmag*coth*siph            ;; => Define Y-Velocity per energy per data bin
+swfv[*,2] = nvmag*sith                 ;; => Define Z-Velocity per energy per data bin
+;;----------------------------------------------------------------------------------------
+;; => Find peak in DAT
+;;----------------------------------------------------------------------------------------
+;; => Define original guess at bulk flow velocity [km/s]
+vbulk     = dat[0].VSW
+
+mx_df     = MAX(dat_1d,l_df,/NAN)
+;; => Define velocity at peak of DF
+vpeak     = REFORM(swfv[l_df[0],*])    ;;  Velocity at peak [km/s]
+
+;; => Define new guess at bulk flow velocity [km/s]
+v_new     = vbulk + vpeak
+;;----------------------------------------------------------------------------------------
+;; => Create return structure
+;;----------------------------------------------------------------------------------------
+tags      = ['VSW_OLD','VSW_NEW']
+struct    = CREATE_STRUCT(tags,vbulk,v_new)
+;;----------------------------------------------------------------------------------------
+;; => Return structure to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END
+

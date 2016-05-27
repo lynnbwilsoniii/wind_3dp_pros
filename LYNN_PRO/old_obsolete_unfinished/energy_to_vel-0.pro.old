@@ -1,0 +1,111 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   energy_to_vel.pro
+;  PURPOSE  :   Converts an input energy [eV] into a corresponding speed [km/s] and
+;                 vice versa.  All calculations include relativistic corrections.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               NRG            :  [N]-Element array of energies in (eV)
+;                                   [NRG can be speeds if INVERSE keyword is set]
+;               MASS           :  Scalar mass [eV/(km/sec)^2] of particles
+;                                   [semi-optional if keywords are set]
+;
+;  EXAMPLES:    
+;               ;; => Determine the speed [km/s] of a 10 eV electron
+;               PRINT,'; ', energy_to_vel(10d0,/ELECTRON)
+;               ;        1875.5098
+;               
+;               ;; => Determine the speed [c] of a 10 keV electron
+;               ckm    = 2.99792458d5      ; => Speed of light in vacuum [km/s]
+;               PRINT,'; ', energy_to_vel(10d3,/ELECTRON)/ckm[0]
+;               ;       0.19498561
+;               
+;               ;; => Determine the speed [km/s] of a 1 keV proton
+;               PRINT,'; ', energy_to_vel(1d3,/PROTON)
+;               ;        437.69437
+;               
+;               ;; => Determine the energy [eV] of a 1000 km/s proton
+;               PRINT,'; ', energy_to_vel(1d3,/PROTON,/INVERSE)
+;               ;        5219.8858
+;
+;  KEYWORDS:    
+;               ELECTRON       :  If set, use electron mass [eV/(km/sec)^2]
+;                                    [Default]
+;               PROTON         :  If set, use proton mass [eV/(km/sec)^2]
+;               INVERSE        :  If set, routine assumes user input speeds [km/s]
+;                                    and wishes to return energies [eV]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  This is similar to velocity.pro, but it always uses relativistic
+;                     corrections, it has more error handling, and more comments
+;
+;   CREATED:  04/19/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/19/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION energy_to_vel,nrg,mass,ELECTRON=elec,PROTON=prot,INVERSE=inverse
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+c      = 2.99792458d8      ; => Speed of light in vacuum [m/s]
+c2     = c[0]^2
+ckm    = 2.99792458d5      ; => Speed of light in vacuum [km/s]
+ckm2   = ckm[0]^2
+me     = 9.10938291d-31    ; => Electron mass [kg] [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass [kg] [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+;; => convert masses to [eV c^(-2)]
+me_eV  = me[0]*c2[0]/qq[0]
+mp_eV  = mp[0]*c2[0]/qq[0]
+;; => convert masses to [eV km^(-2) s^(2)]
+me_esa = me_eV[0]/ckm2[0]
+mp_esa = mp_eV[0]/ckm2[0]
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() EQ 0) THEN RETURN,-1
+test   = (N_PARAMS() EQ 1) AND $
+         ((NOT KEYWORD_SET(elec)) OR (NOT KEYWORD_SET(prot)))
+IF (test) THEN mass = me_esa[0]
+;; => Check keywords
+IF KEYWORD_SET(elec) THEN mass = me_esa[0]
+IF KEYWORD_SET(prot) THEN mass = mp_esa[0]
+
+IF (N_ELEMENTS(inverse) EQ 0) THEN inv = 0 ELSE inv = inverse[0]
+;; => Make sure mass is defined
+IF (N_ELEMENTS(mass) EQ 0) THEN mass = me_esa[0]
+;;----------------------------------------------------------------------------------------
+;; => Calculate speed [km/s] or energy [eV]
+;;----------------------------------------------------------------------------------------
+E_0    = mass[0]*ckm2[0]  ;; rest mass energy [eV]
+IF KEYWORD_SET(inv) THEN BEGIN
+  ;; => User input speeds   --> energies
+  gamm = 1d0/SQRT(1d0 - nrg^2/ckm2[0])
+  ener = E_0[0]*(gamm - 1d0)
+  RETURN,ener
+ENDIF ELSE BEGIN
+  ;; => User input energies --> speeds
+  gamm = 1d0 + nrg/E_0[0]
+  vmag = SQRT(ckm2[0]*(1d0 - 1d0/gamm^2))
+  RETURN,vmag
+ENDELSE
+
+END
+

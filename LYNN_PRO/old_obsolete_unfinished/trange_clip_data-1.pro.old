@@ -1,0 +1,348 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   trange_clip_data.pro
+;  PURPOSE  :   This routine finds the data points within a user defined time range from
+;                 an input TPLOT structure and returns a TPLOT structure containing only
+;                 the points constrained by TRANGE.  If an error occurs or the input
+;                 format is incorrect, then the routine will return a scalar zero.  Thus,
+;                 one can test for a successful completion based upon the type output
+;                 matching an IDL structure.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               tplot_struct_format_test.pro
+;               is_a_number.pro
+;               get_valid_trange.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA           :  Scalar [structure] defining a valid TPLOT structure
+;                                   the the user wishes to clip (in time) in order to
+;                                   examine only data between the limits defined by the
+;                                   TRANGE keyword.  The minimum required structure tags
+;                                   for a TPLOT structure are as follows:
+;                                     X  :  [N]-Element array of Unix times
+;                                     Y  :  [N,?]-Element array of data, where ? can be
+;                                             up to two additional dimensions
+;                                             [e.g., pitch-angle and energy bins]
+;                                   additional potential tags are:
+;                                     V  :  [N,E]-Element array of Y-Axis values
+;                                             [e.g., energy bin values]
+;                                   or in the special case of particle data:
+;                                     V1 :  [N,E]-Element array of energy bin values
+;                                     V2 :  [N,A]-Element array of pitch-angle bins
+;                                   If V1 AND V2 are present, then Y must be an
+;                                   [N,E,A]-element array.  If only V is present, then
+;                                   Y must be an [N,E]-element array, where E is either
+;                                   the 1st dimension of V [if 1D array] or the 2nd
+;                                   dimension of V [if 2D array].
+;
+;  EXAMPLES:    
+;               ;;  ****
+;               ;;  Sample outputs using (very) incorrectly defined input
+;               ;;  ****
+;               nn             = 100L
+;               ee             = 10L
+;               aa             = 5L
+;               trange         = [10d0,35d0]
+;               test__bad      = trange_clip_data(struc,TRANGE=trange,PRECISION=prec)
+;               % TRANGE_CLIP_DATA: User must supply an IDL TPLOT structure...
+;               HELP,test__bad,/STRUC,OUTPUT=out
+;               FOR j=0L, N_ELEMENTS(out) - 1L DO PRINT,';;',out[j]
+;               ;;TEST__BAD       BYTE      =    0
+;
+;               x              = DINDGEN(nn)
+;               y1d            = FLTARR(nn)
+;               bad__struc     = {W:x,U:y1d}
+;               test__bad      = trange_clip_data(bad__struc,TRANGE=trange,PRECISION=prec)
+;               % TRANGE_CLIP_DATA: Incorrect input format:  DATA must be an IDL TPLOT structure
+;               HELP,test__bad,/STRUC,OUTPUT=out
+;               FOR j=0L, N_ELEMENTS(out) - 1L DO PRINT,';;',out[j]
+;               ;;TEST__BAD       BYTE      =    0
+;
+;
+;               ;;  ****
+;               ;;  Sample outputs using somewhat correctly defined input structures
+;               ;;  ****
+;               nn             = 100L
+;               ee             = 10L
+;               aa             = 5L
+;               ;;  Define some dummy arrays to check formatting tests
+;               x              = DINDGEN(nn)
+;               trange         = [10d0,35d0]         ;;  Should get elements 10-35
+;               y2d            = FLTARR(nn,ee)
+;               y3d            = FLTARR(nn,ee,aa)
+;               v1g            = FLTARR(nn,ee)       ;;  Good V1 definition
+;               v2g            = FLTARR(nn,aa)       ;;  Good V2 definition
+;               v1b            = FLTARR(nn,7L)       ;;  Bad V1 definition
+;               v2b            = FLTARR(nn,2L)       ;;  Bad V2 definition
+;               good_struc     = {X:x,Y:y3d,V1:v1g,V2:v2g}
+;               bad__struc     = {X:x,Y:y3d,V1:v1b,V2:v2b}
+;               test_good      = trange_clip_data(good_struc,TRANGE=trange,PRECISION=prec)
+;               test__bad      = trange_clip_data(bad__struc,TRANGE=trange,PRECISION=prec)
+;               diff           = x[10L:35L] - test_good.X
+;               PRINT,';;', MIN(diff,/NAN), MAX(diff,/NAN)
+;               ;;       0.0000000       0.0000000
+;               HELP,test_good,/STRUC,OUTPUT=out
+;               FOR j=0L, N_ELEMENTS(out) - 1L DO PRINT,';;',out[j]
+;               ;;** Structure <1635408>, 4 tags, length=6968, data length=6968, refs=1:
+;               ;;   X               DOUBLE    Array[26]
+;               ;;   Y               FLOAT     Array[26, 10, 5]
+;               ;;   V1              FLOAT     Array[26, 10]
+;               ;;   V2              FLOAT     Array[26, 5]
+;               HELP,test__bad,/STRUC,OUTPUT=out
+;               FOR j=0L, N_ELEMENTS(out) - 1L DO PRINT,';;',out[j]
+;               ;;** Structure <1553928>, 2 tags, length=5408, data length=5408, refs=1:
+;               ;;   X               DOUBLE    Array[26]
+;               ;;   Y               FLOAT     Array[26, 10, 5]
+;
+;               vvg            = FLTARR(ee)          ;;  Good 1D V definition
+;               vvb            = FLTARR(nn)          ;;  Bad 1D V definition
+;               good_struc     = {X:x,Y:y2d,V:vvg}
+;               bad__struc     = {X:x,Y:y2d,V:vvb}
+;               test_good      = trange_clip_data(good_struc,TRANGE=trange,PRECISION=prec)
+;               test__bad      = trange_clip_data(bad__struc,TRANGE=trange,PRECISION=prec)
+;               HELP,test_good,/STRUC,OUTPUT=out
+;               FOR j=0L, N_ELEMENTS(out) - 1L DO PRINT,';;',out[j]
+;               ;;** Structure <1635968>, 3 tags, length=1288, data length=1288, refs=1:
+;               ;;   X               DOUBLE    Array[26]
+;               ;;   Y               FLOAT     Array[26, 10]
+;               ;;   V               FLOAT     Array[10]
+;               HELP,test__bad,/STRUC,OUTPUT=out
+;               FOR j=0L, N_ELEMENTS(out) - 1L DO PRINT,';;',out[j]
+;               ;;** Structure <300e2f8>, 2 tags, length=5408, data length=5408, refs=1:
+;               ;;   X               DOUBLE    Array[26]
+;               ;;   Y               FLOAT     Array[26, 10]
+;
+;               vvg            = FLTARR(nn,ee)       ;;  Good 2D V definition
+;               vvb            = FLTARR(nn,7L)       ;;  Bad 2D V definition
+;               good_struc     = {X:x,Y:y2d,V:vvg}
+;               bad__struc     = {X:x,Y:y2d,V:vvb}
+;               test_good      = trange_clip_data(good_struc,TRANGE=trange,PRECISION=prec)
+;               test__bad      = trange_clip_data(bad__struc,TRANGE=trange,PRECISION=prec)
+;               HELP,test_good,/STRUC,OUTPUT=out
+;               FOR j=0L, N_ELEMENTS(out) - 1L DO PRINT,';;',out[j]
+;               ;;** Structure <1552dd8>, 3 tags, length=2288, data length=2288, refs=1:
+;               ;;   X               DOUBLE    Array[26]
+;               ;;   Y               FLOAT     Array[26, 10]
+;               ;;   V               FLOAT     Array[26, 10]
+;               HELP,test__bad,/STRUC,OUTPUT=out
+;               FOR j=0L, N_ELEMENTS(out) - 1L DO PRINT,';;',out[j]
+;               ;;** Structure <16343c8>, 2 tags, length=1248, data length=1248, refs=1:
+;               ;;   X               DOUBLE    Array[26]
+;               ;;   Y               FLOAT     Array[26, 10]
+;
+;  KEYWORDS:    
+;               TRANGE         :  [2]-Element [double] array specifying the Unix time
+;                                   range for which to limit the data in DATA
+;                                   [Default = prompted by get_valid_trange.pro]
+;               PRECISION      :  Scalar [long] defining precision of the string output:
+;                                   = -5  :  Year only
+;                                   = -4  :  Year, month
+;                                   = -3  :  Year, month, date
+;                                   = -2  :  Year, month, date, hour
+;                                   = -1  :  Year, month, date, hour, minute
+;                                   = 0   :  Year, month, date, hour, minute, sec
+;                                   = >0  :  fractional seconds
+;                                   [Default = 0]
+;
+;   CHANGED:  1)  Updated Man. page and added a few more comments and
+;                   now calls str_element.pro
+;                                                                   [10/06/2015   v1.0.1]
+;
+;   NOTES:      
+;               1)  See also:  get_valid_trange.pro
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  10/05/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/06/2015   v1.0.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION trange_clip_data,data,TRANGE=trange,PRECISION=prec
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION tplot_struct_format_test, is_a_number, get_valid_trange
+;;----------------------------------------------------------------------------------------
+;;  Define some defaults
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy logic variables
+test_vv        = 0b
+test_vv_2d     = 0b
+test_v1        = 0b
+test_v2        = 0b
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply an IDL TPLOT structure...'
+baddfor_msg    = 'Incorrect input format:  DATA must be an IDL TPLOT structure'
+baddinp_msg    = 'Incorrect input:  DATA must be a valid TPLOT structure with numeric times and data'
+bad_tra_msg    = 'Could not define proper time range... Exiting without computation...'
+nod_tra_msg    = 'No data within user specified time range... Exiting without computation...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (SIZE(data,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check if TPLOT structure
+test           = (tplot_struct_format_test(data) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,baddfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define parameters
+;;----------------------------------------------------------------------------------------
+nt             = N_TAGS(data)
+time           = data.X            ;;  [N]-Element array of Unix times
+dats           = data.Y            ;;  [N [,M , L]]-Element array of data
+szdt           = SIZE(time,/DIMENSIONS)
+szdd           = SIZE(dats,/DIMENSIONS)
+sznd           = SIZE(dats,/N_DIMENSIONS)
+;;  Make sure data format is okay
+test           = (szdt[0] NE szdd[0]) OR (is_a_number(time,/NOMSSG) EQ 0) OR $
+                 (is_a_number(dats,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,baddinp_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check for other time-dependent structure tags
+;;----------------------------------------------------------------------------------------
+IF (nt[0] GT 2) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Other time-dependent structure tags found --> test
+  ;;--------------------------------------------------------------------------------------
+  str_element,data, 'V',vv
+  str_element,data,'V1',v1
+  str_element,data,'V2',v2
+  szdvv          = SIZE(vv,/DIMENSIONS)
+  szdv1          = SIZE(v1,/DIMENSIONS)
+  szdv2          = SIZE(v2,/DIMENSIONS)
+  test_vv        =  (szdvv[0] NE 0) AND is_a_number(vv,/NOMSSG)
+  IF (test_vv[0]) THEN BEGIN
+    ;;  Check if V is 1D or 2D
+    test_vv_2d     = (N_ELEMENTS(szdvv) EQ 2)
+    IF (test_vv_2d[0]) THEN BEGIN
+      ;;  V is 2D
+      test_vv = (szdt[0] EQ szdvv[0]) AND (szdd[1] EQ szdvv[1])   ;;  Make sure dimensions match if 2D
+    ENDIF ELSE BEGIN
+      ;;  V is 1D
+      test_vv = (szdd[1] EQ szdvv[0])
+    ENDELSE
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  If V1 and V2 present, both must be 2D and the first dimension must match that of X
+  ;;--------------------------------------------------------------------------------------
+  test           = (N_ELEMENTS(szdv1) NE 2) OR (N_ELEMENTS(szdv2) NE 2) OR $
+                   (N_ELEMENTS(szdd)  LT 3)
+  IF (test[0]) THEN BEGIN
+    ;;  Incorrect number of dimensions --> kill both
+    test_v1        = 0b
+    test_v2        = 0b
+  ENDIF ELSE BEGIN
+    ;;  Correct number of dimensions
+    test_v1        = ((szdv1[0] NE 0) AND is_a_number(v1,/NOMSSG)) AND $
+                      (szdt[0] EQ szdv1[0]) AND (szdd[1] EQ szdv1[1])
+    test_v2        = ((szdv2[0] NE 0) AND is_a_number(v2,/NOMSSG)) AND $
+                      (szdt[0] EQ szdv2[0]) AND (szdd[2] EQ szdv2[1])
+    ;;  If either V1 or V2 is incorrectly formatted --> zero both
+    test           = (test_v1[0] EQ 0) OR (test_v2[0] EQ 0)
+    IF (test[0]) THEN BEGIN
+      ;;  At least one failed --> kill both
+      test_v1        = 0b
+      test_v2        = 0b
+    ENDIF
+  ENDELSE
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check TRANGE
+tra_struc      = get_valid_trange(TRANGE=trange,PRECISION=prec)
+tra_unix       = tra_struc.UNIX_TRANGE
+test           = (TOTAL(FINITE(tra_unix)) LT 2)
+IF (test[0]) THEN BEGIN
+  MESSAGE,bad_tra_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Redefine TRANGE
+trange         = tra_unix
+;;----------------------------------------------------------------------------------------
+;;  Determine which elements are within TRANGE
+;;----------------------------------------------------------------------------------------
+;;  Sort time stamps [just in case]
+sp             = SORT(time)
+tt             = time[sp]
+test           = (tt LE trange[1]) AND (tt GE trange[0])
+good           = WHERE(test,gd)
+IF (gd EQ 0) THEN BEGIN
+  ;;  No data between specified time range limits
+  MESSAGE,nod_tra_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Data found --> define output
+xx             = tt[good]
+sp2            = sp[good]         ;;  Define only the "good" sorted indices
+CASE sznd[0] OF
+  1    :  yy = dats[sp2]          ;;  [N]-Element array
+  2    :  yy = dats[sp2,*]        ;;  [N,M]-Element array
+  3    :  yy = dats[sp2,*,*]      ;;  [N,M,L]-Element array
+  ELSE : STOP  ;;  What did you do?  --> debug
+ENDCASE
+;;  Check for V or V1 AND V2
+IF (test_vv[0]) THEN BEGIN
+  IF (test_vv_2d[0]) THEN BEGIN
+    ;;  V is 2D
+    vvout          = vv[sp2,*]
+  ENDIF ELSE BEGIN
+    ;;  V is 1D  -->  Assume 1st dimension is independent of # of time stamps
+    vvout          = vv
+  ENDELSE
+ENDIF
+test           = (test_v1[0] AND test_v2[0])
+IF (test[0]) THEN BEGIN
+  ;;  Both V1 and V2 present and correctly formatted
+  v1out          = v1[sp2,*]
+  v2out          = v2[sp2,*]
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+test           = (test_v1[0] AND test_v2[0]) OR test_vv[0]
+IF (test[0]) THEN BEGIN
+  ;;  Either V or V1 AND V2 are present
+  test           = (test_v1[0] AND test_v2[0])
+  IF (test[0]) THEN BEGIN
+    ;;  V1 AND V2 are present
+    struc          = {X:xx,Y:yy,V1:v1out,V2:v2out}
+  ENDIF ELSE BEGIN
+    ;;  V is present
+    struc          = {X:xx,Y:yy,V:vvout}
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;;  Only X and Y tags are present or correctly set
+  struc          = {X:xx,Y:yy}
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END

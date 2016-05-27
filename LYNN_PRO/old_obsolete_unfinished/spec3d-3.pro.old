@@ -1,0 +1,251 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   spec3d.pro
+;  PURPOSE  :   This routine produces a plot showing the power spectra of a particle
+;                 velocity distribution versus energy or speed.  The spectra can have
+;                 any of the units allowed in convert_esa_units.pro.  The plot shows
+;                 multiple line plots, one for each solid-angle bin [default mode], that
+;                 can be organized by pitch-angle or by a user defined vector.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               str_element.pro
+;               conv_units.pro
+;               trange_str.pro
+;               wind_3dp_units.pro
+;               velocity.pro
+;               bytescale.pro
+;               average.pro
+;               xyz_to_polar.pro
+;               pangle.pro
+;               mplot.pro
+;               time_stamp.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TEMPDAT     :  Scalar particle distribution from either Wind/3DP
+;                                or THEMIS ESA
+;                                [See:  get_??.pro for Wind]
+;                                [See:  thm_part_dist_array.pro for THEMIS]
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               LIMITS      :  A structure that may contain any combination of the 
+;                                following elements:
+;=========================================================================================
+;                                  ALL plot keywords such as:
+;                                  XLOG,   YLOG,   ZLOG,
+;                                  XRANGE, YRANGE, ZRANGE,
+;                                  XTITLE, YTITLE,
+;                                  TITLE, POSITION, REGION  etc. (see IDL
+;                                    documentation for a description)
+;                                  The following elements can be included in 
+;                                    LIMITS to effect DRAW_COLOR_SCALE:
+;                                      ZTICKS, ZRANGE, ZTITLE, ZPOSITION, ZOFFSET
+; **[Note: Program deals with these by itself, so just set them if necessary and let 
+;           it do the rest.  Meaning, if you know what the tick marks should be on 
+;           your color bar, define them under the ZTICK[V,NAME,S] keywords in the 
+;           structure ahead of time.]**
+;=========================================================================================
+;               UNITS       :  Scalar [string] defining the units to use for the
+;                                vertical axis of the plot and the outputs YDAT and DYDAT
+;                                [Default = 'flux' or number flux]
+;               COLOR       :  Set to a named variable to return the numerical values
+;                                associated with the colors shown in the output plot
+;               BDIR        :  ** Obselete **
+;               PHI         :  Set to a named variable to return the azimuthal angles
+;                                [degrees] used in plot
+;               THETA       :  Set to a named variable to return the poloidal angles
+;                                [degrees] used in plot
+;               PITCHANGLE  :  If set, color scale defined by THETA/PHI angles closest to
+;                                B-field direction defined by TEMPDAT.MAGF
+;                                [Default = FALSE]
+;               VECTOR      :  [3]-Element [float/double] array specifying the vector
+;                                to define the direction with respect to the THETA/PHI
+;                                angles to use to define the color scale
+;                                [Default = None --> use the indices of angles]
+;               SUNDIR      :  If set, program defines VECTOR as the sun direction
+;                                in GSE coordinates [i.e., < -1, 0, 0 > ]
+;               A_COLOR     :  Scalar [string] defining how to define the color scale
+;                                for the output data plot.  The allowed inputs are:
+;                                  'pi'  :  use the pitch-angles
+;                                  'su'  :  use the sun direction for VECTOR
+;                                  'th'  :  use the theta angles in TEMPDAT
+;                                  'ph'  :  use the phi angles in TEMPDAT
+;               LABEL       :  If set, plot shows bin labels [i.e., bin numbers]
+;               X[Y]DAT     :  Set to a named variable to return the X[Y] data used in
+;                                the spectra plot
+;               DYDAT       :  Set to a named variable to return the uncertainty or noise
+;                                in TEMPDAT.DATA (which is YDAT on output in the correct
+;                                units).  The array will have the same dimensions as
+;                                XDAT, YDAT, THETA, and PHI.
+;               BINS        :  [N]-Element [integer/long] array of data bins to be plotted
+;               VELOCITY    :  If set, X-axis is in units of km/s instead of eV
+;               OVERPLOT    :  If set, plots over existing plot
+;
+;   CHANGED:  1)  Davin Larson changed something...
+;                                                                   [06/??/1995   v1.0.24]
+;             2)  Altered a few minor things
+;                                                                   [07/23/2007   v1.0.25]
+;             3)  Re-wrote and cleaned up
+;                                                                   [11/01/2010   v1.1.0]
+;             4)  Fixed typo in unit conversion call
+;                                                                   [09/07/2011   v1.1.1]
+;             5)  Updated the man page and cleaned up some things
+;                                                                   [04/02/2014   v1.1.2]
+;
+;   NOTES:      
+;               1)  See also:  moments_3d.pro or moments_3du.pro
+;
+;  REFERENCES:  
+;               1)  Carlson et al., (1983), "An instrument for rapidly measuring
+;                      plasma distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70.
+;               2)  Curtis et al., (1989), "On-board data analysis techniques for
+;                      space plasma particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372.
+;               3)  Lin et al., (1995), "A Three-Dimensional Plasma and Energetic
+;                      particle investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125.
+;               4)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  04/02/2014   v1.1.2
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO spec3d,tempda0,LIMITS=limits,UNITS=units,COLOR=col,BDIR=bdir,PHI=phi,THETA=theta, $
+                   PITCHANGLE=pang,VECTOR=vec,SUNDIR=sundir,A_COLOR=a_color,          $
+                   LABEL=label,XDAT=xdat,YDAT=ydat,DYDAT=dydat,BINS=bins,VELOCITY=vel,$
+                   OVERPLOT=oplot
+
+;@wind_com.pro
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+;;  Check to make sure user did not sent in an array of structures
+test           = (N_ELEMENTS(tempda0) GT 1)
+IF (test) THEN tempdat = tempda0[0] ELSE tempdat = tempda0
+
+test           = (SIZE(tempdat,/TYPE) NE 8)
+IF (test) THEN BEGIN
+  MESSAGE,'Invalid Data',/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+
+test           = (tempdat[0].VALID EQ 0)
+IF (test) then begin
+  MESSAGE,'Invalid Data',/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+
+;;  Check A_COLOR keyword
+a_color        = ''
+str_element,limits,'A_COLOR',a_color
+CASE STRLOWCASE(STRMID(a_color,0,2)) OF
+  'pi' : pang   = 1
+  'su' : sundir = 1
+  'th' : theta  = 1
+  'ph' : phi    = 1
+  ELSE :
+ENDCASE
+;;  Define number of solid-angle bins
+data3d         = tempdat[0]
+nb             = data3d[0].NBINS
+;;----------------------------------------------------------------------------------------
+;;  Define relevant values for plot structure from input LIMITS
+;;----------------------------------------------------------------------------------------
+str_element,limits,'PITCHANGLE',VALUE=pang
+str_element,limits,'SUNDIR'    ,VALUE=sundir
+str_element,limits,'THETADIR'  ,VALUE=theta
+str_element,limits,'UNITS'     ,VALUE=units
+str_element,limits,'COLOR'     ,VALUE=col
+str_element,limits,'VELOCITY'  ,VALUE=vel
+str_element,limits,'BINS',            bins
+str_element,data3d,'DDATA'     ,VALUE=dydat
+;;  Convert to desired units
+IF NOT KEYWORD_SET(units)  THEN gunits = 'flux' ELSE gunits = units[0]
+data3d         = conv_units(tempdat,units)
+
+title          = ''
+title          = data3d[0].DATA_NAME
+title          = '('+title[0]+')'+' '+trange_str(data3d[0].TIME,data3d[0].END_TIME)
+
+new_units      = wind_3dp_units(gunits)
+gunits         = new_units.G_UNIT_NAME      ;;  e.g., 'flux'
+punits         = new_units.G_UNIT_P_NAME    ;;  e.g., ' (# cm!U-2!Ns!U-1!Nsr!U-1!NeV!U-1!N)'
+ytitle         = gunits[0]+punits[0]
+;ytitle = units_string(data3d.units_name)
+ydat           = data3d.DATA
+;;----------------------------------------------------------------------------------------
+;;  Determine X-Axis Title, Units, and Data
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(vel) THEN BEGIN
+   xdat   = velocity(data3d.ENERGY,data3d.MASS)
+   xtitle = "Velocity  (km/s)"
+ENDIF ELSE BEGIN
+   xdat   = data3d.ENERGY
+   xtitle = 'Energy  (eV)'
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Determine color scale
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(phi) THEN BEGIN
+   phi = REFORM(data3d.PHI[0,*])
+;   col = bytescale(phi,range=[-180.,180.])
+   col = bytescale(phi);,range=[-180.,180.])
+ENDIF 
+
+IF KEYWORD_SET(theta) THEN BEGIN
+   theta = REFORM(data3d.THETA[0,*])  ;; average theta
+;   col = bytescale(theta,range=[-90.,90.])
+   col = bytescale(theta);,range=[-90.,90.])
+ENDIF 
+
+IF KEYWORD_SET(pang)   THEN str_element,data3d,'MAGF',vec
+IF KEYWORD_SET(sundir) THEN vec = [-1.,0.,0.]
+
+IF KEYWORD_SET(vec) THEN BEGIN
+   phi   = average(data3d.PHI,1,/NAN)    ;; average phi
+   theta = average(data3d.THETA,1,/NAN)  ;; average theta
+   xyz_to_polar,vec,THETA=bth,PHI=bph
+   p     = pangle(theta,phi,bth,bph)
+   col   = bytescale(p,RANGE=[0.,180.])
+ENDIF 
+
+IF     KEYWORD_SET(col)   THEN shades = col
+IF     KEYWORD_SET(label) THEN labels = STRCOMPRESS(INDGEN(nb))
+IF NOT KEYWORD_SET(bins)  THEN bins   = REPLICATE(1b,nb)
+
+;!P.CHARSIZE = 1.2
+;;  Define structure for MPLOT
+plot = {TITLE:title,XTITLE:xtitle,X:xdat,XLOG:1,YTITLE:ytitle,Y:ydat,YLOG:1,BINS:bins}
+
+str_element,plot,'DY',dydat,/ADD_REPLACE
+;;----------------------------------------------------------------------------------------
+;;  Plot data
+;;----------------------------------------------------------------------------------------
+str_element,limits,'XSTYLE',1,/ADD_REPLACE       ;;  LBW 09/07/2011   v1.1.1
+str_element,limits,'YSTYLE',1,/ADD_REPLACE       ;;  LBW 09/07/2011   v1.1.1
+str_element,limits,'CHARSIZE',1.2,/ADD_REPLACE   ;;  LBW 04/02/2014   v1.1.2
+
+mplot,DATA=plot,COLORS=shades,LIMITS=limits,LABELS=labels,OVERPLOT=oplot
+time_stamp     ;;  Print date plot was created in lower right-hand corner
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

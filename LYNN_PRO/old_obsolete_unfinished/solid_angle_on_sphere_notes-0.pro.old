@@ -1,0 +1,280 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;+
+;##############################################################################
+; NAME:  
+;
+;    SPHERICAL_POLY_AREA
+;
+; DESCRIPTION:
+;    
+;    Calculate the solid angle subtended by a spherical polygon in
+;    celestial coordinates.
+;    
+; CATEGORY:
+;
+;    Astro Utility
+;
+; CALLING SEQUENCE:
+;
+;    area=spherical_angle_offset(ra,dec)
+;
+; INPUT PARAMETERS:
+;
+;    (ra,dec): The RA/DEC for all vertices of the spherical polygon,
+;    in decimal degrees.
+;
+; OUTPUT:
+;
+;    area: The solid angle subtended in steradians.
+;    
+; MODIFICATION HISTORY:
+;    
+;##############################################################################
+;-
+
+function spherical_poly_area,ra,dec
+
+RADEG=180.D/!DPI
+HalfPi=!DPI/2.
+
+lam1   = ra*!DPI/18d1
+lam2   = SHIFT(lam1,1)
+
+beta1  = dec*!DPI/18d1
+beta2  = SHIFT(beta1,1)
+
+cbeta1 = COS(beta1)
+cbeta2 = SHIFT(cbeta1,1)
+
+;;  haversine formula
+;;
+;;  sin(∆ß/2)^2 = (sin(∆ø/2)^2 + cos(Ω_i) cos(Ω_j) sin(∆Ω/2)^2)
+;;
+;;    where:  ∆ø = ø_i - ø_j, ∆Ω = Ω_i - Ω_j, and ∆ß = central angle between the
+;;              two points (ø_i,Ω_i) and (ø_j,Ω_j), where ø(Ω) defines the
+;;              latitude(longitude) of the points on a spherical shell of radius R
+;;
+;;    This is equivalent to:
+;;  cos(∆ß) = sin(ø_i) sin(ø_j) + cos(ø_i) cos(ø_j) cos(∆Ω)
+;;
+;;      from using the following identities:
+;;        cos(a ± b) =   cos(a) cos(b) -/+ sin(a) sin(b)
+;;        sin(a ± b) =   sin(a) cos(b)  ±  sin(b) cos(a)
+;;
+;;        sin(2 a)   = 2 sin(a) cos(a)
+;;
+;;        cos(x)     = 1 - 2 sin(x/2)^2
+;;
+;;    We can arrive at the solution for cos(∆ß) by using the following vector form:
+;;
+;;           /                 \
+;;          | cos(Ω_i) cos(ø_i) |
+;;  r_i = R | sin(Ω_i) cos(ø_i) |
+;;          |     sin(ø_i)      |
+;;           \                 /
+;;
+;;    and then calculating acos[(r_i . r_j)/R^2]
+;;
+HavA   = SIN( (beta2 - beta1)/2d0 )^2 + cbeta1*cbeta2*SIN( (lam2 - lam1)/2d0 )^2
+A = 2d0*ASIN(SQRT(HavA))
+
+;;  S = (A + B + C)/2 = sum of the half-angles
+;;  s = (a + b + c)/2 = semi-perimeter
+;;
+;;    where:  {A,B,C} = define the angles of a spherical triangle opposite {a,b,c}
+;;            {a,b,c} = define the sides  of a spherical triangle
+;;
+;;    Note that {a,b,c}/R define the angular lengths of the sides of the spherical
+;;      triangle.  This allows us to rewrite the haversine formula as:
+;;        hav(c) = hav(a - b) + sin(a) sin(b) hav(C)
+;;      We can define the spherical law of cosines:
+;;        cos(c) = cos(a) cos(b) + sin(a) sin(b) cos(C)
+;;      using the following identities:
+;;        cos(a - b) = cos(a) cos(b) + sin(a) sin(b)
+;;        cos(µ) = 1 - 2 hav(µ)
+;;
+;;      The 2nd spherical law of cosines:
+;;        cos(A) = - cos(B) cos(C) + sin(B) sin(C) cos(a)
+;;
+;;
+;;
+B = HalfPi - beta2
+C = HalfPi - beta1
+S = 0.5d0*(A + B + C)
+T = TAN(S/2d0) * TAN((S - A)/2d0) * TAN((S - B)/2d0) * TAN((S - C)/2d0)
+
+lam = (lam2 - lam1) + 2*!DPI*(lam1 GE lam2)
+fac0   = 4d0*ATAN( SQRT( ABS(T) ) )
+;;
+;;  Spherical Excess = ∑ = (A + B + C) - π
+;;    tan(∑/4)^2 = tan(s/2) tan[(s - a)/2] tan[(s - b)/2] tan[(s - c)/2]
+;;
+Excess = ABS(fac0) * (1d0 - 2d0*(lam GT !DPI))
+
+RETURN, ABS( TOTAL(Excess*(lam2 NE lam1),/DOUBLE) )
+
+end
+
+
+;;   Refs:  http://en.wikipedia.org/wiki/Great-circle_distance
+;;          http://en.wikipedia.org/wiki/Haversine_formula
+;;          http://mathworld.wolfram.com/SphericalTrigonometry.html
+;;          http://mathworld.wolfram.com/TrigonometricAdditionFormulas.html
+;;          http://en.wikipedia.org/wiki/Solid_angle
+;;          
+;;          
+;;          
+;;          
+
+
+
+
+; DESCRIPTION:
+;    
+;    Calculate angle on sphere between two coordinates.
+;    
+function spherical_angle_offset,ra1,dec1,ra2,dec2
+  RADEG=180.D/!DPI
+  d1=dec1/RADEG & d2=dec2/RADEG & r1=ra1/RADEG & r2=ra2/RADEG
+  return, acos( cos(d1)*cos(d2)*cos(r1 - r2) + sin(d1)*sin(d2) )*RADEG
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

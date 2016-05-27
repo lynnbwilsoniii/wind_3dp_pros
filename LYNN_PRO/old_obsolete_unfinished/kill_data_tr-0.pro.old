@@ -1,0 +1,187 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   kill_data_tr.pro
+;  PURPOSE  :   Interactively kills data between two times defined by user either with
+;                 the cursor or inputs D1 and D2 by setting the data to NaNs.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               tplot_com.pro
+;               str_element.pro
+;               ctime.pro
+;               gettime.pro
+;               tplot.pro
+;               get_data.pro
+;               store_data.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               D1[2]       :  Scalar string or double, see TIME_STRUCT.PRO for 
+;                               formats
+;
+;  EXAMPLES:    
+;               ..................................................................
+;               :  If data is plotted already in TPLOT that you wish to destroy  :
+;               :    and you wish to use the cursors to set the times to kill    :
+;               ..................................................................
+;               kill_data_tr
+;               ..................................................................
+;               :  If data is plotted already in TPLOT that you wish to destroy  :
+;               :    and you wish to define the time range with a scalar         :
+;               ..................................................................
+;               t1 = '2000-04-05/12:30:45.633'
+;               t2 = '2000-04-05/12:33:46.543'
+;               kill_data_tr,t1,t1
+;               ..................................................................
+;               :  If data is plotted already in TPLOT that you wish to destroy  :
+;               :    and you wish to define the time range with a double         :
+;               ..................................................................
+;               t1 = time_double('2000-04-05/12:30:45.633')
+;               t2 = time_double('2000-04-05/12:33:46.543')
+;               kill_data_tr,t1,t1
+;               ..................................................................
+;               :  If data is not plotted in TPLOT already, then define which    :
+;               :    TPLOT handles to use                                        :
+;               ..................................................................
+;               kill_data_tr,NAMES=tnames([1,3,5])
+;
+;  KEYWORDS:    
+;               NAMES      :  N-Element string array of TPLOT handles/names
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Make sure you either define the TPLOT handles to be "killed" or
+;                     make sure the ones you want "killed" are currently plotted
+;                     before running this program!
+;               2)  It would be wise to create a copy of the data you wish to kill
+;                     to avoid destroying data that you want back.
+;
+;   CREATED:  02/01/2010
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/01/2010   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO kill_data_tr,d1,d2,NAMES=names
+
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+;-----------------------------------------------------------------------------------------
+; => Get common block data
+;-----------------------------------------------------------------------------------------
+@tplot_com.pro
+COMMON times_dats, t
+
+n = N_PARAMS()
+str_element,tplot_vars,'OPTIONS.TRANGE',trange
+str_element,tplot_vars,'OPTIONS.TRANGE_FULL',trange_full
+str_element,tplot_vars,'SETTINGS.trange_old',trange_old
+str_element,tplot_vars,'SETTINGS.TIME_SCALE',time_scale
+str_element,tplot_vars,'SETTINGS.TIME_OFFSET',time_offset
+temp = trange
+tr   = (tplot_vars.SETTINGS.X.CRANGE * time_scale) + time_offset
+;-----------------------------------------------------------------------------------------
+; => Determine time range
+;-----------------------------------------------------------------------------------------
+IF (n EQ 0) THEN BEGIN
+  ctime,t,NPOINTS=2,PROMPT="Use cursor to select a begin time and an end time",$
+    HOURS=hours,MINUTES=minutes,SECONDS=seconds,DAYS=days
+  IF N_ELEMENTS(t) NE 2 THEN RETURN
+  t1    = t[0]
+  t2    = t[1]
+  delta = tr[1] - tr[0]
+  test  = [((t1 LT tr[0]) AND (t2 GT tr[1])),$
+           ((t1 GT tr[1]) AND (t2 GT tr[1])),$
+           ((t1 LT tr[0]) AND (t2 LT tr[0])),$
+            (t2 LT t1)]
+  good  = WHERE(test,gd)
+  CASE good[0] OF
+    0    :  trange = trange_full      ; full range
+    1    :  trange = tr + delta       ; pan right
+    2    :  trange = tr - delta       ; pan left
+    3    :  trange = trange_old       ; last limits
+    ELSE :  trange = [t1,t2]          ; new range
+  ENDCASE
+ENDIF
+
+IF (n EQ 1) THEN BEGIN
+  IF (N_ELEMENTS(d1) EQ 2) THEN BEGIN
+    trange = gettime(d1)
+  ENDIF ELSE BEGIN
+    trange = [gettime(d1),gettime(d1) + tr[1] - tr[0]]
+  ENDELSE
+ENDIF
+IF (n EQ 2) THEN trange = gettime([d1,d2])
+;-----------------------------------------------------------------------------------------
+; => Determine which TPLOT data to kill
+;-----------------------------------------------------------------------------------------
+IF (NOT KEYWORD_SET(names)) THEN BEGIN
+  plotted_names = tplot_vars.OPTIONS.VARNAMES
+  gnames        = plotted_names
+ENDIF ELSE BEGIN
+  plotted_names = tplot_vars.OPTIONS.VARNAMES
+  gnames        = tnames(names)
+ENDELSE
+
+good = WHERE(gnames NE '',gd)
+IF (gd EQ 0) THEN BEGIN
+  errmsg = 'No TPLOT handles defined... no data will be set to NaNs'
+  MESSAGE,errmsg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF ELSE gnames = gnames[good]
+;-----------------------------------------------------------------------------------------
+; => get data and interactively kill it unless SPEC str. tag = 1
+;-----------------------------------------------------------------------------------------
+gnn = N_ELEMENTS(gnames)
+FOR j=0L, gnn - 1L DO BEGIN
+  get_data,gnames[j],DATA=dat0,DLIM=dlim_old,LIM=lim_old
+  szn   = SIZE(dat0.Y,/N_DIMENSIONS)
+  szd   = SIZE(dat0.Y,/DIMENSIONS)
+  szt   = N_ELEMENTS(dat0.X)
+  match = WHERE(szd EQ szt,mtc)
+  temp  = dat0.Y
+  bad   = WHERE(dat0.X LE trange[1] AND dat0.X GE trange[0],bd)
+  IF (bd GT 0) THEN BEGIN
+    CASE szn[0] OF
+      1    : BEGIN
+        ; => 1D Array of data
+        temp[bad] = f
+      END
+      2    : BEGIN
+        ; => 2D Array of data
+        CASE match[0] OF
+          0    : temp[bad,*] = f
+          1    : temp[*,bad] = f
+          ELSE :        ; => Don't know what to do with this
+        ENDCASE
+      END
+      3    : BEGIN
+        ; => 3D Array of data
+        CASE match[0] OF
+          0    : temp[bad,*,*] = f
+          1    : temp[*,bad,*] = f
+          2    : temp[*,*,bad] = f
+          ELSE :        ; => Don't know what to do with this
+        ENDCASE
+      END
+      ELSE :        ; => Don't know what to do with this
+    ENDCASE
+  ENDIF
+  dat0.Y = temp
+  store_data,gnames[j],DATA=dat0,DLIM=dlim_old,LIM=lim_old
+ENDFOR
+tplot,plotted_names
+
+RETURN
+END

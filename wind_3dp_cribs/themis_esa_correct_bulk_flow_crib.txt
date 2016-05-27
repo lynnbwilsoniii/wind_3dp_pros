@@ -1,0 +1,234 @@
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => From THEMIS prompt
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+;; => Put the initialization routine (comp_lynn_pros.pro) in the ~/TDAS/tdas_7_??/idl/
+;;      directory and change the file paths so they work for your personal machine
+
+; => Compile necessary routines
+@comp_lynn_pros
+;-----------------------------------------------------------------------------------------
+; => Date/Times/Probes
+;-----------------------------------------------------------------------------------------
+tdate      = '2009-07-13'
+probe      = 'b'
+probef     = probe[0]
+gprobes    = probe[0]
+sc         = probe[0]
+tr_00      = tdate[0]+'/'+['07:50:00','10:10:00']
+time_ra    = time_range_define(TRANGE=tr_00)
+tr         = time_ra.TR_UNIX
+;;----------------------------------------------------------------------------------------
+;; Load state data (position, spin, etc.)
+;;----------------------------------------------------------------------------------------
+themis_load_fgm_esa_inst,TRANGE=tr,PROBE=sc[0],/LOAD_EESA_DF,EESA_DF_OUT=eesa_out,$
+                         /LOAD_IESA_DF,IESA_DF_OUT=iesa_out,ESA_BF_TYPE='burst'
+
+dat_i      = iesa_out.BURST  ;; [theta,phi]-angles in DSL coordinates
+dat_e      = eesa_out.BURST
+;;----------------------------------------------------------------------------------------
+;; => Save ESA DFs for later
+;;----------------------------------------------------------------------------------------
+sc         = probe[0]
+enames     = 'EESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+inames     = 'IESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+;;  **************************************
+;;  **  Change the following according  **
+;;  **************************************
+mdir       = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_esa_save/'+tdate[0]+'/')
+efile      = mdir[0]+'/'+enames[0]
+ifile      = mdir[0]+'/'+inames[0]
+
+SAVE,dat_e,FILENAME=efile[0]
+SAVE,dat_i,FILENAME=ifile[0]
+;;----------------------------------------------------------------------------------------
+;; => Restore ESA DFs
+;;----------------------------------------------------------------------------------------
+sc      = probe[0]
+enames  = 'EESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+inames  = 'IESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+
+mdir    = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_esa_save/'+tdate[0]+'/')
+efiles  = FILE_SEARCH(mdir,enames[0])
+ifiles  = FILE_SEARCH(mdir,inames[0])
+
+RESTORE,efiles[0]
+RESTORE,ifiles[0]
+;;----------------------------------------------------------------------------------------
+;; => Modify ESA DFs so they are compatible with UMN Wind/3DP Software
+;;----------------------------------------------------------------------------------------
+n_i        = N_ELEMENTS(dat_i)
+n_e        = N_ELEMENTS(dat_e)
+PRINT,';', n_i, n_e
+;        1371        1374
+
+modify_themis_esa_struc,dat_i
+modify_themis_esa_struc,dat_e
+;; add SC potential to structures
+coord      = 'gse'
+sc         = probe[0]
+pref       = 'th'+sc[0]+'_'
+scname     = tnames(pref[0]+'pe*b_sc_pot')
+add_scpot,dat_e,scname[0]
+add_scpot,dat_i,scname[1]
+;; => Rotate DAT structure (theta,phi)-angles DSL --> GSE
+velname    = pref[0]+'peib_velocity_'+coord[0]
+magname    = pref[0]+'fgh_'+coord[0]
+dat_igse   = dat_i
+rotate_esa_thetaphi_to_gse,dat_igse,MAGF_NAME=magname,VEL_NAME=velname
+
+;; => Make sure magnetic field vectors are defined for each structure
+magn_1     = pref[0]+'fgs_'+coord[0]
+magn_2     = pref[0]+'fgh_'+coord[0]
+add_magf2,dat_igse,magn_1[0],/LEAVE_ALONE
+add_magf2,dat_igse,magn_2[0],/LEAVE_ALONE
+;;----------------------------------------------------------------------------------------
+;;    Convert into bulk flow frame and find new bulk flow velocities
+;;
+;;    This assumes the maximum peak of the distribution corresponds to the center of
+;;      the "core" of the ion distribution.  If the source of error is due to ion beams,
+;;      whether field-aligned or gyrating, then their maximum phase (velocity) space
+;;      density should be less than the "core" part.  Therefore, the routine
+;;      fix_vbulk_ions.pro finds the peak in phase (velocity) space density and then
+;;      determines the corresponding velocity.  The steps are as follows:
+;;        1)  transform into bulk flow frame  =>  V' = V - V_sw (transform_vframe_3d.pro)
+;;        2)  define velocity of the peak, V_peak, in this frame  =>
+;;              V" = V' - V_peak = V - (V_sw + V_peak)
+;;        3)  return new transformation velocity, V_new = (V_sw + V_peak), from
+;;              spacecraft frame to "true" bulk flow frame
+;;
+;;----------------------------------------------------------------------------------------
+vbulk_new = REPLICATE(d,n_i,3L)      ;;  New bulk flow velocities = V_new [km/s, GSE]
+FOR j=0L, n_i - 1L DO BEGIN                     $
+  dat0 = dat_igse[j]                          & $
+  transform_vframe_3d,dat0,/EASY_TRAN         & $
+  vstr = fix_vbulk_ions(dat0)                 & $
+  vnew = vstr.VSW_NEW                         & $
+  vbulk_new[j,*] = vnew
+
+;;  Define time at center of IESA distributions
+tt0       = (dat_i.TIME + dat_i.END_TIME)/2d0
+;;  Define components of V_new
+smvx      = vbulk_new[*,0]
+smvy      = vbulk_new[*,1]
+smvz      = vbulk_new[*,2]
+;;  Remove "bad" points in magnetosheath [few points >1000 km/s observed]
+test      = (ABS(smvx) GE 1d3) OR (ABS(smvy) GE 1d3) OR (ABS(smvz) GE 1d3)
+bad       = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN smvx[bad] = d
+IF (bd GT 0) THEN smvy[bad] = d
+IF (bd GT 0) THEN smvz[bad] = d
+;;  Linearly interpolate to fill NaNs
+IF (gd GT 0) THEN smvx      = interp(smvx[good],tt0[good],tt0,/NO_EXTRAP)
+IF (gd GT 0) THEN smvy      = interp(smvy[good],tt0[good],tt0,/NO_EXTRAP)
+IF (gd GT 0) THEN smvz      = interp(smvz[good],tt0[good],tt0,/NO_EXTRAP)
+
+;;  Smooth result to reduce data "spike" amplitudes
+vsm       = 5L
+smvx      = SMOOTH(smvx,vsm[0],/EDGE_TRUNCATE,/NAN)
+smvy      = SMOOTH(smvy,vsm[0],/EDGE_TRUNCATE,/NAN)
+smvz      = SMOOTH(smvz,vsm[0],/EDGE_TRUNCATE,/NAN)
+smvel     = [[smvx],[smvy],[smvz]]
+
+;;  Send result to TPLOT
+vnew_str  = {X:tt0,Y:smvel}                              ;; TPLOT structure
+vname_n   = velname[0]+'_fixed'                          ;; TPLOT handle
+yttl      = 'V!Dbulk!N [km/s, '+STRUPCASE(coord[0])+']'  ;; Y-Axis title
+ysubt     = '[Shifted to DF Peak, 3s]'                   ;; Y-Axix subtitle
+
+store_data,vname_n[0],DATA=vnew_str
+;;  Define plot options for new variable
+options,vname_n[0],'COLORS',[250,150, 50],/DEF
+options,vname_n[0],'LABELS',['x','y','z'],/DEF
+options,vname_n[0],'YTITLE',yttl[0],/DEF
+options,vname_n[0],'YSUBTITLE',ysubt[0],/DEF
+
+;;  Set my default plot options for all TPLOT handles
+nnw       = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+
+;;  Plot results
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+
+tr_11     = time_double(tdate[0]+'/'+['08:50:00','10:10:00'])
+nna       = [pref[0]+'fgh_'+['mag',coord[0]],velname[0],vname_n[0]]
+tplot,nna,TRANGE=tr_11
+;;----------------------------------------------------------------------------------------
+;; => Remove "bad" points manually
+;;----------------------------------------------------------------------------------------
+tlimit  ;; zoom in if necessary
+
+kill_data_tr,NAMES=vname_n[0]
+
+;;  Fill gaps produced by killing data points
+;;    [process may need to be repeated multiple times]
+get_data,vname_n[0],DATA=ti_vsw,DLIM=dlim,LIM=lim
+vbulk     = ti_vsw.Y
+v_t       = ti_vsw.X
+badx      = WHERE(FINITE(vbulk[*,0]) EQ 0,bdx,COMPLEMENT=goodx,NCOMPLEMENT=gdx)
+bady      = WHERE(FINITE(vbulk[*,1]) EQ 0,bdy,COMPLEMENT=goody,NCOMPLEMENT=gdy)
+badz      = WHERE(FINITE(vbulk[*,2]) EQ 0,bdz,COMPLEMENT=goodz,NCOMPLEMENT=gdz)
+IF (gdx GT 0) THEN vswx = interp(vbulk[goodx,0],v_t[goodx],v_t,/NO_EXTRAP) ELSE vswx = REPLICATE(d,n_i)
+IF (gdy GT 0) THEN vswy = interp(vbulk[goody,1],v_t[goody],v_t,/NO_EXTRAP) ELSE vswy = REPLICATE(d,n_i)
+IF (gdz GT 0) THEN vswz = interp(vbulk[goodz,2],v_t[goodz],v_t,/NO_EXTRAP) ELSE vswz = REPLICATE(d,n_i)
+
+vsw       = [[vswx],[vswy],[vswz]]
+store_data,vname_n[0],DATA={X:v_t,Y:vsw},DLIM=dlim,LIM=lim
+;;----------------------------------------------------------------------------------------
+;; => Save TPLOT session for reproducibility
+;;----------------------------------------------------------------------------------------
+
+;;  **************************************
+;;  **  Change the following according  **
+;;  **************************************
+mdir      = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_tplot_save/')
+
+
+fpref     = 'TPLOT_save_file_FGM-ALL_EESA-IESA-Moments_Vsw-Corrected_'
+fnm       = file_name_times(tr_00,PREC=0)
+ftimes    = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+tsuffx    = ftimes[0]+'-'+STRMID(ftimes[1],11L)
+fname     = fpref[0]+tsuffx[0]
+tplot_save,FILENAME=fname[0]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

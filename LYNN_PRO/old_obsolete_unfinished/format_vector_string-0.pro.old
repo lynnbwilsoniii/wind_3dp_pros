@@ -1,0 +1,113 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   format_vector_string.pro
+;  PURPOSE  :   This routine takes a [3]-element vector and converts the result into
+;                 a string with separated components.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               VEC        :  [3]-Element array [float/double] that you wish to return
+;                               an associated formated string of the form:
+;                               '< sV0, sV1, sV2 >'
+;                                 =>  s = sign of the component, Vj
+;
+;  EXAMPLES:    
+;               ;;  Use default value for PRECISION
+;               vec   =  [ -1.05, 3.87, -9.45]
+;               vstr  = format_vector_string(vec)
+;               PRINT,vstr
+;               < -1.05, +3.87, -9.45 >
+;               ;;  Use PRECISION=4
+;               vec   =  [ -1.05, 3.87, -9.45]
+;               vstr  = format_vector_string(vec,PRECISION=4)
+;               PRINT,vstr
+;               < -1.0500, +3.8700, -9.4500 >
+;
+;  KEYWORDS:    
+;               PRECISION  :  Scalar [long] defining the number of decimal places to
+;                               keep when converting VEC into a string
+;                               [Default = 2]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Limits:  -1 < PRECISION < 33
+;
+;   CREATED:  08/29/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/29/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION format_vector_string,vec,PRECISION=precision
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+
+def_vstr       = '< +NaN, +NaN, +NaN >'
+;signs          = [['','',''],['+','+','+']]
+signs          = ['','+']
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (N_ELEMENTS(vec) NE 3)
+IF (test) THEN RETURN,def_vstr[0]
+vvv            = REFORM(vec)
+;;----------------------------------------------------------------------------------------
+;; => Define output format
+;;----------------------------------------------------------------------------------------
+IF ~KEYWORD_SET(precision) THEN prec = 2 ELSE prec = LONG(precision[0])
+;; check first
+IF (prec LT 0 OR prec GT 32) THEN prec = 2
+;; convert PRECISION to string
+IF (prec EQ 0) THEN BEGIN
+  vform    = '(f25.0)'
+  remove_d = 1
+ENDIF ELSE BEGIN
+  sprec    = STRTRIM(STRING(prec[0],FORMAT='(I2.2)'),2L)
+  vform    = '(f25.'+sprec[0]+')'
+  remove_d = 0
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;; => Convert VEC to string
+;;----------------------------------------------------------------------------------------
+vstr           = STRTRIM(STRING(vvv,FORMAT=vform),2L)
+IF (remove_d) THEN BEGIN
+  ;; remove '.' from end of string
+  FOR j=0L, 2L DO BEGIN
+    v0      = STRMID(vstr[j],0L,STRLEN(vstr[j]) - 1L)
+    vstr[j] = v0[0]
+  ENDFOR
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Add '+' to VSTR to string [if positive]
+;;----------------------------------------------------------------------------------------
+plus           = STRMID(vstr[*],0L,1L) NE '-'
+str_s          = signs[plus]+vstr
+;;----------------------------------------------------------------------------------------
+;; => Format output
+;;----------------------------------------------------------------------------------------
+str_lmax       = MAX(STRLEN(str_s),/NAN)
+lmxs           = STRTRIM(STRING(str_lmax[0],FORMAT='(I2.2)'),2L)
+sform          = '("< ",a'+lmxs[0]+',", ",a'+lmxs[0]+',", ",a'+lmxs[0]+'," >")'
+fstr_out       = STRING(str_s,FORMAT=sform)
+;;----------------------------------------------------------------------------------------
+;; => Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,fstr_out
+END

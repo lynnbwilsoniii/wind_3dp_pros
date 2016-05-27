@@ -1,0 +1,192 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   start_umn_3dp.pro
+;  PURPOSE  :   Start up routine to initialize UMN versions of Berkeley SSL 
+;                 Wind/3DP software upon starting IDL.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               wind_3dp_umn_init.pro
+;               plot3d_options.pro
+;               TMlib_wrapper.pro
+;
+;  REQUIRES:    
+;               UMN Edited 3DP Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               @start_umn_3dp
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Changed compliation list                         [09/17/2009   v1.0.1]
+;             2)  Changed compliation list                         [09/18/2009   v1.0.2]
+;             3)  Added plot3d.pro options by calling plot3d_options.pro with default
+;                   options already chosen                         [09/18/2009   v1.0.3]
+;             4)  Changed compliation list                         [09/21/2009   v1.0.4]
+;             5)  Added a device call for default formats          [09/21/2009   v1.0.5]
+;             6)  Changed compliation list                         [09/24/2009   v1.0.6]
+;             7)  Added extra option for plot3d_options.pro        [09/25/2009   v1.0.7]
+;             8)  Added extra option for TMlib Client Software compilation which acts
+;                   similar to calling "sidl" from command prompt instead of "uidl"
+;                                                                  [10/22/2009   v1.1.0]
+;             9)  No longer compiles routines on entry             [06/16/2011   v1.2.0]
+;
+;   NOTES:      
+;               1)  Still in production...
+;
+;   CREATED:  09/16/2009
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  06/16/2011   v1.2.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+!PROMPT = 'UMN> '   ;  change prompt
+LOADCT,39
+DEVICE,DECOMPOSED=0;,RETAIN=2
+;DEVICE,SET_GRAPHICS_FUNCTION=3,/CURSOR_CROSSHAIR
+vers = !VERSION.OS_FAMILY
+mdir = FILE_EXPAND_PATH('')
+; => Check for trailing '/'
+ll   = STRMID(mdir, STRLEN(mdir) - 1L,1L)
+
+IF (ll[0] NE '/' OR ll[0] NE '\') THEN slash = 1 ELSE slash = 0
+IF (vers NE 'unix' AND slash) THEN mdir = mdir+'\' ELSE mdir = mdir+'/'
+DELVAR,slash,vers
+
+
+idlpath = GETENV('IDL_PATH')
+idlpath = ':+'+mdir+'wind_3dp_pros'+idlpath
+SETENV,'IDL_PATH='+idlpath
+;-----------------------------------------------------------------------------------------
+; => Functions to compile
+;-----------------------------------------------------------------------------------------
+gfuncts = [ $
+           mdir+'wind_3dp_pros/DAVIN_PRO/distfunc.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/mom_rotate.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/mom_sum.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/mom_translate.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/mom3d.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/moments_3d.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/rot_mat.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/rotate_tensor.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/sc_pot.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/velocity.pro',$
+           mdir+'wind_3dp_pros/GET_PROS/get_moment3d.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/interp.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/minmax.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/strfilter.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/tag_names_r.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/time_double.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/time_string.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/time_struct.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/time_ticks.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/conv_units.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/make_3dmap.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/pad.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/pangle.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/find_handle.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/tnames.pro',$
+           mdir+'wind_3dp_pros/John_D_Pros/epoch2unix.pro',$
+           mdir+'wind_3dp_pros/John_D_Pros/read_cdf.pro',$
+           mdir+'wind_3dp_pros/John_D_Pros/unix2epoch.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/distfunc_template.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/moments_array_3dp.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/pad_template.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/my_str_date.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/my_time_string.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/read_shocks_jck_database.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/read_wind_mfi.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/read_wind_orbit.pro']
+
+gpros   = [ $
+           mdir+'wind_3dp_pros/DAVIN_PRO/add_df2dp.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/cont2d.pro',$
+           mdir+'wind_3dp_pros/DAVIN_PRO/cont3d.pro',$
+           mdir+'wind_3dp_pros/KEY_PRO/reduce_dimen.pro',$
+           mdir+'wind_3dp_pros/KEY_PRO/reduce_pads.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/box.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/dprint.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/pclose.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/popen.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/printdat.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/str_element.pro',$
+           mdir+'wind_3dp_pros/MISC_PRO/wi.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/cart_to_sphere.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/convert_esa_units.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/convert_flux_units.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/convert_ph_units.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/convert_sf_units.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/convert_so_units.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/convert_sst_units.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/convert_vframe.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/plot3d.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/specplot.pro',$
+           mdir+'wind_3dp_pros/SCIENCE_PRO/xyz_to_polar.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/ctime.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/draw_color_scale.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/mplot.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/options.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/store_data.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/time_bar.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/tplot.pro',$
+           mdir+'wind_3dp_pros/TPLOT_PRO/tplot_panel.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/my_box.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/my_padplot_both.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/pesa_low_moment_calibrate.pro',$
+           mdir+'wind_3dp_pros/LYNN_PRO/wavelet_to_tplot.pro']
+
+DELVAR,gfuncts,gpros
+
+
+
+gfunct2 = ['distfunc','mom_rotate','mom_sum','mom_translate','mom3d',   $
+           'moments_3d','rot_mat','rotate_tensor','sc_pot','velocity',  $
+           'get_moment3d','interp','minmax','strfilter','time_double',  $
+           'time_string','time_struct','time_ticks','conv_units',       $
+           'make_3dmap','pad','pangle','find_handle','tnames',          $
+           'epoch2unix','read_cdf','unix2epoch','distfunc_template',    $
+           'moments_array_3dp','pad_template','my_str_date',            $
+           'my_time_string','read_shocks_jck_database','read_wind_mfi', $
+           'read_wind_orbit']
+
+
+;RESOLVE_ROUTINE,gfunct2,/EITHER
+;-----------------------------------------------------------------------------------------
+; => Procedures to compile
+;-----------------------------------------------------------------------------------------
+gpro2   = ['add_df2dp','cont2d','cont3d','reduce_dimen','reduce_pads',    $
+           'box','dprint','pclose','popen','printdat','str_element','wi', $
+           'cart_to_sphere','convert_esa_units','convert_flux_units',     $
+           'convert_ph_units','convert_sf_units','convert_so_units',      $
+           'convert_sst_units','convert_vframe','plot3d','specplot',      $
+           'xyz_to_polar','ctime','draw_color_scale','mplot','options',   $
+           'store_data','time_bar','tplot','tplot_panel','my_box',        $
+           'my_padplot_both','pesa_low_moment_calibrate',                 $
+           'wavelet_to_tplot']
+
+
+;RESOLVE_ROUTINE,gpro2,/EITHER
+
+@TMlib_wrapper
+;-----------------------------------------------------------------------------------------
+; => Call wind_3dp_umn_init.pro
+;-----------------------------------------------------------------------------------------
+wind_3dp_umn_init
+
+;-----------------------------------------------------------------------------------------
+; => Set up PLOT3D.PRO options
+;-----------------------------------------------------------------------------------------
+; => Default to a Hammer-Aitoff Projection
+plot3d_options,MAP='ham',LOG =1,TRIANGULATE=1,COMPRESS=1,GRID=[30,30]
+
+
+

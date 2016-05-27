@@ -1,0 +1,100 @@
+PRO timebar,t1,color=color,linestyle=linestyle,thick=thick,verbose=verbose,$
+            varname=varname,between=between,transient=transient
+;+
+;NAME:                  timebar
+;PURPOSE:
+;                       plot vertical lines on tplots at specified times
+;CALLING SEQUENCE:      timebar,t
+;INPUTS:                t: dblarr of times at which to draw vertical lines,
+;          seconds since Jan, 1, 1970.
+;KEYWORD PARAMETERS:
+;      COLOR:      byte or bytarr of color values
+;      LINESTYLE:  int or intarr of linestyles
+;      THICK:      int or intarr of line thicknesses
+;   for any of the above keywords, a scalar input will apply to all times
+;      VERBOSE: print more error messages; useful for
+;           debugging
+;      VARNAME: TPLOT variable name indicating panel in which
+;           to plot timebar
+;      BETWEEN: array of two TPLOT variable names indicating
+;           between which two panels to plot timebar
+;                       TRANSIENT:  timebar,t,/transient called once plots a
+;           timebar. Called twice, it deletes the timebar.
+;                                Note:  1) all other keywords except VERBOSE
+;                                be the same for both calls. 2) COLOR will most
+;                                likely not come out what you ask for, but
+;                                since it's transient anyway, shouldn't matter.
+;OUTPUTS:
+;OPTIONAL OUTPUTS:
+;COMMON BLOCKS:         tplot_com
+;EXAMPLE:               load_3dp_data,'95-01-01',2 & get_pmom
+;      tplot,['Np','Tp','Vp']
+;      t=time_double('95-01-01/1:12')
+;      timebar,t ;put a white line at 1:12 am, Jan, 1, 1995
+;      ctime,t1,t2 ;select two times from the plot
+;      timebar,[t1,t2],color=!d.n_colors-2 ;plot them in red
+;SEE ALSO:
+;  "CTIME","TPLOT"
+;CREATED BY:            Frank V. Marcoline
+;LAST MODIFICATION:     99/01/21
+;FILE:                  1.9
+;VERSION:               timebar.pro
+;-
+@tplot_com
+  t = time_double(t1)
+  nt = n_elements(t)
+  if not keyword_set(color) then begin
+    if !p.background eq 0 then color = !d.n_colors-1 else color = 0
+  endif
+  if n_elements(color) ne nt then color = make_array(nt,value=color)
+  if not keyword_set(linestyle) then linestyle = 0
+  if n_elements(linestyle) ne nt then linestyle = make_array(nt,value=linestyle)
+  if not keyword_set(thick) then thick = 1
+  if n_elements(thick) ne nt then thick = make_array(nt,value=thick)
+
+  if !d.name eq 'X' or !d.name eq 'WIN' then begin
+    current_window= !d.window > 0
+    wset,tplot_vars.settings.window
+;    wshow,icon=0
+  endif
+  str_element,tplot_vars,'settings.x.window',xp
+  str_element,tplot_vars,'settings.x.crange',xr
+  nd1 = n_elements(tplot_vars.settings.y)-1
+  nd0 = 0
+  if keyword_set(varname) then begin
+     nd = (where(varname[0] eq tplot_vars.options.varnames))(0)
+     nd0=nd
+     nd1=nd
+  endif
+  nt = n_elements(t)
+  yp = fltarr(2)
+
+  if keyword_set(between) eq 0 then begin
+    yp(0) = tplot_vars.settings.y(nd1).window(0)
+    yp(1) = tplot_vars.settings.y(nd0).window(1)
+  endif else begin
+    nd0 = (where(between[0] eq tplot_vars.options.varnames))(0)
+    nd1 = (where(between[1] eq tplot_vars.options.varnames))(0)
+    yp(0) = tplot_vars.settings.y(nd1).window(1)
+    yp(1) = tplot_vars.settings.y(nd0).window(0)
+  endelse
+
+  if keyword_set(transient) then $
+    device, get_graphics = ograph, set_graphics = 6 ;set to xor
+
+  for i=0,nt-1 do begin
+    tp = t(i) - tplot_vars.settings.time_offset
+    tp = xp(0) + (tp-xr(0))/(xr(1)-xr(0)) * (xp(1)-xp(0))
+    if tp ge xp(0) and tp le xp(1) then begin
+      plots,[tp,tp],yp,color=color(i),linestyle=linestyle(i),thick=thick(i),/normal
+    endif else if keyword_set(verbose) then $
+      print,'Time '+time_string(t(i))+' is out of trange.'
+  endfor
+
+  if keyword_set(transient) then device,set_graphics=ograph
+
+  if !d.name eq 'X' or !d.name eq 'WIN' then begin
+    wset,current_window
+  endif
+  return
+END

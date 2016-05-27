@@ -1,0 +1,269 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   create_html_from_urls_for_cfa_winddb.pro
+;  PURPOSE  :   This routine takes an input array of URLs and reads the associated page
+;                 source and then writes output ASCII files with HTML formatting.
+;                 The output ASCII files have names with the following format:
+;                   source_MM-DD-YYYY_SSSSS.5_FF.html
+;                   {where:  SSSSS = seconds of day, MM = month, DD = day, YYYY = year}
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               get_os_slash.pro
+;               convert_html_url_2_string.pro
+;               string_replace_char.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               .compile /Users/lbwilson/Desktop/temp_idl/convert_html_url_2_string.pro
+;               .compile /Users/lbwilson/Desktop/temp_idl/create_html_from_urls_for_cfa_winddb.pro
+;               create_html_from_urls_for_cfa_winddb
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Now read_url_page_source.pro returns an array of strings, one for
+;                   each line in each URL --> Need to account for this
+;                   [should make the wrapping routine easier to handle]
+;                                                                   [02/17/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [02/17/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  The routine defines the URLs internally, so no input is necessary
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  02/16/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/17/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO create_html_from_urls_for_cfa_winddb
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
+;;  Define allowed number types
+isnum          = [1,2,3,4,5,6,12,13,14,15]
+;;  Dummy error messages
+nooutput_msg   = 'No URLs were found to be valid --> No output files created!'
+;;----------------------------------------------------------------------------------------
+;;  Define URLs
+;;----------------------------------------------------------------------------------------
+;;  Define base URL Wind related shock results
+def_cfa_url    = 'https://www.cfa.harvard.edu/shocks/wi_data/'
+www_pos        = STRPOS(def_cfa_url[0],'www')
+slash_1st      = STRPOS(STRMID(def_cfa_url[0],www_pos[0]),'/')
+;;  Define default CfA Wind shock database server
+def_server     = STRMID(def_cfa_url,www_pos[0],slash_1st[0])
+;;  Define default format of CfA Wind shock database URL's for each shock
+;;    e.g., 'https://www.cfa.harvard.edu/shocks/wi_data/00000/wi_00000.html'
+def_cfaurl_for = def_cfa_url[0]+'00000/wi_00000.html'
+;;  As of Feb. 16, 2015 there are available shocks from 00000 - 00662
+;;    --> Define a list of possible URLs
+def_cfa_wsh_n  = 663L
+def_cfa_wsh_i  = STRING(LINDGEN(def_cfa_wsh_n[0]),FORMAT='(I5.5)')
+def_cfa_suffxs = def_cfa_wsh_i+'/wi_'+def_cfa_wsh_i+'.html'             ;;  e.g., '00000/wi_00000.html'
+def_all_cfa_ws = def_cfa_url[0]+def_cfa_suffxs                          ;;  e.g., 'https://www.cfa.harvard.edu/shocks/wi_data/00000/wi_00000.html'
+;;  Define URL suffixes
+def_all_url_sf = STRMID(def_all_cfa_ws,slash_1st[0]+www_pos[0])         ;;  e.g., '/shocks/wi_data/00000/wi_00000.html'
+;;----------------------------------------------------------------------------------------
+;;  Define location of locally saved HTML files
+;;----------------------------------------------------------------------------------------
+def_path       = slash[0]+'Users'+slash[0]+'lbwilson'+slash[0]+'Desktop'+slash[0]
+def_path       = def_path[0]+'temp_idl'+slash[0]+'temp_cfa_shock_html_files'+slash[0]
+;def_path       = '.'+slash[0]+'wind_3dp_pros'+slash[0]+'wind_data_dir'+slash[0]
+;def_path       = def_path[0]+'JCK_Data-Base'+slash[0]+'JCK_html_files'+slash[0]
+;;----------------------------------------------------------------------------------------
+;;  Get page sources
+;;----------------------------------------------------------------------------------------
+;;  Use only 20 while testing to make things quicker
+;convert_html_url_2_string,def_all_cfa_ws[0L:19L],PAGE_SOURCE=page_source
+convert_html_url_2_string,def_all_cfa_ws,PAGE_SOURCE=page_source,/STATUS
+;;----------------------------------------------------------------------------------------
+;;  Check output
+;;----------------------------------------------------------------------------------------
+test           = (SIZE(page_source,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  MESSAGE,'1: '+nooutput_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+good           = WHERE(page_source NE '',gd)
+IF (gd[0] EQ 0) THEN BEGIN
+  MESSAGE,'2: '+nooutput_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+gind           = ARRAY_INDICES(page_source,good)
+mxgind0        = MAX(gind[0,*],/NAN)   ;;  max URL index with finite string
+mxgind1        = MAX(gind[1,*],/NAN)   ;;  max LINE index with finite string
+html_source2d  = page_source[0L:mxgind0[0],0L:mxgind1[0]]
+n_html         = N_ELEMENTS(html_source2d[*,0])
+n_line         = N_ELEMENTS(html_source2d[0,*])
+;;----------------------------------------------------------------------------------------
+;;  Files are good
+;;    --> Check for filled results but did not find the URL
+;;----------------------------------------------------------------------------------------
+bad_search_str = '<title>404: File Not Found</title>'
+bposi_odate    = STRPOS(html_source2d,bad_search_str[0])
+bad_404        = WHERE(bposi_odate GE 0,bd_404,COMPLEMENT=good_404,NCOMPLEMENT=gd_404)
+IF (bd_404[0] GT 0) THEN BEGIN
+  IF (bd_404[0] EQ n_html[0]) THEN BEGIN
+    MESSAGE,'3: '+nooutput_msg,/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF
+  ;;  Some were bad, but not all
+  bind           = ARRAY_INDICES(html_source2d,bad_404)
+  unq0           = UNIQ(REFORM(bind[0,*]),SORT(REFORM(bind[0,*])))
+  b_ind          = REFORM(bind[0,unq0])
+  a_ind          = REPLICATE(1b,n_html[0])
+  a_ind[b_ind]   = 0b
+  gunq0          = WHERE(a_ind)
+  html_source2d  = TEMPORARY(html_source2d[gunq0,*])
+ENDIF
+;;  Redefine # of HTML files and # of lines per file
+n_html         = N_ELEMENTS(html_source2d[*,0])
+n_line         = N_ELEMENTS(html_source2d[0,*])
+;;  Reform into single strings per file for searching algorithms below
+html_source    = STRARR(n_html)
+FOR j=0L, n_html[0] - 1L DO html_source[j] = STRJOIN(REFORM(html_source2d[j,*]),/SINGLE)
+;;----------------------------------------------------------------------------------------
+;;  Files are good
+;;    --> Find associated dates and shock arrival times
+;;----------------------------------------------------------------------------------------
+td_str_before  = '<td>'                                     ;;  HTML code to start table element
+td_str__after  = '</td>'                                    ;;  HTML code to end   table element
+td_str_balens  = STRLEN([td_str_before[0],td_str__after[0]])
+
+shock_dates    = STRARR(n_html)                             ;;  e.g., '04/08/1996'
+shock_tarrv    = STRARR(n_html)                             ;;  e.g., '09670.5'
+shock_types    = STRARR(n_html)                             ;;  e.g., 'FF'
+
+odate_test_s   = 'Observation time:'                        ;;  Find observation date [16 chars search string, 1 line]
+doy___test_s   = ' [ut]'
+atime_test_s   = 'Arrival time of shock [seconds of day]'   ;;  Find shock arrival time SOD [38 chars search string, +1 line, 2 #'s, &plusmn; separator]
+sod___test_s   = '&plusmn;'                                 ;;  Find string immediately following shock arrival time
+test_slens     = STRLEN([odate_test_s[0],doy___test_s[0],atime_test_s[0],sod___test_s[0]])
+
+gposi_odate    = STRPOS(html_source,odate_test_s[0])
+gposi___doy    = STRPOS(STRLOWCASE(html_source),doy___test_s[0])
+good_d         = WHERE(gposi_odate GE 0,gd_d)
+IF (gd_d[0] GT 0) THEN BEGIN
+  ;;  Good values found
+  FOR j=0L, gd_d[0] - 1L DO BEGIN
+    k              = good_d[j]
+    t_html         = html_source[k]
+    t_pos          = gposi_odate[k] + test_slens[0]      ;;  Start position for STRMID
+    t_len          = gposi___doy[k] - t_pos[0]           ;;  Length of string output
+    temp           = STRMID(html_source[k],t_pos[0],t_len[0])
+    temp           = STRSPLIT(temp,' ',/EXTRACT,/FOLD_CASE,/REGEX)
+    shock_dates[k] = temp[0]
+  ENDFOR
+ENDIF
+
+gposi_atime    = STRPOS(html_source,atime_test_s[0])
+good_a         = WHERE(gposi_atime GE 0,gd_a)
+IF (gd_a[0] GT 0) THEN BEGIN
+  ;;  Good values found
+  FOR j=0L, gd_a[0] - 1L DO BEGIN
+    k              = good_a[j]
+    t_html         = html_source[k]
+    t_pos          = gposi_atime[k] + test_slens[2]      ;;  Start position for STRMID
+    ;;  Since multiple places have '      <td>', find 1st immediately after test
+    temp           = STRMID(t_html[0],t_pos[0])
+    gposi_end      = STRPOS(temp[0],sod___test_s[0]) + t_pos[0]
+    gposi_sta      = STRPOS(temp[0],td_str_before[0]) + t_pos[0] + td_str_balens[0]
+    t_len          = gposi_end[0] - gposi_sta[0]         ;;  Length of string output
+    shock_tarrv[k] = STRTRIM(STRMID(t_html[0],gposi_sta[0],t_len[0]),2L)
+  ENDFOR
+  ;;  Replace empty spaces with zeros
+  temp = STRMID(shock_tarrv[good_a],0L,5L)               ;;  e.g., ' 9670'
+  temp = STRING(temp,FORMAT='(I5.5)')
+  shock_tarrv[good_a] = temp+'.5'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Only keep fast forward (FF) shocks
+;;----------------------------------------------------------------------------------------
+shtyp_test_s   = 'Shock type</td>'                          ;;  Find shock designation [10 chars search string, +1 line, 1 string, 2 char long]
+;styp__test_s   = '      <td>'                               ;;  Find string immediately following shock designation
+;test_slens     = STRLEN([shtyp_test_s[0],styp__test_s[0]])
+test_slens     = STRLEN(shtyp_test_s[0])
+gposi_stype    = STRPOS(html_source,shtyp_test_s[0])
+good_t         = WHERE(gposi_stype GE 0,gd_t)
+IF (gd_t[0] GT 0) THEN BEGIN
+  ;;  Good values found
+  FOR j=0L, gd_t[0] - 1L DO BEGIN
+    k              = good_t[j]
+    t_html         = html_source[k]
+    t_pos          = gposi_stype[k] + test_slens[0]      ;;  Start position for STRMID
+    t_len          = 2L                                  ;;  Length of string output
+    ;;  Since multiple places have '      <td>', find 1st immediately after test
+    gposi          = STRPOS(STRMID(t_html[0],t_pos[0]),td_str_before[0]) + t_pos[0]
+    t_pos          = gposi[0] + td_str_balens[0]
+    shock_types[k] = STRMID(t_html[0],t_pos[0],t_len[0]) ;;  e.g., 'FF'
+  ENDFOR
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define output file names
+;;----------------------------------------------------------------------------------------
+test           = (shock_dates NE '') AND (shock_tarrv NE '') AND (shock_types EQ 'FF')
+good           = WHERE(test,gd)
+IF (gd[0] EQ 0) THEN BEGIN
+  MESSAGE,'4: '+nooutput_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+html_source    = TEMPORARY(html_source[good])
+html_source2d  = TEMPORARY(html_source2d[good,*])
+n_html         = gd[0]
+shock_dates    = shock_dates[good]                          ;;  e.g., '04/08/1996'
+shock_tarrv    = shock_tarrv[good]                          ;;  e.g., '09670.5'
+shock_types    = shock_types[good]                          ;;  e.g., 'FF'
+;;  Reformat dates to 'MM-DD-YYYY'
+out_dates      = string_replace_char(shock_dates,'/','-')
+;out_dates      = STRMID(shock_dates,0L,2L)+'-'+STRMID(shock_dates,3,2)+'-'+STRMID(shock_dates,6)
+;;  Define file names
+fnames         = 'source_'+out_dates+'_'+shock_tarrv+'_'+shock_types+'.html'
+;;----------------------------------------------------------------------------------------
+;;  Print output files
+;;----------------------------------------------------------------------------------------
+STOP
+
+;FOR j=0L, 10L DO BEGIN
+FOR j=0L, n_html[0] - 1L DO BEGIN
+  t_html         = REFORM(html_source2d[j,*])
+  good_line      = WHERE(t_html NE '',gd_line)
+  IF (gd_line[0] EQ 0) THEN CONTINUE
+  t_fnme         = fnames[j]
+;  f_out          = t_fnme[0]      ;;  For testing, print to working IDL directory
+  f_out          = def_path[0]+t_fnme[0]
+  PRINT,'Writing file:  '+t_fnme[0]
+  ;;  Open file for writing
+  OPENW,gunit,f_out[0],/GET_LUN
+  ;;  Write to file
+  FOR k=0L, gd_line[0] - 1L DO PRINTF,gunit,t_html[k]
+  ;;  Close file
+  FREE_LUN,gunit
+ENDFOR
+
+STOP
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

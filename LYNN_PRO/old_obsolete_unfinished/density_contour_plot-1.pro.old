@@ -1,0 +1,367 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   density_contour_plot.pro
+;  PURPOSE  :   This routine creates a 2D contour plot from X vs. Y inputs by first
+;                 creating a 2D histogram of number densities.  The contours outline
+;                 regions of increasing number density with higher contour levels.
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               format_limits_struc.pro
+;               str_element.pro
+;               struct_value.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               XDATA       :  [N]-Element array [float/double] of independent data points
+;               YDATA       :  [N]-Element array [float/double] of   dependent data points
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               [X,Y]TTL    :  Scalar [string] defining the [X,Y]-Axis title to use
+;                                {ignored if OVERPLOT is set}
+;               [X,Y]MIN    :  Scalar [float/double] defining the Min. [X,Y]-Axis plot
+;                                value and the corresponding Min. value to consider when
+;                                constructing the 2D histogram.
+;                                { Default = MIN([X,Y]DATA) }
+;               [X,Y]MAX    :  Scalar [float/double] defining the Max. [X,Y]-Axis plot
+;                                value and the corresponding Max. value to consider when
+;                                constructing the 2D histogram.
+;                                { Default = MAX([X,Y]DATA) }
+;               N[X,Y]      :  Scalar [long] defining the # of [X,Y]-Axis bins to use
+;                                [Default = 100L]
+;               OVERPLOT    :  If set, routine will plot the contours on top of the
+;                                currently active plot.  When this is set, the routine
+;                                ignores [X,Y]-Axis related graphics keywords set by the
+;                                user or imbedded within LIMITS.
+;               LIMITS      :  Scalar [structure] defining the plot limits structure
+;                                with tag names matching acceptable keywords in
+;                                CONTOUR.PRO to be passed using _EXTRA
+;               [X,Y]_LOG   :  Scalar [long] defining whether the [X,Y]-Axis should be
+;                                put on a log-scale
+;               
+;               
+;               
+;               
+;               
+;               
+;               
+;               
+;               
+;               
+;               
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;   CREATED:  05/01/2013
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/01/2013   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO density_contour_plot,xdata,ydata,XTTL=xttl,XMIN=xmin,XMAX=xmax,NX=nx,X_LOG=x_log,$
+                                     YTTL=yttl,YMIN=ymin,YMAX=ymax,NY=ny,Y_LOG=y_log,$
+                                     OVERPLOT=overplot,LIMITS=limits,_EXTRA=ex_str
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;; => Dummy error messages
+noinpt_msg     = 'No input supplied...'
+nofint_msg     = 'No finite data...'
+badinp_msg     = 'XDATA and YDATA must have the same number of elements...'
+;; => Dummy tick mark arrays
+exp_val        = LINDGEN(501) - 250L                  ;;  Array of exponent values
+exp_str        = STRTRIM(STRING(exp_val,FORMAT='(I)'),2L)
+log10_tickn    = '10!U'+exp_str+'!N'                  ;;  Powers of 10 tick names
+log10_tickv    = 1d1^DOUBLE(exp_val[*])               ;;  " " values
+xyz_str        = ['x','y','z']
+;;  All [XYZ]{Suffix} graphics tags
+xyz_tags       = [xyz_str+'charsize',xyz_str+'gridstyle',xyz_str+'margin',            $
+                  xyz_str+'minor',xyz_str+'range',xyz_str+'style',xyz_str+'thick',    $
+                  xyz_str+'tickformat',xyz_str+'tickinterval',xyz_str+'ticklayout',   $
+                  xyz_str+'ticklen',xyz_str+'tickname',xyz_str+'ticks',               $
+                  xyz_str+'tickunits',xyz_str+'tickv',xyz_str+'tick_get',             $
+                  xyz_str+'title']
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 2) THEN BEGIN
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+test_xy        = ((N_ELEMENTS(xdata) EQ 0) OR (N_ELEMENTS(ydata) EQ 0)) OR $
+                 (N_ELEMENTS(xdata) NE N_ELEMENTS(ydata))
+IF (test_xy) THEN BEGIN
+  MESSAGE,badinp_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+
+xx             = REFORM(xdata)
+yy             = REFORM(ydata)
+;;----------------------------------------------------------------------------------------
+;;  Get 2D Histogram
+;;----------------------------------------------------------------------------------------
+struc          = density_hist_2d_wrapper(xx,yy,XMIN=xmin,XMAX=xmax,NX=nx,X_LOG=x_log,$
+                                               YMIN=ymin,YMAX=ymax,NY=ny,Y_LOG=y_log)
+IF (SIZE(struc,/TYPE) NE 8) THEN RETURN
+;;  Define 2D Histogram
+hist2d         = struc.HIST2D
+;;  Define Max. number density
+maxdens        = MAX(hist2d,/NAN)*1d0
+;maxdens        = CEIL(MAX(hist2d,/NAN)/1d2) * 1d2
+;;  Define corresponding [X,Y]-grid
+x_locs         = struc.X_LOCS
+y_locs         = struc.Y_LOCS
+;;  Define keywords used in HIST_2D.PRO
+key_str        = struc.HIST_2D_STR
+;;  X-Axis Keywords
+xran_def       = [key_str.MINX[0],key_str.MAXX[0]]
+widthx         = key_str.BINX[0]
+nnx            = key_str.NX[0]
+xlog           = key_str.XLOG[0]
+;;  Y-Axis Keywords
+yran_def       = [key_str.MINY[0],key_str.MAXY[0]]
+widthy         = key_str.BINY[0]
+nny            = key_str.NY[0]
+ylog           = key_str.YLOG[0]
+
+IF KEYWORD_SET(xlog) THEN xxl = 1d1^(x_locs) ELSE xxl = x_locs
+IF KEYWORD_SET(ylog) THEN yyl = 1d1^(y_locs) ELSE yyl = y_locs
+
+;IF KEYWORD_SET(x_log) THEN xxl = ALOG10(xx) ELSE xxl = xx
+;IF KEYWORD_SET(y_log) THEN yyl = ALOG10(yy) ELSE yyl = yy
+;;;  Define default [X,Y]-Range
+;test_x         = FINITE(xx)
+;test_y         = FINITE(yy)
+;good_xra       = WHERE(test_x,gdx)
+;good_yra       = WHERE(test_y,gdy)
+;mnmx_x         = [MIN(xx[good_xra],/NAN),MAX(xx[good_xra],/NAN)]
+;mnmx_y         = [MIN(yy[good_yra],/NAN),MAX(yy[good_yra],/NAN)]
+;IF (mnmx_x[1] LT mnmx_x[0]) THEN mnmx_x = REVERSE(mnmx_x)
+;IF (mnmx_y[1] LT mnmx_y[0]) THEN mnmx_y = REVERSE(mnmx_y)
+;;----------------------------------------------------------------------------------------
+;;  Check input for LIMITS
+;;----------------------------------------------------------------------------------------
+test_lim       = format_limits_struc(LIMITS=limits,PTYPE=2)
+IF (SIZE(test_lim,/TYPE) NE 8) THEN lim0 = 0 ELSE lim0 = test_lim
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+over           = struct_value(lim0,'OVERPLOT',INDEX=ind)
+test0          = (ind[0] GE 0) AND (over EQ 1)
+test1          = (N_ELEMENTS(overplot) NE 0) AND KEYWORD_SET(overplot)
+test           = test0 OR test1
+IF (test) THEN over = 1 ELSE over = 0
+;;  Add to LIMITS
+str_element,lim0,'OVERPLOT',over[0],/ADD_REPLACE
+
+;;-----------------------------------------
+;;  X-Axis Keywords
+;;-----------------------------------------
+;test__nx       = (N_ELEMENTS(nx)   EQ 0)
+;test_wdx       = (N_ELEMENTS(widx) EQ 0)
+;testFwdFnx     =  test__nx AND  test_wdx
+;testFwdTnx     = ~test__nx AND  test_wdx
+;testTwdFnx     =  test__nx AND ~test_wdx
+;
+;IF (N_ELEMENTS(xmin) EQ 0) THEN xmn = mnmx_x[0] ELSE xmn = xmin[0]
+;IF (N_ELEMENTS(xmax) EQ 0) THEN xmx = mnmx_x[1] ELSE xmx = xmax[0]
+;IF (test__nx)              THEN nnx = 100L      ELSE nnx = nx[0]
+;xran_def       = [xmn[0],xmx[0]]
+;
+;IF (testFwdFnx) THEN BEGIN
+;  ;;  WIDX NOT set, NX NOT set
+;  widthx = (xran_def[1] - xran_def[0])/nnx[0]
+;ENDIF ELSE BEGIN
+;  IF (testTwdFnx) THEN BEGIN
+;    ;;  WIDX set, NX NOT set
+;    diff  = (xran_def[1] - xran_def[0])*5d-1
+;    test  = (widx[0] GE diff[0])
+;;    IF KEYWORD_SET(x_log) THEN test = (ALOG10(widx[0]) GE diff[0]) ELSE test = (widx[0] GE diff[0])
+;    IF (test) THEN BEGIN
+;      ;;  Use default
+;      widthx = (xran_def[1] - xran_def[0])/nnx[0]
+;    ENDIF ELSE BEGIN
+;      ;;  Use defined
+;      IF KEYWORD_SET(x_log) THEN widthx = ALOG10(widx[0]) ELSE widthx = widx[0]
+;    ENDELSE
+;    ;;  Redefine NX in case default setting was defined above
+;    rat = (xran_def[1] - xran_def[0])/widthx[0]
+;    IF KEYWORD_SET(x_log) THEN rat = 1d1^(rat[0]) ELSE rat = rat[0]
+;    nnx = CEIL(rat[0])
+;  ENDIF ELSE IF (testFwdTnx) THEN BEGIN
+;    ;;  WIDX NOT set, NX set
+;    nnx    = nx[0]
+;    ;;  Use default
+;    widthx = (xran_def[1] - xran_def[0])/nnx[0]
+;  ENDIF
+;ENDELSE
+
+;;  Check for XRANGE
+xran           = struct_value(lim0,'XRANGE',INDEX=ind)
+test0          = (ind[0] LT 0) OR (N_ELEMENTS(xran) NE 2)
+IF (test0)     THEN xran = xran_def
+IF (over EQ 0) THEN str_element,lim0,'XRANGE',xran,/ADD_REPLACE
+
+;test1          = KEYWORD_SET(x_log) AND ~test0
+;IF (test1)     THEN lxra = ALOG10(xran) ELSE lxra = xran
+;;-----------------------------------------
+;;  Y-Axis Keywords
+;;-----------------------------------------
+;test__ny       = (N_ELEMENTS(ny)   EQ 0)
+;test_wdy       = (N_ELEMENTS(widy) EQ 0)
+;testFwdFny     =  test__ny AND  test_wdy
+;testFwdTny     = ~test__ny AND  test_wdy
+;testTwdFny     =  test__ny AND ~test_wdy
+;
+;IF (N_ELEMENTS(ymin) EQ 0) THEN ymn = mnmx_y[0] ELSE ymn = ymin[0]
+;IF (N_ELEMENTS(ymax) EQ 0) THEN ymx = mnmx_y[1] ELSE ymx = ymax[0]
+;IF (test__ny)              THEN nny = 100L      ELSE nny = ny[0]
+;yran_def       = [ymn[0],ymx[0]]
+;
+;IF (testFwdFny) THEN BEGIN
+;  ;;  WIDY NOT set, NY NOT set
+;  widthy = (yran_def[1] - yran_def[0])/nny[0]
+;ENDIF ELSE BEGIN
+;  IF (testTwdFny) THEN BEGIN
+;    ;;  WIDY set, NY NOT set
+;    diff  = (yran_def[1] - yran_def[0])*5d-1
+;    IF KEYWORD_SET(y_log) THEN test = (ALOG10(widy[0]) GE diff[0]) ELSE test = (widy[0] GE diff[0])
+;    IF (test) THEN BEGIN
+;      ;;  Use default
+;      widthy = (yran_def[1] - yran_def[0])/nny[0]
+;    ENDIF ELSE BEGIN
+;      ;;  Use defined
+;      IF KEYWORD_SET(y_log) THEN widthy = ALOG10(widy[0]) ELSE widthy = widy[0]
+;    ENDELSE
+;    ;;  Redefine NY in case default setting was defined above
+;    rat = (yran_def[1] - yran_def[0])/widthy[0]
+;    IF KEYWORD_SET(y_log) THEN rat = 1d1^(rat[0]) ELSE rat = rat[0]
+;    nny = CEIL(rat[0])
+;  ENDIF ELSE IF (testFwdTny) THEN BEGIN
+;    ;;  WIDY NOT set, NY set
+;    nny    = ny[0]
+;    ;;  Use default
+;    widthy = (yran_def[1] - yran_def[0])/nny[0]
+;  ENDIF
+;ENDELSE
+
+;;  Check for YRANGE
+yran           = struct_value(lim0,'YRANGE',INDEX=ind)
+test0          = (ind[0] LT 0) OR (N_ELEMENTS(yran) NE 2)
+IF (test0)     THEN yran = yran_def
+IF (over EQ 0) THEN str_element,lim0,'YRANGE',yran,/ADD_REPLACE
+
+;test1          = KEYWORD_SET(y_log) AND ~test0
+;IF (test1)     THEN lyra = ALOG10(yran) ELSE lyra = yran
+
+;;-----------------------------------------
+;;  [X,Y]-Axis Keywords
+;;-----------------------------------------
+test           = (over EQ 0)
+IF (test) THEN BEGIN
+  ;;------------------------------------
+  ;;  Make new plot
+  ;;------------------------------------
+  ;;  X-Axis Title
+  test0 = (SIZE(xttl,/TYPE) EQ 7)
+  IF (test0) THEN str_element,lim0,'XTITLE',xttl[0],/ADD_REPLACE
+  ;;  Y-Axis Title
+  test0 = (SIZE(yttl,/TYPE) EQ 7)
+  IF (test0) THEN str_element,lim0,'YTITLE',yttl[0],/ADD_REPLACE
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Create 2D Histogram
+;;----------------------------------------------------------------------------------------
+;exstr          = {MIN1:xran_def[0],MIN2:yran_def[0],MAX1:xran_def[1],MAX2:yran_def[1],$
+;                  BIN1:widthx[0],BIN2:widthy[0]}
+;;;  Construct 2D histogram
+;hist2d         = HIST_2D(xx,yy,_EXTRA=exstr)
+;;;  Define Max. number density
+;maxdens        = CEIL(MAX(hist2d,/NAN)/1d2) * 1d2
+;;;  Define [X,Y]-Grid
+;x_locs         = DINDGEN(nnx)*(lxra[1] - lxra[0])/(nnx[0] - 1L) + lxra[0]
+;y_locs         = DINDGEN(nny)*(lyra[1] - lyra[0])/(nny[0] - 1L) + lyra[0]
+;IF KEYWORD_SET(x_log) THEN x_locs = 1d1^(x_locs)
+;IF KEYWORD_SET(y_log) THEN y_locs = 1d1^(y_locs)
+;;----------------------------------------------------------------------------------------
+;;  Set up CONTOUR LIMITS structure
+;;----------------------------------------------------------------------------------------
+;;  Check for LEVELS tag
+levels         = struct_value(lim0,'LEVELS',INDEX=ind)
+test0          = (ind[0] LT 0) OR (N_ELEMENTS(levels) LE 2)
+IF (test0) THEN BEGIN
+  ;;  Check for NLEVELS tag
+  nlevs  = struct_value(lim0,'NLEVELS',INDEX=ind)
+  test0  = (ind[0] LT 0) OR (nlevs LE 2)
+  IF (test0) THEN BEGIN
+    ;;  Use default levels
+    levels = maxdens[0]*[25d-2,50d-2,75d-2]
+  ENDIF ELSE BEGIN
+    ;;  Define levels [from 20% to 80% of Max.]
+    minlev = 2d-1*maxdens[0]
+    maxlev = 8d-1*maxdens[0]
+    levels = DINDGEN(nlevs)*(maxlev[0] - minlev[0])/(nlevs - 1L) + minlev[0]
+  ENDELSE
+  str_element,lim0,'LEVELS',levels,/ADD_REPLACE
+ENDIF
+nlevs  = N_ELEMENTS(levels)
+str_element,lim0,'NLEVELS',nlevs[0],/ADD_REPLACE
+;;  If NLEVELS < 10 -> label contours
+IF (nlevs LT 10) THEN BEGIN
+  lev_str  = STRTRIM(STRING(levels,FORMAT='(I)'),2)
+  str_element,lim0,'C_LABELS',REPLICATE(1,nlevs[0]),/ADD_REPLACE
+  str_element,lim0,'C_ANNOTATION',lev_str,/ADD_REPLACE
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Plot contours
+;;----------------------------------------------------------------------------------------
+CONTOUR,hist2d,xxl,yyl,_EXTRA=lim0
+
+stop
+
+
+
+
+
+;;  1)  plot (using TV.PRO -> specplot wrapper?) image of the byte-scaled output
+;;        or just plot points...
+;;  2)  overplot N-contours on top of data
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

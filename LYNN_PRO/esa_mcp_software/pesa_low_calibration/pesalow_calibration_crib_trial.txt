@@ -1,0 +1,1027 @@
+
+; => Plot efficiency vs. dead time to look for dependence
+file  = mdir[0]+'wind_3dp_pros/WIND_PRO/pl_mcp_eff_3dp.dat'
+temp  = read_gen_ascii(file[0])
+test  = (STRMID(temp[*],0,1) EQ ';') OR (STRMID(temp[*],0,1) EQ 't')
+bad   = WHERE(test,bd,complement=good,ncomplement=gd)
+PRINT,';', bd, gd
+;           3          42
+temp2 = temp[good]
+ymdb  = STRARR(gd)
+eff   = DBLARR(gd)
+dt    = DBLARR(gd)
+FOR j=0L, gd - 1L DO BEGIN                     $
+  st0     = STRSPLIT(temp2[j],'  ',/EXTRACT) & $
+  ymdb[j] = st0[0]                           & $
+  eff[j]  = DOUBLE(st0[1])                   & $
+  dt[j]   = DOUBLE(st0[2])
+
+
+PLOT,dt,eff,PSYM=2,/YLOG,/XLOG
+
+;-----------------------------------------------------------------------------------------
+; => Load 3DP data
+;-----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+epo            = 8.854187817d-12        ; => Permittivity of free space (F/m)
+muo            = 4d0*!DPI*1d-7          ; => Permeability of free space (N/A^2 or H/m)
+me             = 9.1093897d-31          ; => Electron mass (kg)
+mp             = 1.6726231d-27          ; => Proton mass (kg)
+qq             = 1.60217733d-19         ; => Fundamental charge (C)
+K_eV           = 1.160474d4             ; => Conversion = degree Kelvin/eV
+kB             = 1.380658d-23           ; => Boltzmann Constant (J/K)
+c              = 2.99792458d8           ; => Speed of light in vacuum (m/s)
+
+tdate          = '2000-04-17'
+ldate          = '20000417'
+t3dpd          = '00-04-17/00:00:00'
+
+tdate          = '2000-05-15'
+ldate          = '20000515'
+t3dpd          = '00-05-15/00:00:00'
+
+
+load_3dp_data,t3dpd[0],150,qu=2,memsize=200.
+
+t     = tdate[0]+'/'+['00:00:00','23:59:59']
+tra   = time_double(t)
+; => Load SWE data
+file  = '/data1/wind/swe/k0/2000/wi_k0_swe_'+ldate[0]+'_v01.cdf'
+tfile = FILE_SEARCH(file[0])
+windb = read_cdf(tfile[0],datab,varb,/NOTIME)
+epoch = *datab[0]
+pdens = *datab[26]    ; => Proton density [cm^(-3)]
+vthp  = *datab[25]    ; => Thermal speed [km/s]
+vsw   = *datab[18]    ; => Vsw [km/s]
+velp  = *datab[22]    ; => Proton bulk velocity [km/s]
+PTR_FREE,datab
+
+epoch = epoch[*,0]
+pdens = pdens[*,0]
+vthp  = vthp[*,0]
+; => Convert epoch time to Unix
+unix  = epoch2unix(epoch)
+; => Remove "spikes"
+pdens = pdens[*,0]
+bad   = WHERE(pdens LT -1d29,bd)
+IF (bd GT 0) THEN pdens[bad] = f
+vthp  = vthp[*,0]
+bad   = WHERE(vthp LT -1d29,bd)
+IF (bd GT 0) THEN vthp[bad] = f
+
+badx  = WHERE(vsw[*,0] LT -1d29,bdx)
+bady  = WHERE(vsw[*,1] LT -1d29,bdy)
+badz  = WHERE(vsw[*,2] LT -1d29,bdz)
+IF (bdx GT 0) THEN vsw[badx,0] = f
+IF (bdy GT 0) THEN vsw[bady,1] = f
+IF (bdz GT 0) THEN vsw[badz,2] = f
+
+badx  = WHERE(velp[*,0] LT -1d29,bdx)
+bady  = WHERE(velp[*,1] LT -1d29,bdy)
+badz  = WHERE(velp[*,2] LT -1d29,bdz)
+IF (bdx GT 0) THEN velp[badx,0] = f
+IF (bdy GT 0) THEN velp[bady,1] = f
+IF (bdz GT 0) THEN velp[badz,2] = f
+
+temp_p = ((vthp*1d3)^2*mp/2d0)/qq        ; => Convert to eV
+
+store_data,'wi_swe_Np',  DATA={X:unix,Y:pdens}
+store_data,'wi_swe_Vsw', DATA={X:unix,Y:vsw}
+store_data,'wi_swe_Vp',  DATA={X:unix,Y:velp}
+store_data,'wi_swe_Tp',  DATA={X:unix,Y:temp_p}
+store_data,'wi_swe_VTHp',DATA={X:unix,Y:vthp}
+
+options,'wi_swe_Np',  'YTITLE','N!Dp!N [SWE, cm!U-3!N'+']'
+options,'wi_swe_Vsw', 'YTITLE','V!Dsw!N [SWE GSE, km/s]'
+options,'wi_swe_Vp',  'YTITLE','V!Dp!N [SWE GSE, km/s]'
+options,'wi_swe_Tp',  'YTITLE','T!Dp!N [SWE, eV]'
+options,'wi_swe_VTHp','YTITLE','V!DTp!N [SWE, km/s]'
+options,['wi_swe_Vsw','wi_swe_Vp'],'COLORS',[250,150,50]
+
+; => Load 3DP Ion moments
+get_pmom2,/PROTONS,PREFIX='p_',MAGNAME='wi_B3(GSE)',/NOFIXMCP
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+
+get_data,'p_Np',DATA=wi_3dp_np
+get_data,'p_Vp',DATA=wi_3dp_vp
+get_data,'p_VTHp',DATA=wi_3dp_vtp
+get_data,'wi_swe_Np',DATA=wi_swe_np
+
+np_swe   = wi_swe_np.Y
+time_s   = wi_swe_np.X
+
+np_3dp   = wi_3dp_np.Y
+time3    = wi_3dp_np.X
+np_3dp_s = interp(np_3dp,time3,time_s,/NO_EXTRAP)
+
+vsw_3dp  = wi_3dp_vp.Y
+vmag_3dp = SQRT(TOTAL(vsw_3dp^2,2,/NAN))
+time3    = wi_3dp_vp.X
+vp_3dp_s = interp(vmag_3dp,time3,time_s,/NO_EXTRAP)
+
+vtp_3dp  = wi_3dp_vtp.Y
+time3    = wi_3dp_vtp.X
+vt_3dp_s = interp(vtp_3dp,time3,time_s,/NO_EXTRAP)
+
+nmax     = 400L
+calc_pl_mcp_eff_dt,np_3dp_s,vp_3dp_s,vt_3dp_s,np_swe,EFFICIENCY=eff, $
+                       DEADTIME=tau,NMAX=nmax,CHI_SQ=chi_sq
+PRINT,';', eff[0], tau[0],'  => For  '+tdate[0]
+;       1.0285714    0.0042813324  => For  2000-04-17
+
+
+; => Plot contour plot of chi^2
+eff_a     = chi_sq.EFF
+tau_a     = chi_sq.DEADT
+chisq     = chi_sq.CHISQ
+
+nlevels   = 60L
+xra       = [MIN(eff_a,/NAN),MAX(eff_a,/NAN)]
+yra       = [MIN(tau_a,/NAN),MAX(tau_a,/NAN)]
+xttl      = 'efficiency (unitless)'
+yttl      = 'dead time (s)'
+
+result    = ALOG(chisq*1d0)/ALOG(1d1)
+range     = [MIN(result,/NAN),MAX(result,/NAN)]
+cpd0      = FLOOR(nlevels/(range[1] - range[0])) > 1.
+cpd       = FIX(nlevels/(range[1] - range[0])) > 1
+nn2       = nlevels - 1L
+mxres     = CEIL(MAX(result,/NAN))
+levels    = FINDGEN(nlevels)*(mxres[0] - range[0])/nn2 + range[0]
+levels    = roundsig(levels,SIG=2)
+color     = LONARR(nlevels)
+color     = LINDGEN(nlevels)*(254L - 15L)/(nlevels - 1L) + 15L
+color     = ROUND((color*1e3)^(2e0/3e0)/16e0)
+c_colors  = BYTE(color)
+good_lbs           = INDGEN(nlevels/3L)*3L + 2L
+c_labels           = REPLICATE(0,nlevels)
+c_labels[good_lbs] = 1
+
+pstr      = {NLEVELS:nlevels,XTITLE:xttl,YTITLE:yttl,$
+             XSTYLE:1,YSTYLE:1,ZSTYLE:1,FILL:1,C_COLORS:c_colors,   $
+             XRANGE:xra,YRANGE:yra,XLOG:1,YLOG:1,ZLOG:0,XMINOR:9L, $
+             YMINOR:9L}
+
+wi,1
+WSET,1
+!P.MULTI = 0
+CONTOUR,ALOG10(chisq),eff_a,tau_a,_EXTRA=pstr
+  OPLOT,[eff[0]],[tau[0]],PSYM=1,COLOR=250,SYMSIZE=2.0   ; => put a + at minimum
+  
+
+
+
+
+
+; => Plot values
+yttl     = '3DP Density'
+xttl     = 'SWE Density'
+tttl     = '3DP vs. SWE Proton Densities for '+tdate[0]
+;xra      = [0.,24.]
+xra      = [0.,15.]
+nn       = 100L
+x        = DINDGEN(nn)*xra[1]/(nn - 1L)
+y        = 0.95*x
+pstr     = {XTITLE:xttl,YTITLE:yttl,XRANGE:xra,YRANGE:xra,XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttl}
+PLOT,np_swe,np_3dp_s,_EXTRA=pstr
+  OPLOT,np_swe,np_3dp_s,PSYM=2
+  OPLOT,x,x,COLOR= 50         ; => Slope = 1
+  OPLOT,x,y,COLOR=250         ; => Slope = 0.95
+
+popen,'Wind_3DP-vs-SWE_proton-densities_'+tdate[0],/LAND
+  PLOT,np_swe,np_3dp_s,_EXTRA=pstr
+    OPLOT,np_swe,np_3dp_s,PSYM=2
+    OPLOT,x,x,COLOR= 50         ; => Slope = 1
+    OPLOT,x,y,COLOR=250         ; => Slope = 0.95
+pclose
+
+; => Fit to linear values
+
+good    = WHERE(FINITE(np_3dp_s) AND FINITE(np_swe),gd)
+xdata   = np_3dp_s[good]
+ydata   = np_swe[good]
+rmax    = np_3dp_s[good]*vp_3dp_s[good]^4/vt_3dp_s[good]^3/1d6  ; => 1d6 is for units
+
+; => Fits to:  Y = A + B X
+;    Returns:  [A, B]
+slope_0 = LADFIT(xdata,ydata,ABSDEV=adevn0,/DOUBLE)
+PRINT,';', slope_0[0], slope_0[1], adevn0[0]
+; => For 2000-04-17
+;      0.21358380      0.98683757      0.34628291
+; => For 2000-05-15
+;     -0.28442997       1.0909223      0.74369700
+
+slope_1 = LINFIT(xdata,ydata,CHISQR=chisq1,COVAR=covmat,PROB=prob1,SIGMA=sig1,/DOUBLE)
+PRINT,';', slope_1[0], sig1[0], slope_1[1], sig1[1], chisq1[0]/gd, prob1[0]
+; => For 2000-04-17
+;      0.27153841     0.037081342      0.98296792    0.0053755569      0.23281818       1.0000000
+; => For 2000-05-15
+;     -0.30739168     0.085433754       1.0993004    0.0072666860       1.1545907       1.0000000
+
+PRINT, covmat
+; => For 2000-04-17
+;    0.0058921925  -0.00076471066
+;  -0.00076471066   0.00012382632
+; => For 2000-05-15
+;    0.0063069728  -0.00048454325
+;  -0.00048454325   4.5628350e-05
+
+
+xttl     = '3DP Density'
+yttl     = 'SWE Density'
+tttl     = 'SWE vs. 3DP Proton Densities for '+tdate[0]
+nn       = 100L
+;xra      = [0.,24.]
+xra      = [0.,15.]
+pstr     = {XTITLE:xttl,YTITLE:yttl,XRANGE:xra,YRANGE:xra,XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttl}
+xx       = DINDGEN(nn)*xra[1]/(nn - 1L)
+y0       = slope_0[0] + slope_0[1]*xx
+y1       = slope_1[0] + slope_1[1]*xx
+
+PLOT,xdata,ydata,_EXTRA=pstr
+  OPLOT,xdata,ydata,PSYM=2
+  OPLOT,xx,y0,COLOR= 50         ; => LADFIT
+  OPLOT,xx,y1,COLOR=250         ; => LINFIT
+
+
+; => minimize
+sig_a    = sig1[1]*gd
+so       = slope_1[1]
+; => create arrays of possible values
+nn       = 300L
+eff      = DINDGEN(nn)*( 1d0 - 1d-1)/(nn - 1L) + 1d-1
+tau      = DINDGEN(nn)*( 1d0 + 7d0 )/(nn - 1L) - 7d0
+tau      = 1d1^tau
+chisq    = DBLARR(nn,nn)  ; => chi^2
+FOR j=0L, nn - 1L DO BEGIN                     $
+  FOR k=0L, nn - 1L DO BEGIN                   $
+    t_y        = eff[j]/(1d0 - tau[k]*rmax)  & $
+    num        = (so[0] - t_y)/sig_a[0]      & $
+    temp       = TOTAL(num^2,/NAN,/DOUBLE)   & $
+    chisq[j,k] = temp[0]
+
+PRINT,';', MIN(chisq,/NAN,ln), MAX(chisq,/NAN,lx)
+; => For 2000-04-17
+;   1.9871538e-06       5576527.0
+; => For 2000-05-15
+
+gmin = ARRAY_INDICES(chisq,ln)
+gmax = ARRAY_INDICES(chisq,lx)
+PRINT,';', gmin
+PRINT,';', gmax
+; => For 2000-04-17
+;         293         136
+;         299         254
+; => For 2000-05-15
+
+PRINT,';', eff[gmin[0]], tau[gmin[1]]
+; => For 2000-04-17
+;      0.98193980   0.00043530734
+; => For 2000-05-15
+
+nlevels   = 60L
+xra       = [1d-1,1d0]
+yra       = [1d-7,1d1]
+xttl      = 'efficiency (unitless)'
+yttl      = 'dead time (s)'
+
+result    = ALOG(chisq*1d0)/ALOG(1d1)
+range     = [MIN(result,/NAN),MAX(result,/NAN)]
+cpd0      = FLOOR(nlevels/(range[1] - range[0])) > 1.
+cpd       = FIX(nlevels/(range[1] - range[0])) > 1
+nn2       = nlevels - 1L
+mxres     = CEIL(MAX(result,/NAN))
+levels    = FINDGEN(nlevels)*(mxres[0] - range[0])/nn2 + range[0]
+levels    = roundsig(levels,SIG=2)
+color     = LONARR(nlevels)
+color     = LINDGEN(nlevels)*(254L - 15L)/(nlevels - 1L) + 15L
+color     = ROUND((color*1e3)^(2e0/3e0)/16e0)
+c_colors  = BYTE(color)
+good_lbs           = INDGEN(nlevels/3L)*3L + 2L
+c_labels           = REPLICATE(0,nlevels)
+c_labels[good_lbs] = 1
+
+pstr      = {NLEVELS:nlevels,XTITLE:xttl,YTITLE:yttl,$
+             XSTYLE:1,YSTYLE:1,ZSTYLE:1,FILL:1,C_COLORS:c_colors,   $
+             XRANGE:xra,YRANGE:yra,XLOG:1,YLOG:1,ZLOG:0,XMINOR:9L, $
+             YMINOR:9L}
+
+WSET,1
+!P.MULTI = 0
+CONTOUR,ALOG10(chisq),eff,tau,_EXTRA=pstr
+
+;--------------------------------------
+; => Try using multiple slopes
+;--------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+;so       = dfdx(xdata,ydata,/LINEND)
+so0      = ydata/xdata
+so       = remove_noise(so0,nbins=10)
+;so       = so0
+sig_0    = STDDEV(so,/nan)
+
+; => minimize
+sig_a    = sig_0[0]*gd
+; => create arrays of possible values
+nn       = 300L
+effmn    = 3d-1
+taumn    = 1d-6
+eff      = DINDGEN(nn)*( 1.2d0 - effmn[0])/(nn - 1L) + effmn[0]
+tau      = DINDGEN(nn)*( 1d0 - ALOG10(taumn[0]))/(nn - 1L) + ALOG10(taumn[0])
+tau      = 1d1^tau
+chisq    = DBLARR(nn,nn)  ; => chi^2
+FOR j=0L, nn - 1L DO BEGIN                     $
+  FOR k=0L, nn - 1L DO BEGIN                   $
+    t_y        = eff[j]/(1d0 - tau[k]*rmax)  & $
+    num        = (so - t_y)/sig_a[0]         & $
+    temp       = TOTAL(num^2,/NAN,/DOUBLE)   & $
+    chisq[j,k] = temp[0]
+
+PRINT,';', MIN(chisq,/NAN,ln), MAX(chisq,/NAN,lx)
+; => For 2000-04-17
+;    0.0011657195       23799650.
+
+gmin = ARRAY_INDICES(chisq,ln)
+gmax = ARRAY_INDICES(chisq,lx)
+PRINT,';', gmin
+PRINT,';', gmax
+; => For 2000-04-17
+;         242         156
+;         299         234
+
+PRINT,';', eff[gmin[0]], tau[gmin[1]]
+; => For 2000-04-17
+;       1.0284281    0.0044892513
+
+
+nlevels   = 60L
+xra       = [effmn[0],1.2d0]
+yra       = [taumn[0],1d1]
+xttl      = 'efficiency (unitless)'
+yttl      = 'dead time (s)'
+
+result    = ALOG(chisq*1d0)/ALOG(1d1)
+range     = [MIN(result,/NAN),MAX(result,/NAN)]
+cpd0      = FLOOR(nlevels/(range[1] - range[0])) > 1.
+cpd       = FIX(nlevels/(range[1] - range[0])) > 1
+nn2       = nlevels - 1L
+mxres     = CEIL(MAX(result,/NAN))
+levels    = FINDGEN(nlevels)*(mxres[0] - range[0])/nn2 + range[0]
+levels    = roundsig(levels,SIG=2)
+color     = LONARR(nlevels)
+color     = LINDGEN(nlevels)*(254L - 15L)/(nlevels - 1L) + 15L
+color     = ROUND((color*1e3)^(2e0/3e0)/16e0)
+c_colors  = BYTE(color)
+good_lbs           = INDGEN(nlevels/3L)*3L + 2L
+c_labels           = REPLICATE(0,nlevels)
+c_labels[good_lbs] = 1
+
+pstr      = {NLEVELS:nlevels,XTITLE:xttl,YTITLE:yttl,$
+             XSTYLE:1,YSTYLE:1,ZSTYLE:1,FILL:1,C_COLORS:c_colors,   $
+             XRANGE:xra,YRANGE:yra,XLOG:1,YLOG:1,ZLOG:0,XMINOR:9L, $
+             YMINOR:9L}
+
+WSET,1
+!P.MULTI = 0
+CONTOUR,ALOG10(chisq),eff,tau,_EXTRA=pstr
+  OPLOT,[eff[gmin[0]]],[tau[gmin[1]]],PSYM=1,COLOR=250,SYMSIZE=2.0
+
+;-----------------------------------------------------------------------------------------
+; => test calculation of efficiencies
+;-----------------------------------------------------------------------------------------
+inds     = 433L + [0,15,25,45,105,225,335]
+np_3dp_s = [10.873731,9.2592867,10.313459,9.1691246,6.9837215,5.3949798,5.2105079]
+vp_3dp_s = [457.43369,425.29451,416.45446,418.42211,414.81067,398.79559,414.72232]
+vt_3dp_s = [42.037279,44.247624,43.521780,41.860382,40.295852,38.540508,26.304555]
+np_swe_s = [11.7657,10.3413,11.9380,10.5984,6.37015,5.10667,5.33333]
+
+wrapper_pl_cor,np_3dp_s,vp_3dp_s,np_swe_s,vt_3dp_s, $
+                   EFFICIENCY=efficiency,DEADTIME=deadtime
+
+
+
+
+; => try plotting it
+nio  = [10.873731,9.2592867,10.313459,9.1691246,6.9837215,5.3949798,5.2105079]
+vswm = [457.43369,425.29451,416.45446,418.42211,414.81067,398.79559,414.72232]
+vti  = [42.037279,44.247624,43.521780,41.860382,40.295852,38.540508,26.304555]
+nit  = [11.7657,10.3413,11.9380,10.5984,6.37015,5.10667,5.33333]
+
+
+eff0     = 0.60                     ; => theory of ion MCPs suggest this as upper limit
+tau0     = 1d-3                     ; => deadtime of a 2 MHz clock
+; => create arrays of possible values
+nn       = 300L
+eff      = DINDGEN(nn)*( 1d0 - 2d-1)/(nn - 1L)
+tau      = DINDGEN(nn)*(-1d0 + 7d0 )/(nn - 1L) - 7d0
+tau      = 1d1^tau
+chisq    = DBLARR(nn,nn)
+FOR j=0L, nn - 1L DO BEGIN $
+  FOR k=0L, nn - 1L DO BEGIN $
+    chi_sq0      = merit_func_pl_calc(nio,vswm,nit,vti,eff[j],tau[k])  & $
+    chisq[j,k]   = chi_sq0[0]
+
+
+
+nlevels   = 60L
+xra       = [1d-1,1d0]
+yra       = [1d-7,1d-1]
+yttl      = 'efficiency (unitless)'
+xttl      = 'dead time (s)'
+
+result    = ALOG(chisq*1d0)/ALOG(1d1)
+range     = [MIN(result,/NAN),MAX(result,/NAN)]
+cpd0      = FLOOR(nlevels/(range[1] - range[0])) > 1.
+cpd       = FIX(nlevels/(range[1] - range[0])) > 1
+nn2       = nlevels - 1L
+mxres     = CEIL(MAX(result,/NAN))
+levels    = FINDGEN(nlevels)*(mxres[0] - range[0])/nn2 + range[0]
+levels    = roundsig(levels,SIG=2)
+color     = LONARR(nlevels)
+color     = LINDGEN(nlevels)*(254L - 15L)/(nlevels - 1L) + 15L
+color     = ROUND((color*1e3)^(2e0/3e0)/16e0)
+c_colors  = BYTE(color)
+good_lbs           = INDGEN(nlevels/3L)*3L + 2L
+c_labels           = REPLICATE(0,nlevels)
+c_labels[good_lbs] = 1
+
+pstr      = {NLEVELS:nlevels,XTITLE:xttl,YTITLE:yttl,$
+             XSTYLE:1,YSTYLE:1,ZSTYLE:1,FILL:1,C_COLORS:c_colors,   $
+             XRANGE:xra,YRANGE:yra,XLOG:1,YLOG:1,ZLOG:0,XMINOR:9L, $
+             YMINOR:9L}
+
+WSET,0
+!P.MULTI = 0
+CONTOUR,ALOG10(TRANSPOSE(chisq)),eff,tau,_EXTRA=pstr
+;load_wi_swe,/POLAR,TIME_RANGE=tra
+;-----------------------------------------------------------------------------------------
+; => Determine if any data is available
+;-----------------------------------------------------------------------------------------
+eldat = get_3dp_structs('el' ,TRANGE=tra)
+el    = eldat.DATA[0]
+el1   = eldat.DATA[1]
+PRINT,';', el.INTEG_T, el.DELTA_T, (el.END_TIME - el.TIME), (el1.TIME - el.END_TIME)
+;       3.1001890       198.41209       3.1001890       96.109333
+PRINT,';', TOTAL(el.DT[0,*],/NAN), TOTAL(el.DT[10,*],/NAN)
+;      1.55009      1.55009
+PRINT,';', TOTAL(el.DEADTIME[0,*],/NAN), TOTAL(el.DEADTIME[10,*],/NAN)
+;  2.88000e-05  2.88000e-05
+PRINT,';', TOTAL(el.DEADTIME,/NAN), TOTAL(el.DEADTIME,/NAN)
+;  0.000432003  0.000432003
+
+cols  = LINDGEN(15)*(250 - 30)/14 + 30
+pstr  = {NODATA:1,YRANGE:[1e0,3e4],XRANGE:[0.00,0.05],XSTYLE:1,YSTYLE:1,YLOG:1}
+PLOT,REFORM(el.DT[0,*]),REFORM(el.DATA[0,*]),_EXTRA=pstr
+FOR j=0L, 14L DO BEGIN $
+  OPLOT,REFORM(el.DT[j,*]),REFORM(el.DATA[j,*]),PSYM=2,COLOR=cols[j]
+
+unq   = UNIQ(el.DT[0,*],SORT(el.DT[0,*]))
+PRINT,';', REFORM(el.DT[0,unq])
+;    0.0121101    0.0242202    0.0484405
+
+unq   = UNIQ(el.DEADTIME[0,*],SORT(el.DEADTIME[0,*]))
+PRINT,';', REFORM(el.DEADTIME[0,unq])
+;  1.50000e-07  3.00000e-07  6.00000e-07
+
+rate          = el.DATA/el.DT
+anode_el      = BYTE((90 - el.THETA)/22.5)
+relgeom_el    = 4 * [0.977,1.019,0.990,1.125,1.154,0.998,0.977,1.005]
+ncount        = [1,1,2,4,4,2,1,1]
+deadtime      = 6e-7 / ncount[anode_el]
+PRINT,';', MIN(deadtime,/NAN), MAX(deadtime,/NAN)
+;  1.50000e-07  6.00000e-07
+dtc           = (1d0 - rate*deadtime) 
+PRINT,';', MIN(dtc,/NAN), MAX(dtc,/NAN)
+;      0.61949158       1.0000000
+PRINT,';', MIN(deadtime/el.DT,/NAN), MAX(deadtime/el.DT,/NAN)
+;  1.23863e-05  2.47727e-05
+
+;-----------------------------------------------------------------------------------------
+; => The following is in eesal_counts.pro
+    crate =  dat.geomfactor *dat.gf * eflux
+    anode = byte((90 - dat.theta)/22.5)
+    deadtime = (p.deadtime/[1.,1.,2.,4.,4.,2.,1.,1.])(anode)
+    rate = crate/(1+ deadtime * crate)
+    bkgrate = 0
+    str_element,p,'bkgrate',bkgrate
+    rate = rate + bkgrate
+;-----------------------------------------------------------------------------------------
+
+test = eesal_counts(el,PARAMETERS=param)
+
+;-----------------------------------------------------------------------------------------
+; => The following is in get_el.pro
+el.GEOMFACTOR = 1.26e-2/180.*5.625
+
+anode_el      = BYTE((90 - el.THETA)/22.5)
+relgeom_el    = 4 * [0.977,1.019,0.990,1.125,1.154,0.998,0.977,1.005]
+el.GF         = relgeom_el[anode_el]
+el.ENERGY     = el.ENERGY + 2.
+el.PHI        = el.PHI - 5.625
+ncount        = [1,1,2,4,4,2,1,1]
+el.DEADTIME   = 6e-7 / ncount[anode_el]
+; => 6e-7 = 1d0/1.6666666666d6  which is roughly  =  1d1/2d0^24
+;    3DP has a 24 bit clock
+;-----------------------------------------------------------------------------------------
+
+
+PRINT,';', 
+
+
+test  = get_uncal_pl(TRANGE=tra)
+pl    = test[0]
+pl1   = test[1]
+PRINT,';', MIN(pl.GF,/NAN), MAX(pl.GF,/NAN)
+;      1.00000      1.00000
+PRINT,';', pl.GEOMFACTOR      
+;   5.0624999e-06
+;-----------------------------------------------------
+; => Define geometry factor
+;    1.62 x 10^(-4) = Geometry factor [cm^2 sr]
+;              180. = Pesa Low Field of View (deg)
+;             5.625 = Pesa Low angular resolution (deg)
+; = 1.62e-4/180.*5.625  =  5.0624999e-06
+;-----------------------------------------------------
+
+PRINT,';', pl.INTEG_T, pl.DELTA_T, (pl.END_TIME - pl.TIME)
+;       3.1001890       12.400756       3.1001890
+PRINT,';', pl1.INTEG_T, pl1.DELTA_T, (pl1.END_TIME - pl1.TIME)
+;       3.1001890       12.400756       3.1001890
+PRINT,';', (pl.END_TIME - pl1.TIME)
+;      -21.702191
+
+PRINT,';', TOTAL(pl.DT[0,*],/NAN), TOTAL(pl.DT[10,*],/NAN)
+;    0.0756882    0.0756882
+PRINT,';', TOTAL(pl1.DT[0,*],/NAN), TOTAL(pl1.DT[10,*],/NAN)
+;    0.0756882    0.0756882
+
+ratep   = pl.DATA/pl.DT
+deadt0  = 0.0026426367e0   ; => From pl_mcp_eff_3dp.dat [smallest dt value]
+deadt1  = 0.20162223e0     ; => " " [largest dt value]
+deadt2  = 1e-6             ; => From pl_mcp_eff.dat [most common dt value]
+deadt3  = 0e0              ; => " " [smallest dt value]
+
+dtc0    = (1d0 - ratep*deadt0)
+bad     = WHERE(dtc0 LT 0.0,c)
+IF (c GT 0) THEN dtc0[bad] = f
+dtc1    = (1d0 - ratep*deadt1)
+bad     = WHERE(dtc1 LT 0.0,c)
+IF (c GT 0) THEN dtc1[bad] = f
+dtc2    = (1d0 - ratep*deadt2)
+bad     = WHERE(dtc2 LT 0.0,c)
+IF (c GT 0) THEN dtc2[bad] = f
+dtc3    = (1d0 - ratep*deadt3)
+bad     = WHERE(dtc3 LT 0.0,c)
+IF (c GT 0) THEN dtc3[bad] = f
+PRINT,';', MIN(dtc0,/NAN), MAX(dtc0,/NAN), MEAN(dtc0,/NAN)
+PRINT,';', MIN(dtc1,/NAN), MAX(dtc1,/NAN), MEAN(dtc1,/NAN)
+PRINT,';', MIN(dtc2,/NAN), MAX(dtc2,/NAN), MEAN(dtc2,/NAN)
+PRINT,';', MIN(dtc3,/NAN), MAX(dtc3,/NAN), MEAN(dtc3,/NAN)
+;      0.12713063       1.0000000      0.86784020
+;       1.0000000       1.0000000       1.0000000
+;      0.85730934       1.0000000      0.99792004
+;       1.0000000       1.0000000       1.0000000
+
+eff0    = 0.47647902e0   ; => From pl_mcp_eff_3dp.dat [smallest eff value]
+eff1    = 1.0898617e0    ; => " " [largest eff value]
+eff2    = 0.2e0          ; => From pl_mcp_eff.dat [smallest eff value]
+eff3    = 1e0            ; => From pl_mcp_eff.dat [largest eff value]
+eff4    = 0.5e0          ; => " " [common eff value]
+geomf   = pl.GEOMFACTOR
+dt      = pl.DT
+PRINT,';', geomf[0]*eff0[0], geomf[0]*eff1[0], geomf[0]*eff2[0], geomf[0]*eff3[0], $
+           geomf[0]*eff4[0]
+;   2.4121750e-06   5.5174250e-06   1.0125000e-06   5.0624999e-06   2.5312499e-06
+
+
+eflux00 = (1./ (dtc0 * dt))/(geomf[0]*eff0[0])
+eflux01 = (1./ (dtc0 * dt))/(geomf[0]*eff1[0])
+eflux02 = (1./ (dtc0 * dt))/(geomf[0]*eff2[0])
+eflux03 = (1./ (dtc0 * dt))/(geomf[0]*eff3[0])
+eflux04 = (1./ (dtc0 * dt))/(geomf[0]*eff4[0])
+PRINT,';', MIN(eflux00,/NAN), MAX(eflux00,/NAN), MEAN(eflux00,/NAN)
+PRINT,';', MIN(eflux01,/NAN), MAX(eflux01,/NAN), MEAN(eflux01,/NAN)
+PRINT,';', MIN(eflux02,/NAN), MAX(eflux02,/NAN), MEAN(eflux02,/NAN)
+PRINT,';', MIN(eflux03,/NAN), MAX(eflux03,/NAN), MEAN(eflux03,/NAN)
+PRINT,';', MIN(eflux04,/NAN), MAX(eflux04,/NAN), MEAN(eflux04,/NAN)
+;   1.3693138e+08   1.0770920e+09   2.7927963e+08
+;       59865326.   4.7089617e+08   1.2209887e+08
+;   3.2622464e+08   2.5660586e+09   6.6535443e+08
+;       65244929.   5.1321173e+08   1.3307089e+08
+;   1.3048986e+08   1.0264235e+09   2.6614178e+08
+
+eflux10 = (1./ (dtc1 * dt))/(geomf[0]*eff0[0])
+eflux11 = (1./ (dtc1 * dt))/(geomf[0]*eff1[0])
+eflux12 = (1./ (dtc1 * dt))/(geomf[0]*eff2[0])
+eflux13 = (1./ (dtc1 * dt))/(geomf[0]*eff3[0])
+eflux14 = (1./ (dtc1 * dt))/(geomf[0]*eff4[0])
+PRINT,';', MIN(eflux10,/NAN), MAX(eflux10,/NAN), MEAN(eflux10,/NAN)
+PRINT,';', MIN(eflux11,/NAN), MAX(eflux11,/NAN), MEAN(eflux11,/NAN)
+PRINT,';', MIN(eflux12,/NAN), MAX(eflux12,/NAN), MEAN(eflux12,/NAN)
+PRINT,';', MIN(eflux13,/NAN), MAX(eflux13,/NAN), MEAN(eflux13,/NAN)
+PRINT,';', MIN(eflux14,/NAN), MAX(eflux14,/NAN), MEAN(eflux14,/NAN)
+;   1.3693138e+08   1.3693138e+08   1.3693138e+08
+;       59865326.       59865326.       59865326.
+;   3.2622464e+08   3.2622464e+08   3.2622464e+08
+;       65244929.       65244929.       65244929.
+;   1.3048986e+08   1.3048986e+08   1.3048986e+08
+
+eflux20 = (1./ (dtc2 * dt))/(geomf[0]*eff0[0])
+eflux21 = (1./ (dtc2 * dt))/(geomf[0]*eff1[0])
+eflux22 = (1./ (dtc2 * dt))/(geomf[0]*eff2[0])
+eflux23 = (1./ (dtc2 * dt))/(geomf[0]*eff3[0])
+eflux24 = (1./ (dtc2 * dt))/(geomf[0]*eff4[0])
+PRINT,';', MIN(eflux20,/NAN), MAX(eflux20,/NAN), MEAN(eflux20,/NAN)
+PRINT,';', MIN(eflux21,/NAN), MAX(eflux21,/NAN), MEAN(eflux21,/NAN)
+PRINT,';', MIN(eflux22,/NAN), MAX(eflux22,/NAN), MEAN(eflux22,/NAN)
+PRINT,';', MIN(eflux23,/NAN), MAX(eflux23,/NAN), MEAN(eflux23,/NAN)
+PRINT,';', MIN(eflux24,/NAN), MAX(eflux24,/NAN), MEAN(eflux24,/NAN)
+;   1.3693138e+08   1.5972225e+08   1.3723276e+08
+;       59865326.       69829317.       59997086.
+;   3.2622464e+08   3.8052150e+08   3.2694264e+08
+;       65244929.       76104302.       65388529.
+;   1.3048986e+08   1.5220860e+08   1.3077706e+08
+
+eflux30 = (1./ (dtc3 * dt))/(geomf[0]*eff0[0])
+eflux31 = (1./ (dtc3 * dt))/(geomf[0]*eff1[0])
+eflux32 = (1./ (dtc3 * dt))/(geomf[0]*eff2[0])
+eflux33 = (1./ (dtc3 * dt))/(geomf[0]*eff3[0])
+eflux34 = (1./ (dtc3 * dt))/(geomf[0]*eff4[0])
+PRINT,';', MIN(eflux30,/NAN), MAX(eflux30,/NAN), MEAN(eflux30,/NAN)
+PRINT,';', MIN(eflux31,/NAN), MAX(eflux31,/NAN), MEAN(eflux31,/NAN)
+PRINT,';', MIN(eflux32,/NAN), MAX(eflux32,/NAN), MEAN(eflux32,/NAN)
+PRINT,';', MIN(eflux33,/NAN), MAX(eflux33,/NAN), MEAN(eflux33,/NAN)
+PRINT,';', MIN(eflux34,/NAN), MAX(eflux34,/NAN), MEAN(eflux34,/NAN)
+;   1.3693138e+08   1.3693138e+08   1.3693138e+08
+;       59865326.       59865326.       59865326.
+;   3.2622464e+08   3.2622464e+08   3.2622464e+08
+;       65244929.       65244929.       65244929.
+;   1.3048986e+08   1.3048986e+08   1.3048986e+08
+
+
+;-----------------------------------------------------------------------------------------
+; => The following is in get_pl_extra.pro
+;retdat.deadtime = 1e-6 * 4
+;retdat.geomfactor = retdat.geomfactor * .7
+pl_mcp_eff,retdat.time,deadt=dt,mcpeff=mcpeff
+retdat.deadtime = dt
+retdat.geomfactor= retdat.geomfactor * mcpeff
+;-----------------------------------------------------------------------------------------
+
+tdate = '1998-08-26'
+t     = tdate[0]+'/'+['00:00:00','23:59:59']
+trg   = time_double(t)
+good  = WHERE(hkdat.TIME LE trg[1] AND hkdat.TIME GE trg[0] AND hkdat.VALID,gd)
+PRINT,';  ',gd, '   => For  '+tdate[0]
+;           911   => For  1998-08-26
+
+get_hkp,DATA=hkdat,/NO_TPLOT
+HELP, hkdat,/str
+;** Structure HKP_STR, 40 tags, length=188, data length=182:
+;   TIME            DOUBLE       9.0408957e+08
+;   ERRORS          LONG              2052
+;   INST_MODE       BYTE         5
+;   MODE            BYTE         1
+;   BURST_STAT      BYTE         1
+;   RATE            BYTE         0
+;   F_SEQ           BYTE        49
+;   OFFSET          INT              7
+;   SPIN            INT         -31122
+;   PHASE           BYTE        12
+;   MAGEL           BYTE        97
+;   MAGAZ           INT           2478
+;   NCOMM           BYTE       108
+;   LCOMM           BYTE      Array[12]
+;   M_VERS          BYTE       119
+;   M_STAT          BYTE       127
+;   M_LERR          BYTE       198
+;   M_NERR          BYTE        76
+;   M_NRES          BYTE         4
+;   M_BSTAT         BYTE        88
+;   FSPIN           FLOAT           34414.8
+;   M_VOLT          FLOAT     Array[9]
+;   E_VERS          BYTE       119
+;   E_STAT          BYTE        99
+;   E_LERR          BYTE         0
+;   E_NERR          BYTE         0
+;   E_NRES          BYTE        20
+;   E_BSTAT         BYTE         0
+;   E_SWP           BYTE         0
+;   E_VOLT          FLOAT     Array[8]
+;   P_VERS          BYTE        96
+;   P_STAT          BYTE        99
+;   P_LERR          BYTE         0
+;   P_NERR          BYTE         0
+;   P_NRES          BYTE        64
+;   P_BSTAT         BYTE         0
+;   P_SWP           BYTE         0
+;   P_VOLT          FLOAT     Array[8]
+;   TEMP            FLOAT     Array[4]
+;   VALID           LONG                 1
+
+hkdat = hkdat[good]
+PRINT,';  ',MIN(hkdat.FSPIN,/NAN), MAX(hkdat.FSPIN,/NAN), '   => For  '+tdate[0]
+;        34444.4      62267.1   => For  1998-08-26
+
+; => Change in fractional spin
+dspin  = hkdat.FSPIN - hkdat[0].FSPIN
+; => Change in time (s)
+delt   = hkdat.TIME  - hkdat[0].TIME
+
+; => Calculate spin rate (deg/second)
+sprate = dspin/delt*36d1
+PRINT,';  ',MIN(sprate,/NAN), MAX(sprate,/NAN), MEAN(sprate,/NAN), STDDEV(sprate,/NAN), '   => For  '+tdate[0]
+;         115.92391       116.08696       116.06690    0.0050694072   => For  1998-08-26
+
+; => Determine the bias voltage on PESA Low and High MCP
+vbias_pl  = hkdat.P_VOLT[3]
+vbias_ph  = hkdat.P_VOLT[4]
+PRINT,';  ',MIN(vbias_pl,/NAN), MAX(vbias_pl,/NAN), $
+            MEAN(vbias_pl,/NAN), STDDEV(vbias_pl,/NAN), '   => For  '+tdate[0]
+;       -2774.02     -2685.95     -2713.96      21.4030   => For  1998-08-26
+
+PRINT,';  ',MIN(vbias_ph,/NAN), MAX(vbias_ph,/NAN), $
+            MEAN(vbias_ph,/NAN), STDDEV(vbias_ph,/NAN), '   => For  '+tdate[0]
+;       -2583.55     -2539.01     -2539.10      2.08596   => For  1998-08-26
+
+; => Determine the (??SW voltage??) on PESA Low and High MCP
+voltsw_pl = hkdat.P_VOLT[6]
+voltsw_ph = hkdat.P_VOLT[7]
+PRINT,';  ',MIN(voltsw_pl,/NAN), MAX(voltsw_pl,/NAN), $
+            MEAN(voltsw_pl,/NAN), STDDEV(voltsw_pl,/NAN), '   => For  '+tdate[0]
+;        682.240      2256.64      1756.09      569.569   => For  1998-08-26
+
+PRINT,';  ',MIN(voltsw_ph,/NAN), MAX(voltsw_ph,/NAN), $
+            MEAN(voltsw_ph,/NAN), STDDEV(voltsw_ph,/NAN), '   => For  '+tdate[0]
+;        0.00000      9163.78      9153.82      303.604   => For  1998-08-26
+
+;-----------------------------------------------------------------------------------------
+; => From get_hkp.pro
+;-----------------------------------------------------------------------------------------
+;m_volt_names=['main_p5','main_m5','main_p12','main_m12','sst_p9', $
+;    'sst_p5','sst_m4','sst_m9','sst_hv']
+;
+;e_volt_names=['eesa_p5','eesa_p12','eesa_m12','eesa_mcpl','eesa_mcph', $
+;    'eesa_pmt','eesa_swpl','eesa_swph']
+;
+;p_volt_names=['pesa_p5','pesa_p12','pesa_m12','pesa_mcpl','pesa_mcph', $
+;    'pesa_pmt','pesa_swpl','pesa_swph']
+;
+;temp_names=['eesa_temp','pesa_temp','sst1_temp','sst3_temp']
+;-----------------------------------------------------------------------------------------
+
+
+; => Defined values from original PESA Low specs in 1995 SSR 3DP instrument paper:
+;
+;      geom_fac  = 1.6 x 10^(-4) E     {E is in eV and units = cm^2 sr}
+;      E range   = 3 eV - 30 keV
+;      FOV       = 180 x 14 degrees
+;      Dyn Range = 10^4 - 10^11 [eV cm^(-2) sr^(-1) s^(-1) eV^(-1)]
+;
+;      Ang. Res. =  5.60 degress for ( 0.0 < |theta| < 22.5)
+;                = 11.25 degress for (22.5 < |theta| < 45.0)
+;                = 22.50 degress for (45.0 < |theta| < 90.0)
+;
+;      Inner Rad = 3.75 cm
+;      Plate Sep = 0.28 cm  [ => Outer Rad. = 4.03 cm]
+;      TC Sep.   = 0.56 cm  [TC = top-cap]
+;      EOHA      = 19 deg   [EOHA = entrance opening half-angle]
+;
+;      dE/E      = 0.20 FWHM
+;      AA        = +/-7.0 deg [AA = angular acceptance]
+;
+;      PAVolts   = -2500 V [PAVolts = post-acceleration potential]
+;
+;      Attenuation Factor       = 50 [due to collimator/attenuator]
+;      Collimator hole diameter = 0.24 mm
+;      Spacing                  = 1.0 mm x 2.25 mm
+;      [identical energy-angle response to that of PH but smaller geom. fac.]
+;
+;      chevron pair config. => 2 x 10^6 electron multiplication gain
+;
+;      MCP Thickness    = 1.00 mm thick  [roughly the channel length]
+;      Channel Diameter = 0.24 mm
+;      L/d              = 4.1666667...
+;      bias angle       = 8.0 deg
+
+;
+;      pl.DT            = integration time or sample period
+;
+
+; => In the program plfit.pro:
+;      dt = x.eff * x.integ_t
+;
+; => the program mcp_efficiency.pro uses the theory from:
+;
+; REF: Relative electron detection efficiency of microchannel plates from 0-3 keV
+;  R.R. Goruganthu and W. G. Wilson, Rev. Sci. Instrum. Vol. 55, No. 12 Dec 1984
+;
+;      to estimate the efficiency of the MCP for electrons below 3 keV.
+;
+;
+
+;***********************************************************************************
+; Make electron energy efficiency array
+;       REF: Relative electron detection efficiency of microchannel plates from 0-3 keV
+;       R.R. Goruganthu and W. G. Wilson, Rev. Sci. Instrum. Vol. 55, No. 12 Dec 1984
+
+tmax      = 2.283
+aa        = 1.35
+delta_max = 1.0
+emax      = 325.  ; => eV
+en_acc    = 100.  ; => eV for Peace
+eenergy   = el.ENERGY[*,0]
+en_shft   = energy2 + en_acc[0]
+nen_shft  = en_shft/emax[0]
+fac0      = (nen_shft)^(1.0 - aa[0])
+fac1      = (1.0 - EXP(-tmax[0]*(nen_shft)^aa[0]))
+fac2      = 1.0/(1.0 - EXP(-tmax))
+delta     = delta_max[0]*fac0*fac1*fac2
+;delta = delta_max * ((energy2+en_acc)/emax)^(1-aa)*(1-exp(-tmax*((energy2+en_acc)/emax)^aa))/(1-exp(-tmax))
+k         = 2.2
+eff_e     = (1.0 - EXP(-k[0]*delta/delta_max[0]))/ (1.0 - EXP(-k[0]))
+
+; => ion efficiency
+ienergy   = all_dat.ENERGY[*,0]
+nen_shfti = (ienergy + 2000.)/30000.
+eff_i     = (1.0 + 0.3*SQRT(nen_shfti))/1.075
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Microchannel Plates and Microchannel Plate Detectors (MCP) definitions
+;-----------------------------------------------------------------------------------------
+;  Intro:
+;       MCP is a specially fabricated plate that amplifies electron signal similar to 
+;     secondary electron multiplier (SEM). Unlike SEM, MCP has several million 
+;     independent channels and each channel works as independent electron multiplier. 
+;     In other words, one can imagine MCP as an assembly of millions miniature SEMs. 
+;     MCP consists of a two-dimensional periodic array of very-small diameter glass 
+;     capillaries (channels) fused together and sliced in a thin plate.  A single 
+;     incident particle (ion, electron, photon etc.) enters a channel and emits an 
+;     electron from the channel wall.  Secondary electrons are accelerated by an 
+;     electric field developed by a voltage applied across the both ends of the MCP. 
+;     They travel along their parabolic trajectories until they in turn strike the 
+;     channel surface, thus producing more secondary electrons.  This process is 
+;     repeated many times along the channel; as a result, this cascade process yields 
+;     a cloud of several thousand electrons, which emerge from the rear of the plate. 
+;     If two or more MCPs are operated in series, a single input event will generate 
+;     a pulse of 10^8 or more electrons at the output.
+;
+;       Since the individual channels confine the pulse, the spatial pattern of 
+;     electron pulses at the rear of the plate preserve the pattern (image) particles 
+;     incident on the front surface.  The output signals are typically collected in any 
+;     of several ways, including metal or multimetal anodes, resistive anode 
+;     (one- or two-dimensional), wedge and strip anode, Delay-Line Readout or 
+;     on a phosphor screen deposited on a fiberoptic or other substrate.
+;
+;       Microchannel Plates have a combination of unique properties like high gain, 
+;     high spatial resolution and high temporal resolution.  They can be used in a 
+;     large variety of applications including, imaging spectroscopy, electron 
+;     spectroscopy and microscopy, mass spectrometry, astronomy, molecular and atomic 
+;     collision studies, cluster physics etc.  Most of these applications require only 
+;     some of MCP properties, for example Time-of-Flight Mass Spectrometry require 
+;     high temporal resolution of MCPs, imaging of single atoms in field ion 
+;     microscopes or X-ray imaging of the Sun require mainly spatial resolution. 
+;     Particle analysers may be produced by using a MCP detector at the output of a 
+;     electrostatic and/or magnetic dispersion system.  Very high sensitivity optical, 
+;     UV and EUV and X-ray spectrometers can also be produced with appropriate filtering 
+;     and dispersive elements.  The same microchannel plate technology is used to make 
+;     visible light image intensifiers for night vision goggles and binoculars.
+;
+;-----------------------------------------------------------------------------------------
+;  MCP Thickness and Channel Diameter:
+;    =  The length of the channel of a MCP is virtually its thickness.  
+;         The ratio of the channel length (L) to the channel diameter (d) L/d, 
+;         as well as the inherent secondary emission factor of the channel wall 
+;         material determines the gain of the MCP.
+;
+;  Channel Bias Angle:
+;    =  The channel bias angle is an angle formed by the channel axis and the 
+;         vertical axis to plate surface.  Channels are tilted to prevent incident 
+;         particles from passing through the channels.  The optimum angle is 
+;         between 5° and 15°.
+;
+;  Open Area Ratio (OAR):
+;    =  The OAR is the ratio of the open area to the total effective area of the MCP.  
+;         For hexagonal arrays:
+;
+;         OAR = (PI SQRT(3)/6)*(d/P)^2 
+;
+;         where d is a channel diameter and P is a pitch (period of the
+;         hexagonal structure, or c-c distance).   For 10-12 structure
+;         (d=10 mm, P=12 mm) OAR=63%, for 12-15 it's 58%, for 15-18 it's 63%.
+;         OAR limits ultimate detection sensitivity of MCPs.  Particles incident on
+;         the MCP between channels are not detected.  In many applications it is
+;         desired to make OAR as large as possible for more efficient input of primary
+;         electrons.  For this purpose, there are custom MCPs in which the glass channel
+;         walls on the input side have been etched to increase the OAR up to 70 to 80%.
+;
+;  Metal Coating (Electrodes):
+;    =  Over the input and output surfaces of a MCP, Inconel, Ni-Cr or Cr is evaporated 
+;         to form electrodes.  The thickness of the electrodes is controlled to have a 
+;         surface resistance of 100 to 200W between the MCP edge.  In general, the 
+;         electrodes are evaporated to uniformly penetrate into the channels.  The 
+;         penetration depth significantly affects the angular and energy 
+;         distributions of the output electrons, and usually chosen to be in the range 
+;         of the channel diameter multiplied by 0.5 to 2.  In such demanding 
+;         applications as image intensification where spatial resolution is of prime 
+;         importance, the penetration depth of the electrodes is controlled to be 
+;         deeper in order to collimate the output electrons.
+;
+;  Gain:
+;    =  The gain of an MCP, g, is given by the following equation using the 
+;         length-to-diameter ratio of the channel: 
+;
+;         g = EXP(G*(L/d))
+;
+;         where G is the secondary emission characteristics of the channel, 
+;         called gain factor.  This gain factor is an inherent characteristic of 
+;         the channel wall material and represented by a function of the electric 
+;         field intensity inside the channel.  Generally, L/D is designed to be 
+;         around 40, which produces a gain of 10^4 with an applied voltage of 1 kV.
+;         When an even higher gain is required, two or three MCPs are used to 
+;         configure the two-stage or three-stage MCP assembly.  These stacked MCP 
+;         detectors can offer higher gains up to 10^8-10^9.  Multiple-stage MCP gains 
+;         are not the simple multiplication of the gain of each MCP because of 
+;         the gain saturation caused by space charge effect near the output region 
+;         of channels.  In these configurations the spatial resolution is degraded 
+;         to some extent because a multiplying electron current spreads into several 
+;         channels as it enters the latter-stage MCP. On the other hand the 
+;         saturation level increases by a factor equal to the number of those 
+;         spread channels.
+;
+;  Pulse height distribution:
+;    =  When a single particle create a single electron event in MCP, the output pulse 
+;         height distribution shows normally an exponential function.  However, in the 
+;         region where the gain is saturated due to space charge effect, the pulse 
+;         height distribution becomes peaked.  This phenomenon is observed in the MCPs 
+;         operating at a high gain, for instance, stacked MCPs.  Pulse height 
+;         distribution is usually characterized by the ratio of the half-width 
+;         at peak (full width at half maximum: FWHM) to the peak value in the 
+;         pulse height distribution: FWHM/A; it is normally expressed in percentage. 
+;         In general, is shows 120% or less for two-stage MCPs and 80% or less for 
+;         three-stage MCPs.
+;
+;  Transit time:
+;    =  The transit time of MCP assemblies is very small.  Due to the shorter electron 
+;         transit distance compared to the discrete dynode used in the conventional 
+;         PMT or SEM, transit time of the electron avalanche in MCP channels is in 
+;         100 ps range.  The width of the single event peak determined mainly by 
+;         temporal characteristics of readout device and electronics.  Ultimate time 
+;         resolution can be achieved using anode configuration matched with 50 W 
+;         connector cable.
+;
+;  Spatial Resolution:
+;    =  Since each channel of the MCP serves as an independent electron multiplier, 
+;         the channel diameter and center-to-center (c-c) spacing determine MCP 
+;         resolution.  Channel diameters ranging from 5 mm (6 mm c-c) to 
+;         15 mm (18 mm c-c) are standard.  When the output from MCP is observed with 
+;         a phosphor screen, the spatial resolution also depends on the MCP electrode 
+;         depth penetrating into the channels, the space between the MCP and the 
+;         phosphor screen, and the accelerating voltage.  Typical spatial resolution 
+;         of a MCP composed of 10 mm diameter channels, which is observed with a 
+;         phosphor screen, is about 40 l/mm.  In the stacked MCP, the spatial 
+;         resolution is less compared to that of a single MCP because it spreads 
+;         into many channels as it enters the latter-stage MCP, and also because 
+;         the increased gain makes greater the electrostatic repulsion in the space 
+;         when the electrons are released from the MCP.
+;
+;  Dark Current:
+;    =  A typical MCP shows an exceptionally low dark current, less than 0.5 pA/cm^2 
+;         at an applied voltage of 1 kV.  Even with a two or three-stage MCP, the 
+;         dark count rate is low, less than 3 cps/cm^2 at an applied voltage of 
+;         1 kV per stage.
+;
+;  Resistance:
+;    =  Glass composition and reduction processing conditions (time and temperature) 
+;         can control the MCP resistance.  Considering the output saturation, a 
+;         lower resistance is desirable; however, there is a limitation in lowering 
+;         the resistance as the MCP operating temperature rises due to higher power 
+;         consumption.  MCP resistance is typically in the range between 100 and 
+;         1000 MW.  For applications requiring high output currents, low-resistance 
+;         MCPs of 20 to 30 MW are available.
+;
+
+;-----------------------------------------------------------------------------------------
+
+

@@ -1,0 +1,137 @@
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+beta_fac = 1d6*(kB*K_eV)*(2d0*muo)
+
+;-----------------------------------------------------------------------------------------
+; => calculate wavelets
+;-----------------------------------------------------------------------------------------
+tsaw   = DINDGEN(2048L)*17d-3/2047L
+evlen  = (MAX(tsaw,/NAN) - MIN(tsaw,/NAN))
+samra  = 2047L/evlen[0]
+x      = 2d0*COS(samra[0]/1d1*tsaw + 90d0*!DPI/18d1)
+y      = 2d0*COS(samra[0]/2d1*tsaw + 45d0*!DPI/18d1)
+z      = 2d0*COS(samra[0]/4d1*tsaw + 0d0*!DPI/18d1)
+scoilb = [[x],[y],[z]]
+
+store_data,'wave',data={x:tsaw,y:scoilb}
+wavelet_to_tplot,tsaw,x,new_name='wave_letx'
+wavelet_to_tplot,tsaw,y,new_name='wave_lety'
+wavelet_to_tplot,tsaw,z,new_name='wave_letz'
+
+nna = ['wave_letx','wave_lety','wave_letz']
+options,'wave','colors',[250,150,50]
+options,tnames(nna),'zrange',[1d-2,2e1]
+
+mother  = 'Morlet'
+kk0     = 6
+wavefun = 'wavelet'
+dd0     = 0.125
+tt      = tsaw
+nsams   = N_ELEMENTS(REFORM(tt))
+times   = REFORM(tt)
+data    = REFORM(scoilb[*,0])
+event_length  = MAX(times,/NAN) - MIN(times,/NAN)       ; => Total event time (s)
+sample_rate   = (nsams - 1L)/event_length               ; => Sample Rate (samples/s)
+sample_period = 1d0/sample_rate                         ; => Sample Period (s)
+; => Define dummy array of frequencies for optional Y-Axis range later
+freq_bins     = DINDGEN(nsams/2L)*(sample_rate/(nsams - 1L))
+gfreq         = WHERE(freq_bins GT 0,gfr)
+freq_bins     = freq_bins[gfreq]
+ss0           = 2*sample_period
+jscale        = (ALOG10(nsams/2)/ ALOG10(2))/dd0
+
+test_waveletx = CALL_FUNCTION(wavefun,data,sample_period,S0=ss0,DJ=dd0,J=jscale,/PAD, $
+                              PERIOD=period,SCALE=scales,PARAM=kk0,MOTHER=mother,     $
+                              COI=cone,SIGNIF=signif,FFT_THEOR=fft_theor)
+wv_freqs     = REPLICATE(1d0,nsams) # 1d0/period
+data   = REFORM(scoilb[*,1])
+test_wavelety = CALL_FUNCTION(wavefun,data,sample_period,S0=ss0,DJ=dd0,J=jscale,/PAD, $
+                              PERIOD=period,SCALE=scales,PARAM=kk0,MOTHER=mother,     $
+                              COI=cone,SIGNIF=signif,FFT_THEOR=fft_theor)
+data   = REFORM(scoilb[*,2])
+test_waveletz = CALL_FUNCTION(wavefun,data,sample_period,S0=ss0,DJ=dd0,J=jscale,/PAD, $
+                              PERIOD=period,SCALE=scales,PARAM=kk0,MOTHER=mother,     $
+                              COI=cone,SIGNIF=signif,FFT_THEOR=fft_theor)
+
+; => Calculate the wavelet phase
+phasex = ATAN(IMAGINARY(test_waveletx)/REAL_PART(test_waveletx))
+phasey = ATAN(IMAGINARY(test_wavelety)/REAL_PART(test_wavelety))
+phasez = ATAN(IMAGINARY(test_waveletz)/REAL_PART(test_waveletz))
+store_data,'phase_x',data={x:tt,y:phasex,v:wv_freqs,spec:1}
+store_data,'phase_y',data={x:tt,y:phasey,v:wv_freqs,spec:1}
+store_data,'phase_z',data={x:tt,y:phasez,v:wv_freqs,spec:1}
+; => Calculate the wavelet phase difference
+dphase_xy = phasex - phasey  
+dphase_xz = phasex - phasez
+dphase_yz = phasey - phasez
+store_data,'dphase_xy',data={x:tt,y:dphase_xy,v:wv_freqs,spec:1}
+store_data,'dphase_xz',data={x:tt,y:dphase_xz,v:wv_freqs,spec:1}
+store_data,'dphase_yz',data={x:tt,y:dphase_yz,v:wv_freqs,spec:1}
+
+nna = tnames('*phase_*')
+options,nna,'ylog',1
+options,nna,'zticks',4
+nna = tnames('phase_*')
+options,nna,'zrange',[-!DPI/2d0,!DPI/2d0]
+nna = tnames('dphase_*')
+options,nna,'zrange',[-!DPI,!DPI]
+
+tplot,[1,2,5,8],trange=minmax(tsaw)
+
+nna = tnames('dphase_*')
+nn0 = tnames(1)
+tplot,[nn0,nna],trange=minmax(tsaw)
+
+; => Calculate the cross-wavelet spectrum
+cross_wavexy = test_waveletx*CONJ(test_wavelety)
+cross_wavexz = test_waveletx*CONJ(test_waveletz)
+cross_waveyz = test_wavelety*CONJ(test_waveletz)
+
+; => Calculate the coherence phase
+cross_phasexy = ATAN(IMAGINARY(cross_wavexy)/REAL_PART(cross_wavexy))
+cross_phasexz = ATAN(IMAGINARY(cross_wavexz)/REAL_PART(cross_wavexz))
+cross_phaseyz = ATAN(IMAGINARY(cross_waveyz)/REAL_PART(cross_waveyz))
+
+store_data,'cross_wavexy',data={x:tt,y:ABS(cross_wavexy),v:wv_freqs,spec:1}
+store_data,'cross_wavexz',data={x:tt,y:ABS(cross_wavexz),v:wv_freqs,spec:1}
+store_data,'cross_waveyz',data={x:tt,y:ABS(cross_waveyz),v:wv_freqs,spec:1}
+
+store_data,'cross_phasexy',data={x:tt,y:cross_phasexy,v:wv_freqs,spec:1}
+store_data,'cross_phasexz',data={x:tt,y:cross_phasexz,v:wv_freqs,spec:1}
+store_data,'cross_phaseyz',data={x:tt,y:cross_phaseyz,v:wv_freqs,spec:1}
+
+nna = tnames('cross_wave*')
+options,nna,'ylog',1
+options,nna,'zticks',4
+options,tnames(nna),'zrange',[1d-2,1e1]
+nna = tnames('cross_phase*')
+options,nna,'ylog',1
+options,nna,'zticks',4
+options,tnames(),'panel_size',2.
+options,tnames(),'ystyle',1
+
+
+store_data,delete=tnames()
+
+
+
+
+
+

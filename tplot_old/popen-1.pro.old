@@ -1,0 +1,153 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   popen.pro
+;  PURPOSE  :   Controls the plot device and plotting options.
+;
+;  CALLED BY:   NA
+;
+;  CALLS:
+;               print_options.pro
+;               str_element.pro
+;               data_type.pro
+;               pclose.pro
+;
+;  REQUIRES:  
+;               popen_com.pro
+;
+;  INPUT:
+;               N             :  Optional input of the following format:
+;                                  1) String => file name ('.ps' is appended 
+;                                                 automatically)
+;                                  2) Scalar => file name goes to 'plot[X].ps' where
+;                                                 [X] = the user defined scalar value
+;                                  3) None   => file name is set to 'plot.ps'
+;
+;  EXAMPLES:    NA
+;
+;  KEYWORDS:  
+;               PORT          :  If set, device set to portrait
+;               LAND          :  If set, device set to landscape
+;               COLOR         :  If set, device set to allow color images
+;               BW            :  If set, forces black&white color scale
+;               PRINTER       :  Set to name of printer to send PS files to
+;               DIRECTORY     :  
+;               ASPECT        :  Controls the aspect ratio
+;               XSIZE         :  X-Dimension (cm) of output to PS file
+;               YSIZE         :  Y-" "
+;               INTERP        :  Keyword for SET_PLOT.PRO [default = 0]
+;               CTABLE        :  Define the color table you wish to use
+;               OPTIONS       :  A TPLOT plot options structure
+;               COPY          :  Keyword for SET_PLOT.PRO (conserves current color)
+;               ENCAPSULATED  :  If set, output is an EPS file instead of a PS file
+;
+;  SEE ALSO:
+;               pclose.pro
+;               print_options.pro
+;               popen_com.pro
+;
+;   CHANGED:  1)  Davin Larson changed something...        [06/23/1998   v1.0.21]
+;             2)  Re-wrote and cleaned up                  [06/10/2009   v1.1.0]
+;             3)  Changed printed device info settings     [06/15/2009   v1.1.1]
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  06/15/2009   v1.1.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO popen,n,PORT=port,LAND=land,COLOR=color,BW=bw,PRINTER=printer,DIRECTORY=printdir, $
+            ASPECT=aspect,XSIZE=xsize,YSIZE=ysize,INTERP=interp,CTABLE=ctable,        $
+            OPTIONS=options,COPY=copy,ENCAPSULATED=encap
+
+
+;-----------------------------------------------------------------------------------------
+; Set common blocks:
+;-----------------------------------------------------------------------------------------
+@popen_com.pro
+COMMON colors, r_orig, g_orig, b_orig, r_curr, g_curr, b_curr
+old_colors_com = {R_ORIG:r_orig,G_ORIG:g_orig,B_ORIG:b_orig,R_CURR:r_curr, $
+                  G_CURR:g_curr,B_CURR:b_curr}
+;-----------------------------------------------------------------------------------------
+; => Look at currently set device settings
+;-----------------------------------------------------------------------------------------
+HELP, /DEVICE,OUTPUT=devspecs
+IF (STRLOWCASE(!D.NAME) EQ 'z') THEN BEGIN
+  PRINT,''
+  PRINT,devspecs[1]              ; => e.g. Current graphics device: X
+  PRINT,devspecs[3]              ; => e.g. Display Depth, Size: 24 bits, (1680,1028)
+  PRINT,devspecs[5]              ; => e.g. Bits Per RGB: 8 (8/8/8)
+  PRINT,''
+ENDIF
+;-----------------------------------------------------------------------------------------
+; Set defaults:
+;-----------------------------------------------------------------------------------------
+SET_PLOT,'PS'
+print_options,DIRECTORY=printdir,PORT=port,LAND=land
+
+str_element,options,'ENCAPSULATED',encap
+str_element,options,'FILENAME',n
+str_element,options,'XSIZE',xsize
+str_element,options,'YSIZE',ysize
+str_element,options,'CTABLE',ctable
+str_element,options,'CHARSIZE',charsize
+str_element,options,'LANDSCAPE',land
+str_element,options,'NOPLOT',ignore
+
+IF KEYWORD_SET(ignore) THEN RETURN
+
+extension = (['.ps','.eps'])[KEYWORD_SET(encap)]
+
+IF (N_ELEMENTS(n) NE 0) THEN BEGIN
+  IF (data_type(n) EQ 0) THEN n = 1
+  IF (data_type(n) EQ 2) THEN BEGIN
+    fname = STRCOMPRESS('plot'+STRING(n)+extension,/REMOVE_ALL)
+    n += 1
+  ENDIF
+  IF (data_type(n) EQ 7) THEN BEGIN
+    IF (STRPOS(n,extension) NE STRLEN(n) - STRLEN(extension)) THEN BEGIN
+      fname = n + extension 
+    ENDIF ELSE BEGIN
+      fname = n
+    ENDELSE
+  ENDIF
+ENDIF
+IF (data_type(fname) NE 7) THEN fname = 'plot'+extension
+IF (print_directory NE '') THEN fname = print_directory+'/'+fname
+
+IF (N_ELEMENTS(old_device) EQ 0) THEN popened = 0
+IF (popened) THEN  pclose,PRINTER=printer
+;-----------------------------------------------------------------------------------------
+; => Remember original default settings
+;-----------------------------------------------------------------------------------------
+old_device = !D.NAME
+old_fname  = fname
+old_plot   = !P
+
+IF (N_ELEMENTS(interp) EQ 0) THEN interp = 0
+IF (N_ELEMENTS(copy) EQ 0) THEN copy = 0
+
+SET_PLOT,'PS',INTERPOLATE=interp,COPY=copy
+
+IF KEYWORD_SET(encap) THEN  DEVICE,ENCAPSULATED=1 ELSE DEVICE,ENCAPSULATED=0
+
+IF KEYWORD_SET(charsize) THEN !P.CHARSIZE = charsize
+
+print_options,PORT=port,LAND=land,COLOR=color,BW=bw, $
+    PRINTER=printer,ASPECT=aspect,XSIZE=xsize,YSIZE=ysize
+
+IF (N_ELEMENTS(ctable) NE 0) THEN loadct2,ctable
+
+IF KEYWORD_SET(bw) THEN BEGIN  ; => Force all colors to black
+  TVLCT,r,g,b,/GET
+  r[*] = 100 & g[*] = 200 & b[*] = 30
+  TVLCT,r,g,b
+ENDIF
+
+DEVICE,FILENAME=old_fname
+popened = 1
+
+RETURN
+END

@@ -1,0 +1,217 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   tplot_hodo.pro
+;  PURPOSE  :   This routine plots a set of TPLOT variables and then plots hodograms of
+;                 those (or potentially different) TPLOT variables in a separate window
+;                 such that the user can dynamically jump from time-range to time-
+;                 range and look at the differences in the hodograms.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               tnames.pro
+;               test_tplot_handle.pro
+;               set_tplot_times.pro
+;               is_a_number.pro
+;               get_valid_trange.pro
+;               t_get_current_trange.pro
+;               tplot.pro
+;               popen.pro
+;               pclose.pro
+;               t_hodogram_plot.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               ***  Optional Input [if TPLOT has already plotted data]  ***
+;               TP_NAMES     :  [N]-Element [string or integer] array of TPLOT handles
+;                                 defining the variables for which the user wishes to
+;                                 plot in the normal TPLOT window (generally defaults
+;                                 to IDL window number zero)
+;
+;  EXAMPLES:    
+;               tplot_hodo,tp_names,TP_HODO_NMS=tp_hodo_nms,TRANGE=trange,$
+;                          HODO_TTLS=hodo_ttls,EX_VECN=ex_vecn,WIND_N=wind_n,$
+;                          WIND_TTLE=wind_ttle,VERSION=version,XYZ_TITLES=xyz_titles,$
+;                          HODO_FPREF=hodo_fpref,TPLOT_FNAME=tplot_fname,_EXTRA=ex_str
+;
+;  KEYWORDS:    
+;               TP_HODO_NMS  :  Scalar [string or integer] defining the TPLOT handle
+;                                 containing the data for which the user wishes to
+;                                 produce hodograms
+;                                 [Default = TP_NAMES[0]]
+;               TRANGE       :  [2]-Element [double] array specifying the Unix time
+;                                 range for which to limit the data to plot
+;                                 [Default = currently plotted time range]
+;               HODO_TTLS    :  [9]-Element [string] array defining the plot titles of
+;                                 the nine hodograms for each projected plane
+;                                 [Default = the array elements shown in each panel]
+;               EX_VECN      :  [V]-Element [structure] array containing extra vectors
+;                                 the user wishes to project onto each hodogram, each
+;                                 with the following format:
+;                                    VEC   :  [3]-Element vector in the same coordinate
+;                                               basis as the input V_IN
+;                                               [Default = REPLICATE(!VALUES.D_NAN,3L)]
+;                                    NAME  :  Scalar [string] used as a name for VEC
+;                                               to output as a label on each plot
+;                                               [Default = '']
+;               WIND_N       :  Scalar [integer/long] defining the 1st IDL window to use
+;                                 for plotting the 1st hodogram.  The next two windows
+;                                 will be sequentially numbered from WIND_N.  The window
+;                                 number for TP_NAMES is always defaulted to zero.
+;                                 [Default = use WINDOW with FREE keyword set]
+;               WIND_TTLE    :  Scalar [string] defining the title prefix of each device
+;                                 Window shown.  The components will be defined within
+;                                 the t_hodogram_plot.pro routine.
+;                                 [Default = 'Hodogram Plots:  ']
+;               VERSION      :  Scalar [string or integer] defining whether [TRUE] or
+;                                 not [FALSE] to output the current routine version and
+;                                 date to be placed on outside of lower-right-hand
+;                                 corner.  If a string is supplied, the string is output.
+;                                 If TRUE is supplied, then routine_version.pro is
+;                                 called to get the current version and date/time for
+;                                 output.  If FALSE is supplied, nothing is output.
+;                                 See NOTES section of hodogram_plot.pro for more details.
+;                                 [Default  :  defined within hodogram_plot.pro]
+;               XYZ_TITLES   :  [3]-Element [string] array defining the X-, Y-, and Z-
+;                                 axis titles, respectively to use for the hodograms
+;                                 [Default = default defined within hodogram_plot.pro]
+;               HODO_FPREF   :  Scalar [string] defining the prefix of the file names
+;                                 to use when saving each hodogram
+;               TPLOT_FNAME  :  Scalar [string] defining the file name to use when saving
+;                                 the plotted TPLOT variables to a PS file
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  keywords accepted by PLOT.PRO and OPLOT.PRO  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               _EXTRA       :  See t_hodogram_plot.pro for details
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [09/29/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [10/26/2015   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [10/26/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  hodogram = plot of two vector components versus each other
+;               2)  See also:  tplot.pro
+;               3)  .compile $HOME/Desktop/temp_idl/tplot_hodo.pro
+;                   tplot_hodo,tp_names,TP_HODO_NMS=tp_hodo_nms,TRANGE=trange,     $
+;                              HODO_TTLS=hodo_ttls,EX_VECN=ex_vecn,WIND_N=wind_n,  $
+;                              WIND_TTLE=wind_ttle,VERSION=version,                $
+;                              XYZ_TITLES=xyz_titles,HODO_FPREF=hodo_fpref,        $
+;                              TPLOT_FNAME=tplot_fname,_EXTRA=ex_str
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  09/27/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/26/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO tplot_hodo,tp_names,TP_HODO_NMS=tp_hodo_nms,TRANGE=trange,HODO_TTLS=hodo_ttls,   $
+                        EX_VECN=ex_vecn,WIND_N=wind_n,WIND_TTLE=wind_ttle,           $
+                        VERSION=version,XYZ_TITLES=xyz_titles,HODO_FPREF=hodo_fpref, $
+                        TPLOT_FNAME=tplot_fname,_EXTRA=ex_str
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION tnames, test_tplot_handle, is_a_number, get_valid_trange,       $
+                 t_get_current_trange
+;;----------------------------------------------------------------------------------------
+;;  Define some defaults
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+def_planes     = ['yx','xz','zy']
+
+;;  Dummy error messages
+no_tplot       = 'User must first load some data into TPLOT before calling this routine!'
+no_plot        = 'You must first plot something in TPLOT!'
+badvfor_msg    = 'Incorrect input format:  TP_NAMES must represent an [N]-Element [string or numeric] array of valid TPLOT handles'
+;;----------------------------------------------------------------------------------------
+;;  1st:  Check to see if TPLOT has been started
+;;----------------------------------------------------------------------------------------
+test           = ((tnames())[0] EQ '')
+IF (test[0]) THEN BEGIN
+  ;;  No TPLOT handles loaded yet --> quit
+  MESSAGE,'0: '+no_tplot[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check if anything is plotted in TPLOT
+;;----------------------------------------------------------------------------------------
+test           = ((tnames(/TPLOT))[0] EQ '')
+IF (test[0]) THEN BEGIN
+  ;;  TPLOT handles loaded, but nothing plotted yet --> quit
+  MESSAGE,no_plot[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = test_tplot_handle(tp_names,TPNMS=tpnms)
+IF (test[0] EQ 0) THEN BEGIN
+  ;;  Not a valid TPLOT handle --> Return to user
+  RETURN    ;;  error message handled within test_tplot_handle.pro
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define time range
+;;----------------------------------------------------------------------------------------
+;;  1st make sure TPLOT time options are set correctly
+set_tplot_times
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check TP_HODO_NMS [only allow scalar string/numeric input for now...]
+test           = test_tplot_handle(tp_hodo_nms,TPNMS=tphodonms)
+IF (test[0] EQ 0) THEN tphodonms = tpnms[0] ELSE tphodonms = tphodonms[0]
+;;  Check TRANGE
+test           = (N_ELEMENTS(trange) EQ 2) AND is_a_number(trange,/NOMSSG)
+IF (test[0]) THEN BEGIN
+  trstr = get_valid_trange(TRANGE=trange,PRECISION=9L)
+  tran  = trstr.UNIX_TRANGE
+ENDIF ELSE BEGIN
+  tran = t_get_current_trange()
+ENDELSE
+;;  Check TPLOT_FNAME
+test_save      = (N_ELEMENTS(tplot_fname) GT 0) AND (SIZE(tplot_fname,/TYPE) EQ 7)
+IF (test_save[0]) THEN BEGIN
+  ;;  User defined FILE_PREF --> save files to PS
+  popen_str  = {PORTRAIT:1,UNITS:'inches',XSIZE:8.,YSIZE:10.5}
+  file_name  = tplot_fname[0]
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Plot data
+;;----------------------------------------------------------------------------------------
+;;  Plot normal TPLOT data
+WSET,0
+WSHOW,0
+tplot,tpnms,TRANGE=tran
+IF (test_save[0]) THEN BEGIN
+  ;;  Save file if user desires
+  popen,file_name[0],_EXTRA=popen_str
+    tplot,tpnms,TRANGE=tran
+  pclose
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Plot hodograms [need routine that plots hodograms for given TPLOT handles]
+;;----------------------------------------------------------------------------------------
+t_hodogram_plot,tphodonms,TRANGE=tran,TITLES=hodo_ttls,EX_VECN=ex_vecn,WIND_N=wind_n,$
+                          WIND_TTLE=wind_ttle,VERSION=version,XYZ_TITLES=xyz_titles, $
+                          FILE_PREF=hodo_fpref,_EXTRA=ex_str
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

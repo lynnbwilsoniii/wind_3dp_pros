@@ -1,0 +1,780 @@
+date   = '121097'
+date   = '082698'
+date   = '092498'
+date   = '021100'
+date   = '040600'
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; -('MMDDYY')
+tdate  = mydate.TDATE[0]   ; -('YYYY-MM-DD')
+
+; => load params
+temp_shock_params_print,DATE=date
+
+; => Define upstream/downstream time range
+tup   = '1997-12-10/0'+['4:21:00.000','4:30:00.000']
+tdn   = '1997-12-10/0'+['4:34:10.000','4:34:43.000']
+;tdn   = '1997-12-10/0'+['4:41:00.000','4:50:00.000']
+tupd  = time_double(tup)
+tdnd  = time_double(tdn)
+
+
+get_data,'wi_B3(GSE)',DATA=t_magf
+; => interp times to each other
+magf  = t_magf.Y     ; => GSE B-field [nT]
+magt  = t_magf.X
+; => Smooth the B-field
+smagx = SMOOTH(magf[*,0],15L,/EDGE_TRUNCATE,/NAN)
+smagy = SMOOTH(magf[*,1],15L,/EDGE_TRUNCATE,/NAN)
+smagz = SMOOTH(magf[*,2],15L,/EDGE_TRUNCATE,/NAN)
+smagf = [[smagx],[smagy],[smagz]]
+sbmag = SQRT(TOTAL(smagf^2,2L,/NAN))
+store_data,'sm_bmag_gse',DATA={X:magt,Y:sbmag}
+store_data,'sm_magf_gse',DATA={X:magt,Y:smagf}
+options,'sm_magf_gse','COLORS',[250L,150L,50L]
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+nn0   = ['wi_B3_MAG(GSE)','wi_B3(GSE)']
+nn1   = ['sm_bmag_gse','sm_magf_gse']
+nna   = [nn0,nn1]
+tplot,nna
+time_bar,tupd,VARNAME=nna,COLOR=250
+time_bar,tdnd,VARNAME=nna,COLOR= 50
+
+nna   = [nn1,'N_i3','V_mag2','T_i2','T_avg_el_sc','T_avg_ce_sw']
+tplot,nna
+time_bar,tupd,VARNAME=nna,COLOR=250
+time_bar,tdnd,VARNAME=nna,COLOR= 50
+
+
+get_data,'N_i3',DATA=t_dens
+get_data,'V_sw2',DATA=t_vsw
+get_data,'T_i2',DATA=t_tiav
+get_data,'T_avg_ce_sw',DATA=t_teav
+;get_data,'T_avg_el_sw',DATA=t_teav
+
+dens  = t_dens.Y     ; => Ion density [cm^(-3)]
+vsw   = t_vsw.Y      ; => Vsw [km/s]
+tiav  = t_tiav.Y     ; => Ion temp [eV]
+tip   = t_dens.X     ; => PL Unix times
+teav  = t_teav.Y     ; => Electron temp [eV]
+tet   = t_teav.X
+; => Get rid of NaN's if present
+good  = WHERE(FINITE(dens),gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+test  = interp(dens[good],tip[good],tip,/NO_EXTRAP)
+dens  = test
+testx = interp(vsw[good,0],tip[good],tip,/NO_EXTRAP)
+testy = interp(vsw[good,1],tip[good],tip,/NO_EXTRAP)
+testz = interp(vsw[good,2],tip[good],tip,/NO_EXTRAP)
+vsw   = [[testx],[testy],[testz]]
+test  = interp(tiav[good],tip[good],tip,/NO_EXTRAP)
+tiav  = test
+
+
+; => tet has the least #
+;   => interpolate to EL times
+testx = interp(smagf[*,0],magt,tet,/NO_EXTRAP)
+testy = interp(smagf[*,1],magt,tet,/NO_EXTRAP)
+testz = interp(smagf[*,2],magt,tet,/NO_EXTRAP)
+emagf = [[testx],[testy],[testz]]
+
+test  = interp(dens,tip,tet,/NO_EXTRAP)
+eden  = test
+test  = interp(tiav,tip,tet,/NO_EXTRAP)
+etiav = test
+testx = interp(vsw[*,0],tip,tet,/NO_EXTRAP)
+testy = interp(vsw[*,1],tip,tet,/NO_EXTRAP)
+testz = interp(vsw[*,2],tip,tet,/NO_EXTRAP)
+evsw  = [[testx],[testy],[testz]]
+; => Define total plasma temp [eV]
+t_tot = teav + etiav
+;t_tot = 2d0*etiav
+;t_tot = 2d0*teav
+; => Define up/down stream elements
+goodu = WHERE(tet LE tupd[1] AND tet GE tupd[0],gdu)
+goodd = WHERE(tet LE tdnd[1] AND tet GE tdnd[0],gdd)
+PRINT,';', gdu, gdd
+;          11          11
+
+; => Define up/down values
+magup  = emagf[goodu,*]
+magdn  = emagf[goodd,*]
+denup  = eden[goodu]
+dendn  = eden[goodd]
+tempup = t_tot[goodu]
+tempdn = t_tot[goodd]
+vswup  = evsw[goodu,*]
+vswdn  = evsw[goodd,*]
+
+avsw   = [[[vswup]],[[vswdn]]]
+amagf  = [[[magup]],[[magdn]]]
+adens  = [[denup],[dendn]]
+atemp  = [[tempup],[tempdn]]
+avmag  = SQRT(TOTAL(avsw^2,2L,/NAN))
+abmag  = SQRT(TOTAL(amagf^2,2L,/NAN))
+
+.compile rh_resize.pro
+.compile rh_solve_lmq.pro
+.compile del_vsn.pro
+.compile rh_eq_chisq.pro
+.compile rh_eq_gen.pro
+.compile vshn_calc.pro
+.compile vec_norm.pro
+.compile vec_trans.pro
+.compile vec_cross.pro
+
+m          = 100L
+phi        = DINDGEN(m)*2d0*!DPI/(m - 1L)
+the        = DINDGEN(m)*!DPI/(m - 1L) - !DPI/2d0
+ph         = REFORM(phi)
+th         = REFORM(the)
+; => Generate shock normal vector
+;            [theta, phi, 3]
+nor        = DBLARR(m,m,3L)
+nor[*,*,0] = COS(th) # COS(ph)
+nor[*,*,1] = COS(th) # SIN(ph)
+nor[*,*,2] = SIN(th) # REPLICATE(1,m)
+
+;nqq    = [1,0,0,1,1]
+;nqq    = [1,1,0,1,1]
+;nqq    = [1,0,1,1,1]
+;nqq    = [1,0,1,0,0]
+;nqq    = [1,1,0,0,0]
+;nqq    = [1,1,1,0,0]
+;nqq    = [1,1,1,1,0]
+nqq    = [1,1,1,1,1]
+test   = rh_solve_lmq(adens,avsw,amagf,atemp,NEQS=nqq)
+chisq  = test
+
+mnchsq = MIN(chisq,/NAN,ln)
+gmin   = ARRAY_INDICES(chisq,ln)
+PRINT,';', gmin
+PRINT,';', ph[gmin[1]]*18d1/!DPI, th[gmin[0]]*18d1/!DPI
+PRINT,';', REFORM(nor[gmin[0],gmin[1],*])
+; => For Equations 2, 3, 4, 5, and 6 for 1997-12-10
+;          37          46
+;       134.54545      -6.3636364
+;     -0.69715273      0.70830288     -0.11083820
+
+; => get better values [in case min. is at mirror point in plot]
+good   = WHERE(chisq LE mnchsq[0]+0.1,gd)
+gmin2  = ARRAY_INDICES(chisq,good)
+; => Define associated { theta, phi }
+phimin = REFORM(ph[gmin2[0,*]])*18d1/!DPI
+themin = REFORM(th[gmin2[1,*]])*18d1/!DPI
+; => Find values closest to [0,180] where { theta, phi }
+diffph = ABS(18d1 - phimin)*ABS(themin)
+sph    = SORT(diffph)
+;minchi = chisq[gmin2[0,sph],gmin2[1,sph]]
+phi_0  = ph[gmin2[0,sph[0]]]*18d1/!DPI
+the_0  = th[gmin2[1,sph[0]]]*18d1/!DPI
+
+PRINT,';', gmin2[*,sph[0]]
+PRINT,';', phi_0[0], the_0[0]
+PRINT,';', REFORM(nor[gmin2[1,sph[0]],gmin2[0,sph[0]],*])
+; => For Equations 2, 3, 4, 5, and 6 for 1997-12-10
+;          38          46
+;       138.18182      -6.3636364
+;     -0.74067248      0.66266068     -0.11083820
+
+
+
+
+
+; => plot chisq
+;xra       = [-9d1,9d1]
+;yra       = [0d0,36d1]
+;yttl      = 'phi (deg)'
+;xttl      = 'theta (deg)'
+yra       = [-9d1,9d1]
+xra       = [0d0,36d1]
+xttl      = 'phi (deg)'
+yttl      = 'theta (deg)'
+
+nlevels   = 60L
+result    = ALOG(chisq*1d0)/ALOG(1d1)
+range     = [MIN(result,/NAN),MAX(result,/NAN)]
+cpd0      = FLOOR(nlevels/(range[1] - range[0])) > 1.
+cpd       = FIX(nlevels/(range[1] - range[0])) > 1
+nn2       = nlevels - 1L
+mxres     = CEIL(MAX(result,/NAN))
+levels    = FINDGEN(nlevels)*(mxres[0] - range[0])/nn2 + range[0]
+levels    = roundsig(levels,SIG=2)
+color     = LONARR(nlevels)
+color     = LINDGEN(nlevels)*(254L - 15L)/(nlevels - 1L) + 15L
+color     = ROUND((color*1e3)^(2e0/3e0)/16e0)
+c_colors  = BYTE(color)
+good_lbs           = INDGEN(nlevels/3L)*3L + 2L
+c_labels           = REPLICATE(0,nlevels)
+c_labels[good_lbs] = 1
+
+ttle      = '!7v!3'+'!U2!N'+'(!7h!3'+',!7u!3'+') for the bow shock on: '+tdate[0]
+pstr      = {NLEVELS:nlevels,XTITLE:xttl,YTITLE:yttl,$
+             XSTYLE:1,YSTYLE:1,ZSTYLE:1,FILL:1,C_COLORS:c_colors,   $
+             XRANGE:xra,YRANGE:yra,XLOG:0,YLOG:0,ZLOG:0,XMINOR:11L, $
+             YMINOR:11L,TITLE:ttle}
+
+WSET,1
+!P.MULTI = 0
+CONTOUR,REFORM(result),phi*18d1/!DPI,the*18d1/!DPI,_EXTRA=pstr
+  OPLOT,[ph[gmin[0]]*18d1/!DPI],[th[gmin[1]]*18d1/!DPI],PSYM=2,COLOR=250
+;CONTOUR,TRANSPOSE(result),the*18d1/!DPI,phi*18d1/!DPI,_EXTRA=pstr
+;  OPLOT,[th[gmin[1]]*18d1/!DPI], [ph[gmin[0]]*18d1/!DPI],PSYM=2,COLOR=250
+;CONTOUR,TRANSPOSE(chisq),the*18d1/!DPI,phi*18d1/!DPI,_EXTRA=pstr
+
+
+;-----------------------------------------------------------------------------------------
+; => test shock input
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+
+tdate  = '1997-12-10'
+tup    = '1997-12-10/0'+['4:20:00.000','4:30:00.000']   ; => Upstream time range used
+tdn    = '1997-12-10/0'+['4:40:00.000','4:50:00.000']   ; => Downstream " "
+
+magup  = [[2.0495618,-6.6144025,-1.2113086], [1.7663630,-6.6618953,-1.4080609], $
+          [1.7382041,-6.5163455,-2.0594910], [2.1364691,-6.4368992,-1.7514881], $
+          [1.9701257,-6.4069041,-1.5581573], [1.9256350,-6.5366329,-1.5791442], $
+          [1.6505548,-6.5228014,-1.4258301], [1.8062041,-6.5440396,-1.9108562], $
+          [1.9626056,-6.6020469,-1.4909541], [1.3249638,-6.8034779,-1.0220203], $
+          [2.3674003,-6.7001593,-1.6847385]  ]
+vswup  = [[-298.42923,7.0329719,8.8173094], [-297.73477,4.9924798,6.0725775], $
+          [-297.16071,6.2249880,1.8190622], [-292.87903,8.1913757,-2.3052062], $
+          [-298.26273,8.5029621,-4.1345792], [-293.37744,7.6591954,3.3643355], $
+          [-301.32974,6.6147823,-1.8453517], [-300.92087,5.3754864,-1.3439834], $
+          [-298.40622,4.6542845,0.25752079], [-298.95749,8.3204288,1.9996956], $
+          [-294.84436,7.2093582,-2.1990477]  ]
+denup  = [11.425707,10.658062,11.280027,11.368994,11.668767,11.488538,11.497508,$
+          11.822701,11.180645,11.906875,11.486233]
+tempup = [20.283726,20.835808,21.078954,20.775059,20.448105,20.782595,20.582528,$
+          20.735186,20.708021,21.190722,21.102959]  ; => Used <Tec> + <Ti>
+
+
+magdn  = [[1.1896197,-15.530858,-4.5200775], [1.1433621,-15.570941,-4.5276632], $
+          [1.1904526,-15.588540,-4.5955429], [1.2138935,-15.646912,-4.6061081], $
+          [1.2360383,-15.714932,-4.6187942], [1.2589373,-15.784042,-4.5940909], $
+          [1.2124557,-15.881397,-4.4775286], [1.1985376,-15.926291,-4.5015241], $
+          [1.2270153,-15.959307,-4.5211604], [1.3280946,-15.980569,-4.4918521], $
+          [1.4081595,-15.951006,-4.5142210]  ]
+vswdn  = [[-371.63510,12.623555,-36.427386], [-373.94293,11.975860,-34.134796], $
+          [-369.54129,8.0284414,-32.518097], [-369.25357,8.8045034,-28.502319], $
+          [-352.06491,13.025156,-38.872013], [-363.96552,9.6974459,-38.112679], $
+          [-370.08737,5.8294368,-22.410383], [-364.25281,7.5720963,-41.611328], $
+          [-373.84592,6.5412188,-34.463131], [-366.31223,12.911589,-47.855164], $
+          [-368.65643,9.4563856,-39.580582]  ]
+dendn  = [28.799348,28.312181,27.016388,26.533714,27.611736,27.922453,27.360785,$
+          26.334246,26.535583,27.263573,26.620255]
+tempdn = [32.061337,32.198217,31.941504,32.542409,31.754916,32.016433,32.873481,$
+          32.495488,32.615132,32.526247,32.570025]  ; => Used <Tec> + <Ti>
+
+avsw   = [[[TRANSPOSE(vswup)]],[[TRANSPOSE(vswdn)]]]        ; => [N,3,2]-Element Array
+amagf  = [[[TRANSPOSE(magup)]],[[TRANSPOSE(magdn)]]]        ; => [N,3,2]-Element Array
+adens  = [[denup],[dendn]]                                  ; => [N,2]-Element Array
+atemp  = [[tempup],[tempdn]]                                ; => [N,2]-Element Array
+
+m          = 100L
+phi        = DINDGEN(m)*2d0*!DPI/(m - 1L)
+the        = DINDGEN(m)*!DPI/(m - 1L) - !DPI/2d0
+ph         = REFORM(phi)
+th         = REFORM(the)
+; => Generate shock normal vector
+;            [theta, phi, 3]
+nor        = DBLARR(m,m,3L)
+nor[*,*,0] = COS(th) # COS(ph)
+nor[*,*,1] = COS(th) # SIN(ph)
+nor[*,*,2] = SIN(th) # REPLICATE(1,m)
+
+
+;          2 3 4 5 6   2 3 4 5 6   2 3 4 5 6   2 3 4 5 6   2 3 4 5 6
+nqqa   = [[1,0,0,0,0],[0,1,0,0,0],[0,0,1,0,0],[0,0,0,1,0],[0,0,0,0,1],$      ; => 1 Eqs
+          [1,1,0,0,0],[1,0,1,0,0],[1,0,0,1,0],[1,0,0,0,1],            $      ; => 2 Eqs
+          [0,1,1,0,0],[0,1,0,1,0],[0,1,0,0,1],                        $      ; => 2 Eqs
+          [0,0,1,1,0],[0,0,1,0,1],                                    $      ; => 2 Eqs
+          [0,0,0,1,1],                                                $      ; => 2 Eqs
+          [1,1,1,0,0],[1,1,0,1,0],[1,1,0,0,1],                        $      ; => 3 Eqs
+          [1,0,1,1,0],[1,0,1,0,1],                                    $      ; => 3 Eqs
+          [1,0,0,1,1],                                                $      ; => 3 Eqs
+          [0,1,1,1,0],[0,1,1,0,1],                                    $      ; => 3 Eqs
+          [0,0,1,1,1],                                                $      ; => 3 Eqs
+          [0,1,1,1,1],[1,0,1,1,1],[1,1,0,1,1],[1,1,1,0,1],[1,1,1,1,0],$      ; => 4 Eqs
+          [1,1,1,1,1]                                                 ]      ; => 5 Eqs
+
+
+suffx0 = '   => Equations '
+suffx1 = ' for '+tdate[0]
+suffar = ['2','3','4','5','6',                                                 $      ; => 1 Eqs
+          '2 and 3','2 and 4','2 and 5','2 and 6',                             $      ; => 2 Eqs
+          '3 and 4','3 and 5','3 and 6',                                       $      ; => 2 Eqs
+          '4 and 5','4 and 6',                                                 $      ; => 2 Eqs
+          '5 and 6',                                                           $      ; => 2 Eqs
+          '2, 3, and 4','2, 3, and 5','2, 3, and 6',                           $      ; => 3 Eqs
+          '2, 4, and 5','2, 4, and 6',                                         $      ; => 3 Eqs
+          '2, 5, and 6',                                                       $      ; => 3 Eqs
+          '3, 4, and 5','3, 4, and 6',                                         $      ; => 3 Eqs
+          '4, 5, and 6',                                                       $      ; => 3 Eqs
+          '3, 4, 5, and 6','2, 4, 5, and 6','2, 3, 5, and 6','2, 3, 4, and 6', $      ; => 4 Eqs
+          '2, 3, 4, and 5',                                                    $      ; => 4 Eqs
+          '2, 3, 4, 5, and 6'                                                  ]      ; => 5 Eqs
+suffx  = suffx0[0]+suffar+suffx1[0]
+
+ns       = N_ELEMENTS(suffx)
+inds     = STRARR(ns)         ; => e.g. ';          30          42   => Equations 2 for 1997-12-10'
+angles   = STRARR(ns)         ; => e.g. ';      -13.636364       109.09091   => Equations 2 for 1997-12-10'
+normals  = STRARR(ns)         ; => e.g. ';     -0.72402398      0.37326031     -0.58005691   => Equations 2 for 1997-12-10'
+ssout    = ['-','+']
+
+FOR j=0L, ns - 1L DO BEGIN                                                     $
+  nqq    = REFORM(nqqa[*,j])                                                 & $
+  test   = rh_solve_lmq(adens,avsw,amagf,atemp,NEQS=nqq)                     & $
+  chisq  = test                                                              & $
+  mnchsq = MIN(chisq,/NAN,ln)                                                & $
+  good   = WHERE(chisq LE mnchsq[0]+0.1,gd)                                  & $
+  gmin2  = ARRAY_INDICES(chisq,good)                                         & $
+  diff   = ABS(50 - REFORM(gmin2[0,*]))*ABS(50 - REFORM(gmin2[1,*]))         & $
+  sph    = SORT(diff)                                                        & $
+  gmin   = REFORM(gmin2[*,sph[0]])                                           & $
+;  gmin   = ARRAY_INDICES(chisq,ln)                                           & $
+  gnor   = REFORM(nor[gmin[1],gmin[0],*])                                    & $
+  sind   = STRING(gmin,FORMAT='(";",2I12.2)')+suffx[j]                       & $
+  ang_0  = [th[gmin[0]]*18d1/!DPI, ph[gmin[1]]*18d1/!DPI]                    & $
+  sang   = STRING(ang_0,FORMAT='(";",2f16.5)')+suffx[j]                      & $
+  signs  = [gnor[0]/ABS(gnor[0]),gnor[1]/ABS(gnor[1]),gnor[2]/ABS(gnor[2])]  & $
+  gsign  = ssout[(signs GT 0)]                                               & $
+  snorm0 = STRTRIM(STRING(ABS(gnor),FORMAT='(f16.8)'),2L)                    & $
+  snor00 = ';     '+gsign[0]+snorm0[0]+'     '+gsign[1]+snorm0[1]            & $
+  snor01 = snor00[0]+'     '+gsign[2]+snorm0[2]                              & $
+  snorm  = snor01[0]+suffx[j]                                                & $
+  inds[j]    = sind[0]                                                       & $
+  angles[j]  = sang[0]                                                       & $
+  normals[j] = snorm[0]
+
+PRINT, TRANSPOSE(inds)
+PRINT, TRANSPOSE(angles)
+PRINT, TRANSPOSE(normals)
+
+
+;          59          50   => Equations 2 for 1997-12-10
+;          51          32   => Equations 3 for 1997-12-10
+;          50          99   => Equations 4 for 1997-12-10
+;          25          50   => Equations 5 for 1997-12-10
+;          50          34   => Equations 6 for 1997-12-10
+;          82          58   => Equations 2 and 3 for 1997-12-10
+;          63          51   => Equations 2 and 4 for 1997-12-10
+;          42          47   => Equations 2 and 5 for 1997-12-10
+;          49          98   => Equations 2 and 6 for 1997-12-10
+;          82          58   => Equations 3 and 4 for 1997-12-10
+;          32          54   => Equations 3 and 5 for 1997-12-10
+;          51          32   => Equations 3 and 6 for 1997-12-10
+;          33          45   => Equations 4 and 5 for 1997-12-10
+;          50          00   => Equations 4 and 6 for 1997-12-10
+;          27          50   => Equations 5 and 6 for 1997-12-10
+;          82          58   => Equations 2, 3, and 4 for 1997-12-10
+;          60          96   => Equations 2, 3, and 5 for 1997-12-10
+;          82          58   => Equations 2, 3, and 6 for 1997-12-10
+;          32          45   => Equations 2, 4, and 5 for 1997-12-10
+;          32          45   => Equations 2, 4, and 6 for 1997-12-10
+;          32          45   => Equations 2, 5, and 6 for 1997-12-10
+;          39          46   => Equations 3, 4, and 5 for 1997-12-10
+;          82          58   => Equations 3, 4, and 6 for 1997-12-10
+;          33          45   => Equations 4, 5, and 6 for 1997-12-10
+;          38          46   => Equations 3, 4, 5, and 6 for 1997-12-10
+;          32          45   => Equations 2, 4, 5, and 6 for 1997-12-10
+;          37          46   => Equations 2, 3, 5, and 6 for 1997-12-10
+;          82          58   => Equations 2, 3, 4, and 6 for 1997-12-10
+;          60          96   => Equations 2, 3, 4, and 5 for 1997-12-10
+;          38          46   => Equations 2, 3, 4, 5, and 6 for 1997-12-10
+
+;         Theta            Phi
+;================================================================
+;        17.27273       181.81818   => Equations 2 for 1997-12-10
+;         2.72727       116.36364   => Equations 3 for 1997-12-10
+;         0.90909       360.00000   => Equations 4 for 1997-12-10
+;       -44.54545       181.81818   => Equations 5 for 1997-12-10
+;         0.90909       123.63636   => Equations 6 for 1997-12-10
+;        59.09091       210.90909   => Equations 2 and 3 for 1997-12-10
+;        24.54545       185.45455   => Equations 2 and 4 for 1997-12-10
+;       -13.63636       170.90909   => Equations 2 and 5 for 1997-12-10
+;        -0.90909       356.36364   => Equations 2 and 6 for 1997-12-10
+;        59.09091       210.90909   => Equations 3 and 4 for 1997-12-10
+;       -31.81818       196.36364   => Equations 3 and 5 for 1997-12-10
+;         2.72727       116.36364   => Equations 3 and 6 for 1997-12-10
+;       -30.00000       163.63636   => Equations 4 and 5 for 1997-12-10
+;         0.90909         0.00000   => Equations 4 and 6 for 1997-12-10
+;       -40.90909       181.81818   => Equations 5 and 6 for 1997-12-10
+;        59.09091       210.90909   => Equations 2, 3, and 4 for 1997-12-10
+;        19.09091       349.09091   => Equations 2, 3, and 5 for 1997-12-10
+;        59.09091       210.90909   => Equations 2, 3, and 6 for 1997-12-10
+;       -31.81818       163.63636   => Equations 2, 4, and 5 for 1997-12-10
+;       -31.81818       163.63636   => Equations 2, 4, and 6 for 1997-12-10
+;       -31.81818       163.63636   => Equations 2, 5, and 6 for 1997-12-10
+;       -19.09091       167.27273   => Equations 3, 4, and 5 for 1997-12-10
+;        59.09091       210.90909   => Equations 3, 4, and 6 for 1997-12-10
+;       -30.00000       163.63636   => Equations 4, 5, and 6 for 1997-12-10
+;       -20.90909       167.27273   => Equations 3, 4, 5, and 6 for 1997-12-10
+;       -31.81818       163.63636   => Equations 2, 4, 5, and 6 for 1997-12-10
+;       -22.72727       167.27273   => Equations 2, 3, 5, and 6 for 1997-12-10
+;        59.09091       210.90909   => Equations 2, 3, 4, and 6 for 1997-12-10
+;        19.09091       349.09091   => Equations 2, 3, 4, and 5 for 1997-12-10
+;       -20.90909       167.27273   => Equations 2, 3, 4, 5, and 6 for 1997-12-10
+
+;     -0.82357290     -0.56698849     +0.01586596   => Equations 2 for 1997-12-10
+;     -0.84587781     -0.08077154     -0.52722547   => Equations 3 for 1997-12-10
+;     +0.00000000     +0.00000000     +1.00000000   => Equations 4 for 1997-12-10
+;     -0.01586397     +0.99974827     +0.01586596   => Equations 5 for 1997-12-10
+;     -0.88100959     -0.02796669     -0.47227107   => Equations 6 for 1997-12-10
+;     +0.45519477     -0.84958191     +0.26647381   => Equations 2 and 3 for 1997-12-10
+;     -0.65411900     -0.75489357     +0.04758192   => Equations 2 and 4 for 1997-12-10
+;     -0.88603986     +0.45678530     -0.07924996   => Equations 2 and 5 for 1997-12-10
+;     -0.03171196     +0.00100666     +0.99949654   => Equations 2 and 6 for 1997-12-10
+;     +0.45519477     -0.84958191     +0.26647381   => Equations 3 and 4 for 1997-12-10
+;     -0.43954665     +0.88687385     +0.14231484   => Equations 3 and 5 for 1997-12-10
+;     -0.84587781     -0.08077154     -0.52722547   => Equations 3 and 6 for 1997-12-10
+;     -0.49491072     +0.85721051     -0.14231484   => Equations 4 and 5 for 1997-12-10
+;     -0.00000000     -0.00000000     -1.00000000   => Equations 4 and 6 for 1997-12-10
+;     -0.14229692     +0.98969685     +0.01586596   => Equations 5 and 6 for 1997-12-10
+;     +0.45519477     -0.84958191     +0.26647381   => Equations 2, 3, and 4 for 1997-12-10
+;     -0.07471910     -0.05875975     +0.99547192   => Equations 2, 3, and 5 for 1997-12-10
+;     +0.45519477     -0.84958191     +0.26647381   => Equations 2, 3, and 6 for 1997-12-10
+;     -0.43954665     +0.88687385     -0.14231484   => Equations 2, 4, and 5 for 1997-12-10
+;     -0.43954665     +0.88687385     -0.14231484   => Equations 2, 4, and 6 for 1997-12-10
+;     -0.43954665     +0.88687385     -0.14231484   => Equations 2, 5, and 6 for 1997-12-10
+;     -0.78120980     +0.61435018     -0.11083820   => Equations 3, 4, and 5 for 1997-12-10
+;     +0.45519477     -0.84958191     +0.26647381   => Equations 3, 4, and 6 for 1997-12-10
+;     -0.49491072     +0.85721051     -0.14231484   => Equations 4, 5, and 6 for 1997-12-10
+;     -0.74067248     +0.66266068     -0.11083820   => Equations 3, 4, 5, and 6 for 1997-12-10
+;     -0.43954665     +0.88687385     -0.14231484   => Equations 2, 4, 5, and 6 for 1997-12-10
+;     -0.69715273     +0.70830288     -0.11083820   => Equations 2, 3, 5, and 6 for 1997-12-10
+;     +0.45519477     -0.84958191     +0.26647381   => Equations 2, 3, 4, and 6 for 1997-12-10
+;     -0.07471910     -0.05875975     +0.99547192   => Equations 2, 3, 4, and 5 for 1997-12-10
+;     -0.74067248     +0.66266068     -0.11083820   => Equations 2, 3, 4, 5, and 6 for 1997-12-10
+
+
+; => Best...
+;     -0.88603986     +0.45678530     -0.07924996   => Equations 2 and 5 for 1997-12-10
+;     -0.84587781     -0.08077154     -0.52722547   => Equations 3 and 6 for 1997-12-10
+;     -0.78120980     +0.61435018     -0.11083820   => Equations 3, 4, and 5 for 1997-12-10
+;     -0.74067248     +0.66266068     -0.11083820   => Equations 2, 3, 4, 5, and 6 for 1997-12-10
+temp0  = rh_permute(adens,avsw,amagf,atemp)
+adens2 = temp0.DENS
+avsw2  = temp0.VSW
+amagf2 = temp0.BFIELD
+atemp2 = temp0.TEMP
+test03 = rh_solve_lmq(adens2,avsw2,amagf2,atemp2,NEQS=[1,1,1,1,1])
+chisq  = test03
+
+
+test0  = rh_solve_lmq(adens,avsw,amagf,atemp,NEQS=[1,0,0,1,0])
+test1  = rh_solve_lmq(adens,avsw,amagf,atemp,NEQS=[0,1,0,0,1])
+test2  = rh_solve_lmq(adens,avsw,amagf,atemp,NEQS=[0,1,1,1,0])
+test3  = rh_solve_lmq(adens,avsw,amagf,atemp,NEQS=[1,1,1,1,1],SOLN=soln3)
+
+
+; => Known values for 1997-12-10
+;  n8   = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+
+chisq     = test0
+chisq     = test1
+chisq     = test2
+chisq     = test3
+
+; => plot chisq
+yra       = [-9d1,9d1]
+xra       = [0d0,36d1]
+xttl      = 'phi (deg)'
+yttl      = 'theta (deg)'
+
+nlevels   = 60L
+result    = ALOG(chisq*1d0)/ALOG(1d1)
+range     = [MIN(result,/NAN),MAX(result,/NAN)]
+cpd0      = FLOOR(nlevels/(range[1] - range[0])) > 1.
+cpd       = FIX(nlevels/(range[1] - range[0])) > 1
+nn2       = nlevels - 1L
+mxres     = CEIL(MAX(result,/NAN))
+levels    = FINDGEN(nlevels)*(mxres[0] - range[0])/nn2 + range[0]
+levels    = roundsig(levels,SIG=2)
+color     = LONARR(nlevels)
+color     = LINDGEN(nlevels)*(254L - 15L)/(nlevels - 1L) + 15L
+color     = ROUND((color*1e3)^(2e0/3e0)/16e0)
+c_colors  = BYTE(color)
+good_lbs           = INDGEN(nlevels/3L)*3L + 2L
+c_labels           = REPLICATE(0,nlevels)
+c_labels[good_lbs] = 1
+
+ttle      = '!7v!3'+'!U2!N'+'(!7h!3'+',!7u!3'+') for the bow shock on: '+tdate[0]
+pstr      = {NLEVELS:nlevels,XTITLE:xttl,YTITLE:yttl,$
+             XSTYLE:1,YSTYLE:1,ZSTYLE:1,FILL:1,C_COLORS:c_colors,   $
+             XRANGE:xra,YRANGE:yra,XLOG:0,YLOG:0,ZLOG:0,XMINOR:11L, $
+             YMINOR:11L,TITLE:ttle}
+
+mnchsq    = MIN(chisq,/NAN,ln)
+good      = WHERE(chisq LE mnchsq[0]+0.1,gd)
+gmin2     = ARRAY_INDICES(chisq,good)
+diff      = ABS(50 - REFORM(gmin2[0,*]))*ABS(50 - REFORM(gmin2[1,*]))
+sph       = SORT(diff)
+gmin      = REFORM(gmin2[*,sph[0]])
+gnorm     = REFORM(nor[gmin[0],gmin[1],*])
+PRINT,';', th[gmin[0]]*18d1/!DPI, ph[gmin[1]]*18d1/!DPI
+PRINT,';', gnorm
+; => For Equations 2 and 5 for 1997-12-10
+;      -4.5454545       152.72727
+;     -0.88603986      0.45678530    -0.079249957
+;
+; => For Equations 3 and 6 for 1997-12-10
+;      -31.818182       185.45455
+;     -0.84587781    -0.080771537     -0.52722547
+;
+; => For Equations 3, 4, and 5 for 1997-12-10
+;      -6.3636364       141.81818
+;     -0.78120980      0.61435018     -0.11083820
+;
+; => For Equations 2, 3, 4, 5, and 6 for 1997-12-10
+;      -6.3636364       138.18182
+;     -0.74067248      0.66266068     -0.11083820
+
+WSET,1
+!P.MULTI = 0
+CONTOUR,TRANSPOSE(result),phi*18d1/!DPI,the*18d1/!DPI,_EXTRA=pstr
+  OPLOT,[ph[gmin[1]]*18d1/!DPI],[th[gmin[0]]*18d1/!DPI],PSYM=2,COLOR=250
+;CONTOUR,REFORM(result),phi*18d1/!DPI,the*18d1/!DPI,_EXTRA=pstr
+;  OPLOT,[ph[gmin[0]]*18d1/!DPI],[th[gmin[1]]*18d1/!DPI],PSYM=2,COLOR=250
+
+
+;-----------------------------------------------------------------------------------------
+; => Region of 68.3% confidence -> ∆X^2 = 2.30 (for 2 degrees of freedom)
+;      Theorem D from numerical recipes [Section 15.6]
+;-----------------------------------------------------------------------------------------
+conf683 = mnchsq[0] + 2.30
+region  = WHERE(chisq LE conf683[0],greg)
+rind    = ARRAY_INDICES(chisq,region)
+; => often more than one minima, so center points on known min.
+good1   = WHERE(REFORM(rind[0,*]) LE gmin[0] + 10 AND REFORM(rind[0,*]) GE gmin[0] - 10,gd1)
+good2   = WHERE(REFORM(rind[1,*]) LE gmin[1] + 10 AND REFORM(rind[1,*]) GE gmin[1] - 10,gd2)
+chi_reg = REPLICATE(d,100L,100L)
+chi_reg[rind[0,good1],rind[1,good2]] = chisq[rind[0,good1],rind[1,good2]]
+; => Find the convex hull of above values
+ph_reg  = REFORM(ph[rind[0,good1]])
+th_reg  = REFORM(th[rind[1,good2]])
+ctest   = outer_perimeter_chull(ph_reg,th_reg,CHULL=chull,OUTERPTS=outerpts)
+; => Define Avg. +/- Std. Dev.
+ph_avg  = MEAN(ph_reg,/NAN,/DOUBLE)
+ph_std  = STDDEV(ph_reg,/NAN,/DOUBLE)
+th_avg  = MEAN(th_reg,/NAN,/DOUBLE)
+th_std  = STDDEV(th_reg,/NAN,/DOUBLE)
+PRINT, ';', ph_avg[0]*18d1/!DPI, ph_std[0]*18d1/!DPI, th_avg[0]*18d1/!DPI, th_std[0]*18d1/!DPI
+; => For Equations 2 and 5 for 1997-12-10
+;       157.67892       23.314014      -7.7142857       4.5776014
+;
+; => For Equations 3 and 6 for 1997-12-10
+;       182.72202       17.155633      -24.900731       6.6071737
+;
+; => For Equations 3, 4, and 5 for 1997-12-10
+;       139.94135       10.019088      -5.7771261       1.9003898
+;
+; => For Equations 2, 3, 4, 5, and 6 for 1997-12-10
+;       135.41818       12.652595      -6.2181818       1.4770979
+
+; => Calculate the range of possible shock normals
+norx    = COS(th_reg) # COS(ph_reg)
+nory    = COS(th_reg) # SIN(ph_reg)
+norz    = SIN(th_reg) # REPLICATE(1,gd1)
+; => Define Avg. +/- Std. Dev.
+nx_avg  = MEAN(norx,/NAN,/DOUBLE)
+nx_std  = STDDEV(norx,/NAN,/DOUBLE)
+ny_avg  = MEAN(nory,/NAN,/DOUBLE)
+ny_std  = STDDEV(nory,/NAN,/DOUBLE)
+nz_avg  = MEAN(norz,/NAN,/DOUBLE)
+nz_std  = STDDEV(norz,/NAN,/DOUBLE)
+PRINT, ';', nx_avg[0], ny_avg[0], nz_avg[0]
+PRINT, ';', nx_std[0], ny_std[0], nz_std[0]
+; => For Equations 2 and 5 for 1997-12-10
+;     -0.84269144      0.34261522     -0.13378460
+;      0.17474480      0.34346324     0.078306402
+;
+; => For Equations 3 and 6 for 1997-12-10
+;     -0.86074006    -0.040175040     -0.41827157
+;     0.069239142      0.25899939      0.10340284
+;
+; => For Equations 3, 4, and 5 for 1997-12-10
+;     -0.74998650      0.63042948     -0.10060677
+;      0.11158383      0.12838406     0.032480486
+;
+; => For Equations 2, 3, 4, 5, and 6 for 1997-12-10
+;     -0.69125000      0.68154382     -0.10827989
+;      0.14743346      0.15379479     0.025121644
+
+
+
+WSET,1
+!P.MULTI = 0
+CONTOUR,TRANSPOSE(result),phi*18d1/!DPI,the*18d1/!DPI,_EXTRA=pstr
+  OPLOT,[ph[gmin[0]]*18d1/!DPI],[th[gmin[1]]*18d1/!DPI],PSYM=2,COLOR=250
+;CONTOUR,REFORM(result),phi*18d1/!DPI,the*18d1/!DPI,_EXTRA=pstr
+;  OPLOT,[ph[gmin[0]]*18d1/!DPI],[th[gmin[1]]*18d1/!DPI],PSYM=2,COLOR=250
+;  OPLOT,ph_reg[chull]*18d1/!DPI,th_reg[chull]*18d1/!DPI,THICK=2,LINESTYLE=3
+  ; => Plot using CONTOUR
+  CONTOUR,TRANSPOSE(result),phi*18d1/!DPI,the*18d1/!DPI,/OVERPLOT,XSTYLE=0,YSTYLE=0,$
+          C_THICK=2,C_LINESTYLE=3,LEVELS=ALOG(conf683[0])/ALOG(1d1)
+;  CONTOUR,REFORM(result),phi*18d1/!DPI,the*18d1/!DPI,/OVERPLOT,XSTYLE=0,YSTYLE=0,$
+;          C_THICK=2,C_LINESTYLE=3,LEVELS=ALOG(conf683[0])/ALOG(1d1)
+
+
+; => Derivatives
+;
+;  d f(x,y)      f(x+dx,y) + f(x,y)
+;____________ = ____________________
+;   dx                    dx
+;
+;
+;  d^2 f(x,y)    f(x+dx,y+dy) + f(x,y) - f(x+dx,y) - f(x,y+dy)
+;____________ = _______________________________________________
+;  dx   dy                         dx    dy
+;
+;  d^2 f(x,y)    f(x+dx,y+dy) + f(x,y) - f(x+dx,y) - f(x,y+dy)
+;____________ = _______________________________________________
+;  dy   dx                         dy    dx
+;
+;  d^2 f(x,y)    f'(x+dx,y) + f'(x,y)
+;____________ = _______________________
+;  dx   dx              dx    dx
+;
+;                f(x+2dx,y) - 2 f(x+dx,y) + f(x,y)
+;             = ___________________________________
+;                       dx    dx
+
+fxdxydy = SHIFT(chisq,1,1)
+fxy     = chisq
+fxdxy   = SHIFT(chisq,1,0)
+fxydy   = SHIFT(chisq,0,1)
+fxdx2y  = SHIFT(chisq,2,0)
+fxxdy2  = SHIFT(chisq,0,2)
+dx      = (MAX(ph,/NAN) - MIN(ph,/NAN))/(N_ELEMENTS(ph) - 1L)
+dy      = (MAX(th,/NAN) - MIN(th,/NAN))/(N_ELEMENTS(th) - 1L)
+
+; => Off diagonal terms
+deriv2d = ((fxdxydy + fxy) - (fxdxy + fxydy))/(dx[0]*dy[0])
+offdiag = deriv2d[gmin[0],gmin[1]]
+; => Diagonal terms
+chidx2  = (fxdx2y - 2d0*fxdxy + fxy)/dx[0]^2
+chidy2  = (fxxdy2 - 2d0*fxydy + fxy)/dy[0]^2
+diagx   = chidx2[gmin[0],gmin[1]]
+diagy   = chidy2[gmin[0],gmin[1]]
+; => Calculate Alpha Matrix ( = 1/2 Hessian Matrix)
+alpha   = [[diagx[0],offdiag[0]],[offdiag[0],diagy[0]]]
+; => Calculate Covariance Matrix ( = Inverse of Alpha Matrix)
+covmat  = LA_INVERT(alpha,/DOUBLE,STATUS=stat)
+PRINT, ';', stat
+;           0     => GOOD
+PRINT, covmat
+; => For Equations 2 and 5 for 1997-12-10
+;      0.37884643     0.032942640
+;     0.032942640    0.0030448537
+;
+; => For Equations 3 and 6 for 1997-12-10
+;     0.032287945   -0.0074712936
+;   -0.0074712936    0.0028216472
+;
+; => For Equations 3, 4, and 5 for 1997-12-10
+;     0.024844278    0.0011394204
+;    0.0011394204   0.00032037023
+;
+; => For Equations 2, 3, 4, 5, and 6 for 1997-12-10
+;     0.036111605    0.0026949642
+;    0.0026949642   0.00043948203
+unc_ph  = SQRT(covmat[0,0])  ; => Uncertainty in Phi
+unc_th  = SQRT(covmat[1,1])  ; => Uncertainty in Theta
+PRINT, ';', unc_ph[0]*18d1/!DPI, unc_th[0]*18d1/!DPI
+; => For Equations 2 and 5 for 1997-12-10
+;       35.265840       3.1615922
+;
+; => For Equations 3 and 6 for 1997-12-10
+;       10.295391       3.0435048
+;
+; => For Equations 3, 4, and 5 for 1997-12-10
+;       9.0309996       1.0255308
+;
+; => For Equations 2, 3, 4, 5, and 6 for 1997-12-10
+;       10.887948       1.2011388
+
+
+
+
+
+aa      = covmat
+;  A = Q . T . Q^T
+LA_TRIRED, aa, d, e
+eigenvalues  = d
+eigenvectors = aa
+LA_TRIQL, eigenvalues, e, eigenvectors
+
+PRINT, ';', eigenvalues
+PRINT, eigenvectors
+
+; =>   eigenvectors -> delta chi-squared in numerical recipes ???
+
+
+;-----------------------------------------------------------------------------------------
+; => test shock input
+;-----------------------------------------------------------------------------------------
+
+; => Known values for 1997-12-10
+;
+;  n8   = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+;  Vshn = 391.2 +/- 12.4 km/s
+;  Ushn = 132.3 +/-  2.3 km/s
+;
+;  n9   = [-0.971, 0.094,-0.218]   ; => Using RH09 from JCK's site
+;  Vshn = 403.9 +/- 11.7 km/s
+;  Ushn = 124.0 +/-  1.9 km/s
+;
+
+n_v       = N_ELEMENTS(adens[*,0])
+t_vshn    = vshn_calc(adens,avsw,[-0.903, 0.168,-0.397])
+PRINT,';', MIN(t_vshn,/NAN), MAX(t_vshn,/NAN), MEAN(t_vshn,/NAN), STDDEV(t_vshn,/NAN)
+;       387.29808       401.64035       394.30658       5.1619086   => For 1997-12-10
+
+t_ushn    = del_vsn(avsw,[-0.903, 0.168,-0.397],REFORM(t_vshn,n_v,1),VEC=0)
+t_ushnu   = REFORM(t_ushn[*,*,0])
+PRINT,';', MIN(t_ushnu,/NAN), MAX(t_ushnu,/NAN), MEAN(t_ushnu,/NAN), STDDEV(t_ushnu,/NAN)
+;      -135.12863      -117.65242      -125.36685       6.0818567
+
+t_ushnv   = del_vsn(avsw,[-0.903, 0.168,-0.397],REFORM(t_vshn,n_v,1),VEC=1)
+PRINT,';', MIN(t_ushnv,/NAN), MAX(t_ushnv,/NAN), MEAN(t_ushnv,/NAN), STDDEV(t_ushnv,/NAN)
+;      -60.952550       164.65442       34.857692       82.573651
+
+ni     = adens
+vo     = avsw
+bo     = amagf
+te     = atemp
+nor    = REFORM([-0.903, 0.168,-0.397],1,3)
+vshn   = REFORM(t_vshn,n_v,1)
+
+eq2    = rh_eq_gen(ni,vo,bo,te,nor,vshn,EQNUM=2,POLYT=polyt)  ; => Bn equation [Eq. 2 from Koval and Szabo, 2008]
+eq3    = rh_eq_gen(ni,vo,bo,te,nor,vshn,EQNUM=3,POLYT=polyt)  ; => transverse momentum flux equation [Eq. 3 from Koval and Szabo, 2008]
+eq4    = rh_eq_gen(ni,vo,bo,te,nor,vshn,EQNUM=4,POLYT=polyt)  ; => transverse electric field equation [Eq. 4 from Koval and Szabo, 2008]
+eq5    = rh_eq_gen(ni,vo,bo,te,nor,vshn,EQNUM=5,POLYT=polyt)  ; => normal momentum flux equation [Eq. 5 from Koval and Szabo, 2008]
+eq6    = rh_eq_gen(ni,vo,bo,te,nor,vshn,EQNUM=6,POLYT=polyt)  ; => energy flux equation [Eq. 6 from Koval and Szabo, 2008]
+
+sum    = 0d0
+sum   += (eq2[*,0,0]/STDDEV(eq2[*,0,0],/NAN,/DOUBLE))^2
+sum   += (eq3[*,0,0]/STDDEV(eq3[*,0,0],/NAN,/DOUBLE))^2
+sum   += (eq3[*,0,1]/STDDEV(eq3[*,0,1],/NAN,/DOUBLE))^2
+sum   += (eq3[*,0,2]/STDDEV(eq3[*,0,2],/NAN,/DOUBLE))^2
+sum   += (eq4[*,0,0]/STDDEV(eq4[*,0,0],/NAN,/DOUBLE))^2
+sum   += (eq4[*,0,1]/STDDEV(eq4[*,0,1],/NAN,/DOUBLE))^2
+sum   += (eq4[*,0,2]/STDDEV(eq4[*,0,2],/NAN,/DOUBLE))^2
+sum   += (eq5[*,0,0]/STDDEV(eq5[*,0,0],/NAN,/DOUBLE))^2
+sum   += (eq6[*,0,0]/STDDEV(eq6[*,0,0],/NAN,/DOUBLE))^2
+PRINT,';', MIN(sum,/NAN), MAX(sum,/NAN), MEAN(sum,/NAN), STDDEV(sum,/NAN)
+;       30.862178       126.72681       72.973814       25.580284
+
+chisq0 = TOTAL(sum,/NAN,/DOUBLE)/(n_v*9L - 1d0)
+PRINT,';', chisq0
+;       8.1839792
+
+
+

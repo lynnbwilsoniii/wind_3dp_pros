@@ -1,0 +1,463 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   sphere_grid_esa_data.pro
+;  PURPOSE  :   This routine grids data from an electrostatic multi-channel plate
+;                 analyzer onto a spherical surface of constant energy.  The purpose
+;                 is to aid in the determination of the bulk flow velocity of the core
+;                 of a particle distribution.
+;
+;  CALLED BY:   
+;               find_core_bulk_velocity.pro
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               conv_units.pro
+;               colinear_test.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA       :  Scalar structure associated with a known THEMIS ESA Burst
+;                               data structure [see get_th?_peib.pro, ? = a-f]
+;                               or a Wind/3DP PESA High Burst data structure
+;                               [see get_phb.pro]
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NLON       :  Scalar [long] defining the # of azimuthal bins to use
+;                               [Default = 30]
+;               NLAT       :  Scalar [long] defining the # of poloidal bins to use
+;                               [Default = 30]
+;
+;   CHANGED:  1)  Continued to work on routine                     [04/19/2013   v1.0.0]
+;             2)  Continued to work on routine                     [04/22/2013   v1.0.0]
+;             3)  Continued to work on routine                     [04/22/2013   v1.0.0]
+;
+;   NOTES:      
+;               1)  This routine will fail if all the points are co-linear
+;
+;   CREATED:  04/19/2013
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/22/2013   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION sphere_grid_esa_data,data,NLON=nlon0,NLAT=nlat0
+
+;;----------------------------------------------------------------------------------------
+;; => Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+miss           = !VALUES.D_NAN
+;;  Dummy error messages
+notstr_msg     = 'Must be an IDL structure...'
+notvdf_msg     = 'Must be an ion velocity distribution IDL structure...'
+;;----------------------------------------------------------------------------------------
+;; => Check input structure format
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN RETURN,0b
+str       = data[0]   ;; => in case it is an array of structures of the same format
+IF (SIZE(str,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test0      = test_wind_vs_themis_esa_struct(str,/NOM)
+test       = (test0.(0) + test0.(1)) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Check keywords
+;;----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(nlon0)   EQ 0) THEN nlon = 30L ELSE nlon = LONG(nlon0[0])
+IF (N_ELEMENTS(nlat0)   EQ 0) THEN nlat = 30L ELSE nlat = LONG(nlat0[0])
+;;----------------------------------------------------------------------------------------
+;; => Convert to energy flux units
+;;----------------------------------------------------------------------------------------
+dat_df         = conv_units(str,'eflux',SCALE=scale)
+;;----------------------------------------------------------------------------------------
+;; => Get structure values
+;;----------------------------------------------------------------------------------------
+;;  Define DAT structure parameters
+n_e            = dat_df.NENERGY                           ;;  # of energy bins [ = E]
+n_a            = dat_df.NBINS                             ;;  # of angle bins  [ = A]
+mass           = dat_df.MASS[0]                           ;;  M [eV/c^2, with c in km/s]
+kk             = n_e*n_a
+ind_2d         = INDGEN(n_e,n_a)                          ;;  original indices of angle bins
+
+energy         = dat_df.ENERGY                            ;;  E [Energy bin values, eV]  [E,A]-Element Array
+ef_dat         = dat_df.DATA                              ;;  ƒ(E,∑,ø) [eV cm^(-2) s^(-1) eV^(-1)]
+;;  Define angle-related parameters
+phi            = dat_df.PHI                               ;;  Azimuthal angle, ø [deg]
+dphi           = dat_df.DPHI                              ;;  Uncertainty in ø
+theta          = dat_df.THETA                             ;;  Poloidal angle, ∑ [deg]
+dtheta         = dat_df.DTHETA                            ;;  Uncertainty in ∑
+;;----------------------------------------------------------------------------------------
+;; => Try finding a minimum surface at E[i]  {i-th energy}
+;;----------------------------------------------------------------------------------------
+f_grid_out     = REPLICATE(miss[0],n_e[0],nlon[0],nlat[0])  ;;  Triangulated and gridded ∆f
+sph_lon        = REPLICATE(miss[0],n_e[0],nlon[0])          ;;  Gridded ø [deg]
+sph_lat        = REPLICATE(miss[0],n_e[0],nlat[0])          ;;  Gridded ∑ [deg]
+sph_sr         = REPLICATE(miss[0],n_e[0],nlon[0],nlat[0])  ;;  Gridded ∆Ω [sr]
+gind_ener      = REPLICATE(0,n_e[0])        ;;  logic defining whether data was good for E[i]
+FOR eind=0L, n_e - 1L DO BEGIN
+  PRINT, ';;  Line 111, E-Index:  ', eind
+  ;;--------------------------------------------------------------------------------------
+  ;;  Reset temporary variables
+  ;;--------------------------------------------------------------------------------------
+  longitude      = REFORM(phi[eind,*])*1d0
+  latitude       = REFORM(theta[eind,*])*1d0
+  f_xyz          = REFORM(ef_dat[eind,*])*1d0        ;;  f = ƒ(∑,ø)
+  ;;--------------------------------------------------------------------------------------
+  ;;  Remove zeros from f(Ω,ø)
+  ;;--------------------------------------------------------------------------------------
+  bad            = WHERE(f_xyz LE 0d0,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+  IF (bd GT 0) THEN f_xyz[bad] = !VALUES.F_NAN
+  IF (gd GT 20) THEN BEGIN  ;;  try using minimum # of points as threshold
+    ;;------------------------------------------------------------------------------------
+    ;;  Finite values exist
+    ;;------------------------------------------------------------------------------------
+    ;;  Reset values
+    min_x          = 0d0
+    max_x          = 0d0
+    ;;  The following is necessary to avoid a co-linear points test failure...
+    fcopy          = DOUBLE(f_xyz[good])     ;;  will be rearranged in TRIANGULATE
+    xcopy          = DOUBLE(longitude[good])
+    ycopy          = DOUBLE(latitude[good])
+    ;;  Define ƒ(∑,ø) range
+    min_x          = MIN(f_xyz,/NAN)
+    max_x          = MAX(f_xyz,/NAN)
+    ;;------------------------------------------------------------------------------------
+    ;;  Define grid boundaries
+    ;;------------------------------------------------------------------------------------
+    min_lon        = 1d0*FLOOR(MIN(longitude,/NAN))
+    max_lon        = 1d0*CEIL(MAX(longitude,/NAN))
+    min_lat        = 1d0*FLOOR(MIN(latitude,/NAN))
+    max_lat        = 1d0*CEIL(MAX(latitude,/NAN))
+    bnds           = [min_lon[0],min_lat[0],max_lon[0],max_lat[0]]
+    PRINT, ';;  Line 145, E-Index:  ', eind
+    ;;------------------------------------------------------------------------------------
+    ;;  Check if points are co-linear
+    ;;------------------------------------------------------------------------------------
+;    co_test        = colinear_test(fcopy,xcopy*!DTOR,ycopy*!DTOR,/SPHERE)
+    co_test        = 0
+    IF (co_test[0] NE 0) THEN PRINT, ';;  ', eind, gd, bd, co_test[0]
+    IF (co_test[0] EQ 0) THEN BEGIN
+      ;;  Reset values
+      sph_grid       = 0d0
+      sphlon         = 0d0
+      sphlat         = 0d0
+      sph            = 0
+      tri            = 0
+      ;;  Define output grid range
+      boundsout      = bnds
+      gsout          = [boundsout[2] - boundsout[0], boundsout[3] - boundsout[1]]
+      gsout          = gsout/DOUBLE([(nlon - 1L), (nlat - 1L)])
+      ;;  Define output grid locations
+      sphlon         = DINDGEN(nlon)*(bnds[2] - bnds[0])/(nlon - 1L) + bnds[0]
+      sphlat         = DINDGEN(nlat)*(bnds[3] - bnds[1])/(nlat - 1L) + bnds[1]
+      ;;  Define output grid differential solid angle [sr]
+      sphthe         = (9d1 - sphlat)*!DPI/18d1
+      diff           = ABS(sphthe[1L:(nlat - 1L)] - sphthe[0L:(nlat - 2L)])
+      sph_dtheta     = SIN(sphthe)*MEDIAN(diff)
+      diff           = ABS(sphlon[1L:(nlon - 1L)] - sphlon[0L:(nlon - 2L)])*!DPI/18d1
+      sph_dphi       = REPLICATE(MEDIAN(diff),nlon[0])
+      sph_domega     = REPLICATE(miss[0],nlon[0],nlat[0])
+      FOR j=0L, nlon[0] - 1L DO sph_domega[j,*] = sph_dtheta*sph_dphi[j]
+      PRINT, ';;  Line 174, E-Index:  ', eind
+      ;;----------------------------------------------------------------------------------
+      ;;  Error handling
+      ;;----------------------------------------------------------------------------------
+      CATCH, error_status
+      IF (error_status NE 0) THEN PRINT, ';;  ', eind
+      IF (error_status NE 0) THEN BEGIN
+        PRINT, 'Error index: ', error_status
+        PRINT, 'Error message: ', !ERROR_STATE.MSG
+        ;;  Deal with error
+        sph_grid       = REPLICATE(miss[0],nlon[0],nlat[0])
+        ;;  Cancel error handler
+        CATCH, /CANCEL
+        ;;  Reset values
+        sph            = 0
+        tri            = 0
+        ;;  Jump to after triangulate
+        GOTO,JUMP_SKIP
+      ENDIF
+      PRINT, ';;  Line 193, E-Index:  ', eind
+      ;;----------------------------------------------------------------------------------
+      ;;  Define spherical grid
+      ;;----------------------------------------------------------------------------------
+      ;;  Define tolerance
+      tol            = 1d-12*MAX(ABS([xcopy,ycopy]),/NAN)
+      ;;  Define triangles
+      TRIANGULATE,xcopy,ycopy,SPHERE=sph,tri,FVALUE=fcopy,/DEGREES;,TOLERANCE=tol[0]
+      PRINT, ';;  Line 201, E-Index:  ', eind
+      ;;  Triangulate
+      sph_grid       = TRIGRID(fcopy,SPHERE=sph,gsout,boundsout,/DEGREES)
+      PRINT, ';;  Line 204, E-Index:  ', eind
+      ;;==================================================================================
+      JUMP_SKIP:
+      ;;==================================================================================
+      PRINT, ';;  Line 208, E-Index:  ', eind
+      HELP, sph_grid, sph, tri
+      IF (N_ELEMENTS(tri) EQ 1) THEN PRINT, ';;  We made it...', eind
+      ;;----------------------------------------------------------------------------------
+      ;;  Check output format
+      ;;----------------------------------------------------------------------------------
+      ;;  Make sure gridded data was not extrapolated incorrectly
+      test           = FINITE(sph_grid) AND (sph_grid LE max_x[0]) AND (sph_grid GE min_x[0])
+      good_sph       = WHERE(test,gd_sph,COMPLEMENT=bad_sph,NCOMPLEMENT=bd_sph)
+      IF (bd_sph GT 0) THEN sph_grid[bad_sph] = !VALUES.D_NAN  ;;  kill bad points
+      IF (gd_sph GT 0) THEN BEGIN
+        ;;  Check dimensions
+        szn_fsph       = SIZE(sph_grid,/N_DIMENSIONS)
+        szd_f          = SIZE(sph_grid,/DIMENSIONS)
+        test_2d        = (szn_fsph[0] EQ 2)
+        IF (test_2d) THEN test_f = (szd_f[0] EQ nlon[0]) AND (szd_f[1] EQ nlat[0]) $
+                     ELSE test_f = 0
+        good_x0        = WHERE(test,gdx0)
+        test_x0        = (gdx0 GT 0) AND test_f
+        IF (test_x0) THEN BEGIN
+          ;;------------------------------------------------------------------------------
+          ;;  Save the data
+          ;;------------------------------------------------------------------------------
+          f_grid_out[eind,*,*] = sph_grid
+          sph_lon[eind,*]      = sphlon
+          sph_lat[eind,*]      = sphlat
+          sph_sr[eind,*,*]     = sph_domega
+          gind_ener[eind]      = 1
+        ENDIF
+      ENDIF  ;;  gridded finite test
+    ENDIF    ;;  co-linear test
+  ENDIF      ;;  original finite test
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define return structure
+;;----------------------------------------------------------------------------------------
+tags           = ['F_SPH_GRID','SPH_LON','SPH_LAT','SPH__SR','G_ENER']
+struc          = CREATE_STRUCT(tags,f_grid_out,sph_lon,sph_lat,sph_sr,gind_ener)
+;;----------------------------------------------------------------------------------------
+;;  Return structure to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   find_core_bulk_velocity.pro
+;  PURPOSE  :   This routine attempts to determine the bulk flow velocity of the core
+;                 of a particle distribution.  First the distribution is gridded and
+;                 triangulated, then the calculation proceeds.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               sphere_grid_esa_data.pro
+;               energy_to_vel.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA       :  Scalar structure associated with a known THEMIS ESA Burst
+;                               data structure [see get_th?_peib.pro, ? = a-f]
+;                               or a Wind/3DP PESA High Burst data structure
+;                               [see get_phb.pro]
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NLON       :  Scalar [long] defining the # of azimuthal bins to use
+;                               [Default = 30]
+;               NLAT       :  Scalar [long] defining the # of poloidal bins to use
+;                               [Default = 30]
+;               NPNT       :  Scalar [long] defining the # of points to use when
+;                               finding the peak of the distribution
+;                               [Default = 15]
+;               LON_RAN    :  [2]-Element [float] array defining the range of longitudes
+;                               angles that most likely contain the peak of the
+;                               distribution [0 < ø < 360]
+;                               [ Default = [165.,195.] ]
+;               LAT_RAN    :  [2]-Element [float] array defining the range of latitudes
+;                               angles that most likely contain the peak of the
+;                               distribution [ -90 < ∑ < +90 ]
+;                               [ Default = [-1.,1.]*20 ]
+;
+;   CHANGED:  1)  Continued to work on routine                     [04/19/2013   v1.0.0]
+;             2)  Continued to work on routine                     [04/22/2013   v1.0.0]
+;             3)  Continued to work on routine                     [04/22/2013   v1.0.0]
+;
+;   NOTES:      
+;               1)  A significant part of the success/failure of this routine will
+;                     depend upon an accurate guess for LON_RAN and LAT_RAN
+;
+;   CREATED:  04/19/2013
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/22/2013   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION find_core_bulk_velocity,data,NLON=nlon0,NLAT=nlat0,NPNT=npnt0,$
+                                 LON_RAN=lon_ran,LAT_RAN=lat_ran
+
+;;----------------------------------------------------------------------------------------
+;; => Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define default longitude/latitude range
+deflon_ra      = 18d1 + [-1d0,1d0]*15d0
+deflat_ra      =  0d0 + [-1d0,1d0]*20d0
+;;  Dummy error messages
+notstr_msg     = 'Must be an IDL structure...'
+notvdf_msg     = 'Must be an ion velocity distribution IDL structure...'
+;;----------------------------------------------------------------------------------------
+;; => Check input structure format
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN RETURN,0b
+str       = data[0]   ;; => in case it is an array of structures of the same format
+IF (SIZE(str,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test0      = test_wind_vs_themis_esa_struct(str,/NOM)
+test       = (test0.(0) + test0.(1)) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+dat            = str[0]
+;;----------------------------------------------------------------------------------------
+;; => Get structure values
+;;----------------------------------------------------------------------------------------
+;;  Define DAT structure parameters
+n_e            = dat[0].NENERGY                           ;;  # of energy bins [ = E]
+n_a            = dat[0].NBINS                             ;;  # of angle bins  [ = A]
+mass           = dat[0].MASS[0]                           ;;  M [eV/c^2, with c in km/s]
+energy         = dat[0].ENERGY                            ;;  E [Energy bin values, eV]  [E,A]-Element Array
+;;----------------------------------------------------------------------------------------
+;; => Check keywords
+;;----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(nlon0)   EQ 0) THEN nlon     = 30L       ELSE nlon     = LONG(nlon0[0])
+IF (N_ELEMENTS(nlat0)   EQ 0) THEN nlat     = 30L       ELSE nlat     = LONG(nlat0[0])
+IF (N_ELEMENTS(npnt0)   EQ 0) THEN npnt     = 15L       ELSE npnt     = LONG(npnt0[0])
+IF (N_ELEMENTS(lon_ran) EQ 0) THEN mnmx_lon = deflon_ra ELSE mnmx_lon = FLOAT(lon_ran)
+IF (N_ELEMENTS(lat_ran) EQ 0) THEN mnmx_lat = deflat_ra ELSE mnmx_lat = FLOAT(lat_ran)
+;;----------------------------------------------------------------------------------------
+;; => Create a spherical grid on a surface at E[i]  {i-th energy}
+;;----------------------------------------------------------------------------------------
+sph_struc      = sphere_grid_esa_data(dat,NLON=nlon[0],NLAT=nlat[0])
+;;  Define return parameters
+f_grid_out     = sph_struc.F_SPH_GRID  ;;  Triangulated and gridded ∆f
+sph_lon        = sph_struc.SPH_LON     ;;  Gridded ø [deg]
+sph_lat        = sph_struc.SPH_LAT     ;;  Gridded ∑ [deg]
+sph_sr         = sph_struc.SPH__SR     ;;  Gridded ∆Ω [sr]
+gind_ener      = sph_struc.G_ENER      ;;  logic defining whether data was good for E[i]
+;;----------------------------------------------------------------------------------------
+;;  Try calculating bulk flow velocity
+;;----------------------------------------------------------------------------------------
+f_copy         = f_grid_out
+lon_copy       = sph_lon
+lat_copy       = sph_lat
+;;  Define peak df arrays
+miss           = !VALUES.D_NAN
+ind_all        = REPLICATE(miss[0],npnt,3L)
+max_all        = REPLICATE(miss[0],npnt)
+;;  Define bulk flow velocity arrays
+lon_V_bulk     = REPLICATE(miss[0],npnt)
+lat_V_bulk     = REPLICATE(miss[0],npnt)
+V_bulk_mag     = REPLICATE(miss[0],npnt)
+V_bulk_vec     = REPLICATE(miss[0],npnt,3L)
+;;----------------------------------------------------------------------------------------
+;;  Limit results to the following angles [deg]
+;;    -20 < ∑ < +20  [Default latitude range]
+;;    165 < ø < 195  [Default latitude range]
+;;----------------------------------------------------------------------------------------
+IF (MAX(lon_copy,/NAN) GT 37d1) THEN lon_copy -= 36d1  ;; force:  0 < ø < 360
+
+FOR j=0L, n_e - 1L DO BEGIN
+  lon0     = ABS(REFORM(lon_copy[j,*]))
+  lat0     = REFORM(lat_copy[j,*])
+  f_copy0  = REFORM(f_copy[j,*,*])
+  ;;  Define tests
+  test_lon = ( lon0 GE mnmx_lon[0]) AND ( lon0 LE mnmx_lon[1])
+  test_lat = ( lat0 GE mnmx_lat[0]) AND ( lat0 LE mnmx_lat[1])
+  good_lon = WHERE(test_lon,gdlon,COMPLEMENT=bad_lon,NCOMPLEMENT=bd_lon)
+  good_lat = WHERE(test_lat,gdlat,COMPLEMENT=bad_lat,NCOMPLEMENT=bd_lat)
+  ;;  Remove unwanted data
+  IF (bd_lon GT 0) THEN f_copy[j,bad_lon,*] = !VALUES.D_NAN
+  IF (bd_lat GT 0) THEN f_copy[j,*,bad_lat] = !VALUES.D_NAN
+  IF (bd_lon GT 0) THEN lon_copy[j,bad_lon] = !VALUES.D_NAN
+  IF (bd_lat GT 0) THEN lat_copy[j,bad_lat] = !VALUES.D_NAN
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Find N highest points
+;;----------------------------------------------------------------------------------------
+FOR j=0L, npnt - 1L DO BEGIN
+  mx_f_sph       = MAX(f_copy,lfx,/NAN)
+  inds           = ARRAY_INDICES(f_copy,lfx)
+  ;;  Add to arrays
+  ind_all[j,*]   = inds
+  max_all[j]     = mx_f_sph[0]
+  ;;  Remove previous point
+  f_copy[inds[0],inds[1],inds[2]] = !VALUES.D_NAN
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define corresponding energies and speeds
+;;----------------------------------------------------------------------------------------
+eners          = TOTAL(energy,2,/NAN)/TOTAL(FINITE(energy),2)     ;;  Avg. energy bin values [eV]
+E_bulk         = eners[ind_all[*,0],*]                            ;;  Energies at peak [eV]
+V_bulk_mag     = energy_to_vel(E_bulk,mass[0])
+;;----------------------------------------------------------------------------------------
+;;  Define corresponding velocities
+;;----------------------------------------------------------------------------------------
+;;  Determine spherical coordinate angles
+FOR j=0L, npnt - 1L DO BEGIN
+  lon_V_bulk[j] = sph_lon[ind_all[j,0],ind_all[j,1]]
+  lat_V_bulk[j] = sph_lat[ind_all[j,0],ind_all[j,2]]
+ENDFOR
+clat_clon      = COS(lat_V_bulk*!DPI/18d1)*COS(lon_V_bulk*!DPI/18d1)
+clat_slon      = COS(lat_V_bulk*!DPI/18d1)*SIN(lon_V_bulk*!DPI/18d1)
+slat           = SIN(lat_V_bulk*!DPI/18d1)
+V_bulk_vec[*,0] = V_bulk_mag*clat_clon
+V_bulk_vec[*,1] = V_bulk_mag*clat_slon
+V_bulk_vec[*,2] = V_bulk_mag*slat
+;;----------------------------------------------------------------------------------------
+;;  Define average and median values
+;;----------------------------------------------------------------------------------------
+avg_vbulk      = REPLICATE(miss[0],3L)
+med_vbulk      = REPLICATE(miss[0],3L)
+FOR k=0L, 2L DO BEGIN
+  avg_vbulk[k] = MEAN(V_bulk_vec[*,k],/NAN)
+  med_vbulk[k] = MEDIAN(V_bulk_vec[*,k])
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define return structure
+;;----------------------------------------------------------------------------------------
+tags           = ['AVG','MED']
+struc          = CREATE_STRUCT(tags,avg_vbulk,med_vbulk)
+;;----------------------------------------------------------------------------------------
+;;  Return structure to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END
+
+
+

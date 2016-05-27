@@ -1,0 +1,432 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   rotate_3dp_htr_structure.pro
+;  PURPOSE  :   Rotates a 3DP data structure into coordinate system defined by user
+;                 defined keyword inputs.  The routine adds tags to the input structure
+;                 that define triangulated data in three plane projections.  The routine
+;                 uses high time resolution (HTR) magnetic field data for each
+;                 [Energy,Theta,Phi]-data point to reduce aliasing from a rapidly
+;                 rotating magnetic field.
+;                 The new structure tags are:
+;                   VX2D[VY2D]  :  Regularly gridded velocities to use as X[Y]-axis
+;                                    input for contour plot outputs
+;                   DF2D_JK     :  Regularly gridded phase space densities projected
+;                                    onto the JK-Plane [e.g. XY-Plane]
+;                   VELX_JK     :  Horizontal axis velocities (actual data) that can be
+;                                    projected onto contours to show where actual data
+;                                    points were observed in JK-Plane
+;                   VELY_JK     :  Vertical axis velocities (actual data) that can be
+;                                    projected onto contours to show where actual data
+;                                    points were observed in JK-Plane
+;                   VELZ_JK     :  Velocities orthogonal to plane containing DF2D_JK
+;                   ROT_MAT     :  [3,3]-Element array defining the rotation matrix to
+;                                    convert from the input basis to new rotated basis
+;                   ROT_MAT_Z   :  [3,3]-Element array defining the rotation matrix to
+;                                    convert from the input basis to the YZ-Projection
+;
+;  CALLED BY:   
+;               contour_3d_htr_1plane.pro
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               dat_3dp_str_names.pro
+;               conv_units.pro
+;               tplot_struct_format_test.pro
+;               str_element.pro
+;               timestamp_3dp_angle_bins.pro
+;               energy_to_vel.pro
+;               interp.pro
+;               my_crossp_2.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT        :  3DP data structure either from get_??.pro
+;                               with defined structure tag quantities for VSW
+;               BGSE_HTR   :  HTR B-field structure of format:
+;                               {X:Unix Times, Y:[K,3]-Element Vector}
+;               VECTOR2    :  3-Element vector to be used to define the plane made with
+;                               BGSE_HTR  [Default = {0.,1.,0.} but Vsw is more physical]
+;               SPRATE     :  Scalar defining the spin rate [deg/s] of the spacecraft
+;                               [Default = 120.0  (i.e. 3s spin period)]
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               VLIM       :  Limit for x-y velocity axes over which to plot data
+;                               [Default = max vel. from energy bin values]
+;               NGRID      :  # of isotropic velocity grids to use to triangulate the data
+;                               [Default = 50L]
+;
+;   CHANGED:  1)  Fixed an indexing error in the equivalent cal_rot.pro rotation
+;                   matrix definition section                      [07/09/2012   v1.1.0]
+;
+;   NOTES:      
+;               1)  This routine modifies the input structure, DAT, so make sure
+;                     you make a copy of the original prior to calling.
+;               2)  To be useful, the data should be transformed into the solar wind
+;                     frame prior to calling this routine.
+;               3)  See also:  rotate_3dp_structure.pro
+;               4)  This routine is only verified for EESA Low so far!!!
+;
+;   CREATED:  05/24/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/09/2012   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO rotate_3dp_htr_structure,dat,bgse_htr,vector2,sprate,VLIM=vlim,NGRID=ngrid
+
+;-----------------------------------------------------------------------------------------
+; => Define some constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+; => Dummy error messages
+notstr_msg     = 'Must be an IDL structure...'
+nottplot_mssg  = 'Not an appropriate TPLOT structure...'
+notel_mssg     = 'This routine is only verified for EESA Low so far!!!'
+;-----------------------------------------------------------------------------------------
+; => Check DAT input
+;-----------------------------------------------------------------------------------------
+test0      = test_wind_vs_themis_esa_struct(dat,/NOM)
+test       = (test0.(0) + test0.(1)) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notstr_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+
+data       = dat[0]
+; => convert to phase space density
+IF (test0.(0)) THEN BEGIN
+  ;-------------------------------------------
+  ; Wind
+  ;-------------------------------------------
+  ; => Check which instrument is being used
+  strns   = dat_3dp_str_names(data[0])
+  IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+    RETURN
+  ENDIF
+  shnme   = STRLOWCASE(STRMID(strns.SN[0],0L,2L))
+  CASE shnme[0] OF
+    'el' : BEGIN
+      data   = conv_units(data,'df')
+    END
+    ELSE : BEGIN
+      MESSAGE,notel_mssg[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    END
+  ENDCASE
+ENDIF ELSE BEGIN
+  ;-------------------------------------------
+  ; Not a Wind 3DP structure
+  ;-------------------------------------------
+  MESSAGE,notel_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Check BGSE_HTR structure format
+;-----------------------------------------------------------------------------------------
+test  = tplot_struct_format_test(bgse_htr,/YVECT)
+IF (NOT test) THEN BEGIN
+  MESSAGE,nottplot_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Check VECTOR2 and SPRATE
+;-----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(vector2) NE 3) THEN vec2    = [0.,1.,0.] ELSE vec2    = REFORM(vector2)
+IF (N_ELEMENTS(sprate)  NE 1) THEN sprated = 120d0      ELSE sprated = REFORM(sprate[0])
+;-----------------------------------------------------------------------------------------
+; => Check keywords
+;-----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(vlim) THEN BEGIN
+  vlim = MAX(SQRT(2*data[0].ENERGY/data[0].MASS),/NAN)
+ENDIF ELSE BEGIN
+  vlim = FLOAT(vlim)
+ENDELSE
+dgs        = vlim[0]/5e1
+gs         = [dgs,dgs]                   ; => grid spacing for triangulation used later
+xylim      = [-1*vlim[0],-1*vlim[0],vlim[0],vlim[0]]
+dumb1d     = REPLICATE(d,101L)
+dumb2d     = REPLICATE(d,101L,101L)
+; => Force regularly gridded velocities (for contour plots)
+vx2d       = -1e0*vlim[0] + gs[0]*FINDGEN(FIX((2e0*vlim[0])/gs[0]) + 1L)
+vy2d       = -1e0*vlim[0] + gs[1]*FINDGEN(FIX((2e0*vlim[0])/gs[1]) + 1L)
+
+; => Add the regularly gridded velocities to data structure
+;      Note:  these velocities correspond to the results from triangulation
+str_element,data,'VX2D',vx2d,/ADD_REPLACE
+str_element,data,'VY2D',vy2d,/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Determine the time stamps for each angle bin
+;-----------------------------------------------------------------------------------------
+; [N,M]-Element array
+;    N = # of energy bins
+;    M = # of angle bins
+t_3dp    = timestamp_3dp_angle_bins(data,sprated[0])
+;-----------------------------------------------------------------------------------------
+; => Define DAT structure parameters
+;-----------------------------------------------------------------------------------------
+n_e      = data.NENERGY            ; => # of energy bins
+n_a      = data.NBINS              ; => # of angle bins
+kk       = n_e*n_a
+ind_2d   = INDGEN(n_e,n_a)         ; => original indices of angle bins
+
+energy   = data.ENERGY             ; => Energy bin values [eV]
+df_dat   = data.DATA               ; => Data values [data.UNITS_NAME]
+
+phi      = data.PHI                ; => Azimuthal angle (from sun direction) [deg]
+dphi     = data.DPHI               ; => Uncertainty in phi
+theta    = data.THETA              ; => Poloidal angle (from ecliptic plane) [deg]
+dtheta   = data.DTHETA             ; => Uncertainty in theta
+
+tacc     = data.DT                 ; => Accumulation time [s] of each angle bin
+t0       = data.TIME[0]            ; => Unix time at start of 3DP sample period
+t1       = data.END_TIME[0]        ; => Unix time at end of 3DP sample period
+del_t    = t1[0] - t0[0]           ; => Total time of data sample
+;-----------------------------------------------------------------------------------------
+; => Reform 2D arrays into 1D
+;      K = N * M
+;-----------------------------------------------------------------------------------------
+phi_1d   = REFORM(phi,kk)
+the_1d   = REFORM(theta,kk)
+dat_1d   = REFORM(df_dat,kk)
+ener_1d  = REFORM(energy,kk)
+ind_1d   = REFORM(ind_2d,kk)
+t3dp_1d  = REFORM(t_3dp,kk)
+;-----------------------------------------------------------------------------------------
+; => Define 3DP velocities in solar wind frame
+;-----------------------------------------------------------------------------------------
+; => Magnitude of velocities from energy (km/s)
+nvmag     = energy_to_vel(ener_1d,data[0].MASS[0])
+coth      = COS(the_1d*!DPI/18d1)
+sith      = SIN(the_1d*!DPI/18d1)
+coph      = COS(phi_1d*!DPI/18d1)
+siph      = SIN(phi_1d*!DPI/18d1)
+; => Define directions
+swfv      = DBLARR(kk,3L)              ;  [K,3]-Element array
+swfv[*,0] = nvmag*coth*coph            ; => Define X-Velocity per energy per data bin
+swfv[*,1] = nvmag*coth*siph            ; => Define Y-Velocity per energy per data bin
+swfv[*,2] = nvmag*sith                 ; => Define Z-Velocity per energy per data bin
+;-----------------------------------------------------------------------------------------
+; => Define BGSE_HTR structure parameters
+;-----------------------------------------------------------------------------------------
+htr_t    = bgse_htr.X        ; => Unix times
+htr_b    = bgse_htr.Y        ; => GSE B-field [nT]
+; => Interpolate HTR MFI data to 3dp angle bin times
+magfx    = interp(htr_b[*,0],htr_t,t3dp_1d,/NO_EXTRAP)  ;; [K]-Element array
+magfy    = interp(htr_b[*,1],htr_t,t3dp_1d,/NO_EXTRAP)  ;; [K]-Element array
+magfz    = interp(htr_b[*,2],htr_t,t3dp_1d,/NO_EXTRAP)  ;; [K]-Element array
+bmag     = SQRT(magfx^2 + magfy^2 + magfz^2)            ;; [K]-Element array
+; => define corresponding unit vectors
+umagfx   = magfx/bmag
+umagfy   = magfy/bmag
+umagfz   = magfz/bmag
+umagf    = [[umagfx],[umagfy],[umagfz]]                 ;; [K,3]-Element array
+;-----------------------------------------------------------------------------------------
+; => Define rotation to plane containing Bo and Vsw
+;-----------------------------------------------------------------------------------------
+v1       = umagf
+v2       = vec2/NORM(vec2)  ;; normalize
+;; => Define cross-products
+v1xv2    = my_crossp_2(v1,v2,/NOM)     ;;  (V1 x V2)
+;; renormalize
+v1xv2    = v1xv2/(SQRT(TOTAL(v1xv2^2,2L,/NAN)) # REPLICATE(1d0,3L))
+v1xv2xv1 = my_crossp_2(v1xv2,v1,/NOM)  ;;  (V1 x V2) x V1
+;;>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;; => Define rotation matrices equivalent to cal_rot.pro
+;;>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+rotm     = DBLARR(kk,3L,3L)            ;;  Rotation matrices
+rot_inv  = DBLARR(kk,3L,3L)            ;;  [K,3,3]-element array
+row1_inv = v1                          ;;  [K,3]-Element array
+row2_inv = v1xv2xv1                    ;;  [K,3]-Element array
+row3_inv = v1xv2                       ;;  [K,3]-Element array
+
+;rot_inv[*,*,0] = row1_inv
+;rot_inv[*,*,1] = row2_inv
+;rot_inv[*,*,2] = row3_inv
+rot_inv[*,0,*] = row1_inv
+rot_inv[*,1,*] = row2_inv
+rot_inv[*,2,*] = row3_inv
+; -> invert these
+FOR j=0L, kk - 1L DO BEGIN
+  temp = LA_INVERT(REFORM(rot_inv[j,*,*]),/DOUBLE,STATUS=stat)
+  IF (stat EQ 0) THEN rotm[j,*,*] = temp
+ENDFOR
+;;>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;; => Define rotation matrices equivalent to rot_mat.pro
+;;>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+rotz     = DBLARR(kk,3L,3L)            ;;  Rotation matrices
+row1_inv = v1xv2xv1                    ;;  [K,3]-Element array
+row2_inv = v1xv2                       ;;  [K,3]-Element array
+row3_inv = v1                          ;;  [K,3]-Element array
+rotz[*,*,0] = row1_inv
+rotz[*,*,1] = row2_inv
+rotz[*,*,2] = row3_inv
+;-----------------------------------------------------------------------------------------
+; => Rotate velocities into new coordinate basis and triangulate
+;-----------------------------------------------------------------------------------------
+vel_r      = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTM
+vel_z      = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTZ
+
+temp_r     = REBIN(swfv,kk,3L,3L)            ;;  expand to a [K,3,3]-element array
+;; => Apply rotations [vectorized]
+temp_rm    = TOTAL(temp_r*rotm,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
+temp_rz    = TOTAL(temp_r*rotz,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
+vel_r      = temp_rm
+vel_z      = temp_rz
+
+;; => Define new basis velocities components [cal_rot.pro]
+vel2dx     = REFORM(vel_r[*,0])
+vyz2d      = SQRT(TOTAL(vel_r[*,1:2]^2,2,/NAN))
+vel2dy     = vyz2d*REFORM(vel_r[*,1])/ABS(REFORM(vel_r[*,1]))
+vel2dz     = vyz2d*REFORM(vel_r[*,2])/ABS(REFORM(vel_r[*,2]))
+
+;; => Define new basis velocities components [rot_mat.pro]
+vyz2d_z    = SQRT(TOTAL(vel_z[*,1:2]^2,2,/NAN))
+vel2dx_z   = REFORM(vel_z[*,0])
+vel2dy_z   = vyz2d_z*REFORM(vel_z[*,1])/ABS(REFORM(vel_z[*,1]))
+vel2dz_z   = vyz2d_z*REFORM(vel_z[*,2])/ABS(REFORM(vel_z[*,2]))
+;-----------------------------------------------------------------------------------------
+;  => ONLY Finite data is allowed in TRIANGULATE.PRO and TRIGRID.PRO
+;-----------------------------------------------------------------------------------------
+testf      = (FINITE(dat_1d) EQ 1) AND (dat_1d GE 0.)
+testv      = (FINITE(vel2dx) EQ 1) AND (FINITE(vel2dy) EQ 1) AND (FINITE(vel2dz) EQ 1)
+indx       = WHERE(testf AND testv,cnt,COMPLEMENT=bad,NCOMPLEMENT=bd)
+IF (cnt GT 0L) THEN BEGIN
+  vel2dx_2 = vel2dx[indx]
+  vel2dy_2 = vel2dy[indx]
+  vel2dz_2 = vel2dz[indx]
+  dat_1d2  = dat_1d[indx]
+  ;---------------------------------------------------------------------------------------
+  ; => Y vs. X Plane projection
+  ;---------------------------------------------------------------------------------------
+  TRIANGULATE, vel2dx_2, vel2dy_2, tr
+  ; => put DF on regular grid
+  df2d_xy  = TRIGRID(vel2dx_2,vel2dy_2,dat_1d2,tr,gs,xylim)
+  vx2d_xy  = vel2dx_2
+  vy2d_xy  = vel2dy_2
+  vz2d_xy  = vel2dz_2
+  ;---------------------------------------------------------------------------------------
+  ; => X vs. Z Plane projection
+  ;---------------------------------------------------------------------------------------
+  TRIANGULATE, vel2dz_2, vel2dx_2, tr
+  ; => put DF on regular grid
+  df2d_xz  = TRIGRID(vel2dz_2,vel2dx_2,dat_1d2,tr,gs,xylim)
+  vx2d_xz  = vel2dz_2
+  vy2d_xz  = vel2dx_2
+  vz2d_xz  = vel2dy_2
+  ;---------------------------------------------------------------------------------------
+  ; => Force output to have specific # of elements
+  ;---------------------------------------------------------------------------------------
+  IF (bd GT 0) THEN BEGIN
+    nxy     = N_ELEMENTS(vx2d_xy)
+    ndef    = kk
+    nd      = ndef - nxy
+    pad     = REPLICATE(d,nd)
+    ;; => pad the velocities
+    vx2d_xy  = [vx2d_xy,pad]
+    vy2d_xy  = [vy2d_xy,pad]
+    vz2d_xy  = [vz2d_xy,pad]
+    vx2d_xz  = [vx2d_xz,pad]
+    vy2d_xz  = [vy2d_xz,pad]
+    vz2d_xz  = [vz2d_xz,pad]
+  ENDIF
+ENDIF ELSE BEGIN
+  MESSAGE,'No finite XY data',/CONTINUE,/INFORMATIONAL
+  ; => X-Y Plane projection
+  df2d_xy  = dumb2d
+  vx2d_xy  = dumb1d
+  vy2d_xy  = dumb1d
+  vz2d_xy  = dumb1d
+  ; => X-Z Plane projection
+  df2d_xz  = dumb2d
+  vx2d_xz  = dumb1d
+  vy2d_xz  = dumb1d
+  vz2d_xz  = dumb1d
+ENDELSE
+
+testf      = (FINITE(dat_1d) EQ 1) AND (dat_1d GE 0.)
+testv      = (FINITE(vel2dx_z) EQ 1) AND (FINITE(vel2dy_z) EQ 1) AND (FINITE(vel2dz_z) EQ 1)
+indx       = WHERE(testf AND testv,cnt,COMPLEMENT=bad,NCOMPLEMENT=bd)
+IF (cnt GT 0L) THEN BEGIN
+  vel2dx_z = vel2dx_z[indx]
+  vel2dy_z = vel2dy_z[indx]
+  vel2dz_z = vel2dz_z[indx]
+  dat_1dz  = dat_1d[indx]
+  ;---------------------------------------------------------------------------------------
+  ; => Z vs. Y Plane projection
+  ;---------------------------------------------------------------------------------------
+  TRIANGULATE, vel2dx_z, vel2dy_z, tr
+  df2d_yz  = TRIGRID(vel2dx_z,vel2dy_z,dat_1dz,tr,gs,xylim)
+  vx2d_yz  = vel2dx_z
+  vy2d_yz  = vel2dy_z
+  vz2d_yz  = vel2dz_z
+  ;---------------------------------------------------------------------------------------
+  ; => Force output to have specific # of elements
+  ;---------------------------------------------------------------------------------------
+  IF (bd GT 0) THEN BEGIN
+    nxy     = N_ELEMENTS(vx2d_yz)
+    ndef    = kk
+    nd      = ndef - nxy
+    pad     = REPLICATE(d,nd)
+    ;; => pad the velocities
+    vx2d_yz  = [vx2d_yz,pad]
+    vy2d_yz  = [vy2d_yz,pad]
+    vz2d_yz  = [vz2d_yz,pad]
+  ENDIF
+ENDIF ELSE BEGIN
+  MESSAGE,'No finite Z data',/CONTINUE,/INFORMATIONAL
+  ; => Y-Z Plane projection
+  df2d_yz  = dumb2d
+  vx2d_yz  = dumb1d
+  vy2d_yz  = dumb1d
+  vz2d_yz  = dumb1d
+  vx2d_yzg = dumb1d
+  vy2d_yzg = dumb1d
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Add new data to original structure
+;-----------------------------------------------------------------------------------------
+; => X-Y Plane projection
+str_element,data,'DF2D_XY',df2d_xy,/ADD_REPLACE
+str_element,data,'VELX_XY',vx2d_xy,/ADD_REPLACE
+str_element,data,'VELY_XY',vy2d_xy,/ADD_REPLACE
+str_element,data,'VELZ_XY',vz2d_xy,/ADD_REPLACE
+; => X-Z Plane projection
+str_element,data,'DF2D_XZ',df2d_xz,/ADD_REPLACE
+str_element,data,'VELX_XZ',vx2d_xz,/ADD_REPLACE
+str_element,data,'VELY_XZ',vy2d_xz,/ADD_REPLACE
+str_element,data,'VELZ_XZ',vz2d_xz,/ADD_REPLACE
+; => Y-Z Plane projection
+str_element,data,'DF2D_YZ',df2d_yz,/ADD_REPLACE
+str_element,data,'VELX_YZ',vx2d_yz,/ADD_REPLACE
+str_element,data,'VELY_YZ',vy2d_yz,/ADD_REPLACE
+str_element,data,'VELZ_YZ',vz2d_yz,/ADD_REPLACE
+; => X-Y and X-Z Plane projection rotation
+str_element,data,'ROT_MAT',rotm,/ADD_REPLACE
+; => Y-Z Plane projection rotation
+str_element,data,'ROT_MAT_Z',rotz,/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Return altered data structure to user
+;-----------------------------------------------------------------------------------------
+dat        = data
+
+RETURN
+END
+
+
+
+    ;; => pad the data
+;    temp2d  = REPLICATE(d,ndef,ndef)
+;    temp2d[0L:(nxy - 1L),0L:(nxy - 1L)] = df2d_xy
+;    df2d_xy = temp2d
+;    temp2d  = REPLICATE(d,ndef,ndef)
+;    temp2d[0L:(nxy - 1L),0L:(nxy - 1L)] = df2d_xz
+;    df2d_xz = temp2d

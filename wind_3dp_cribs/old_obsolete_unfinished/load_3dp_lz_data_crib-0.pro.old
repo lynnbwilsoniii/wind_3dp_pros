@@ -1,0 +1,453 @@
+;+
+;*****************************************************************************************
+;
+;  CRIB     :   load_3dp_lz_data_crib
+;  PURPOSE  :   This crib sheet provides an example of how to load the level zero (lz)
+;                 data from the Wind/3DP instrument into IDL and then create IDL save
+;                 files for later use.  Due to the nature of the decomutation software,
+;                 the data can only be loaded while IDL is in 32-bit mode unless you
+;                 are using a Linux OS with 64-bit capability (see shared objects in
+;                 ~/WIND_PRO directory, or *.so files).  So I generally load the data
+;                 while in 32-bit mode, save as IDL save files, then exit IDL and
+;                 re-start in 64-bit mode.  That way, one can load more than a week of
+;                 SST data, for instance, without running out of memory.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               [Enter by hand, do NOT run like a bash script]
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Enter each line in the command-line prompt, do not run like a batch
+;                     file
+;
+;  REFERENCES:  
+;               1)  Carlson et al., (1983), "An instrument for rapidly measuring
+;                      plasma distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70.
+;               2)  Curtis et al., (1989), "On-board data analysis techniques for
+;                      space plasma particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372.
+;               3)  Lin et al., (1995), "A Three-Dimensional Plasma and Energetic
+;                      particle investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125.
+;               4)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;               5)  Bougeret, J.-L., M.L. Kaiser, P.J. Kellogg, R. Manning, K. Goetz,
+;                      S.J. Monson, N. Monge, L. Friel, C.A. Meetre, C. Perche,
+;                      L. Sitruk, and S. Hoang (1995) "WAVES:  The Radio and Plasma
+;                      Wave Investigation on the Wind Spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 231-263, doi:10.1007/BF00751331.
+;               6)  Viñas, A.F. and J.D. Scudder (1986), "Fast and Optimal Solution to
+;                      the 'Rankine-Hugoniot Problem'," J. Geophys. Res. 91, pp. 39-58.
+;               7)  A. Szabo (1994), "An improved solution to the 'Rankine-Hugoniot'
+;                      problem," J. Geophys. Res. 99, pp. 14,737-14,746.
+;               8)  Koval, A. and A. Szabo (2008), "Modified 'Rankine-Hugoniot' shock
+;                      fitting technique:  Simultaneous solution for shock normal and
+;                      speed," J. Geophys. Res. 113, pp. A10110.
+;               9)  Russell, C.T., J.T. Gosling, R.D. Zwickl, and E.J. Smith (1983),
+;                      "Multiple spacecraft observations of interplanetary shocks:  ISEE
+;                      Three-Dimensional Plasma Measurements," J. Geophys. Res. 88,
+;                      pp. 9941-9947.
+;
+;   CREATED:  09/20/2013
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/20/2013   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+me             = 9.1093829100d-31     ;;  Electron mass [kg]
+mp             = 1.6726217770d-27     ;;  Proton mass [kg]
+ma             = 6.6446567500d-27     ;;  Alpha-Particle mass [kg]
+c              = 2.9979245800d+08     ;;  Speed of light in vacuum [m/s]
+epo            = 8.8541878170d-12     ;;  Permittivity of free space [F/m]
+muo            = !DPI*4.00000d-07     ;;  Permeability of free space [N/A^2 or H/m]
+qq             = 1.6021765650d-19     ;;  Fundamental charge [C]
+kB             = 1.3806488000d-23     ;;  Boltzmann Constant [J/K]
+hh             = 6.6260695700d-34     ;;  Planck Constant [J s]
+GG             = 6.6738400000d-11     ;;  Newtonian Constant [m^(3) kg^(-1) s^(-1)]
+
+f_1eV          = qq[0]/hh[0]          ;;  Freq. associated with 1 eV of energy [Hz]
+J_1eV          = hh[0]*f_1eV[0]       ;;  Energy associated with 1 eV of energy [J]
+;;  Temp. associated with 1 eV of energy [K]
+K_eV           = qq[0]/kB[0]          ;; ~ 11,604.519 K
+R_E            = 6.37814d3            ;;  Earth's Equitorial Radius [km]
+slash          = get_os_slash()       ;;  '/' for Unix, '\' for Windows
+;;----------------------------------------------------------------------------------------
+;;  Load 3DP data
+;;----------------------------------------------------------------------------------------
+;;  Define a start date and time
+start_t        = '1996-04-03/00:00:00'
+;;  Define a duration of time to load [hours]
+dur            = 120.
+;;  Define the memory size to limit to [mostly for older systems]
+memsz          = 150.
+;;  Define the packet quality [2 allows "invalid" distributions through]
+qual           = 2
+;;  Load data
+load_3dp_data,start_t[0],dur[0],QUALITY=qual[0],MEMSIZE=memsz[0]
+
+;;  Check to see if variables were loaded into TPLOT
+tplot_names
+
+;;----------------------------------------------------------------------------------------
+;;  Define Date String
+;;----------------------------------------------------------------------------------------
+date           = '040396'
+;;----------------------------------------------------------------------------------------
+;;  Define Time Range
+;;----------------------------------------------------------------------------------------
+time_ra        = time_range_define(DATE=date[0])
+t              = time_ra.TR_STRING     ;;  [2]-element array [e.g., '1996-04-03/00:00:00']
+tra            = time_ra.TR_UNIX       ;;  Unix times
+tdates         = time_ra.TDATE_SE      ;;  [e.g., '1996-04-03']
+fdate          = time_ra.FDATE_SE      ;;  [e.g., '04-03-1996']
+;;----------------------------------------------------------------------------------------
+;;  Open window and plot
+;;----------------------------------------------------------------------------------------
+;;  Open window
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100,TITLE='Wind Plots ['+tdates[0]+']'
+;;  Plot MFI data
+tplot,[1,2],TRANGE=tra
+;;----------------------------------------------------------------------------------------
+;;  Get Rankine-Hugoniot results, if available
+;;----------------------------------------------------------------------------------------
+sh_mit         = read_shocks_jck_database()
+mit_dates      = sh_mit.SDATES                     ;;  'MMDDYY'
+shocks         = sh_mit.SHOCK
+header         = sh_mit.HEADER
+ymdb_ra        = header.DATE_TIME                  ;;  ['YYYY-MM-DD/HH:MM:SS.sss']
+unix_ra        = time_double(ymdb_ra)              ;;  Unix times at center of ramps
+
+a_ushn         = shocks.USH_N[*,0]                 ;;  Upstream normal flow speed (km/s) [shock frame]
+a_dushn        = shocks.D_USH_N[*,0]               ;;  Uncertainty in a_ushn
+a_compr        = shocks.COMPRESSION                ;;  N_2/N_1 (density compression ratio)
+a_dcompr       = shocks.D_COMPRESSION              ;;  Uncertainty in a_compr
+a_machf        = REFORM(shocks.MACH_FAST[*,0])     ;;  Fast Mach number
+a_dmachf       = REFORM(shocks.D_MACH_FAST[*,0])   ;;  Uncertainty in a_machf
+a_thbn         = shocks.THETA_BN                   ;;  Shock normal angle (deg)
+a_dthbn        = shocks.D_THETA_BN                 ;;  Uncertainty in a_thbn
+a_vsw          = header.VSW[*,*,0]                 ;;  Upstream Avg. solar wind velocity [GSE, km/s]
+a_dvsw         = header.D_VSW[*,*,0]               ;;  Uncertainty in a_vsw
+a_magf         = header.MAGF[*,*,0]                ;;  Upstream Avg. magnetic field [GSE, nT]
+a_dmagf        = header.D_MAGF[*,*,0]              ;;  Uncertainty in a_magf
+a_csup         = header.C_SOUND[*,0]               ;;  Upstream Avg. sound speed (km/s)
+a_dcsup        = header.D_C_SOUND[*,0]             ;;  Uncertainty in a_csup
+a_vaup         = header.V_ALFVEN[*,0]              ;;  Upstream Avg. Alfven speed (km/s)
+a_dvaup        = header.D_V_ALFVEN[*,0]            ;;  Uncertainty in a_vaup
+a_shnorms      = shocks.SH_NORM                    ;;  Shock normal vector (GSE)
+;;  Determine which shock to use
+gshock         = WHERE(mit_dates EQ date[0],gsh)
+PRINT,';; ',gsh[0]
+;;            1
+
+;;  Some dates have two shocks per date, so choose which one to use
+;;    [see two commented examples below]
+;IF (date EQ '040896')    THEN kk = 0 ELSE kk = 1
+;IF (date EQ '021100')    THEN kk = 1 ELSE kk = 0
+IF (SIZE(kk,/TYPE) EQ 0) THEN kk = 0
+gnorm          = REFORM(a_shnorms[gshock[kk],*])
+gthbn          = (REFORM(a_thbn[gshock[kk]]))[0]
+gcomp          = (REFORM(a_compr[gshock[kk]]))[0]
+gavsw          = REFORM(a_vsw[gshock[kk],*])
+gmagf          = REFORM(a_magf[gshock[kk],*])
+tura           = unix_ra[gshock[kk]]
+;;----------------------------------------------------------------------------------------
+;;  Load orbit data
+;;----------------------------------------------------------------------------------------
+Bgse_tpnm      = 'wi_B3(GSE)'        ;;  TPLOT handle associated with Bo [GSE, nT]
+wind_orbit_to_tplot,BNAME=Bgse_tpnm[0],TRANGE=tra
+;;  Change Y-Axis titles
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+options,'Wind_GSE_Latitude','YTITLE','GSE Lat. [deg]'
+options,'Wind_GSE_Longitude','YTITLE','GSE Lon. [deg]'
+;;  Add these variables as tick mark labels
+gnames         = ['Wind_Radial_Distance','Wind_GSE_Latitude','Wind_GSE_Longitude','Wind_MLT']
+tplot_options,VAR_LABEL=gnames
+;;  Replot data to see new tick mark labels
+tplot
+;;----------------------------------------------------------------------------------------
+;;  Load ion moments
+;;----------------------------------------------------------------------------------------
+Bgse_tpnm      = 'wi_B3(GSE)'        ;;  TPLOT handle associated with Bo [GSE, nT]
+Vgse_tpnm      = 'V_sw2'             ;;  " " Vsw [GSE, km/s]
+pesa_low_moment_calibrate,DATE=date,TRANGE=tra,BNAME=Bgse_tpnm[0],$
+                          COMPRESS=gcomp[0],MIDRA=tura[0]
+;;  Determine which TPLOT handle to use for estimate of spacecraft potential [eV]
+IF (tnames('sc_pot_3') EQ '') THEN scp_tpn = 'sc_pot_2' ELSE scp_tpn = 'sc_pot_3'
+;;----------------------------------------------------------------------------------------
+;;  Load WAVES radio data
+;;----------------------------------------------------------------------------------------
+fl        = 4.
+fh        = 13e3
+yscl      = 'log'
+waves_tnr_rad_to_tplot,DATE=date,FLOW=fl[0],FHIGH=fh[0],YSCL=yscl[0],TRANGE=tra
+;;----------------------------------------------------------------------------------------
+;;  Get thermal [PESA Low] and suprathermal [PESA High]
+;;    ion velocity distribution functions (VDFs)
+;;
+;;    Low   :  ~0.1-10.0 keV ions
+;;    High  :  ~0.5-28.0 keV ions
+;;----------------------------------------------------------------------------------------
+fpref          = 'Pesa_3DP_Structures_'
+fsuffx         = '_w-Vsw-Ni-SCPot.sav'
+pldat          = get_3dp_structs('pl' ,TRANGE=tra)      ;;  PESA  Low
+plbdat         = get_3dp_structs('plb',TRANGE=tra)      ;;  PESA  Low Burst
+phdat          = get_3dp_structs('ph' ,TRANGE=tra)      ;;  PESA High
+phbdat         = get_3dp_structs('phb',TRANGE=tra)      ;;  PESA High Burst
+IF (SIZE( pldat,/TYPE) EQ 8) THEN apl  =  pldat.DATA
+IF (SIZE( phdat,/TYPE) EQ 8) THEN aph  =  phdat.DATA
+IF (SIZE(plbdat,/TYPE) EQ 8) THEN aplb = plbdat.DATA
+IF (SIZE(phbdat,/TYPE) EQ 8) THEN aphb = phbdat.DATA
+
+IF (SIZE( pldat,/TYPE) EQ 8) THEN add_vsw2,apl,Vgse_tpnm[0]
+IF (SIZE( pldat,/TYPE) EQ 8) THEN add_magf2,apl,Bgse_tpnm[0]
+IF (SIZE( pldat,/TYPE) EQ 8) THEN add_scpot,apl,scp_tpn[0]
+IF (SIZE( phdat,/TYPE) EQ 8) THEN add_vsw2,aph,Vgse_tpnm[0]
+IF (SIZE( phdat,/TYPE) EQ 8) THEN add_magf2,aph,Bgse_tpnm[0]
+IF (SIZE( phdat,/TYPE) EQ 8) THEN add_scpot,aph,scp_tpn[0]
+
+IF (SIZE(plbdat,/TYPE) EQ 8) THEN add_vsw2,aplb,Vgse_tpnm[0]
+IF (SIZE(plbdat,/TYPE) EQ 8) THEN add_magf2,aplb,Bgse_tpnm[0]
+IF (SIZE(plbdat,/TYPE) EQ 8) THEN add_scpot,aplb,scp_tpn[0]
+IF (SIZE(phbdat,/TYPE) EQ 8) THEN add_vsw2,aphb,Vgse_tpnm[0]
+IF (SIZE(phbdat,/TYPE) EQ 8) THEN add_magf2,aphb,Bgse_tpnm[0]
+IF (SIZE(phbdat,/TYPE) EQ 8) THEN add_scpot,aphb,scp_tpn[0]
+
+fnm            = file_name_times(tra,PREC=0)
+ftimes         = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+ftimes         = STRMID(ftimes[*],0L,15L)
+tsuffx         = ftimes[0]+'_'+ftimes[1]
+fname          = fpref[0]+tsuffx[0]+fsuffx[0]
+;;  Print out name as a check
+PRINT,';; ',fname[0]
+
+HELP,apl,aplb,aph,aphb
+;;  Create IDL save file
+SAVE,apl,aph,FILENAME=fname[0]
+SAVE,apl,aplb,aph,aphb,FILENAME=fname[0]
+
+;;  Clean up
+DELVAR,apl,aplb,aph,aphb,pldat,plbdat,phdat,phbdat
+;;----------------------------------------------------------------------------------------
+;;  Get thermal [EESA Low] and suprathermal [EESA High]
+;;    electron velocity distribution functions (VDFs)
+;;
+;;    Low   :     ~5-1100  eV electrons
+;;    High  :  ~0.14-28.0 keV electrons
+;;----------------------------------------------------------------------------------------
+fpref          = 'Eesa_3DP_Structures_'
+fsuffx         = '_w-Vsw-Ni-SCPot.sav'
+eldat          = get_3dp_structs('el' ,TRANGE=tra)      ;;  EESA  Low
+elbdat         = get_3dp_structs('elb',TRANGE=tra)      ;;  EESA  Low Burst
+ehdat          = get_3dp_structs('eh' ,TRANGE=tra)      ;;  EESA High
+ehbdat         = get_3dp_structs('ehb',TRANGE=tra)      ;;  EESA High Burst
+IF (SIZE( eldat,/TYPE) EQ 8) THEN ael  =  eldat.DATA
+IF (SIZE( ehdat,/TYPE) EQ 8) THEN aeh  =  ehdat.DATA
+IF (SIZE(elbdat,/TYPE) EQ 8) THEN aelb = elbdat.DATA
+IF (SIZE(ehbdat,/TYPE) EQ 8) THEN aehb = ehbdat.DATA
+
+IF (SIZE( eldat,/TYPE) EQ 8) THEN add_vsw2,ael,Vgse_tpnm[0]
+IF (SIZE( eldat,/TYPE) EQ 8) THEN add_magf2,ael,Bgse_tpnm[0]
+IF (SIZE( eldat,/TYPE) EQ 8) THEN add_scpot,ael,scp_tpn[0]
+IF (SIZE( ehdat,/TYPE) EQ 8) THEN add_vsw2,aeh,Vgse_tpnm[0]
+IF (SIZE( ehdat,/TYPE) EQ 8) THEN add_magf2,aeh,Bgse_tpnm[0]
+IF (SIZE( ehdat,/TYPE) EQ 8) THEN add_scpot,aeh,scp_tpn[0]
+
+IF (SIZE(elbdat,/TYPE) EQ 8) THEN add_vsw2,aelb,Vgse_tpnm[0]
+IF (SIZE(elbdat,/TYPE) EQ 8) THEN add_magf2,aelb,Bgse_tpnm[0]
+IF (SIZE(elbdat,/TYPE) EQ 8) THEN add_scpot,aelb,scp_tpn[0]
+IF (SIZE(ehbdat,/TYPE) EQ 8) THEN add_vsw2,aehb,Vgse_tpnm[0]
+IF (SIZE(ehbdat,/TYPE) EQ 8) THEN add_magf2,aehb,Bgse_tpnm[0]
+IF (SIZE(ehbdat,/TYPE) EQ 8) THEN add_scpot,aehb,scp_tpn[0]
+
+fnm            = file_name_times(tra,PREC=0)
+ftimes         = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+ftimes         = STRMID(ftimes[*],0L,15L)
+tsuffx         = ftimes[0]+'_'+ftimes[1]
+fname          = fpref[0]+tsuffx[0]+fsuffx[0]
+;;  Print out name as a check
+PRINT,';; ',fname[0]
+
+HELP,ael,aelb,aeh,aehb
+;;  Create IDL save file
+SAVE,ael,aeh,FILENAME=fname[0]
+SAVE,ael,aelb,aeh,FILENAME=fname[0]
+SAVE,ael,aelb,aeh,aehb,FILENAME=fname[0]
+
+;;  Clean up
+DELVAR,ael,aelb,aeh,aehb,eldat,elbdat,ehdat,ehbdat
+;;----------------------------------------------------------------------------------------
+;;  Get solid-state telescope [SST] velocity distribution functions (VDFs)
+;;    for electrons [Foil] and protons [Open]
+;;
+;;    Foil  :   ~20-550 keV electrons
+;;    Open  :  ~70-6500 keV protons
+;;----------------------------------------------------------------------------------------
+fpref          = 'SST-Foil-Open_3DP_Structures_'
+fsuffx         = '_w-Vsw-Ni-SCPot.sav'
+sfdat          = get_3dp_structs( 'sf' ,TRANGE=tra)      ;;  SST Foil
+sodat          = get_3dp_structs( 'so' ,TRANGE=tra)      ;;  SST Foil Burst
+sfbdat         = get_3dp_structs('sfb' ,TRANGE=tra)      ;;  SST Open
+sobdat         = get_3dp_structs('sob' ,TRANGE=tra)      ;;  SST Open Burst
+IF (SIZE( sfdat,/TYPE) EQ 8) THEN asf  =  sfdat.DATA
+IF (SIZE( sodat,/TYPE) EQ 8) THEN aso  =  sodat.DATA
+IF (SIZE(sfbdat,/TYPE) EQ 8) THEN asfb = sfbdat.DATA
+IF (SIZE(sobdat,/TYPE) EQ 8) THEN asob = sobdat.DATA
+
+IF (SIZE( sfdat,/TYPE) EQ 8) THEN add_vsw2,asf,Vgse_tpnm[0]
+IF (SIZE( sfdat,/TYPE) EQ 8) THEN add_magf2,asf,Bgse_tpnm[0]
+IF (SIZE( sfdat,/TYPE) EQ 8) THEN add_scpot,asf,scp_tpn[0]
+IF (SIZE( sodat,/TYPE) EQ 8) THEN add_vsw2,aso,Vgse_tpnm[0]
+IF (SIZE( sodat,/TYPE) EQ 8) THEN add_magf2,aso,Bgse_tpnm[0]
+IF (SIZE( sodat,/TYPE) EQ 8) THEN add_scpot,aso,scp_tpn[0]
+
+IF (SIZE(sfbdat,/TYPE) EQ 8) THEN add_vsw2,asfb,Vgse_tpnm[0]
+IF (SIZE(sfbdat,/TYPE) EQ 8) THEN add_magf2,asfb,Bgse_tpnm[0]
+IF (SIZE(sfbdat,/TYPE) EQ 8) THEN add_scpot,asfb,scp_tpn[0]
+IF (SIZE(sobdat,/TYPE) EQ 8) THEN add_vsw2,asob,Vgse_tpnm[0]
+IF (SIZE(sobdat,/TYPE) EQ 8) THEN add_magf2,asob,Bgse_tpnm[0]
+IF (SIZE(sobdat,/TYPE) EQ 8) THEN add_scpot,asob,scp_tpn[0]
+
+fnm            = file_name_times(tra,PREC=0)
+ftimes         = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+ftimes         = STRMID(ftimes[*],0L,15L)
+tsuffx         = ftimes[0]+'_'+ftimes[1]
+fname          = fpref[0]+tsuffx[0]+fsuffx[0]
+;;  Print out name as a check
+PRINT,';; ',fname[0]
+
+HELP,asf,asfb,aso,asob
+;;  Create IDL save file
+SAVE,asf,aso,FILENAME=fname[0]
+SAVE,asf,aso,asfb,asob,FILENAME=fname[0]
+
+;;  Clean up
+DELVAR,asf,asfb,aso,asob,sfdat,sfbdat,sodat,sobdat
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

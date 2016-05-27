@@ -1,0 +1,98 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   routine_version.pro
+;  PURPOSE  :   This routine determines the version number associated with an input
+;                 file name by examining the man page of the IDL routine defined by
+;                 the file name.
+;
+;  CALLED BY:   
+;               contour_3d_htr_1plane.pro
+;
+;  CALLS:
+;               read_gen_ascii.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               FNAME  :  Scalar string defining the name of the IDL routine to find the
+;                           version number for
+;               FDIR   :  Scalar string defining the full directory path to FNAME
+;
+;  EXAMPLES:    
+;               UMN> fname = 'routine_version.pro'
+;               UMN> fdir  = FILE_EXPAND_PATH('wind_3dp_pros/LYNN_PRO/')+'/'
+;               UMN> vers  = routine_version(fname,fdir)
+;               UMN> PRINT, vers
+;               routine_version.pro : 08/08/2012   v1.0.0, 2012-08-08/14:27:08.951
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  FNAME must have a man page with version history as shown below.
+;
+;   CREATED:  08/08/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/08/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION routine_version,fname,fdir
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+osvers     = !VERSION.OS_FAMILY
+IF (osvers NE 'unix') THEN slash = '\' ELSE slash = '/'
+
+mdir       = 'wind_3dp_pros'+slash[0]+'LYNN_PRO'+slash[0]
+def_dir    = FILE_EXPAND_PATH(mdir[0])+slash[0]
+def_fnm    = 'routine_version.pro'
+; => Dummy error messages
+notdir_msg = 'FDIR is not an existing directory...'
+notfnm_msg = 'FNAME is not an IDL routine...'
+;;----------------------------------------------------------------------------------------
+;; => Check input structure format
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 2) THEN RETURN,''
+
+test       = FILE_TEST(fdir[0],/DIRECTORY) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notdir_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,''
+ENDIF
+
+fnm        = STRTRIM(fname[0],2L)
+test       = (fnm[0] EQ '') OR (STRMID(fnm[0],3L,/REVERSE_OFFSET) NE '.pro')
+IF (test) THEN BEGIN
+  MESSAGE,notfnm_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,''
+ENDIF
+;;########################################################################################
+;; => Define version for output
+;;########################################################################################
+file       = FILE_SEARCH(fdir[0],fnm[0])
+IF (file[0] NE '') THEN BEGIN
+  fstring  = read_gen_ascii(file[0])
+  test     = STRPOS(fstring,';    LAST MODIFIED:  ') GE 0
+  gposi    = WHERE(test,gpf)
+  shifts   = STRLEN(';    LAST MODIFIED:  ')
+  vers     = STRMID(fstring[gposi[0]],shifts[0])
+ENDIF ELSE BEGIN
+  vers     = '(Not Found)'
+ENDELSE
+vers0    = fnm[0]+' : '+vers[0]+', '
+version  = vers0[0]+time_string(SYSTIME(1,/SECONDS),PREC=3)
+;;----------------------------------------------------------------------------------------
+;; => Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,version
+END
+

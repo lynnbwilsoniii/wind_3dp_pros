@@ -1,0 +1,540 @@
+;+
+;*****************************************************************************************
+;
+;  BATCH    :   load_thm_fgm_efi_scm_2_tplot_batch.pro
+;  PURPOSE  :   This is a batch file to be called from the command line using the
+;                 standard method of calling
+;                 (i.e., @load_thm_fgm_efi_scm_2_tplot_batch.pro).
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               get_os_slash.pro
+;               test_tdate_format.pro
+;               time_double.pro
+;               get_valid_trange.pro
+;               file_name_times.pro
+;               tplot_restore.pro
+;               lbw_tplot_set_defaults.pro
+;               tnames.pro
+;               options.pro
+;               tplot.pro
+;               get_data.pro
+;               t_resample_tplot_struc.pro
+;               mag__vec.pro
+;               store_data.pro
+;               interp.pro
+;               sample_rate.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS 8.0 or SPEDAS 1.0 (or greater) IDL libraries
+;               2)  UMN Modified Wind/3DP IDL Libraries
+;               3)  TPLOT save files created by load_thm_fields_save_tplot_batch.pro
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               ;;  Initialize THEMIS defaults
+;               thm_init
+;               ;;  Load all State, FGM, ESA, EFI, and SCM data for 2008-07-26 for Probe B
+;               ;;  **********************************************
+;               ;;  **  variable names MUST exactly match these **
+;               ;;  **********************************************
+;               probe          = 'b'                             ;;  Spacecraft identifier/name
+;               tdate          = '2008-07-26'                    ;;  Date of interest
+;               th_data_dir    = './IDL_stuff/themis_data_dir/'  ;;  Location of TPLOT save files
+;               @load_thm_fgm_efi_scm_2_tplot_batch.pro
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [08/11/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [08/12/2015   v1.0.0]
+;             3)  Now calls test_tdate_format.pro and get_valid_trange.pro
+;                                                                   [10/23/2015   v1.1.0]
+;             4)  Fixed an issue when rounding errors cause problems with the
+;                   time range definition and
+;                   now calls t_resample_tplot_struc.pro
+;                                                                   [01/28/2016   v1.1.1]
+;
+;   NOTES:      
+;               1)  This batch routine expects a date, a probe, and the directory
+;                     location of the TPLOT save files all input on the command line
+;                     prior to calling (see EXAMPLES)
+;               2)  If your paths are not set correctly, you may need to provide a full
+;                     path to this routine, e.g., the following is figurative and should
+;                     be replaced with the full file path to this batch file:
+;                     @/full/file/path/to/load_thm_fgm_efi_scm_2_tplot_batch.pro
+;               3)  This batch routine loads FGM, ESA moments, EFI, and SCM data from a
+;                     TPLOT save file
+;               4)  See also:  load_thm_fgm_efi_scm_save_tplot_batch.pro
+;
+;  REFERENCES:  
+;               1)  McFadden, J.P., C.W. Carlson, D. Larson, M. Ludlam, R. Abiad,
+;                      B. Elliot, P. Turin, M. Marckwordt, and V. Angelopoulos
+;                      "The THEMIS ESA Plasma Instrument and In-flight Calibration,"
+;                      Space Sci. Rev. 141, pp. 277-302, (2008).
+;               2)  McFadden, J.P., C.W. Carlson, D. Larson, J.W. Bonnell,
+;                      F.S. Mozer, V. Angelopoulos, K.-H. Glassmeier, U. Auster
+;                      "THEMIS ESA First Science Results and Performance Issues,"
+;                      Space Sci. Rev. 141, pp. 477-508, (2008).
+;               3)  Auster, H.U., K.-H. Glassmeier, W. Magnes, O. Aydogar, W. Baumjohann,
+;                      D. Constantinescu, D. Fischer, K.H. Fornacon, E. Georgescu,
+;                      P. Harvey, O. Hillenmaier, R. Kroth, M. Ludlam, Y. Narita,
+;                      R. Nakamura, K. Okrafka, F. Plaschke, I. Richter, H. Schwarzl,
+;                      B. Stoll, A. Valavanoglou, and M. Wiedemann "The THEMIS Fluxgate
+;                      Magnetometer," Space Sci. Rev. 141, pp. 235-264, (2008).
+;               4)  Angelopoulos, V. "The THEMIS Mission," Space Sci. Rev. 141,
+;                      pp. 5-34, (2008).
+;               5)  Cully, C.M., R.E. Ergun, K. Stevens, A. Nammari, and J. Westfall
+;                      "The THEMIS Digital Fields Board," Space Sci. Rev. 141,
+;                      pp. 343-355, (2008).
+;               6)  Roux, A., O. Le Contel, C. Coillot, A. Bouabdellah, B. de la Porte,
+;                      D. Alison, S. Ruocco, and M.C. Vassal "The Search Coil
+;                      Magnetometer for THEMIS," Space Sci. Rev. 141,
+;                      pp. 265-275, (2008).
+;               7)  Le Contel, O., A. Roux, P. Robert, C. Coillot, A. Bouabdellah,
+;                      B. de la Porte, D. Alison, S. Ruocco, V. Angelopoulos,
+;                      K. Bromund, C.C. Chaston, C.M. Cully, H.U. Auster,
+;                      K.-H. Glassmeier, W. Baumjohann, C.W. Carlson, J.P. McFadden,
+;                      and D. Larson "First Results of the THEMIS Search Coil
+;                      Magnetometers," Space Sci. Rev. 141, pp. 509-534, (2008).
+;
+;   CREATED:  08/10/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  01/28/2016   v1.1.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;----------------------------------------------------------------------------------------
+;;  IDL system and OS stuff
+;;----------------------------------------------------------------------------------------
+vers           = !VERSION.OS_FAMILY   ;;  e.g., 'unix'
+vern           = !VERSION.RELEASE     ;;  e.g., '7.1.1'
+slash          = get_os_slash()       ;;  '/' for Unix, '\' for Windows
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+;;  Fundamental
+c              = 2.9979245800d+08         ;;  Speed of light in vacuum [m s^(-1), 2014 CODATA/NIST]
+GG             = 6.6740800000d-11         ;;  Newtonian Constant [m^(3) kg^(-1) s^(-1), 2014 CODATA/NIST]
+kB             = 1.3806485200d-23         ;;  Boltzmann Constant [J K^(-1), 2014 CODATA/NIST]
+SB             = 5.6703670000d-08         ;;  Stefan-Boltzmann Constant [W m^(-2) K^(-4), 2014 CODATA/NIST]
+hh             = 6.6260700400d-34         ;;  Planck Constant [J s, 2014 CODATA/NIST]
+;;--------------------------------------------
+;;  Electromagnetic
+;;--------------------------------------------
+qq             = 1.6021766208d-19         ;;  Fundamental charge [C, 2014 CODATA/NIST]
+epo            = 8.8541878170d-12         ;;  Permittivity of free space [F m^(-1), 2014 CODATA/NIST]
+muo            = !DPI*4.00000d-07         ;;  Permeability of free space [N A^(-2) or H m^(-1), 2014 CODATA/NIST]
+;;--------------------------------------------
+;;  Atomic
+;;--------------------------------------------
+ma             = 6.6446572300d-27         ;;  Alpha particle mass [kg, 2014 CODATA/NIST]
+me             = 9.1093835600d-31         ;;  Electron mass [kg, 2014 CODATA/NIST]
+mn             = 1.6749274710d-27         ;;  Neutron mass [kg, 2014 CODATA/NIST]
+mp             = 1.6726218980d-27         ;;  Proton mass [kg, 2014 CODATA/NIST]
+;;  --> Define mass of particles in units of energy [eV]
+ma_eV          = ma[0]*c[0]^2/qq[0]       ;;  ~3727.379378(23) [MeV, 2014 CODATA/NIST]
+me_eV          = me[0]*c[0]^2/qq[0]       ;;  ~0.5109989461(31) [MeV, 2014 CODATA/NIST]
+mn_eV          = mn[0]*c[0]^2/qq[0]       ;;  ~939.5654133(58) [MeV, 2014 CODATA/NIST]
+mp_eV          = mp[0]*c[0]^2/qq[0]       ;;  ~938.2720813(58) [MeV, 2014 CODATA/NIST]
+;;  --> Define mass ratios [unitless]
+mp_me          = 1.83615267389d+03        ;;  Proton-to-electron mass ratio [unitless, 2014 CODATA/NIST]
+mp_mn          = 9.98623478440d-01        ;;  Proton-to-neutron mass ratio [unitless, 2014 CODATA/NIST]
+ma_me          = 7.29429954136d+03        ;;  Alpha-to-electron mass ratio [unitless, 2014 CODATA/NIST]
+ma_mn          = 3.97259968907d+00        ;;  Alpha-to-neutron mass ratio [unitless, 2014 CODATA/NIST]
+;;--------------------------------------------
+;;  Physico-Chemical
+;;--------------------------------------------
+avagadro       = 6.0221408570d+23         ;;  Avogadro's constant [# mol^(-1), 2014 CODATA/NIST]
+amu            = 1.6605390400d-27         ;;  Atomic mass constant [kg, 2014 CODATA/NIST]
+amu_eV         = amu[0]*c[0]^2/qq[0]      ;;  kg --> eV [931.4940954 MeV, 2014 CODATA/NIST]
+;;--------------------------------------------
+;;  Astronomical
+;;--------------------------------------------
+R_S___m        = 6.9600000d08             ;;  Sun's Mean Equatorial Radius [m, 2015 AA values]
+R_Ea__m        = 6.3781366d06             ;;  Earth's Mean Equatorial Radius [m, 2015 AA values]
+;;  --> Planetary masses as ratio to sun's mass
+Ms_M_Ea        = 3.329460487d05           ;;  Ratio of sun-to-Earth's mass [unitless, 2015 AA values]
+;;  --> Planetary masses in SI units
+M_E            = 5.9722000d24             ;;  Earth's mass [kg, 2015 AA values]
+M_S__kg        = 1.9884000d30             ;;  Sun's mass [kg, 2015 AA values]
+M_Ea_kg        = M_S__kg[0]/Ms_M_Ea[0]    ;;  Earth's mass [kg, 2015 AA values]
+au             = 1.49597870700d+11        ;;  1 astronomical unit or AU [m, from Mathematica 10.1 on 2015-04-21]
+;;----------------------------------------------------------------------------------------
+;;  Conversion Factors
+;;
+;;    Input Units:
+;;      B  :  nT
+;;      n  :  # cm^(-3)
+;;      T  :  nT
+;;----------------------------------------------------------------------------------------
+;;  Energy and Temperature
+f_1eV          = qq[0]/hh[0]          ;;  Freq. associated with 1 eV of energy [ Hz --> f_1eV*energy{eV} = freq{Hz} ]
+J_1eV          = hh[0]*f_1eV[0]       ;;  Energy associated with 1 eV of energy [ J --> J_1eV*energy{eV} = energy{J} ]
+K_eV           = qq[0]/kB[0]          ;;  Temp. associated with 1 eV of energy [11,604.5221 K/eV, 2014 CODATA/NIST --> K_eV*energy{eV} = Temp{K}]
+eV_K           = kB[0]/qq[0]          ;;  Energy associated with 1 K Temp. [8.6173303 x 10^(-5) eV/K, 2014 CODATA/NIST --> eV_K*Temp{K} = energy{eV}]
+;;--------------------------------------------
+;;  Frequency
+;;--------------------------------------------
+wcefac         = qq[0]*1d-9/me[0]                  ;;  factor for electron cyclotron angular frequency [rad s^(-1) nT^(-1)]
+wcpfac         = qq[0]*1d-9/mp[0]                  ;;  factor for proton cyclotron angular frequency [rad s^(-1) nT^(-1)]
+wpefac         = SQRT(1d6*qq[0]^2/(me[0]*epo[0]))  ;;  factor for electron plasma angular frequency [rad s^(-1) cm^(+3/2)]
+wppfac         = SQRT(1d6*qq[0]^2/(mp[0]*epo[0]))  ;;  factor for electron plasma angular frequency [rad s^(-1) cm^(+3/2)]
+fcefac         = wcefac[0]/(2d0*!DPI)              ;;  factor for electron cyclotron frequency [Hz s^(-1) nT^(-1)]
+fcpfac         = wcpfac[0]/(2d0*!DPI)              ;;  factor for proton cyclotron frequency [Hz s^(-1) nT^(-1)]
+fpefac         = wpefac[0]/(2d0*!DPI)              ;;  factor for electron plasma frequency [Hz s^(-1) cm^(+3/2)]
+fppfac         = wppfac[0]/(2d0*!DPI)              ;;  factor for electron plasma frequency [Hz s^(-1) cm^(+3/2)]
+;;--------------------------------------------
+;;  Speeds
+;;--------------------------------------------
+vte_mps_fac    = SQRT(2d0*K_eV[0]*kB[0]/me[0])     ;;  factor for electron thermal speed [m s^(-1) eV^(-1/2)] (most probable speed)
+vtp_mps_fac    = SQRT(2d0*K_eV[0]*kB[0]/mp[0])     ;;  factor for proton thermal speed [m s^(-1) eV^(-1/2)] (most probable speed)
+vte_rms_fac    = SQRT(K_eV[0]*kB[0]/me[0])         ;;  factor for electron thermal speed [m s^(-1) eV^(-1/2)] (rms speed)
+vtp_rms_fac    = SQRT(K_eV[0]*kB[0]/mp[0])         ;;  factor for proton thermal speed [m s^(-1) eV^(-1/2)] (rms speed)
+valfen__fac    = 1d-9/SQRT(muo[0]*mp[0]*1d6)       ;;  factor for (proton-only) Alfvén speed [m s^(-1) nT^(-1) cm^(-3/2)]
+;;--------------------------------------------
+;;  Lengths
+;;--------------------------------------------
+rhoe_mps_fac   = vte_mps_fac[0]/wcefac[0]          ;;  factor for electron (most probable speed) thermal Larmor radius [m eV^(-1/2) nT]
+rhop_mps_fac   = vtp_mps_fac[0]/wcpfac[0]          ;;  factor for proton (most probable speed) thermal Larmor radius [m eV^(-1/2) nT]
+rhoe_rms_fac   = vte_rms_fac[0]/wcefac[0]          ;;  factor for electron (rms speed) thermal Larmor radius [m eV^(-1/2) nT]
+rhop_rms_fac   = vtp_rms_fac[0]/wcpfac[0]          ;;  factor for proton (rms speed) thermal Larmor radius [m eV^(-1/2) nT]
+iner_Lee_fac   = c[0]/wpefac[0]                    ;;  factor for electron inertial length [m cm^(-3/2)]
+iner_Lep_fac   = c[0]/wppfac[0]                    ;;  factor for proton inertial length [m cm^(-3/2)]
+;;----------------------------------------------------------------------------------------
+;;  Defaults
+;;----------------------------------------------------------------------------------------
+start_of_day_t = '00:00:00.000000000'
+end___of_day_t = '23:59:59.999999999'
+vec_str        = ['x','y','z']
+fac_vec_str    = ['perp1','perp2','para']
+fac_dir_str    = ['para','perp','anti']
+vec_col        = [250,150,50]
+def__lim       = {YSTYLE:1,PANEL_SIZE:2.,XMINOR:5,XTICKLEN:0.04,YTICKLEN:0.01}
+def_dlim       = {SPEC:0,COLORS:50L,LABELS:'1',LABFLAG:2}
+;;----------------------------------------------------------------------------------------
+;;  THEMIS-specific defaults
+;;----------------------------------------------------------------------------------------
+all_scs        = ['a','b','c','d','e']
+modes_slh      = ['s','l','h']
+modes_fpw      = ['f','p','w']
+modes_fgm      = 'fg'+modes_slh
+modes_efi      = 'ef'+modes_fpw
+modes_scm      = 'sc'+modes_fpw
+
+coord_spg      = 'spg'
+coord_ssl      = 'ssl'
+coord_dsl      = 'dsl'
+coord_gse      = 'gse'
+coord_gsm      = 'gsm'
+coord_fac      = 'fac'
+coord_mag      = 'mag'
+coord_gseu     = STRUPCASE(coord_gse[0])
+;;  Define dummy error messages
+dummy_errmsg   = ['You have not defined the proper input!',                $
+                  'This batch routine expects three inputs',               $
+                  'with following EXACT variable names:',                  $
+                  "tdate        ;; e.g., '2008-07-26' for July 26, 2008",  $
+                  "probe        ;; e.g., 'b' for Probe B",                 $
+                  "th_data_dir  ;; e.g., './IDL_stuff/themis_data_dir/'"   ]
+nderrmsg       = N_ELEMENTS(dummy_errmsg) - 1L
+;;----------------------------------------------------------------------------------------
+;;  Define and times/dates Probe from input
+;;----------------------------------------------------------------------------------------
+test           = ((N_ELEMENTS(tdate) EQ 0) OR (N_ELEMENTS(probe) EQ 0)) OR $
+                 ((SIZE(tdate,/TYPE) NE 7) OR (SIZE(probe,/TYPE) NE 7))
+IF (test) THEN FOR pj=0L, nderrmsg[0] DO PRINT,dummy_errmsg[pj]
+IF (test) THEN STOP        ;;  Stop before user runs into issues
+;;  Check TDATE format
+test           = test_tdate_format(tdate)
+IF (test EQ 0) THEN STOP        ;;  Stop before user runs into issues
+
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+prefu          = STRUPCASE(pref[0])
+scpref         = pref[0]
+scu            = STRUPCASE(sc[0])
+;;  Default to entire day
+tr_00          = tdate[0]+'/'+[start_of_day_t[0],end___of_day_t[0]]
+;;  Make sure valid time range
+trange         = time_double(tr_00)
+test           = get_valid_trange(TRANGE=trange,PRECISION=6)
+IF (SIZE(test,/TYPE) NE 8) THEN STOP        ;;  Stop before user runs into issues
+;;----------------------------------------------------------------------------------------
+;;  Define location of IDL save files
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(th_data_dir) EQ 0) OR (SIZE(th_data_dir,/TYPE) NE 7)
+IF (test) THEN th_data_dir = FILE_DIRNAME('',/MARK_DIRECTORY)
+;;  Check for trailing '/'
+ll             = STRMID(th_data_dir[0], STRLEN(th_data_dir[0]) - 1L,1L)
+test_ll        = (ll[0] NE slash[0])
+IF (test_ll[0]) THEN th_data_dir = th_data_dir[0]+slash[0]
+;;  Define location for TPLOT save file
+tpnsave_dir    = th_data_dir[0]+'themis_tplot_save'+slash[0]
+;;  Define file names for the IDL save files
+tpn_fpref      = 'TPLOT_save_file_'+prefu[0]+'FGM-ALL_EESA-IESA-Moments_EFI*SCM*'
+fnm            = file_name_times(trange,PREC=0)
+ftimes         = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+tsuffx         = ftimes[0]+'-'+STRMID(ftimes[1],11L)
+;;----------------------------------------------------------------------------------------
+;;  Define file name
+;;----------------------------------------------------------------------------------------
+fname          = tpn_fpref[0]+tsuffx[0]+'*.tplot'
+;;  Find IDL save files
+tpn__file      = FILE_SEARCH(tpnsave_dir[0],fname[0])
+;;  LBW III  01/28/2016   v1.1.1
+test_tpnf      = (tpn__file[0] EQ '')
+IF (test_tpnf[0]) THEN tpn__file = FILE_SEARCH(tpnsave_dir[0],tpn_fpref[0]+tdate[0]+'*.tplot')    ;;  try without explicit time range definition
+test_tpnf      = (tpn__file[0] NE '')
+IF (test_tpnf[0]) THEN tplot_restore,FILENAME=tpn__file[0],VERBOSE=0 ELSE STOP
+;;  Set defaults
+lbw_tplot_set_defaults
+;;  Change colors for vectors
+all_vec_coord  = [coord_spg[0],coord_ssl[0],coord_dsl[0],coord_gse[0],coord_gsm[0],coord_fac[0]]
+all_vec_tpns   = tnames('*_'+all_vec_coord)
+options,all_vec_tpns,'COLORS'
+options,all_vec_tpns,'COLORS',vec_col,/DEF
+;;----------------------------------------------------------------------------------------
+;;  Open window and plot
+;;----------------------------------------------------------------------------------------
+DEVICE,GET_SCREEN_SIZE=s_size
+wsz            = s_size*7d-1
+win_ttl        = 'THEMIS-'+scu[0]+' Plots ['+tdate[0]+']'
+win_str        = {RETAIN:2,XSIZE:wsz[0],YSIZE:wsz[1],TITLE:win_ttl[0],XPOS:10,YPOS:10}
+WINDOW,0,_EXTRA=win_str
+
+fgm_tpns       = scpref[0]+modes_fgm[2]+'_'+[coord_mag[0],coord_dsl[0]]
+efi_tpns       = scpref[0]+modes_efi[1:2]+'_*_rmspikes_'+coord_dsl[0]
+scm_tpns       = scpref[0]+modes_scm[1:2]+'_l1_cal_*_'+coord_dsl[0]
+nna            = [fgm_tpns,efi_tpns,scm_tpns]
+tplot,nna
+;;----------------------------------------------------------------------------------------
+;;  Calculate the Alfvénic, sound, and magnetosonic Mach numbers
+;;----------------------------------------------------------------------------------------
+magf__tpn      = scpref[0]+['fgh_'+[coord_mag[0],coord_dsl[0]],'fgl_'+coord_mag[0]]
+vbulk_tpn      = scpref[0]+'peib_velocity_'+coord_dsl[0]
+densi_tpn      = scpref[0]+'peib_density'
+eitem_tpn      = scpref[0]+['peib','peeb']+'_avgtemp'
+get_data,magf__tpn[0],DATA=temp_bmag,DLIM=dlim_bmag,LIM=lim_bmag
+get_data,densi_tpn[0],DATA=temp_iden,DLIM=dlim_iden,LIM=lim_iden
+get_data,vbulk_tpn[0],DATA=temp_ivsw,DLIM=dlim_ivsw,LIM=lim_ivsw
+get_data,eitem_tpn[0],DATA=temp_item,DLIM=dlim_item,LIM=lim_item
+get_data,eitem_tpn[1],DATA=temp_etem,DLIM=dlim_etem,LIM=lim_etem
+;;  Define parameters
+etemp_t        = temp_etem.X                 ;;  Unix times for Te
+;;  Force to electron time stamps
+bmag__v_str    = t_resample_tplot_struc(temp_bmag,etemp_t,/NO_EXTRAPOLATE)
+idens_v_str    = t_resample_tplot_struc(temp_iden,etemp_t,/NO_EXTRAPOLATE)
+vbulk_v_str    = t_resample_tplot_struc(temp_ivsw,etemp_t,/NO_EXTRAPOLATE)
+itemp_v_str    = t_resample_tplot_struc(temp_item,etemp_t,/NO_EXTRAPOLATE)
+;;  Define parameters
+bmag__v_et     = bmag__v_str.Y                 ;;  Values for |Bo| at Te times
+idens_v_et     = idens_v_str.Y                 ;;  Values for Ni at Te times
+vbulk_v_et     = vbulk_v_str.Y                 ;;  Values for Vbulk at Te times
+itemp_v_et     = itemp_v_str.Y                 ;;  Values for Ti at Te times
+;;  Calculate Alfvén speed
+valfen         = valfen__fac[0]*bmag__v_et/SQRT(idens_v_et)
+valfen        *= 1d-3        ;;  m --> km
+;;  Calculate ion-acoustic sound speed
+gamma_ei       = [1d0,2d0]                   ;;  Assume polytrope indices of 1 and 2 for electrons and ions, respectively
+fac0           = K_eV[0]*kB[0]/(mp[0] + me[0])
+fac_temp       = gamma_ei[0]*etemp_v + gamma_ei[1]*itemp_v_et
+Cs_iaw         = SQRT(fac0[0]*fac_temp)
+Cs_iaw        *= 1d-3        ;;  m --> km
+;;  Calculate the Alfvénic and Sound Mach numbers (from bulk flow speed)
+vbulk_m_et     = mag__vec(vbulk_v_et,/NAN)
+Mach_Alfen     = vbulk_m_et/valfen
+Mach_Sound     = vbulk_m_et/Cs_iaw
+Mach_Magneto   = SQRT(Mach_Alfen^2 + Mach_Sound^2)
+;;  Send to TPLOT
+mach_tpn       = scpref[0]+'MA_MCs_Mms'
+mach_struc     = {X:etemp_t,Y:[[Mach_Alfen],[Mach_Sound],[Mach_Magneto]]}
+mach_yttle     = 'Mach Numbers'
+mach_labs      = ['Alfven','Sound','Magnetosonic']
+store_data,mach_tpn[0],DATA=mach_struc,DLIM=def_dlim,LIM=def__lim
+;;  Alter options
+symb          = 2
+options,mach_tpn[0],LABELS=mach_labs,COLORS=vec_col,YTITLE=mach_yttle[0],/DEF
+options,mach_tpn[0],PSYM=symb[0],YLOG=1,YMINOR=9,/DEF
+;;----------------------------------------------------------------------------------------
+;;  Calculate the ∂B and ∂B/Bo [from fgh]
+;;----------------------------------------------------------------------------------------
+get_data,magf__tpn[0],DATA=temp_bmag,DLIM=dlim_bmag,LIM=lim_bmag
+get_data,magf__tpn[1],DATA=temp_bdsl,DLIM=dlim_bdsl,LIM=lim_bdsl
+;;  Define parameters
+bmag__t        = temp_bmag.X
+bmag__v        = temp_bmag.Y
+bdsl__t        = temp_bdsl.X
+bdsl__v        = temp_bdsl.Y
+;;  Define "smoothed" Bo
+new_sr         = 1d0
+srate          = sample_rate(bmag__t,/AVE)
+speri          = 1d0/srate[0]               ;;  sampling period [s]
+wd             = LONG(1d0/(new_sr[0]/srate[0]))
+bmag_sm        = MEDIAN(bmag__v,wd[0])
+tempx          = MEDIAN(bdsl__v[*,0],wd[0])
+tempy          = MEDIAN(bdsl__v[*,1],wd[0])
+tempz          = MEDIAN(bdsl__v[*,2],wd[0])
+bdsl_sm        = [[tempx],[tempy],[tempz]]
+;;  Detrend Bo
+bmag_dt        = ABS(bmag__v - bmag_sm)
+bdsl_dt        = bdsl__v - bdsl_sm
+;;  Define ∂B/Bo
+bdsl_sm_mag    = mag__vec(bdsl_sm,/NAN,/TWO)
+db_bov_dsl     = bdsl_dt/bdsl__v
+db_bom_dsl     = bdsl_dt/bdsl_sm_mag
+db_bom_mag     = bmag_dt/bmag__v
+db_bom_mag_sm  = MEDIAN(db_bom_mag,wd[0]/4L)
+db_bov_max     = 5d1
+test           = (ABS(db_bov_dsl[*,0]) GE db_bov_max[0]) OR (ABS(db_bov_dsl[*,1]) GE db_bov_max[0]) OR $
+                 (ABS(db_bov_dsl[*,2]) GE db_bov_max[0])
+bad            = WHERE(test,bd)
+IF (bd GT 0) THEN db_bov_dsl[bad,*] = d
+;;  Send to TPLOT
+db_bov_dsl_tpn = 'dB_Bovec_'+modes_fgm[2]+'_'+coord_dsl[0]
+db_bom_dsl_tpn = 'dB_Bomag_'+modes_fgm[2]+'_'+coord_dsl[0]
+db_bom_mag_tpn = 'dB_Bomag_'+modes_fgm[2]+'_'+coord_mag[0]
+db_bov_dsl_str = {X:bdsl__t,Y:db_bov_dsl}
+db_bom_dsl_str = {X:bdsl__t,Y:db_bom_dsl}
+db_bom_mag_str = {X:bmag__t,Y:[[db_bom_mag],[db_bom_mag_sm]]}
+wd_str         = STRTRIM(STRING(wd[0],FORMAT='(I3.3)'),2L)
+ysubt          = '[DT:  '+wd_str[0]+' pts]'          ;;  DT = Detrended
+;ysubt          = '[Detrended:  '+wd_str[0]+' pts]'
+db_bov_dsl_ytt = 'dB_j/Bo_j'
+db_bom_dsl_ytt = 'dB_j/|Bo_j|'
+db_bom_mag_ytt = '|dB|/|Bo|'
+
+store_data,db_bov_dsl_tpn[0],DATA=db_bov_dsl_str,DLIM=def_dlim,LIM=def__lim
+store_data,db_bom_dsl_tpn[0],DATA=db_bom_dsl_str,DLIM=def_dlim,LIM=def__lim
+store_data,db_bom_mag_tpn[0],DATA=db_bom_mag_str,DLIM=def_dlim,LIM=def__lim
+;;  Alter options
+IF (tdate[0] EQ '2008-07-14' AND sc[0] EQ 'c') THEN yran_db_bom_mag = [1e-4,2e1]
+IF (tdate[0] EQ '2008-08-12' AND sc[0] EQ 'c') THEN yran_db_bom_mag = [1e-4,1e1]
+all_dB_Bo_tpns = [db_bov_dsl_tpn[0],db_bom_dsl_tpn[0],db_bom_mag_tpn[0]]
+options,all_dB_Bo_tpns,'LABELS'
+options,all_dB_Bo_tpns,'COLORS'
+options,all_dB_Bo_tpns,'YSUBTITLE'
+options,all_dB_Bo_tpns,'LABELS',/DEF
+options,all_dB_Bo_tpns,'YSUBTITLE',ysubt,/DEF
+options,db_bom_mag_tpn[0],COLORS=vec_col[[2,1]],YTITLE=db_bom_mag_ytt[0],YLOG=1,YMINOR=9,/DEF
+options,db_bov_dsl_tpn[0],COLORS=vec_col,   YTITLE=db_bov_dsl_ytt[0],LABELS=vec_str,YMINOR=4,/DEF
+options,db_bom_dsl_tpn[0],COLORS=vec_col,   YTITLE=db_bom_dsl_ytt[0],LABELS=vec_str,YMINOR=4,/DEF
+IF (N_ELEMENTS(yran_db_bom_mag) EQ 2) THEN options,db_bom_mag_tpn[0],YRANGE=yran_db_bom_mag,/DEF
+;;----------------------------------------------------------------------------------------
+;;  Calculate the ∂B and ∂B/Bo [from scp and scw]
+;;----------------------------------------------------------------------------------------
+get_data,tnames(scm_tpns[0]),DATA=temp_scp,DLIM=dlim_scp,LIM=lim_scp
+get_data,tnames(scm_tpns[1]),DATA=temp_scw,DLIM=dlim_scw,LIM=lim_scw
+;;  Define parameters
+scp_dsl_t      = temp_scp.X
+scp_dsl_v      = temp_scp.Y
+scw_dsl_t      = temp_scw.X
+scw_dsl_v      = temp_scw.Y
+;;  Upsample |Bo| smoothed values to scp and scw time stamps
+bmag_sm_scp_t  = interp(bmag_sm,bmag__t,scp_dsl_t,/NO_EXTRAP)
+bmag_sm_scw_t  = interp(bmag_sm,bmag__t,scw_dsl_t,/NO_EXTRAP)
+;;  Calculate ∂B_j/|Bo|
+db_bo_scp_dsl  = scp_dsl_v/(bmag_sm_scp_t # REPLICATE(1d0,3L))
+db_bo_scw_dsl  = scw_dsl_v/(bmag_sm_scw_t # REPLICATE(1d0,3L))
+;;  Calculate ∂B/|Bo|
+scp_mag_v      = mag__vec(scp_dsl_v,/NAN)
+scw_mag_v      = mag__vec(scw_dsl_v,/NAN)
+db_bo_scp_mag  = scp_mag_v/bmag_sm_scp_t
+db_bo_scw_mag  = scw_mag_v/bmag_sm_scw_t
+;;  Define "smoothed" ∂B/|Bo|
+new_sr         = 1d0
+srate_scp      = sample_rate(scp_dsl_t,/AVE)
+srate_scw      = sample_rate(scw_dsl_t,/AVE)
+new_sr_scp     = 1d0
+new_sr_scw     = srate_scw[0]/srate_scp[0]
+wd_scp         = LONG(1d0/(new_sr_scp[0]/srate_scp[0]))
+wd_scw         = LONG(1d0/(new_sr_scw[0]/srate_scw[0]))
+wd_scp_str     = STRTRIM(STRING(wd_scp[0],FORMAT='(I3.3)'),2L)
+wd_scw_str     = STRTRIM(STRING(wd_scw[0],FORMAT='(I3.3)'),2L)
+ysubt_sub      = '!C'+'[Sm: '+[wd_scp_str[0],wd_scw_str[0]]+' pts]'
+db_bo_scp_smm  = MEDIAN(db_bo_scp_mag,wd_scp[0]/4L)
+db_bo_scw_smm  = MEDIAN(db_bo_scw_mag,wd_scw[0]/4L)
+;;  Define TPLOT handles and structures
+scp_bo_dsl_tpn = 'dB_Bomag_'+modes_scm[1]+'_'+coord_dsl[0]
+scw_bo_dsl_tpn = 'dB_Bomag_'+modes_scm[2]+'_'+coord_dsl[0]
+scp_bo_mag_tpn = 'dB_Bomag_'+modes_scm[1]+'_'+coord_mag[0]
+scw_bo_mag_tpn = 'dB_Bomag_'+modes_scm[2]+'_'+coord_mag[0]
+scp_bo_dsl_str = {X:scp_dsl_t,Y:db_bo_scp_dsl}
+scw_bo_dsl_str = {X:scw_dsl_t,Y:db_bo_scw_dsl}
+scp_bo_mag_str = {X:scp_dsl_t,Y:[[db_bo_scp_mag],[db_bo_scp_smm]]}
+scw_bo_mag_str = {X:scw_dsl_t,Y:[[db_bo_scw_mag],[db_bo_scw_smm]]}
+;;  Define YTITLE and subtitles
+ysubt_scp_scw  = '[dB: '+modes_scm[1:2]+', Bo: '+modes_fgm[2]+']'+ysubt_sub
+scp_bo_dsl_ytt = 'dB_j/|Bo| ['+modes_scm[1]+', '+coord_dsl[0]+']'
+scw_bo_dsl_ytt = 'dB_j/|Bo| ['+modes_scm[2]+', '+coord_dsl[0]+']'
+scp_bo_mag_ytt = '|dB|/|Bo| ['+modes_scm[1]+']'
+scw_bo_mag_ytt = '|dB|/|Bo| ['+modes_scm[2]+']'
+;;  Send to TPLOT
+store_data,scp_bo_dsl_tpn[0],DATA=scp_bo_dsl_str,DLIM=def_dlim,LIM=def__lim
+store_data,scw_bo_dsl_tpn[0],DATA=scw_bo_dsl_str,DLIM=def_dlim,LIM=def__lim
+store_data,scp_bo_mag_tpn[0],DATA=scp_bo_mag_str,DLIM=def_dlim,LIM=def__lim
+store_data,scw_bo_mag_tpn[0],DATA=scw_bo_mag_str,DLIM=def_dlim,LIM=def__lim
+;;  Alter options
+scm_dB_Bo_tpns = [scp_bo_dsl_tpn[0],scw_bo_dsl_tpn[0],scp_bo_mag_tpn[0],scw_bo_mag_tpn[0]]
+options,scm_dB_Bo_tpns,'LABELS'
+options,scm_dB_Bo_tpns,'COLORS'
+options,scm_dB_Bo_tpns,'YTITLE'
+options,scm_dB_Bo_tpns,'YSUBTITLE'
+options,scm_dB_Bo_tpns,'LABELS',/DEF
+options,scm_dB_Bo_tpns[[0,2]],'YSUBTITLE',ysubt_scp_scw[0],/DEF
+options,scm_dB_Bo_tpns[[1,3]],'YSUBTITLE',ysubt_scp_scw[1],/DEF
+options,scm_dB_Bo_tpns[[0,1]],COLORS=vec_col,LABELS=vec_str,YMINOR=4,/DEF
+options,scm_dB_Bo_tpns[[2,3]],COLORS=vec_col[[2,1]],YMINOR=9,YLOG=1,/DEF
+options,scm_dB_Bo_tpns[0],YTITLE=scp_bo_dsl_ytt[0],/DEF
+options,scm_dB_Bo_tpns[1],YTITLE=scw_bo_dsl_ytt[0],/DEF
+options,scm_dB_Bo_tpns[2],YTITLE=scp_bo_mag_ytt[0],/DEF
+options,scm_dB_Bo_tpns[3],YTITLE=scw_bo_mag_ytt[0],/DEF
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

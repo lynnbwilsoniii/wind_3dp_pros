@@ -1,0 +1,123 @@
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables and constants
+;-----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+nb_rad         = 10L            ; => Number of radial bins
+nb_theta       = 15L            ; => Number of angle bins
+
+nb             = 50L
+ndd            = DOUBLE(nb)
+; => Create dummy arrays for radial distances and angles (deg)
+radii          = DINDGEN(nb)*20/(nb - 1L)
+theta          = DINDGEN(nb)*36d1/(nb - 1L)
+; => Create dummy array of data
+x              = DBLARR(nb,nb)
+y              = DBLARR(nb,nb)
+gaussian       = DBLARR(nb,nb)
+FOR j=0L, nb - 1L DO BEGIN                              $
+  FOR i=0L, nb - 1L DO BEGIN                            $
+    x[i,j]        = radii[i]*COS(theta[j]*!DPI/18d1)  & $
+    y[i,j]        = radii[i]*SIN(theta[j]*!DPI/18d1)  & $
+    gaussian[i,j] = EXP(-1d0*((x[i,j]/1d1)^2 + (y[i,j]/1d1)^2))
+
+gauss1d        = REFORM(gaussian,nb*nb)
+x1d            = REFORM(x,nb*nb)
+y1d            = REFORM(y,nb*nb)
+rad            = SQRT(x^2 + y^2)
+r1d            = REFORM(rad,nb*nb)
+sp             = SORT(r1d)
+r1d            = r1d[sp]
+x1d            = x1d[sp]
+y1d            = y1d[sp]
+gauss1d        = gauss1d[sp]
+theta1d        = (ATAN(y1d,x1d)*18d1/!DPI + 36d1) MOD 36d1
+; => Re-interpolate the data to smooth it out
+;r1d            = SMOOTH(r1d,10L,/EDGE_TRUNCATE,/NAN)
+;theta1d        = SMOOTH(theta1d,10L,/EDGE_TRUNCATE,/NAN)
+;gauss1d        = SMOOTH(gauss1d,10L,/EDGE_TRUNCATE,/NAN)
+
+
+
+; => Define X, Y, and Z data Ranges
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+zra       = [1e-2,1e0]
+
+; => Define plot titles
+zttl      = 'Gaussian Probability Distribution'
+ttll      = 'Example use of Polar Histogram Routines'
+
+WINDOW,0,XSIZE=800,YSIZE=800,RETAIN=2
+!X.MARGIN  = [10.,3.]
+!Y.MARGIN  = [4.,2.]
+!P.MULTI  = 0
+
+; => Plot output without bin labels
+polar_histogram_plot,r1d,theta1d,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                     DATA=gauss1d,NBIN_R=nb_rad,NBIN_T=nb_theta, $
+                     /POLAR,ZRANGE=zra,ZTTL=zttl
+
+; => Plot output with bin labels
+polar_histogram_plot,r1d,theta1d,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                     DATA=gauss1d,NBIN_R=nb_rad,NBIN_T=nb_theta, $
+                     /LABELS,/POLAR,ZRANGE=zra,ZTTL=zttl
+
+
+WINDOW,1,XSIZE=800,YSIZE=800,RETAIN=2
+!X.MARGIN  = [10.,3.]
+!Y.MARGIN  = [4.,2.]
+!P.MULTI  = 0
+
+xra       = [-2e1,2e1]
+yra       = [-2e1,2e1]
+mxra      = MAX([xra,yra],/NAN)
+zttl      = 'Number of Data Points per Bin'
+WSET,1
+PLOT,r1d,theta1d,/NODATA,/POLAR,TITLE=zttl,XRANGE=xra,YRANGE=yra
+  OPLOT,r1d,theta1d,/POLAR,PSYM=2
+    ; => Plot lines at +/-45 deg and horizontal/vertical
+    OPLOT,[-1e0*mxra,1e0*mxra],[-1e0*mxra,1e0*mxra]
+    OPLOT,[-1e0*mxra,1e0*mxra],[1e0*mxra,-1e0*mxra]
+    OPLOT,[-1e0*mxra,1e0*mxra],[0e0,0e0]
+    OPLOT,[0e0,0e0],[1e0*mxra,-1e0*mxra]
+
+
+xra       = [0e0,2e1]
+yra       = [0d0,36d1]
+WSET,0
+polar_histogram_plot,r1d,theta1d,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                     NBIN_R=5L,NBIN_T=60L, $
+                     ZTTL=zttl,/POLAR,ZRANGE=[9e0,15e0]
+
+polar_histogram_plot,r1d,theta1d,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                     NBIN_R=5L,NBIN_T=90L, $
+                     ZTTL=zttl,/POLAR,ZRANGE=[9e0,20e0]
+
+;-----------------------------------------------------------------------------------------
+; => Grid data and look at in 3D
+;-----------------------------------------------------------------------------------------
+GRID_INPUT,r1d,theta1d,gauss1d,x1down,y1down,func1,/POLAR,/DEGREES
+; => Define a grid size
+grid_size      = [nb/2L,nb/2L]
+xslope         = (MAX(x1down,/NAN) - MIN(x1down,/NAN))/(nb/2L - 1L)
+yslope         = (MAX(y1down,/NAN) - MIN(y1down,/NAN))/(nb/2L - 1L)
+; => find the [x,y]-intercept
+xinter         = MIN(x1down,/NAN)
+yinter         = MIN(y1down,/NAN)
+; => Define [x,y]-grid points
+xgrid          = xslope[0]*DINDGEN(nb/2L) + xinter[0]
+ygrid          = yslope[0]*DINDGEN(nb/2L) + yinter[0]
+; Grid the data with the Radial Basis Function method.
+grid_g         = GRIDDATA(x1down,y1down,func1,DIMENSION=grid_size,$
+                          METHOD='RadialBasisFunction')
+; turn into byte scale
+zra            = [1e-2,1e0]
+byte_scale     = bytescale(grid_g,BOTTOM=bottom,TOP=top,RANGE=zra)
+SHADE_SURF,byte_scale,xgrid,ygrid
+
+
+;ind            = DINDGEN(nb*nb)
+;indown         = ndd*DINDGEN(nb)
+;x1down         = INTERPOL(x1d,ind,indown,/SPLINE)
+;y1down         = INTERPOL(y1d,ind,indown,/SPLINE)

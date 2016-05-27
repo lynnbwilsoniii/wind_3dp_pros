@@ -1,0 +1,108 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   test_3dp_struc_format.pro
+;  PURPOSE  :   This program tests the format of an input IDL structure, returning
+;                 TRUE[FALSE] if input structure format is[is not] consistent with the
+;                 Wind/3DP data structures returned by get_??.pro.
+;
+;  CALLED BY:   
+;               timestamp_3dp_angle_bins.pro
+;
+;  CALLS:
+;               dat_3dp_str_names.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT     :  3DP data structure(s) either from get_??.pro
+;                            [?? = el, elb, phb, sf, etc.]
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  See also:  DAT_3DP_STR_NAMES.PRO or DAT_3DP_ENERGY_BINS.PRO
+;               
+;
+;   CREATED:  01/13/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  01/13/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION test_3dp_struc_format,dat
+
+;-----------------------------------------------------------------------------------------
+; => Define some constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+notstr_mssg    = 'Must be an IDL structure...'
+badstr_mssg    = 'Not an appropriate 3DP structure...'
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+IF N_PARAMS() EQ 0 THEN RETURN,0b
+str = dat[0]   ; => in case it is an array of structures of the same format
+IF (SIZE(str,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+
+strns    = dat_3dp_str_names(str[0])
+IF (SIZE(strns,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,badstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+; => Expected format:  
+;      {LC:[scalar string], UC:[scalar string], SN:[scalar string]}
+IF (N_TAGS(strns) NE 3L) THEN BEGIN
+  MESSAGE,badstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Examine input
+;-----------------------------------------------------------------------------------------
+tags   = STRLOWCASE(TAG_NAMES(str))
+ntags  = N_TAGS(str)
+
+test0a = TOTAL(tags EQ 'project_name') EQ 1
+test0b = TOTAL(tags EQ 'data_name') EQ 1
+test1a = TOTAL(tags EQ 'time') EQ 1
+test1b = TOTAL(tags EQ 'end_time') EQ 1
+test1c = TOTAL(tags EQ 'nbins') EQ 1
+test1d = TOTAL(tags EQ 'nenergy') EQ 1
+test2a = TOTAL(tags EQ 'data') EQ 1
+test2b = TOTAL(tags EQ 'dt') EQ 1
+test2c = TOTAL(tags EQ 'gf') EQ 1
+test2d = TOTAL(tags EQ 'energy') EQ 1
+test2e = TOTAL(tags EQ 'denergy') EQ 1
+test2f = TOTAL(tags EQ 'deadtime') EQ 1
+test3a = TOTAL(tags EQ 'phi') EQ 1
+test3b = TOTAL(tags EQ 'dphi') EQ 1
+test3c = TOTAL(tags EQ 'theta') EQ 1
+test3d = TOTAL(tags EQ 'dtheta') EQ 1
+
+tests  = [test0a,test0b,test1a,test1b,test1c,test1d,test2a,test2b,test2c,test2d,$
+          test2e,test2f,test3a,test3b,test3c,test3d]
+;-----------------------------------------------------------------------------------------
+; => Return results
+;-----------------------------------------------------------------------------------------
+good   = TOTAL(tests) EQ N_ELEMENTS(tests)
+IF (good) THEN BEGIN
+  RETURN,good
+ENDIF ELSE BEGIN
+  MESSAGE,badstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDELSE
+
+END

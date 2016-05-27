@@ -1,0 +1,335 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   get_font_symbol.pro
+;  PURPOSE  :   Returns the embedded font command string associated with a symbol or
+;                 special output [e.g. diamond] for the current setting of !P.FONT.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               SYMB    :  Scalar [string] that matches any of the symbol names
+;                            shown in the NOTES section below
+;
+;  EXAMPLES:    
+;               ;;-------------------------------------------------------
+;               ;;  Check the result when TrueType fonts are used
+;               ;;-------------------------------------------------------
+;               IDL> !P.FONT = 1
+;               IDL> dagger  = get_font_symbol('dagger')
+;               IDL> PRINT,dagger
+;               
+;               IDL> diamond = get_font_symbol('diamond')
+;               IDL> PRINT,diamond
+;               !9?!X
+;               ;;-------------------------------------------------------
+;               ;;  Check the result when Hershey Vector fonts are used
+;               ;;-------------------------------------------------------
+;               IDL> !P.FONT = -1
+;               IDL> dagger  = get_font_symbol('dagger')
+;               IDL> PRINT,dagger
+;               !9O!X
+;               IDL> diamond = get_font_symbol('diamond')
+;               IDL> PRINT,diamond
+;               !9V!X
+;               ;;-------------------------------------------------------
+;               ;; => Print example to window display
+;               ;;-------------------------------------------------------
+;               IDL> symbol_str  = ['simeq','approx','equiv','infinity','infin2',       $
+;               IDL>                'perpendicular','parallel','sim','leq','geq','neq', $
+;               IDL>                'leftarrow','uparrow','rightarrow','downarrow',     $
+;               IDL>                'plusmin','minplus','propto','nabla','degree',      $
+;               IDL>                'divide','dagger','diamond','triangle','partial',   $
+;               IDL>                'capitalpi','sum','capitalgamma','predator',        $
+;               IDL>                'moon','mercury','venus','sun','earth','mars',      $
+;               IDL>                'jupiter','saturn','uranus','neptune','pluto']
+;               IDL> WINDOW,1,RETAIN=2
+;               IDL> WSET,1
+;               IDL> x0 = 0.05
+;               IDL> y0 = 0.95
+;               IDL> !P.FONT = -1  ;; use Hershey Vector Fonts
+;               IDL> cc = 0L
+;               IDL> FOR j=0L, 1L DO BEGIN                                    $
+;               IDL>   FOR k=0L, 11L DO BEGIN                                 $
+;               IDL>     PRINT,cc,'  '+symbol_str[cc]                       & $
+;               IDL>     x = x0 + 0.03*k                                    & $
+;               IDL>     y = y0 - 0.03*j                                    & $
+;               IDL>     s = get_font_symbol(symbol_str[cc])                & $
+;               IDL>     xyouts,x[0],y[0],s[0],/NORMAL,SIZE=2.5,ALIGN=0.50  & $
+;               IDL>     cc++
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Corrected issue that occurred when calling routine before setting
+;                   device to PS, for instance
+;                                                                  [07/16/2013   v1.1.0]
+;
+;   NOTES:      
+;               1)  Here are the possible inputs for SYMB
+;    ``````````````````````````````````````````````````````````````````````````````````
+;    ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+;    ´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´
+;                         TrueType Fonts                     Hershey Vector Fonts
+;      Symbol Name            Symbol             Math and Special          Miscellaneous
+;                               (!9)                    (!9)                   (!20)
+;                              Octal                   Octal                   Octal
+;    =====================================================================================
+;         simeq                10x00                                                
+;        approx                26x13                                                
+;         equiv                26x12                   06x12                        
+;       infinity               24x05                   04x04                   04x07
+;       infin2                                         16x11(!7)               14x00
+;     perpendicular            12x16                   16x10                        
+;       parallel                                       04x03                        
+;         sim                  16x16                   10x01                        
+;         leq                  24x03                   14x14                        
+;         geq                  26x03                   14x02                        
+;         neq                  26x11                   06x15                        
+;      leftarrow               24x14                   06x04                        
+;       uparrow                24x15                   06x07                        
+;     rightarrow               24x16                   06x06                        
+;      downarrow               24x17                   06x05                        
+;       plusmin                26x01                   04x13                        
+;       minplus                                        04x15                        
+;        propto                26x05                   06x17                        
+;         nabla                32x01                   10x07                        
+;        degree                26x00                   04x05                        
+;        divide                26x10                   04x17                        
+;        dagger                                        10x17                        
+;       diamond                34x00                   12x06                        
+;      triangle                10x04                   10x04(!7)                    
+;       partial                26x06                   10x04                        
+;      capitalpi               32x05                   12x00(!7)                    
+;         sum                  34x05                   12x02(!7)                    
+;    capitalgamma              10x07                   10x03(!7)                    
+;      predator                12x14                   12x04                        
+;    ----------------------------------------------------------------------------------
+;        moon                                                                  12x06
+;      mercury                                                                 16x02
+;       venus                                          14x06                        
+;        sun                                           14x16                        
+;       earth                  30x05                                           12x03
+;        mars                                          14x15                        
+;      jupiter                                                                 16x03
+;      saturn                                                                  12x04
+;      uranus                                                                  16x04
+;      neptune                                                                 12x05
+;       pluto                                                                  16x05
+;    ``````````````````````````````````````````````````````````````````````````````````
+;    ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+;    ´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´´
+;               2)  If a symbol does not have an octal associated with the font setting
+;                     then a null string is returned
+;
+;   CREATED:  08/24/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/16/2013   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION get_font_symbol,symb
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+;; Define the execution command to convert the octal strings below to octal #'s
+;; => Octal Number Conversions
+;;      To convert the above to the below, do the following
+;;
+;;     IDL> cform     = "(I3.3,1H','OL')"
+;;     IDL> octnum    = LONG(STRMID(octstr,0L,2L))*10L + LONG(STRMID(octstr,3L,2L))
+;;     IDL> PRINT, octnum, FORMAT=cform
+;;
+;;---------------------------------------------------------
+;; TrueType Octals [Symbol Font]
+;;---------------------------------------------------------
+octal_tt     = ['10x00','26x13','26x12','24x05','00x00','12x16','00x00','16x16','24x03',$
+                '26x03','26x11','24x14','24x15','24x16','24x17','26x01','00x00','26x05',$
+                '32x01','26x00','26x10','00x00','34x00','10x04','26x06','32x05','34x05',$
+                '10x07','12x14','00x00','00x00','00x00','00x00','30x05','00x00','00x00',$
+                '00x00','00x00','00x00','00x00']
+oct_byte_tt  = ['100'OL,'273'OL,'272'OL,'245'OL,'000'OL,'136'OL,'000'OL,'176'OL,'243'OL,$
+                '263'OL,'271'OL,'254'OL,'255'OL,'256'OL,'257'OL,'261'OL,'000'OL,'265'OL,$
+                '321'OL,'260'OL,'270'OL,'000'OL,'340'OL,'104'OL,'266'OL,'325'OL,'345'OL,$
+                '107'OL,'134'OL,'000'OL,'000'OL,'000'OL,'000'OL,'305'OL,'000'OL,'000'OL,$
+                '000'OL,'000'OL,'000'OL,'000'OL]
+;;---------------------------------------------------------
+;; Hershey Vector Octals [Complex (and Simplex) Greek Font]
+;;---------------------------------------------------------
+octal_hv09   = ['00x00','00x00','06x12','04x04','00x00','16x10','04x03','10x01','14x14',$
+                '14x02','06x15','06x04','06x07','06x06','06x05','04x13','04x15','06x17',$
+                '10x07','04x05','04x17','10x17','12x06','00x00','10x04','00x00','00x00',$
+                '00x00','12x04','00x00','00x00','14x06','14x16','00x00','14x15','00x00',$
+                '00x00','00x00','00x00','00x00']
+octal_hv20   = ['00x00','00x00','00x00','04x07','00x00','00x00','00x00','00x00','00x00',$
+                '00x00','00x00','00x00','00x00','00x00','00x00','00x00','00x00','00x00',$
+                '00x00','00x00','00x00','00x00','00x00','00x00','00x00','00x00','00x00',$
+                '00x00','00x00','12x06','16x02','00x00','00x00','12x03','00x00','16x03',$
+                '12x04','16x04','12x05','16x05']
+octal_hv07   = ['00x00','00x00','00x00','00x00','16x11','00x00','00x00','00x00','00x00',$
+                '00x00','00x00','00x00','00x00','00x00','00x00','00x00','00x00','00x00',$
+                '00x00','00x00','00x00','00x00','00x00','10x04','00x00','12x00','12x02',$
+                '10x03','00x00','00x00','00x00','00x00','00x00','00x00','00x00','00x00',$
+                '00x00','00x00','00x00','00x00']
+;; => Octal Number Conversions
+oct_byt_hv09 = ['000'OL,'000'OL,'072'OL,'044'OL,'000'OL,'170'OL,'043'OL,'101'OL,'154'OL,$
+                '142'OL,'075'OL,'064'OL,'067'OL,'066'OL,'065'OL,'053'OL,'055'OL,'077'OL,$
+                '107'OL,'045'OL,'057'OL,'117'OL,'126'OL,'000'OL,'104'OL,'000'OL,'000'OL,$
+                '000'OL,'124'OL,'000'OL,'000'OL,'146'OL,'156'OL,'000'OL,'155'OL,'000'OL,$
+                '000'OL,'000'OL,'000'OL,'000'OL]
+oct_byt_hv20 = ['000'OL,'000'OL,'000'OL,'047'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,$
+                '000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,$
+                '000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,$
+                '000'OL,'000'OL,'126'OL,'162'OL,'000'OL,'000'OL,'123'OL,'000'OL,'163'OL,$
+                '124'OL,'164'OL,'125'OL,'165'OL]
+oct_byt_hv07 = ['000'OL,'000'OL,'000'OL,'000'OL,'171'OL,'000'OL,'000'OL,'000'OL,'000'OL,$
+                '000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,$
+                '000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'104'OL,'000'OL,'120'OL,'122'OL,$
+                '103'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,'000'OL,$
+                '000'OL,'000'OL,'000'OL,'000'OL]
+;;---------------------------------------------------------
+;; String names of symbols
+;;---------------------------------------------------------
+symbol_str  = ['simeq','approx','equiv','infinity','infin2','perpendicular',            $
+               'parallel','sim','leq','geq','neq','leftarrow','uparrow','rightarrow',   $
+               'downarrow','plusmin','minplus','propto','nabla','degree','divide',      $
+               'dagger','diamond','triangle','partial','capitalpi','sum','capitalgamma',$
+               'predator','moon','mercury','venus','sun','earth','mars','jupiter',      $
+               'saturn','uranus','neptune','pluto']
+;;----------------------------------------------------------------------------------------
+;; => Define current device settings
+;;----------------------------------------------------------------------------------------
+old_name       = STRLOWCASE(!D.NAME)
+old_font       = !P.FONT
+;;  Make sure isolatin is set
+IF (STRLOWCASE(!D.NAME) EQ 'ps') THEN DEVICE,ISOLATIN1=1
+;;  Get current device settings
+IF (STRLOWCASE(!D.NAME) NE 'ps') THEN SET_PLOT,'PS'
+HELP,/DEVICE,OUTPUT=current_device_ps
+;; Return to previous device
+SET_PLOT,old_name[0]
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+test           = (SIZE(symb,/TYPE) NE 7) OR (N_PARAMS() NE 1)
+IF (test) THEN BEGIN
+  ;; => no (or bad) input???
+  noinpt_msg     = 'No(or incorrect) input supplied...'
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,''
+ENDIF
+glett          = STRLOWCASE(symb[0])
+;;----------------------------------------------------------------------------------------
+;; => Make sure it matches one of the symbol names
+;;----------------------------------------------------------------------------------------
+match          = STRMATCH(symbol_str,glett[0],/FOLD_CASE)
+test           = TOTAL(match) NE 1
+IF (test) THEN BEGIN
+  ;; => no (or bad) input???
+  badinp_msg     = 'SYMB must represent the first [N]-unique characters of a symbol name...'
+  MESSAGE,badinp_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,''
+ENDIF
+good_let       = WHERE(match,gdlt)
+full_syn       = symbol_str[good_let[0]]
+;;----------------------------------------------------------------------------------------
+;; => Determine the current font mapping
+;;----------------------------------------------------------------------------------------
+test           = STRMATCH(current_device_ps,'*Symbol*',/FOLD_CASE)
+good           = WHERE(test,gd)
+
+CASE old_font[0] OF
+  -1   : BEGIN
+    ;; Using Hershey Vector Fonts
+    test_no  = TOTAL(full_syn[0] EQ ['simeq','approx']) NE 0
+    IF (test_no) THEN BEGIN
+      badinp_msg     = 'SYMB not allowed for Hershey Vector Fonts...'
+      MESSAGE,badinp_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN,''
+    ENDIF
+    str_07   = ['infin2','triangle','capitalpi','sum','capitalgamma']
+    str_20   = ['moon','mercury','earth','jupiter','saturn','uranus','neptune','pluto']
+    test_07  = TOTAL(full_syn[0] EQ str_07) NE 0
+    test_20  = TOTAL(full_syn[0] EQ str_20) NE 0
+    test_09  = (test_07 EQ 0) AND (test_20 EQ 0)
+    good_hv  = WHERE([test_09,test_07,test_20],gd)
+    CASE good_hv[0] OF
+      0   : BEGIN
+        ;;  Use Math and Special
+        oct_byte = BYTE(oct_byt_hv09)
+        nmap     = '!9'
+      END
+      1   : BEGIN
+        ;;  Use Complex Greek
+        oct_byte = BYTE(oct_byt_hv07)
+        nmap     = '!7'
+      END
+      2   : BEGIN
+        ;;  Use Miscellaneous
+        oct_byte = BYTE(oct_byt_hv20)
+        nmap     = '!20'
+      END
+      ELSE : BEGIN
+        ;;  Unrecognized [shouldn't be possible]
+        RETURN,''
+      END
+    ENDCASE
+  END
+   1   : BEGIN
+    ;; Using TrueType Fonts
+    oct_byte = BYTE(oct_byte_tt)
+    IF (gd GT 0) THEN BEGIN
+      ;; determine font index of Symbol TrueType Font
+      gdevc = current_device_ps[good[0]]
+      gposi = STRPOS(gdevc[0],'Symbol')
+      pmap  = STRTRIM(STRMID(gdevc[0],gposi[0]-6L,6L),2L)
+      IF (STRLEN(pmap) EQ 4) THEN gels = [1L,2L] ELSE gels = [1L,3L]
+      nmap  = STRMID(pmap[0],gels[0],gels[1])
+    ENDIF ELSE BEGIN
+      ;; couldn't find Symbol => quit?
+      badmap_msg     = 'Could not find mapping to Symbol font...'
+      MESSAGE,badinp_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN,''
+    ENDELSE
+  END
+  ELSE : BEGIN
+    ;; Using Device Fonts
+    oct_byte = BYTE(oct_byte_tt)
+    IF (gd GT 0) THEN BEGIN
+      ;; determine font index of Symbol TrueType Font
+      gdevc = current_device_ps[good[0]]
+      gposi = STRPOS(gdevc[0],'Symbol')
+      pmap  = STRTRIM(STRMID(gdevc[0],gposi[0]-6L,6L),2L)
+      IF (STRLEN(pmap) EQ 4) THEN gels = [1L,2L] ELSE gels = [1L,3L]
+      nmap  = STRMID(pmap[0],gels[0],gels[1])
+    ENDIF ELSE BEGIN
+      ;; couldn't find Symbol => quit?
+      badmap_msg     = 'Could not find mapping to Symbol font...'
+      MESSAGE,badinp_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN,''
+    ENDELSE
+  END
+ENDCASE
+;;----------------------------------------------------------------------------------------
+;; => Define output
+;;----------------------------------------------------------------------------------------
+oct_str   = STRING(oct_byte[good_let[0]])
+IF (oct_str[0] NE '') THEN str_embed = nmap[0]+oct_str[0]+'!X' ELSE str_embed = ''
+;test      = (old_font[0] NE -1) AND (full_syn[0] EQ 'parallel')
+;IF (test) THEN str_embed += str_embed[0]
+;;----------------------------------------------------------------------------------------
+;; => Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,str_embed
+END

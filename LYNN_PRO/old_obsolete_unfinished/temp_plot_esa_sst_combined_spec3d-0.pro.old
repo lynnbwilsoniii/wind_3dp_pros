@@ -1,0 +1,585 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   temp_plot_esa_sst_combined_spec3d.pro
+;  PURPOSE  :   This routine plots a combined 3D spectra of from the low energy ESA and
+;                 the higher energy SST instruments.
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               DAT_ESA    :  Scalar [structure] associated with a known THEMIS ESA
+;                               data structure [see get_th?_pe*b.pro, ? = a-f]
+;                               or a Wind/3DP data structure
+;                               [see get_?.pro, ? = el, elb, pl, ph, eh, etc.]
+;               DAT_SST    :  Scalar [structure] associated with a known THEMIS SST
+;                               data structure [see get_th?_ps*b.pro, ? = a-f]
+;                               or a Wind/3DP data structure
+;                               [see get_?.pro, ? = sf, sfb, so, sob]
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***       DIRECT  INPUTS       ***
+;               **********************************
+;               LIM_ESA    :  Scalar [structure] used for plotting the ESA distribution
+;                               that may contain any combination of the following
+;                               structure tags or keywords accepted by PLOT.PRO:
+;                                 XLOG,   YLOG,   ZLOG,
+;                                 XRANGE, YRANGE, ZRANGE,
+;                                 XTITLE, YTITLE,
+;                                 TITLE, POSITION, REGION, etc.
+;                                 (see IDL documentation for a description)
+;                               The structure is passed to lbw_spec3d.pro through the
+;                               LIMITS keyword.
+;               LIM_SST    :  Scalar [structure] used for plotting the SST distribution
+;                               that may contain any combination of the following
+;                               structure tags or keywords accepted by PLOT.PRO:
+;                                 XLOG,   YLOG,   ZLOG,
+;                                 XRANGE, YRANGE, ZRANGE,
+;                                 XTITLE, YTITLE,
+;                                 TITLE, POSITION, REGION, etc.
+;                                 (see IDL documentation for a description)
+;                               The structure is passed to lbw_spec3d.pro through the
+;                               LIMITS keyword.
+;               ESA_ERAN   :  [2]-Element [float/double] array defining the range of
+;                               energies [eV] over which the ESA data will be plotted
+;                               [Default  :  [10,25000]]
+;               SST_ERAN   :  [2]-Element [float/double] array defining the range of
+;                               energies [keV] over which the ESA data will be plotted
+;                               [Default  :  [30,500]]
+;               SC_FRAME   :  If set, routine will fit the data in the spacecraft frame
+;                               of reference rather than the eVDF's bulk flow frame
+;                               [Default  :  FALSE]
+;               CUT_RAN    :  Scalar [numeric] defining the range of angles [deg] about a
+;                               center angle to use when averaging to define the spectra
+;                               along a given direction
+;                               [Default  :  22.5]
+;               P_ANGLE    :  If set, routine will use the MAGF tag within DAT_ESA and
+;                               DAT_SST to define the angular distributions for plotting
+;                               (i.e., here it would be a pitch-angle distribution)
+;                               [Default  :  TRUE]
+;               SUNDIR     :  If set, routine will use the unit vector [-1,0,0] as the
+;                               direction about which to define the angular distributions
+;                               for plotting
+;                               [Default  :  FALSE]
+;               VECTOR     :  [3]-Element [float/double] array defining the vector
+;                               direction about which to define the angular distributions
+;                               for plotting
+;                               [Default  :  determined by P_ANGLE and SUNDIR settings]
+;               UNITS      :  Scalar [string] defining the units to use for the
+;                               vertical axis of the plot and the outputs YDAT and DYDAT
+;                               [Default = 'flux' or number flux]
+;               ESA_BINS   :  [N]-Element [byte] array defining which ESA solid angle bins
+;                                should be plotted [i.e., BINS[good] = 1b] and which
+;                                bins should not be plotted [i.e., BINS[bad] = 0b].
+;                                One can also define bins as an array of indices that
+;                                define which solid angle bins to plot.  If this is the
+;                                case, then on output, BINS will be redefined to an
+;                                array of byte values specifying which bins are TRUE or
+;                                FALSE.
+;                                [Default:  BINS[*] = 1b]
+;               SST_BINS   :  [N]-Element [byte] array defining which SST solid angle bins
+;                                should be plotted [i.e., BINS[good] = 1b] and which
+;                                bins should not be plotted [i.e., BINS[bad] = 0b].
+;                                One can also define bins as an array of indices that
+;                                define which solid angle bins to plot.  If this is the
+;                                case, then on output, BINS will be redefined to an
+;                                array of byte values specifying which bins are TRUE or
+;                                FALSE.
+;                                [Default:  BINS[*] = 1b]
+;               EX_SUFFX   :  Scalar [string] defining an extra suffix to attach to the
+;                                PS output file name
+;                                Note:  routine will automatically add '_' before adding
+;                                       EX_SUFFX to default file name
+;                                [Default:  '']
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  02/02/2016
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/02/2016   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO temp_plot_esa_sst_combined_spec3d,dat_esa,dat_sst,LIM_ESA=lim_esa,LIM_SST=lim_sst,   $
+                                      ESA_ERAN=esa_eran,SST_ERAN=sst_eran,               $
+                                      SC_FRAME=sc_frame,CUT_RAN=cut_ran,P_ANGLE=p_angle, $
+                                      SUNDIR=sundir,VECTOR=vec,UNITS=units,              $
+                                      ESA_BINS=esa_bins,SST_BINS=sst_bins,EX_SUFFX=ex_suffx
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+lim0           = {XSTYLE:1,YSTYLE:1,XMINOR:9,YMINOR:9,XMARGIN:[10,10],YMARGIN:[5,5],XLOG:1,YLOG:1}
+def_esa_eran   = [10d0,25d3]            ;;  Default ESA energy range [eV]
+def_sst_eran   = [30d0,50d1]*1d3        ;;  Default SST energy range [eV]
+def_cut_aran   = 22.5d0                 ;;  Default angular range [deg] of acceptance for averaging
+frac_cnts      = 0b                     ;;  logic to use to determine whether to allow fractional counts in unit conversion (THEMIS ESA only)
+cut_mids       = [22.5d0,9d1,157.5d0]   ;;  Default mid angles [deg] about which to define a range over which to average
+vec_cols       = [250,150, 50]
+;;  Dummy error messages
+noinpt_msg     = 'User must supply two velocity distribution functions as IDL structures...'
+notstr_msg     = 'DAT_ESA and DAT_SST must be IDL structures...'
+notvdf_msg     = 'DAT_ESA and DAT_SST must be velocity distribution functions as an IDL structures...'
+diffsc_msg     = 'DAT_ESA and DAT_SST must come from the same spacecraft...'
+badvdf_msg     = 'Input must be an IDL structure with similar format to Wind/3DP or THEMIS/ESA...'
+not3dp_msg     = 'Input must be a velocity distribution IDL structure from Wind/3DP...'
+notthm_msg     = 'Input must be a velocity distribution IDL structure from THEMIS/ESA...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 2) THEN BEGIN
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+test           = (SIZE(dat_esa,/TYPE) NE 8L OR N_ELEMENTS(dat_esa) LT 1) OR $
+                 (SIZE(dat_sst,/TYPE) NE 8L OR N_ELEMENTS(dat_sst) LT 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Check to make sure distributions have the correct format
+test_esa0      = test_wind_vs_themis_esa_struct(dat_esa[0],/NOM)
+test_sst0      = test_wind_vs_themis_esa_struct(dat_sst[0],/NOM)
+test           = ((test_esa0.(0) + test_esa0.(1)) NE 1) OR $
+                 ((test_sst0.(0) + test_sst0.(1)) NE 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notvdf_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Make sure the distributions come from the same spacecraft (i.e., no mixing!)
+test           = (test_esa0.(0) EQ test_sst0.(0)) AND (test_esa0.(1) EQ test_sst0.(1))
+IF (test[0] EQ 0) THEN BEGIN
+  MESSAGE,diffsc_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Determine instrument (i.e., ESA or 3DP) and define electric charge
+dat0           = dat_esa[0]
+dat1           = dat_sst[0]
+IF (test_esa0.(0)) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Wind
+  ;;--------------------------------------------------------------------------------------
+  mission      = 'Wind'
+  strn0        = dat_3dp_str_names(dat0[0])
+  strn1        = dat_3dp_str_names(dat1[0])
+  IF (SIZE(strn0,/TYPE) NE 8 OR SIZE(strn1,/TYPE) NE 8) THEN BEGIN
+    ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+    MESSAGE,not3dp_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF
+  instnmmode_esa = strn0.LC[0]         ;;  e.g., 'Eesa Low Burst'
+  instnmmode_sst = strn1.LC[0]         ;;  e.g., 'SST Foil Burst'
+ENDIF ELSE BEGIN
+  IF (test_esa0.(1)) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  THEMIS
+    ;;------------------------------------------------------------------------------------
+    mission      = 'THEMIS'
+    strn0        = dat_themis_esa_str_names(dat0[0])
+    strn1        = dat_themis_esa_str_names(dat1[0])
+    IF (SIZE(strn0,/TYPE) NE 8 OR SIZE(strn1,/TYPE) NE 8) THEN BEGIN
+      ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+      MESSAGE,notthm_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    ENDIF
+    temp           = strn0.LC[0]                  ;;  e.g., 'IESA 3D Burst Distribution'
+    tposi          = STRPOS(temp[0],'Distribution') - 1L
+    instnmmode_esa = STRMID(temp[0],0L,tposi[0])  ;;  e.g., 'IESA 3D Burst'
+    temp           = strn1.LC[0]                  ;;  e.g., 'SST Ion Burst Distribution'
+    tposi          = STRPOS(temp[0],'Distribution') - 1L
+    instnmmode_sst = STRMID(temp[0],0L,tposi[0])  ;;  e.g., 'SST Ion Burst'
+    frac_cnts      = 1b
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Other mission?
+    ;;------------------------------------------------------------------------------------
+    ;;  Not handling any other missions yet  [Need to know the format of their distributions]
+    MESSAGE,badvdf_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDELSE
+ENDELSE
+data_str_esa   = strn0.SN[0]     ;;  e.g., 'el' for Wind EESA Low or 'peeb' for THEMIS EESA
+data_str_sst   = strn1.SN[0]     ;;  e.g., 'sf' for Wind SST Foil or 'pseb' for THEMIS SST Foil
+;;  Define plot title prefixes
+test           = (N_ELEMENTS(mission) NE 0)
+ttl_prefs      = [instnmmode_esa[0],instnmmode_sst[0]]
+IF (test[0]) THEN ttl_prefs = mission[0]+' '+ttl_prefs
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check LIM_ESA and LIM_SST
+test           = (SIZE(lim_esa,/TYPE) EQ 8L)
+IF (test[0]) THEN extract_tags,lime_str,lim_esa
+extract_tags,lime_str,lim0       ;;  Add defaults to ESA structure
+test           = (SIZE(lim_sst,/TYPE) EQ 8L)
+IF (test[0]) THEN extract_tags,lims_str,lim_sst
+extract_tags,lims_str,lim0       ;;  Add defaults to ESA structure
+;;  Check ESA_ERAN and SST_ERAN
+test           = (test_plot_axis_range(esa_eran,/NOMSSG) EQ 0L)
+IF (test[0]) THEN eran_esa = def_esa_eran ELSE eran_esa = esa_eran
+test           = (test_plot_axis_range(sst_eran,/NOMSSG) EQ 0L)
+IF (test[0]) THEN eran_sst = def_sst_eran ELSE eran_sst = sst_eran
+;;  Add XRANGE for each structure
+str_element,lime_str,'XRANGE',eran_esa,/ADD_REPLACE
+str_element,lims_str,'XRANGE',eran_sst,/ADD_REPLACE
+;;  Check SC_FRAME
+IF KEYWORD_SET(sc_frame) THEN scframe = 1b ELSE scframe = 0b
+;;  Check CUT_RAN
+test           = (is_a_number(cut_ran,/NOMSSG) EQ 0)
+IF (test[0]) THEN cutran = def_cut_aran[0] ELSE cutran = cut_ran[0]
+;;  Check P_ANGLE
+IF KEYWORD_SET(p_angle) THEN pang = 1b ELSE pang = 0b
+;;  Check SUNDIR
+IF KEYWORD_SET(sundir) THEN sun_d = 1b ELSE sun_d = 0b
+;;  Check VECTOR
+test           = is_a_3_vector(vec,V_OUT=v_out,/NOMSSG)
+IF (test[0]) THEN BEGIN
+  vecdir = v_out
+  fsuffx = '_vecdir'
+ENDIF ELSE BEGIN
+  ;;  VECTOR not set --> check if P_ANGLE or SUNDIR was set
+  test   = pang[0] OR sun_d[0]
+  IF (test[0]) THEN BEGIN
+    ;;  Either P_ANGLE and/or SUNDIR was set --> define direction to use (i.e., force the other to FALSE)
+    IF (pang[0]) THEN sun_d = 0b ELSE pang = 0b
+    IF (pang[0]) THEN fsuffx = '_PAD' ELSE fsuffx = '_sundir'
+    vecdir = 0b
+  ENDIF ELSE BEGIN
+    ;;  None of the directions were set --> default to P_ANGLE
+    fsuffx = '_PAD'
+    pang   = 1b
+    sun_d  = 0b
+    vecdir = 0b
+  ENDELSE
+ENDELSE
+;;  Check UNITS
+test           = (N_ELEMENTS(units) EQ 0) OR (SIZE(units,/TYPE) NE 7)
+IF (test[0]) THEN gunits = 'flux' ELSE gunits = units[0]
+;;  Make sure input was an allowed units name
+new_units      = wind_3dp_units(gunits[0])
+gunits         = new_units.G_UNIT_NAME      ;;  e.g., 'flux'
+punits         = new_units.G_UNIT_P_NAME    ;;  e.g., ' (# cm!U-2!Ns!U-1!Nsr!U-1!NeV!U-1!N)'
+;;  Check ESA_BINS and SST_BINS
+bstr           = format_esa_bins_keyword(dat0,BINS=esa_bins)
+test           = (SIZE(bstr,/TYPE) NE 8)
+IF (test[0]) THEN esa_bins = REPLICATE(1b,dat0[0].NBINS)
+bstr           = format_esa_bins_keyword(dat1,BINS=sst_bins)
+test           = (SIZE(bstr,/TYPE) NE 8)
+IF (test[0]) THEN sst_bins = REPLICATE(1b,dat1[0].NBINS)
+;;  Check EX_SUFFX
+test           = (N_ELEMENTS(ex_suffx) EQ 0) OR (SIZE(ex_suffx,/TYPE) NE 7)
+IF (test[0]) THEN exsuffx = '' ELSE exsuffx = ex_suffx[0]
+;;----------------------------------------------------------------------------------------
+;;  Transform (if desired)
+;;----------------------------------------------------------------------------------------
+tdate_sw       = conv_units(dat0[0],'df',FRACTIONAL_COUNTS=frac_cnts[0])
+tdats_sw       = conv_units(dat1[0],'df')
+IF (scframe[0]) THEN BEGIN
+  ;;  leave alone
+  ttle_ext = 'SCF'      ;;  string to add to plot title indicating reference frame shown
+ENDIF ELSE BEGIN
+  ;;  transform into bulk flow frame
+  ttle_ext = 'SWF'
+  transform_vframe_3d,tdate_sw,/EASY_TRAN
+  transform_vframe_3d,tdats_sw,/EASY_TRAN
+ENDELSE
+;;  Convert into desired units
+tdate_sw       = conv_units(tdate_sw[0],gunits[0],FRACTIONAL_COUNTS=frac_cnts[0])
+tdats_sw       = conv_units(tdats_sw[0],gunits[0])
+;;----------------------------------------------------------------------------------------
+;;  Open windows for plotting
+;;----------------------------------------------------------------------------------------
+wttles         = mission[0]+' '+['ESA','SST','ESA+SST']
+w_struc        = {RETAIN:2,XSIZE:800,YSIZE:800}
+FOR ww=0L, 2L DO WINDOW,ww[0]+1L,TITLE=wttles[ww],_EXTRA=w_struc
+;;----------------------------------------------------------------------------------------
+;;  Plot initial spectra
+;;----------------------------------------------------------------------------------------
+WSET,1
+WSHOW,1
+pang_eesa      = pang
+lbw_spec3d,tdate_sw,LIMITS=lime_str,SUNDIR=sun_d,VECTOR=vecdir,PITCHANGLE=pang_eesa,$
+                    /LABEL,BINS=esa_bins,XDAT=xdat_eesa,YDAT=ydat_eesa
+
+WSET,2
+WSHOW,2
+pang_sste      = pang
+lbw_spec3d,tdats_sw,LIMITS=lims_str,SUNDIR=sun_d,VECTOR=vecdir,PITCHANGLE=pang_sste,$
+                    /LABEL,BINS=sst_bins,XDAT=xdat_sste,YDAT=ydat_sste
+;;----------------------------------------------------------------------------------------
+;;  Check to see if plot was successful
+;;----------------------------------------------------------------------------------------
+test           = (is_a_number(xdat_eesa,/NOMSSG) EQ 0) OR (is_a_number(ydat_eesa,/NOMSSG) EQ 0) OR $
+                 (is_a_number(xdat_sste,/NOMSSG) EQ 0) OR (is_a_number(ydat_sste,/NOMSSG) EQ 0)
+IF (test[0]) THEN RETURN     ;;  Nothing plotted --> leave
+;;----------------------------------------------------------------------------------------
+;;  Define range of pitch-angles to use for averaging
+;;----------------------------------------------------------------------------------------
+cut_lows       = cut_mids - cutran[0]
+cut_high       = cut_mids + cutran[0]
+;;  Make sure values are not < 0 or > 180
+cut_lows       = cut_lows > 0d0
+cut_high       = cut_high < 18d1
+;;  Define elements satisfying pitch-angle ranges
+test_para_esa  = (pang_eesa LE cut_high[0]) AND (pang_eesa GE cut_lows[0])
+test_perp_esa  = (pang_eesa LE cut_high[1]) AND (pang_eesa GE cut_lows[1])
+test_anti_esa  = (pang_eesa LE cut_high[2]) AND (pang_eesa GE cut_lows[2])
+test_para_sst  = (pang_sste LE cut_high[0]) AND (pang_sste GE cut_lows[0])
+test_perp_sst  = (pang_sste LE cut_high[1]) AND (pang_sste GE cut_lows[1])
+test_anti_sst  = (pang_sste LE cut_high[2]) AND (pang_sste GE cut_lows[2])
+
+good_para_esa  = WHERE(test_para_esa,gd_para_esa)
+good_perp_esa  = WHERE(test_perp_esa,gd_perp_esa)
+good_anti_esa  = WHERE(test_anti_esa,gd_anti_esa)
+good_para_sst  = WHERE(test_para_sst,gd_para_sst)
+good_perp_sst  = WHERE(test_perp_sst,gd_perp_sst)
+good_anti_sst  = WHERE(test_anti_sst,gd_anti_sst)
+;;----------------------------------------------------------------------------------------
+;;  Define range of energies to use for averaging
+;;----------------------------------------------------------------------------------------
+eners_str      = dat_3dp_energy_bins(tdate_sw)
+eners_esa      = eners_str.ALL_ENERGIES
+;;  Check for un-used SST energy bins (problem in THEMIS, not Wind)
+bad_ener       = WHERE(tdats_sw[0].DENERGY LE 0,bd_ener,COMPLEMENT=good_ener,NCOMPLEMENT=gd_ener)
+IF (bd_ener GT 0) THEN tdats_sw[0].ENERGY[bad_ener] = f
+eners_str      = dat_3dp_energy_bins(tdats_sw)
+eners_sst      = eners_str.ALL_ENERGIES
+
+test_ener_esa  = ((eners_esa LE eran_esa[0]) OR (eners_esa GE eran_esa[1])) OR (FINITE(eners_esa) EQ 0)
+test_ener_sst  = ((eners_sst LE eran_sst[0]) OR (eners_sst GE eran_sst[1])) OR (FINITE(eners_sst) EQ 0)
+bad_ener_esa   = WHERE(test_ener_esa,bd_ener_esa,COMPLEMENT=good_ener_esa,NCOMPLEMENT=gd_ener_esa)
+bad_ener_sst   = WHERE(test_ener_sst,bd_ener_sst,COMPLEMENT=good_ener_sst,NCOMPLEMENT=gd_ener_sst)
+;;----------------------------------------------------------------------------------------
+;;  Define data over which to average
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------
+;;  Keep only "good" angular ranges
+;;----------------------------------------
+;;  ESA
+data_para_esa  = ydat_eesa[*,good_para_esa]
+data_perp_esa  = ydat_eesa[*,good_perp_esa]
+data_anti_esa  = ydat_eesa[*,good_anti_esa]
+ener_para_esa  = xdat_eesa[*,good_para_esa]
+ener_perp_esa  = xdat_eesa[*,good_perp_esa]
+ener_anti_esa  = xdat_eesa[*,good_anti_esa]
+pang_para_esa  =   pang_eesa[good_para_esa]
+pang_perp_esa  =   pang_eesa[good_perp_esa]
+pang_anti_esa  =   pang_eesa[good_anti_esa]
+;;  SST
+data_para_sst  = ydat_sste[*,good_para_sst]
+data_perp_sst  = ydat_sste[*,good_perp_sst]
+data_anti_sst  = ydat_sste[*,good_anti_sst]
+ener_para_sst  = xdat_sste[*,good_para_sst]
+ener_perp_sst  = xdat_sste[*,good_perp_sst]
+ener_anti_sst  = xdat_sste[*,good_anti_sst]
+pang_para_sst  =   pang_sste[good_para_sst]
+pang_perp_sst  =   pang_sste[good_perp_sst]
+pang_anti_sst  =   pang_sste[good_anti_sst]
+;;----------------------------------------
+;;  Keep only "good" energy ranges
+;;----------------------------------------
+;;  ESA
+data_para_esa  = data_para_esa[good_ener_esa,*]
+data_perp_esa  = data_perp_esa[good_ener_esa,*]
+data_anti_esa  = data_anti_esa[good_ener_esa,*]
+ener_para_esa  = ener_para_esa[good_ener_esa,*]
+ener_perp_esa  = ener_perp_esa[good_ener_esa,*]
+ener_anti_esa  = ener_anti_esa[good_ener_esa,*]
+;;  SST
+data_para_sst  = data_para_sst[good_ener_sst,*]
+data_perp_sst  = data_perp_sst[good_ener_sst,*]
+data_anti_sst  = data_anti_sst[good_ener_sst,*]
+ener_para_sst  = ener_para_sst[good_ener_sst,*]
+ener_perp_sst  = ener_perp_sst[good_ener_sst,*]
+ener_anti_sst  = ener_anti_sst[good_ener_sst,*]
+;;----------------------------------------------------------------------------------------
+;;  Average data over angular ranges
+;;----------------------------------------------------------------------------------------
+;;  ESA
+Avgf_para_esa  = TOTAL(data_para_esa,2L,/NAN)/TOTAL(FINITE(data_para_esa),2L,/NAN)
+AvgE_para_esa  = TOTAL(ener_para_esa,2L,/NAN)/TOTAL(FINITE(ener_para_esa),2L,/NAN)
+Avgf_perp_esa  = TOTAL(data_perp_esa,2L,/NAN)/TOTAL(FINITE(data_perp_esa),2L,/NAN)
+AvgE_perp_esa  = TOTAL(ener_perp_esa,2L,/NAN)/TOTAL(FINITE(ener_perp_esa),2L,/NAN)
+Avgf_anti_esa  = TOTAL(data_anti_esa,2L,/NAN)/TOTAL(FINITE(data_anti_esa),2L,/NAN)
+AvgE_anti_esa  = TOTAL(ener_anti_esa,2L,/NAN)/TOTAL(FINITE(ener_anti_esa),2L,/NAN)
+;;  SST
+Avgf_para_sst  = TOTAL(data_para_sst,2L,/NAN)/TOTAL(FINITE(data_para_sst),2L,/NAN)
+AvgE_para_sst  = TOTAL(ener_para_sst,2L,/NAN)/TOTAL(FINITE(ener_para_sst),2L,/NAN)
+Avgf_perp_sst  = TOTAL(data_perp_sst,2L,/NAN)/TOTAL(FINITE(data_perp_sst),2L,/NAN)
+AvgE_perp_sst  = TOTAL(ener_perp_sst,2L,/NAN)/TOTAL(FINITE(ener_perp_sst),2L,/NAN)
+Avgf_anti_sst  = TOTAL(data_anti_sst,2L,/NAN)/TOTAL(FINITE(data_anti_sst),2L,/NAN)
+AvgE_anti_sst  = TOTAL(ener_anti_sst,2L,/NAN)/TOTAL(FINITE(ener_anti_sst),2L,/NAN)
+;;  Define energy range limits
+all_ener_esa   = [AvgE_para_esa,AvgE_perp_esa,AvgE_anti_esa]
+all_ener_sst   = [AvgE_para_sst,AvgE_perp_sst,AvgE_anti_sst]
+all_eran_esa   = [MIN(ABS(all_ener_esa),/NAN),MAX(ABS(all_ener_esa),/NAN)]
+all_eran_sst   = [MIN(ABS(all_ener_sst),/NAN),MAX(ABS(all_ener_sst),/NAN)]
+;;----------------------------------------------------------------------------------------
+;;  Set up plot stuff...
+;;----------------------------------------------------------------------------------------
+pstr           = lim0
+;;  Add XRANGE
+xran_out       = eran_esa
+xran_out[0]    = xran_out[0] < eran_sst[0]
+xran_out[1]    = xran_out[1] > eran_sst[1]
+str_element,pstr,'XRANGE',xran_out,/ADD_REPLACE
+;;  Get XRANGE and YRANGE, if present
+str_element,lime_str,'YRANGE',yran_esa
+str_element,lims_str,'YRANGE',yran_sst
+test           = (test_plot_axis_range(yran_esa,/NOMSSG) EQ 0L) OR $
+                 (test_plot_axis_range(yran_sst,/NOMSSG) EQ 0L)
+IF (test[0]) THEN BEGIN
+  ;;  One or both are bad --> define new
+  data0       = [Avgf_para_esa,Avgf_perp_esa,Avgf_anti_esa]
+  data1       = [Avgf_para_sst,Avgf_perp_sst,Avgf_anti_sst]
+  data0       = REFORM(data0,N_ELEMENTS(data0))
+  data1       = REFORM(data1,N_ELEMENTS(data1))
+  data0       = data0[SORT(data0)]
+  data1       = data1[SORT(data1)]
+  yran0       = calc_log_scale_yrange(data0)
+  yran1       = calc_log_scale_yrange(data1)
+  yran_out    = yran0
+  yran_out[0] = yran_out[0] < yran1[0]
+  yran_out[1] = yran_out[1] > yran1[1]
+ENDIF ELSE BEGIN
+  ;;  Both are set --> use
+  yran_out    = yran_esa
+  yran_out[0] = yran_out[0] < yran_sst[0]
+  yran_out[1] = yran_out[1] > yran_sst[1]
+ENDELSE
+;;  Add YRANGE to plot limits structure
+str_element,pstr,'YRANGE',yran_out,/ADD_REPLACE
+;;  Get tick marks
+xtick          = get_power_of_ten_ticks(xran_out)
+ytick          = get_power_of_ten_ticks(yran_out)
+;;  Add [X,Y]TICKNAME, [X,Y]TICKV, and [X,Y]TICKS to plot limits structure
+str_element,pstr,'YTICKNAME',ytick.YTICKNAME,/ADD_REPLACE
+str_element,pstr,   'YTICKV',   ytick.YTICKV,/ADD_REPLACE
+str_element,pstr,   'YTICKS',   ytick.YTICKS,/ADD_REPLACE
+str_element,pstr,'XTICKNAME',xtick.XTICKNAME,/ADD_REPLACE
+str_element,pstr,   'XTICKV',   xtick.XTICKV,/ADD_REPLACE
+str_element,pstr,   'XTICKS',   xtick.XTICKS,/ADD_REPLACE
+;;  Define titles and add to structure
+title_esa      = '('+ttl_prefs[0]+')'+' '+trange_str(tdate_sw[0].TIME,tdate_sw[0].END_TIME)
+title_sst      = '('+ttl_prefs[1]+')'+' '+trange_str(tdats_sw[0].TIME,tdats_sw[0].END_TIME)
+p_title        = title_esa[0]+'!C'+title_sst[0]
+ytitle         = gunits[0]+' ['+ttle_ext[0]+']'+punits[0]
+xtitle         = 'Energy [eV]'
+str_element,pstr,'XTITLE', xtitle[0],/ADD_REPLACE
+str_element,pstr,'YTITLE', ytitle[0],/ADD_REPLACE
+str_element,pstr, 'TITLE',p_title[0],/ADD_REPLACE
+;;  Define popen structure
+popen_str      = {PORT:1,UNITS:'inches',XSIZE:8.5,YSIZE:8.5,ASPECT:1}
+;;  Define file save name
+fpref          = mission[0]+'_'+data_str_esa[0]+'-'
+fend           = 'para-red_perp-green_anti-blue_wrt'+fsuffx[0]    ;;  e.g., 'para-red_perp-green_anti-blue_wrt_PAD'
+fnm_esa        = file_name_times(tdate_sw[0].TIME,PREC=3)
+fnm_sst        = file_name_times(tdats_sw[0].TIME,PREC=3)
+ft_esa         = fnm_esa[0].F_TIME[0]        ;;  e.g., '1998-08-09_0801x09.494'
+ft_sst         = fnm_sst[0].F_TIME[0]        ;;  e.g., '2008-08-09_0801x09.494'
+fname          = fpref[0]+ft_esa[0]+'_'+data_str_sst[0]+'-'+ft_sst[0]+'_'+fend[0]+'_'+exsuffx[0]
+;;----------------------------------------------------------------------------------------
+;;  Define power-law lines
+;;----------------------------------------------------------------------------------------
+f_at_xo        = yran_out[1]
+a_o_2          = f_at_xo[0]*(xran_out[0])^2
+a_o_3          = f_at_xo[0]*(xran_out[0])^3*1d1
+
+fplaw_2        = a_o_2[0]*xran_out^(-2d0)        ;;  f(E) ~ E^(-2)
+fplaw_3        = a_o_3[0]*xran_out^(-3d0)        ;;  f(E) ~ E^(-3)
+;;----------------------------------------------------------------------------------------
+;;  Plot combined spectra
+;;----------------------------------------------------------------------------------------
+legends        = ['Para.','Perp.','Anti.']+' Avg.: '+STRMID(fsuffx[0],1)
+leg_fpl        = ['Dashed:  f(E) ~ E^(-2)','Dash-Dot:  f(E) ~ E^(-3)']
+xyfacs         = [55d-2,105d-2]
+thck           = 2.0
+WSET,3
+WSHOW,3
+PLOT,AvgE_para_esa,Avgf_para_esa,_EXTRA=pstr
+  ;;  Plot EESA data
+  OPLOT,AvgE_para_esa,Avgf_para_esa,COLOR=vec_cols[0],THICK=thck[0]
+  OPLOT,AvgE_perp_esa,Avgf_perp_esa,COLOR=vec_cols[1],THICK=thck[0]
+  OPLOT,AvgE_anti_esa,Avgf_anti_esa,COLOR=vec_cols[2],THICK=thck[0]
+  ;;  Plot SSTe data
+  OPLOT,AvgE_para_sst,Avgf_para_sst,COLOR=vec_cols[0],THICK=thck[0]
+  OPLOT,AvgE_perp_sst,Avgf_perp_sst,COLOR=vec_cols[1],THICK=thck[0]
+  OPLOT,AvgE_anti_sst,Avgf_anti_sst,COLOR=vec_cols[2],THICK=thck[0]
+  ;;  Plot energy range limits
+  OPLOT,[all_eran_esa[0],all_eran_esa[0]],yran_out,COLOR=200,LINESTYLE=2
+  OPLOT,[all_eran_esa[1],all_eran_esa[1]],yran_out,COLOR=200,LINESTYLE=2
+  OPLOT,[all_eran_sst[0],all_eran_sst[0]],yran_out,COLOR=100,LINESTYLE=3
+  OPLOT,[all_eran_sst[1],all_eran_sst[1]],yran_out,COLOR=100,LINESTYLE=3
+  ;;  Output power-laws
+  OPLOT,xran_out,fplaw_2,LINESTYLE=2,THICK=thck[0],COLOR= 30
+  OPLOT,xran_out,fplaw_3,LINESTYLE=3,THICK=thck[0]
+  ;;  Output legend
+  XYOUTS,xyfacs[0]*all_eran_esa[1],xyfacs[0]*yran_out[1],'ESA',COLOR=200,/DATA,ALIGNMENT=0
+  XYOUTS,xyfacs[1]*all_eran_sst[0],xyfacs[0]*yran_out[1],'SST',COLOR=100,/DATA,ALIGNMENT=0
+  XYOUTS,0.15,0.40,legends[0],COLOR=vec_cols[0],/NORMAL,ALIGNMENT=0
+  XYOUTS,0.15,0.37,legends[1],COLOR=vec_cols[1],/NORMAL,ALIGNMENT=0
+  XYOUTS,0.15,0.34,legends[2],COLOR=vec_cols[2],/NORMAL,ALIGNMENT=0
+  XYOUTS,0.15,0.30,leg_fpl[0],COLOR= 30,        /NORMAL,ALIGNMENT=0
+  XYOUTS,0.15,0.27,leg_fpl[1],                  /NORMAL,ALIGNMENT=0
+
+;;----------------------------------------------------------------------------------------
+;;  Save plot of combined spectra
+;;----------------------------------------------------------------------------------------
+popen,fname[0],_EXTRA=popen_str
+  PLOT,AvgE_para_esa,Avgf_para_esa,_EXTRA=pstr
+    ;;  Plot EESA data
+    OPLOT,AvgE_para_esa,Avgf_para_esa,COLOR=vec_cols[0],THICK=thck[0]
+    OPLOT,AvgE_perp_esa,Avgf_perp_esa,COLOR=vec_cols[1],THICK=thck[0]
+    OPLOT,AvgE_anti_esa,Avgf_anti_esa,COLOR=vec_cols[2],THICK=thck[0]
+    ;;  Plot SSTe data
+    OPLOT,AvgE_para_sst,Avgf_para_sst,COLOR=vec_cols[0],THICK=thck[0]
+    OPLOT,AvgE_perp_sst,Avgf_perp_sst,COLOR=vec_cols[1],THICK=thck[0]
+    OPLOT,AvgE_anti_sst,Avgf_anti_sst,COLOR=vec_cols[2],THICK=thck[0]
+    ;;  Plot energy range limits
+    OPLOT,[all_eran_esa[0],all_eran_esa[0]],yran_out,COLOR=200,LINESTYLE=2
+    OPLOT,[all_eran_esa[1],all_eran_esa[1]],yran_out,COLOR=200,LINESTYLE=2
+    OPLOT,[all_eran_sst[0],all_eran_sst[0]],yran_out,COLOR=100,LINESTYLE=3
+    OPLOT,[all_eran_sst[1],all_eran_sst[1]],yran_out,COLOR=100,LINESTYLE=3
+    ;;  Output power-laws
+    OPLOT,xran_out,fplaw_2,LINESTYLE=2,THICK=thck[0],COLOR= 30
+    OPLOT,xran_out,fplaw_3,LINESTYLE=3,THICK=thck[0]
+    ;;  Output legend
+    XYOUTS,xyfacs[0]*all_eran_esa[1],xyfacs[0]*yran_out[1],'ESA',COLOR=200,/DATA,ALIGNMENT=0
+    XYOUTS,xyfacs[1]*all_eran_sst[0],xyfacs[0]*yran_out[1],'SST',COLOR=100,/DATA,ALIGNMENT=0
+    XYOUTS,0.15,0.40,legends[0],COLOR=vec_cols[0],/NORMAL,ALIGNMENT=0
+    XYOUTS,0.15,0.37,legends[1],COLOR=vec_cols[1],/NORMAL,ALIGNMENT=0
+    XYOUTS,0.15,0.34,legends[2],COLOR=vec_cols[2],/NORMAL,ALIGNMENT=0
+    XYOUTS,0.15,0.30,leg_fpl[0],COLOR= 30,        /NORMAL,ALIGNMENT=0
+    XYOUTS,0.15,0.27,leg_fpl[1],                  /NORMAL,ALIGNMENT=0
+pclose
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

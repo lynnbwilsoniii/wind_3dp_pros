@@ -1,0 +1,306 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   df_fit_parinfo_init.pro
+;  PURPOSE  :   This routine initializes the PARINFO input for mpfit2dfun.pro if the
+;                 user did not specify on input.
+;
+;  CALLED BY:   
+;               df_fit_beam_peak.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DF2D       :  [N,M]-Element array of phase (velocity) space densities for
+;                               the distribution function [s^3 km^(-3) cm^(-3)]
+;               PARAM      :  [6]-Element array containing the following quantities:
+;                               PARAM[0] = Number Density [cm^(-3)]
+;                               PARAM[1] = Parallel Thermal Speed [km/s]
+;                               PARAM[2] = Perpendicular Thermal Speed [km/s]
+;                               PARAM[3] = Parallel Drift Speed [km/s]
+;                               PARAM[4] = Perpendicular Drift Speed [km/s]
+;                               PARAM[5] = *** Not Used Here ***
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               ***  OBSOLETE   ***
+;               CONST      :  [6]-Element [byte] array defining which elements of PARAM
+;                               user will not allow to vary
+;                               [i.e. where TRUE => constrain]
+;
+;   CHANGED:  1)  Updated man page                                  [09/04/2012   v1.1.0]
+;
+;   NOTES:      
+;               1)  This routine is specific to df_fit_beam_peak.pro
+;
+;   CREATED:  09/03/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/04/2012   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION df_fit_parinfo_init,df2d,param,CONST=const
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f           = !VALUES.F_NAN
+d           = !VALUES.D_NAN
+dumb        = {VALUE:0d0,FIXED:0b,LIMITED:[0b,0b],LIMITS:[0d0,0d0],TIED:''}
+;;----------------------------------------------------------------------------------------
+;; => Define parameters
+;;----------------------------------------------------------------------------------------
+z           = df2d
+np          = N_ELEMENTS(param)
+;;----------------------------------------------------------------------------------------
+;;  Check if user wishes to constrain any parameters
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(const)            THEN constrain = const ELSE constrain = REPLICATE(0b,6)
+IF (N_ELEMENTS(constrain)  NE 6) THEN constrain = REPLICATE(0b,6)
+;;----------------------------------------------------------------------------------------
+;;  Define PARINFO structures
+;;----------------------------------------------------------------------------------------
+parinfo                   = REPLICATE(dumb[0],np)
+parinfo.VALUE             = param
+;; Define the peak amplitude, Ao
+amax                      = MAX(ABS(z),/NAN)
+;; => Constrain Density estimate [look at bi-Maxwellian equation]
+maxstr                    = STRTRIM(STRING(amax[0],FORMAT='(g15.5)'),2L)
+parinfo[0].TIED           = maxstr[0]+'*!DPI^(3d0/2d0)*P[1]*P[2]^2'
+;; => Constrain Drift Speeds [assume region is relatively well defined by now]
+v_opar_ra                 = param[3] + [-1d0,1d0]*100d0
+v_oper_ra                 = param[4] + [-1d0,1d0]*100d0
+parinfo[3L:4L].LIMITED[*] = 1b
+parinfo[3L].LIMITS[*]     = v_opar_ra
+parinfo[4L].LIMITS[*]     = v_oper_ra
+;; => Constrain Thermal Speeds
+;;      [Assume user was close, so limit range to ±30% of guess]
+tc_frac                   = [-1d0,1d0]*30d-2
+parinfo[1L:2L].LIMITED[*] = 1b
+parinfo[1L].LIMITS[*]     = param[1]*(1d0 + tc_frac)
+parinfo[2L].LIMITS[*]     = param[2]*(1d0 + tc_frac)
+;;----------------------------------------------------------------------------------------
+;; => Return results
+;;----------------------------------------------------------------------------------------
+
+RETURN,parinfo
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   df_fit_beam_peak.pro
+;  PURPOSE  :   Uses the Levenberg-Marquardt least-squares fit to a 2D particle
+;                 velocity distribution function.  The routine is idiosyncratic to
+;                 the beam fitting routines that call it.
+;
+;  CALLED BY:   
+;               beam_fit_fit_wrapper.pro
+;
+;  CALLS:
+;               df_fit_parinfo_init.pro
+;               mpfit2dfun.pro
+;               bimaxwellian.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               VPARA      :  [N]-Element array of velocities [km/s] corresponding to the
+;                               1st dimension in DF2D
+;                               [e.g. parallel to the quasi-static magnetic field]
+;               VPERP      :  [M]-Element array of velocities [km/s] corresponding to the
+;                               2nd dimension in DF2D
+;                               [e.g. perpendicular to the quasi-static magnetic field]
+;               DF2D       :  [N,M]-Element array of phase (velocity) space densities for
+;                               the distribution function [s^3 km^(-3) cm^(-3)]
+;               PARAM      :  [6]-Element array containing the following quantities:
+;                               PARAM[0] = Number Density [cm^(-3)]
+;                               PARAM[1] = Parallel Thermal Speed [km/s]
+;                               PARAM[2] = Perpendicular Thermal Speed [km/s]
+;                               PARAM[3] = Parallel Drift Speed [km/s]
+;                               PARAM[4] = Perpendicular Drift Speed [km/s]
+;                               PARAM[5] = *** Not Used Here ***
+;               FUNC       :  Scalar string defining the function to use for creating
+;                               model distributions
+;                               [Default = 'bimaxwellian']
+;               ERROR      :  [N,M]-Element array of standard errors for the phase space
+;                               densities in DF2D [s^3 km^(-3) cm^(-3)]
+;                               [Default = 0.01*DF2D]
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               ***  INPUT   ***
+;               QUIET      :  If set, routine will not print out each set of parameter
+;                               solutions for the model distribution functions
+;                               [Note:  Not the keyword used by MPFIT2DFUN.PRO]
+;               FILL       :  Scalar [float/double] defining the lowest possible values
+;                               to consider and the value to use for replacing zeros
+;                               and NaNs
+;                               [Default = 1d-18]
+;               PARINFO    :  [6]-Element array [structure] where the i-th contains
+;                               the following tags and definitions:
+;                                 VALUE    =  Scalar value defined by PARAM[i]
+;                                 FIXED    =  TRUE   -->  parameter constrained
+;                                             FALSE  -->  parameter unconstrained
+;                                 LIMITED  =  [2]-Element defining the lower/upper
+;                                             bound on PARAM[i]
+;                                 LIMITS   =  [2]-Element defining the if the lower/upper
+;                                             bound defined by LIMITED is imposed(TRUE)
+;                                             otherwise LIMITS has no effect
+;                                 TIED     =  Scalar [string] that should not be changed
+;                                             by user
+;
+;               ***  OBSOLETE   ***
+;               CONST      :  [6]-Element [byte] array defining which elements of PARAM
+;                               user will not allow to vary
+;                               [i.e. where TRUE => constrain]
+;
+;   CHANGED:  1)  Continued to write routine                       [08/22/2012   v1.0.0]
+;             2)  Changed input to allow for user specified PARINFO structure array
+;                                                                  [09/03/2012   v1.1.0]
+;             3)  Now routine actually uses the keyword FILL
+;                                                                  [09/04/2012   v1.2.0]
+;             4)  Changed weighting factor determinations
+;                                                                  [09/05/2012   v1.2.1]
+;             5)  Changed weighting factor determinations
+;                                                                  [09/06/2012   v1.2.2]
+;             6)  Cleaned up                                       [09/08/2012   v1.2.3]
+;
+;   NOTES:      
+;               1)  Be careful which parameters you constrain...
+;               2)  User should not call this directly...
+;               3)  The weight factor does not [currently] have a physical explanation.
+;                     I only know that it gives results which appear to match the
+;                     observations to with the fewest parameter constraints.
+;
+;   CREATED:  08/21/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/08/2012   v1.2.3
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION df_fit_beam_peak,vpara,vperp,df2d,param,func,error,QUIET=quiet,FILL=fill,$
+                          CONST=const,PARINFO=parinfo
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f           = !VALUES.F_NAN
+d           = !VALUES.D_NAN
+dumb        = {VALUE:0d0,FIXED:0b,LIMITED:[0b,0b],LIMITS:[0d0,0d0],TIED:''}
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 4) THEN BEGIN
+  ; => no input???
+  RETURN,0
+ENDIF
+
+np             = N_ELEMENTS(param)
+IF (np LT 6) THEN BEGIN
+  ; => bad input???
+  RETURN,0
+ENDIF
+
+IF NOT KEYWORD_SET(fill) THEN miss = 1d-18 ELSE miss = fill[0]
+
+x              = vpara
+y              = vperp
+z              = df2d
+sz             = SIZE(z,/DIMENSIONS)
+;; => Remove zeros
+bad            = WHERE(z LE 0,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN BEGIN
+  z[bad] = miss[0]
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Check keyword inputs
+;;----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(func) THEN BEGIN
+  myfunct = 'bimaxwellian'
+ENDIF ELSE BEGIN
+  myfunct = func[0]
+ENDELSE
+
+IF NOT KEYWORD_SET(err) THEN BEGIN
+  err  = ABS(z)/1d2
+ENDIF ELSE BEGIN
+  err  = ABS(error)
+  ;; check dimensions
+  ser  = SIZE(err,/DIMENSIONS)
+  test = (sz[0] NE ser[0]) OR (sz[1] NE ser[1])
+  IF (test) THEN BEGIN
+    ;; bad dimensions
+    err  = ABS(z)/1d2
+  ENDIF
+ENDELSE
+;; => Remove zeros
+bad            = WHERE(err EQ 0,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN BEGIN
+  err[bad] = ABS(z[bad])/1d2    ;;  use 1% of observed values for 0's
+ENDIF
+;; => Define weights    [LBW III  09/06/2012   v1.2.2]
+;;      [I have no physical reason for this form other than it seems to work]
+weights        = 1d0/(err^(1d0/4d0))
+;;----------------------------------------------------------------------------------------
+;;  Define PARINFO structures
+;;----------------------------------------------------------------------------------------
+test           = (SIZE(parinfo,/TYPE) NE 8) OR (N_ELEMENTS(parinfo) NE np)
+IF (test) THEN parinfo = df_fit_parinfo_init(z,param,CONST=const)
+;;----------------------------------------------------------------------------------------
+;; => Call MPFIT2DFUN
+;;----------------------------------------------------------------------------------------
+bifit       = mpfit2dfun(func[0],x,y,z,err,param,PARINFO=parinfo,PERROR=f_sigma,   $
+                         BESTNORM=chisq,DOF=dof,STATUS=f_stat,NITER=iter,          $
+                         YFIT=df_best_fit,/QUIET,WEIGHTS=weights,                  $
+                         FTOL=1d-14,GTOL=1d-14,ERRMSG=errmsg)
+IF (f_stat[0] EQ 0) THEN BEGIN
+  ;; failed to converge
+  PRINT,''
+  PRINT,errmsg[0]
+  RETURN,0
+ENDIF
+IF (SIZE(f_sigma,/TYPE) EQ 0) THEN f_sigma = REPLICATE(d,np)
+IF NOT KEYWORD_SET(quiet) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;; => Print results
+  ;;--------------------------------------------------------------------------------------
+  PRINT,''
+  PRINT,'Beam Density [cm^(-3)]              = ',bifit[0],'   +/- ',ABS(f_sigma[0])
+  PRINT,'Beam Para. Thermal Speed [km/s]     = ',bifit[1],'   +/- ',ABS(f_sigma[1])
+  PRINT,'Beam Perp. Thermal Speed [km/s]     = ',bifit[2],'   +/- ',ABS(f_sigma[2])
+  PRINT,'Beam Para. Drift Speed [km/s]       = ',bifit[3],'   +/- ',ABS(f_sigma[3])
+  PRINT,'Beam Perp. Drift Speed [km/s]       = ',bifit[4],'   +/- ',ABS(f_sigma[4])
+  PRINT,'Beam Temp. Anisotropy [Tperp/Tpara] = ',ABS(bifit[2]/bifit[1])^2
+  
+  PRINT,''
+  PRINT,'Model Fit Status                    = ',f_stat[0]
+  PRINT,'Number of Iterations                = ',iter[0]
+  PRINT,'Degrees of Freedom                  = ',dof[0]
+  PRINT,'Chi-Squared                         = ',chisq[0]
+  PRINT,'Reduced Chi-Squared                 = ',chisq[0]/dof[0]
+  PRINT,''
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Return results
+;;----------------------------------------------------------------------------------------
+tags    = ['MODEL_PARAMS','MODEL_DF2D','STATUS','CHISQ','DOF','SIGMA','NITER']
+struc   = CREATE_STRUCT(tags,bifit,df_best_fit,f_stat,chisq,dof,f_sigma,iter)
+
+RETURN,struc
+END
+

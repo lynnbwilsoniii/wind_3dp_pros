@@ -1,0 +1,102 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   print_options.pro
+;  PURPOSE  :   This program controls the options used for postscript (PS) files.
+;
+;  CALLED BY: 
+;               popen.pro
+;
+;  CALLS:       NA
+;
+;  REQUIRES:  
+;               popen_com.pro
+;
+;  INPUT:       NA
+;
+;  EXAMPLES:    NA
+;
+;  KEYWORDS:  
+;               PORTRAIT   :  If set, produces a portrait image
+;               LANDSCAPE  :  If set, produces a landscaped image
+;               BW         :  Forces images to black&white color scale
+;               COLOR      :  Sets image to a color image
+;               ASPECT     :  Controls the aspect ratio
+;               XSIZE      :  X-Dimension (cm) of output to PS file
+;               YSIZE      :  Y-" "
+;               PRINTER    :  Set to name of printer to send PS files to
+;               DIRECTORY  :  
+;
+;   CHANGED:  1)  Davin Larson changed something...       [05/30/1997   v1.0.16]
+;             2)  Re-wrote and cleaned up                 [06/09/2009   v1.1.0]
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  06/10/2009   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO print_options,PORTRAIT=port,LANDSCAPE=land,BW = bw,COLOR=col,        $
+                  ASPECT=aspect,XSIZE=xsize,YSIZE=ysize,PRINTER=printer, $
+                  DIRECTORY=printdir
+
+;-----------------------------------------------------------------------------------------
+; Set defaults:
+;-----------------------------------------------------------------------------------------
+@popen_com.pro
+IF (N_ELEMENTS(portrait) EQ 0)        THEN portrait        = 1
+IF (N_ELEMENTS(in_color) EQ 0)        THEN in_color        = 1
+IF (N_ELEMENTS(printer_name) EQ 0)    THEN printer_name    = ''
+IF (N_ELEMENTS(print_directory) EQ 0) THEN print_directory = ''
+IF (N_ELEMENTS(print_aspect) EQ 0)    THEN print_aspect    = 0
+
+IF KEYWORD_SET(land)           THEN  portrait        = 0
+IF KEYWORD_SET(port)           THEN  portrait        = 1
+IF KEYWORD_SET(col)            THEN  in_color        = 1
+IF KEYWORD_SET(bw)             THEN  in_color        = 0
+IF (N_ELEMENTS(printer)  NE 0) THEN  printer_name    = printer
+IF (N_ELEMENTS(printdir) NE 0) THEN  print_directory = printdir
+IF (N_ELEMENTS(aspect)   NE 0) THEN  print_aspect    = aspect
+;-----------------------------------------------------------------------------------------
+;IF N_ELEMENTS(print_font) eq 0 then print_font = 0
+;IF N_ELEMENTS(font)     ne 0 then  print_font = font
+;-----------------------------------------------------------------------------------------
+IF (!D.NAME EQ 'PS') THEN BEGIN
+  aspect = print_aspect
+  IF KEYWORD_SET(aspect) THEN BEGIN
+    IF (portrait) THEN BEGIN
+      scale = (8. < 10.5/aspect)
+    ENDIF ELSE BEGIN
+      scale = (10.5 < 8./aspect)
+    ENDELSE
+    s = [1.0,aspect] * scale
+    IF (portrait) THEN BEGIN
+      offs = [(8.5-s[0])/2,11.-.5-s[1]]
+    ENDIF ELSE BEGIN
+      offs = [(8.5-s[1])/2,11.-(11.-s[0])/2]
+    ENDELSE
+    DEVICE,PORTRAIT=portrait,/INCHES,YSIZE=s[1],XSIZE=s[0],YOFF=offs[1],XOFF=offs[0]
+  ENDIF ELSE BEGIN
+    IF (portrait) THEN BEGIN
+      IF NOT KEYWORD_SET(xsize) THEN xsize = 7.0
+      IF NOT KEYWORD_SET(ysize) THEN ysize = 9.5
+      xoff = (8.5 - xsize)/2
+      yoff = (11. - ysize)/2
+    ENDIF ELSE BEGIN
+      IF NOT KEYWORD_SET(xsize) THEN xsize = 9.5
+      IF NOT KEYWORD_SET(ysize) THEN ysize = 7.0
+      xoff = (8.5 - ysize)/2
+      yoff = 11. - (11.-xsize)/2
+    ENDELSE
+    DEVICE,PORTRAIT=portrait,/INCHES,YSIZE=ysize,YOFF=yoff,XSIZE=xsize,XOFF=xoff 
+  ENDELSE
+  IF (in_color) THEN DEVICE,/COLOR,BITS_PER_PIXEL=8 ELSE DEVICE,COLOR=0
+ENDIF
+
+RETURN
+END
+
+
+

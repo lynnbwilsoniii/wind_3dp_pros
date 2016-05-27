@@ -1,0 +1,286 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   rotate_esa_thetaphi_to_gse.pro
+;  PURPOSE  :   The routine thm_part_dist_array.pro in the TDAS library loads the
+;                 particle distributions with [Theta, Phi]-angles in DSL coordinates.
+;                 Rather than force the user to rotate all of their physical basis
+;                 vectors into the unphysical DSL coordinate system, this routine will
+;                 rotate the distribution angles to GSE coordinates.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               test_themis_esa_struc_format.pro
+;               dat_themis_esa_str_names.pro
+;               thm_load_state.pro
+;               get_data.pro
+;               energy_to_vel.pro
+;               store_data.pro
+;               thm_cotrans.pro
+;               str_element.pro
+;               add_magf2.pro
+;               add_vsw2.pro
+;               del_data.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT       :  [N]-Element array of THEMIS ESA data structures
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               MAGF_NAME  :  Set to a valid TPLOT handle to add average DC magnetic
+;                               field [nT] GSE-vectors to DAT
+;                               [tag name MAGF in DAT]
+;               VEL_NAME   :  Set to a valid TPLOT handle to add average bulk flow
+;                               velocity [km/s] to DAT
+;                               [tag name VELOCITY in DAT]
+;
+;   CHANGED:  1)  No longer renormalizes azimuthal angles to 0 ≤ ø ≤ 360
+;                                                                  [08/07/2012   v1.1.0]
+;
+;   NOTES:      
+;               1)  Routine assumes ALL of the [N]-ESA structures are from the same
+;                     instrument AND the same probe
+;               2)  ESA data structures do not have the VSW structure tag by default,
+;                     so user must call modify_themis_esa_struc.pro on DAT prior to
+;                     using the routine add_vsw2.pro to add bulk flow velocities to
+;                     an [N]-element array of ESA data structures
+;               3)  After running this routine, do the following (if keywords not set)
+;                     [Assuming probe B and modify_themis_esa_struc.pro already used]:
+;                     THEMIS> mag_name = tnames('thb_fgh_gse')
+;                     THEMIS> vel_name = tnames('thb_peib_velocity_gse')
+;                     THEMIS> add_magf2,dat,mag_name[0]
+;                     THEMIS> add_vsw2,dat,vel_name[0]
+;               4)  See also:  themis_esa_contour_plots_crib.txt
+;
+;   CREATED:  04/19/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/07/2012   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO rotate_esa_thetaphi_to_gse,dat,MAGF_NAME=mag_name,VEL_NAME=vel_name
+
+;*****************************************************************************************
+ex_start = SYSTIME(1)
+;*****************************************************************************************
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+ident          = [[1d0,0d0,0d0],[0d0,1d0,0d0],[0d0,0d0,1d0]]
+notstr_mssg    = 'Must be an IDL structure...'
+nostate_mssg   = 'No State data available for date and probe...'
+nomagf_mssg    = 'No FGM data available for date and probe...'
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+IF N_PARAMS() EQ 0 THEN RETURN
+str            = dat[0]   ; => in case it is an array of structures of the same format
+IF (SIZE(str,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+test           = test_themis_esa_struc_format(str,/NOM) NE 1
+IF (SIZE(str,/TYPE) NE 8L) THEN RETURN
+; => Define the instrument used to measure the structures
+dnames         = dat_themis_esa_str_names(str,/NOM)
+IF (SIZE(dnames,/TYPE) NE 8L) THEN RETURN
+inst_nm        = dnames.SN                          ;; e.g. 'peib'
+;;----------------------------------------------------------------------------------------
+;; => Define some parameters related to the input
+;;----------------------------------------------------------------------------------------
+n_d            = N_ELEMENTS(dat)                    ;; # of data structures
+n_e            = dat[0].NENERGY                     ;; # of energy bins
+n_a            = dat[0].NBINS                       ;; # of angle bins
+n_t            = n_e[0]*n_a[0]*n_d[0]               ;; total # of elements
+data           = dat                                ;; => dummy for later
+sc             = STRLOWCASE(data[0].SPACECRAFT)     ;; => Spacecraft name
+mass           = dat[0].MASS                        ;; mass of particle [eV km^(-2) s^(2)]
+ux_st          = data.TIME                          ;; Unix time at start of distributions
+ux_en          = data.END_TIME                      ;; Unix time at end of distributions
+ux_avg         = (ux_st + ux_en)/2d0
+
+;; => Define a time range from particle start/end times
+tr             = [MIN(ux_st,/NAN),MAX(ux_en,/NAN)] + [-1d0,1d0]*12d1
+;;----------------------------------------------------------------------------------------
+;; => Load necessary support data (2 min padding at each end)
+;;----------------------------------------------------------------------------------------
+state_suff     = '_temporary_state_data'
+thm_load_state,PROBE=sc[0],TRANGE=tr,/GET_SUPPORT_DATA,/KEEP_SPIN_DATA,VERBOSE=0,$
+               SUFFIX=state_suff[0]
+;; => Get right ascension and declination
+pref           = 'th'+sc[0]+'_'
+ras_tnm        = pref[0]+'state_spinras'+state_suff[0]  ;; right ascension TPLOT handle
+dec_tnm        = pref[0]+'state_spinras'+state_suff[0]  ;; declination TPLOT handle
+get_data,ras_tnm[0],DATA=thx_spinras
+get_data,dec_tnm[0],DATA=thx_spindec
+;; => Make sure data is available
+test           = (SIZE(thx_spinras,/TYPE) NE 8) OR (SIZE(thx_spindec,/TYPE) NE 8)
+IF (test) THEN BEGIN
+  MESSAGE,nostate_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Convert (E, Theta, Phi) --> (Vx, Vy, Vz)    {each are [N,M,L]-Element arrays}
+;;      N  = # of energy bins
+;;      M  = # of angle bins
+;;      L  = # of data structures
+;;      T  = N * M * L
+;;
+;;    Unit Vectors
+;;      x  = Cos(Theta) * Cos(Phi)
+;;      y  = Cos(Theta) * Sin(Phi)
+;;      z  = Sin(Theta)
+;;----------------------------------------------------------------------------------------
+theta          = data.THETA               ;;  [N,M,L]-Element array of poloidal angles [deg]
+phi            = data.PHI                 ;;  " " of azimuthal angles [deg]
+energy         = data.ENERGY              ;;  " " of energy bin values [eV]
+;; => Calculate magnitude of velocities from energy [km/s]
+vmag           = energy_to_vel(energy,mass[0])
+;; => Sine and Cosine of angles
+sin_the        = SIN(theta*!DPI/18d1)
+cos_the        = COS(theta*!DPI/18d1)
+sin_phi        = SIN(phi*!DPI/18d1)
+cos_phi        = COS(phi*!DPI/18d1)
+;; => Define velocity vectors [km/s]
+two_d_Vx       = vmag*cos_the*cos_phi
+two_d_Vy       = vmag*cos_the*sin_phi
+two_d_Vz       = vmag*sin_the
+two_d_Vel      = DBLARR(n_e,n_a,n_d,3L)   ;; [N,M,L,3]-Element vector array
+two_d_Vel[*,*,*,0L] = two_d_Vx
+two_d_Vel[*,*,*,1L] = two_d_Vy
+two_d_Vel[*,*,*,2L] = two_d_Vz
+;;----------------------------------------------------------------------------------------
+;; => Define rotation matrices from DSL (Vx, Vy, Vz) --> GSE (Vx, Vy, Vz)
+;;----------------------------------------------------------------------------------------
+x_ind           = LINDGEN(n_d)*3L
+y_ind           = x_ind + 1L
+z_ind           = y_ind + 1L
+;; => Create dummy arrays time stamps
+dumb_d_t        = DBLARR(n_d[0]*3L)
+dumb_d_t[x_ind] = ux_avg
+dumb_d_t[y_ind] = ux_avg
+dumb_d_t[z_ind] = ux_avg
+;; => Create dummy arrays of DSL identity matrices
+dumb_ident          = DBLARR(n_d[0]*3L,3L)
+dumb_ident[x_ind,*] = REPLICATE(1d0,n_d) # ident[*,0]
+dumb_ident[y_ind,*] = REPLICATE(1d0,n_d) # ident[*,1]
+dumb_ident[z_ind,*] = REPLICATE(1d0,n_d) # ident[*,2]
+;; => Create a dummy TPLOT variable to use rotation matrices
+pref            = 'th'+sc[0]+'_'
+store_data,pref[0]+'dumb_identity_dsl',DATA={X:dumb_d_t,Y:dumb_ident}
+;; => Transform x,y,z unit vectors to GSE coordinates
+dsl_name        = pref[0]+'dumb_identity_dsl'
+gse_name        = pref[0]+'dumb_identity_gse'
+thm_cotrans,dsl_name[0],gse_name[0],PROBE=sc[0],IN_COORD='dsl',OUT_COORD='gse'
+;; => Create transformation matrices from transformed bases
+get_data,gse_name[0],DATA=rot_dsl_2_gse
+IF (SIZE(rot_dsl_2_gse,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,nostate_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;; => Define rotated unit vectors
+rot_vecs     = rot_dsl_2_gse.Y
+x_dsl_in_gse = rot_vecs[x_ind,*]  ;; [L,3]-element array
+y_dsl_in_gse = rot_vecs[y_ind,*]
+z_dsl_in_gse = rot_vecs[z_ind,*]
+;;  renormalize components
+d31          = REPLICATE(1d0,3L)
+x_dsl_in_gse = x_dsl_in_gse/(SQRT(TOTAL(x_dsl_in_gse^2,2,/NAN,/DOUBLE)) # d31)
+y_dsl_in_gse = y_dsl_in_gse/(SQRT(TOTAL(y_dsl_in_gse^2,2,/NAN,/DOUBLE)) # d31)
+z_dsl_in_gse = z_dsl_in_gse/(SQRT(TOTAL(z_dsl_in_gse^2,2,/NAN,/DOUBLE)) # d31)
+;; => Define rotation matrices from GSE-to-DSL
+rot_i_mats   = [[[x_dsl_in_gse]],[[y_dsl_in_gse]],[[z_dsl_in_gse]]]  ;; [L,3,3]-element array
+;; => Define rotation matrices from DSL-to-GSE
+;;      Since both bases are orthogonal, the inverse of the matrix is the transpose
+rot_mats     = TRANSPOSE(rot_i_mats,[0,2,1])
+;;----------------------------------------------------------------------------------------
+;; => Rotate DSL (Vx, Vy, Vz) --> GSE (Vx, Vy, Vz)
+;;----------------------------------------------------------------------------------------
+gse_vel      = DBLARR(n_e,n_a,n_d,3L)
+FOR k_e=0L, n_e - 1L DO BEGIN
+  FOR j_a=0L, n_a - 1L DO BEGIN
+    temp   = REFORM(two_d_Vel[k_e,j_a,*,*])  ;; [L,3]-element array
+    temp_r = REBIN(temp,n_d,3L,3L)           ;; [L,3,3]-element array
+    ;; => The following operation is equivalent to (check for yourself):
+    ;;      t_gsev = DBLARR(n_d,3L)
+    ;;      FOR i_d=0L, n_d - 1L DO BEGIN
+    ;;        temp        = REFORM(two_d_Vel[k_e,j_a,i_d,*])
+    ;;        t_gsev[i_d,*] = REFORM(rot_mats[i_d,*,*]) ## temp
+    ;;      ENDFOR
+    t_gsev = TOTAL(temp_r*rot_mats,2L)       ;; Sum over the 2nd column
+    gse_vel[k_e,j_a,*,*] = t_gsev
+  ENDFOR
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;; => Convert GSE (Vx, Vy, Vz) --> (E, Theta, Phi)
+;;----------------------------------------------------------------------------------------
+gse_vmag    = SQRT(TOTAL(gse_vel^2,4,/NAN,/DOUBLE))               ;;  [N,M,L]-Element array
+gse_ener    = energy_to_vel(gse_vmag,mass[0],/INVERSE)            ;;  energies [eV]
+;; => Define new (theta,phi)-angles in GSE basis
+gse_theta   = ASIN(gse_vel[*,*,*,2L]/gse_vmag)*18d1/!DPI          ;;  -90 < theta <  +90
+n_phi       = ATAN(gse_vel[*,*,*,1L],gse_vel[*,*,*,0L])*18d1/!DPI ;; -180 < phi   < +180
+; => Shift azimuthal angles to {   0 < phi < +360 }
+;gse_phi     = (n_phi + 36d1) MOD 36d1
+gse_phi     = (n_phi + 36d1)  ;; shift so all values are positive
+;;----------------------------------------------------------------------------------------
+;; => Modify input
+;;----------------------------------------------------------------------------------------
+data.THETA  = FLOAT(gse_theta)
+data.PHI    = FLOAT(gse_phi)
+data.ENERGY = FLOAT(gse_ener)
+;; => redefine input
+dat         = data
+;; => add structure tag defining the coordinate basis of angles
+str_element,dat,'COORD','GSE',/ADD_REPLACE
+;;----------------------------------------------------------------------------------------
+;; => Add B-field or bulk velocity to structures if desired
+;;----------------------------------------------------------------------------------------
+pref           = 'th'+sc[0]+'_'
+IF KEYWORD_SET(mag_name) THEN m_name = mag_name[0]
+IF KEYWORD_SET(vel_name) THEN v_name = vel_name[0]
+
+IF (N_ELEMENTS(m_name) NE 0) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;; => check validity of handle
+  ;;--------------------------------------------------------------------------------------
+  test = tnames(m_name[0]) NE ''
+  IF (test) THEN BEGIN
+    ;; valid handle => add to structures
+    add_magf2,dat,m_name[0]
+  ENDIF
+ENDIF
+
+IF (N_ELEMENTS(v_name) NE 0) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;; => check validity of handle
+  ;;--------------------------------------------------------------------------------------
+  test = tnames(v_name[0]) NE ''
+  IF (test) THEN BEGIN
+    ;; valid handle => add to structures
+    add_vsw2,dat,v_name[0]
+    ;; redefine VELOCITY structure tag as well
+    dat.VELOCITY = dat.VSW
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Clean up and return
+;;----------------------------------------------------------------------------------------
+del_data,'*'+state_suff[0]      ;; => remove the temporary state data
+del_data,'*_dumb_identity_dsl'  ;; => remove identity matrix rotations
+;*****************************************************************************************
+ex_time = SYSTIME(1) - ex_start
+MESSAGE,STRING(ex_time)+' seconds execution time.',/CONTINUE,/INFORMATIONAL
+;*****************************************************************************************
+RETURN
+END

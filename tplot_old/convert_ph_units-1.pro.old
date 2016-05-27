@@ -1,0 +1,147 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   convert_ph_units.pro
+;  PURPOSE  :   Converts the units of the data array of ph data structures.  The data
+;                 associated with data.DATA is rescaled to the new units and
+;                 data.UNITS_NAME is changed to the appropriate units.
+;
+;  CALLED BY:   NA
+;
+;  CALLS:
+;               str_element.pro
+;
+;  COMMON BLOCKS: 
+;               get_ph_com.pro
+;
+;  REQUIRES:    NA
+;
+;  INPUT:
+;               DATA      :  A ph data structure returned by get_ph.pro
+;               UNITS     :  A scalar string defining the units to convert to
+;                              One of the following are allowed:
+;                              1)  'counts'  ; => # per data bin per energy bin
+;                              2)  'rate'    ; => (s)
+;                              3)  'crate'   ; => (s) scaled rate
+;                              4)  'eflux'   ; => energy flux
+;                              5)  'flux'    ; => number flux
+;                              6)  'df'      ; => distribution function units
+;
+;  EXAMPLES:
+;               ph = get_ph(t[0])
+;               convert_ph_units,ph,'eflux'  ; => Convert to energy flux units
+;
+;  KEYWORDS:  
+;               DEADTIME  :  A double specifying a "deadtime" (the interval during
+;                              which a channel plate detector is turned off to 
+;                              record an event)  [Default = 1d-6]
+;               SCALE     :  Set to a named variable to return the conversion factor
+;                              array used to scale the data
+;
+;   CHANGED:  1)  Frank Marcoline changed something...    [04/21/1997   v1.0.1]
+;             2)  Re-wrote and cleaned up                 [06/21/2009   v1.1.0]
+;             3)  Fixed a syntax error                    [06/24/2009   v1.1.1]
+;             4)  Fixed syntax issue if data is an array of structures
+;                                                         [08/25/2009   v1.1.2]
+;
+;   ADAPTED FROM:  other convert_*_units.pro procedures
+;   CREATED:  ??/??/????
+;   CREATED BY:  Frank Marcoline
+;    LAST MODIFIED:  08/25/2009   v1.1.2
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO convert_ph_units,data,units,DEADTIME=deadt,SCALE=scale
+
+;-----------------------------------------------------------------------------------------
+; Set common blocks:
+;-----------------------------------------------------------------------------------------
+COMMON get_ph1_com, deadtime
+;-----------------------------------------------------------------------------------------
+; => Define default parameters and check input format
+;-----------------------------------------------------------------------------------------
+IF (STRUPCASE(units) EQ STRUPCASE(data[0].UNITS_NAME)) THEN RETURN
+
+n_e    = data[0].NENERGY           ; => Number of energies          integer
+nbins  = data[0].NBINS             ; => Number of bins              integer
+mass   = data[0].MASS              ; => Particle mass [eV/(km/sec)^2] double
+; =>     Geometric factor            [n_e,nbins,nstr]
+gf     = data.GF * data[0].GEOMFACTOR
+energy = data.ENERGY               ; => (eV)                        [n_e,nbins]
+dt     = data.DT                   ; => Integration time            [n_e,nbins]
+
+IF (STRUPCASE(data[0].UNITS_NAME) NE 'COUNTS') THEN MESSAGE , 'bad units'
+
+IF (N_ELEMENTS(deadtime) EQ 0) THEN deadtime = 0d0
+n_str = N_ELEMENTS(data)
+IF (n_str EQ 1) THEN BEGIN
+  IF (N_ELEMENTS(deadt) NE 0) THEN deadtime = DOUBLE(deadt)
+  str_element,data,'DEADTIME',VALUE=deadtime
+ENDIF ELSE BEGIN
+  ddims = SIZE(deadt,/DIMENSIONS)
+  dnims = SIZE(deadt,/N_DIMENSIONS)
+  gdim  = WHERE(ddims EQ n_str,gd)
+  IF (N_ELEMENTS(deadt) NE 0 AND gd GT 0 AND dnims EQ 3) THEN BEGIN
+    deadtime = DOUBLE(deadt)
+    CASE gdim[0] OF
+      2L   : BEGIN  ; => [n_e,nbins,n_str]
+        deadtime = deadtime
+      END
+      0L   : BEGIN  ; => [n_str,n_e,nbins]
+        deadtime = TRANSPOSE(deadtime)
+      END
+      ELSE : BEGIN
+        deadtime = REPLICATE(0d0,n_e,nbins,n_str)
+      END
+    ENDCASE
+  ENDIF
+  FOR j=0L, n_str - 1L DO BEGIN
+    temp            = data[j]
+    tddt            = deadtime[*,*,j]
+    str_element,temp,'DEADTIME',VALUE=tddt
+    deadtime[*,*,j] = tddt
+  ENDFOR
+ENDELSE
+
+rate = data.DATA/dt
+dt   = dt * (1d0 - rate*deadtime)   ; => Effective integration time (s) [n_e,nbins]
+;-----------------------------------------------------------------------------------------
+; => Determine type of units to convert to
+;-----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(scale) THEN scale = 1
+CASE STRUPCASE(units) OF 
+  'COUNTS' :  scale = 1.
+  'RATE'   :  scale = 1. / dt
+  'EFLUX'  :  scale = 1. / (dt * gf)
+  'FLUX'   :  scale = 1. / (dt * gf * energy)
+  'DF'     :  scale = 1. / (dt * gf * energy^2 * (2./mass/mass*1e5) )
+  ELSE: BEGIN
+    PRINT,'Undefined units: ',UNITS
+    RETURN
+  END
+ENDCASE
+;-----------------------------------------------------------------------------------------
+; => Determine type of units to convert from
+;-----------------------------------------------------------------------------------------
+CASE STRUPCASE(data[0].UNITS_NAME) OF 
+  'COUNTS' :  scale = scale * 1.
+  'RATE'   :  scale = scale * dt
+  'EFLUX'  :  scale = scale * (dt * gf)
+  'FLUX'   :  scale = scale * (dt * gf * energy)
+  'DF'     :  scale = scale * (dt * gf * energy^2 * 2./mass/mass*1e5)
+  ELSE: BEGIN
+    PRINT,'Unknown starting units: ',data[0].UNITS_NAME
+    RETURN
+  END
+ENDCASE
+
+data.UNITS_NAME = units
+tags = TAG_NAMES(data)
+gtag = WHERE(tags EQ 'DDATA',gtg)
+IF (gtg GT 0L) THEN data.DDATA *= scale  ; => Scale d(data) too!
+data.DATA *= scale
+
+RETURN
+END

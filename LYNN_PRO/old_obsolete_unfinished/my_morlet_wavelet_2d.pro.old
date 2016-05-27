@@ -1,0 +1,107 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   my_morlet_wavelet_2d.pro
+;  PURPOSE  :   This is a vectorized version of the Morlet wavelet software produced by
+;                 Dr. Christopher Torrence and Dr. Gilbert P. Compo.  The routine
+;                 returns the daughter wavelet functions for an input array.
+;
+;  CALLED BY:   
+;               my_wavelet_transform_2d.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               SCALE   :  [M]-Element array of wavelet scales [seconds]
+;               K       :  [N]-Element array of wavelet wavenumbers
+;               DOFMIN  :  " " degrees of freedom with no smoothing
+;               CDELTA  :  " " reconstruction factor
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Routine forces the Morlet wavelet parameter to be 6 for
+;                     admissibility
+;
+;  REFERENCES:  
+;               1)  Harris, F.J. (1978), "On the Use of Windows for Harmonic Analysis
+;                      with the Discrete Fourier Transform," Proc. IEEE Vol. 66,
+;                      No. 1, pp. 51-83
+;                      [H1978]
+;               2)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;                      [PD1998]
+;               3)  Torrence, C. and G.P. Compo (1998), "A Practical Guide to Wavelet
+;                      Analysis," Bull. Amer. Meteor. Soc. Vol. 79, pp. 61-78.
+;                      [TC1998]
+;
+;   CREATED:  06/29/2011
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  06/29/2011   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION my_morlet_wavelet_2d,scale,k,dofmin,Cdelta
+
+;-----------------------------------------------------------------------------------------
+; => Define dummy/default variables and constants
+;-----------------------------------------------------------------------------------------
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+IF (N_ELEMENTS(k0) EQ 0) THEN k0 = 6d0
+n          = N_ELEMENTS(k)
+jj         = N_ELEMENTS(scale)
+dt         = 2d0*!DPI/(n*k[1])
+
+;-----------------------------------------------------------------------------------------
+; => scale = [J + 1]-element array
+; => k     = [n]-element array
+;-----------------------------------------------------------------------------------------
+;expnt          = DBLARR(n,jj)                                 ; => [n,jj]-Element array
+morlet         = DBLARR(n,jj)
+i              = 0
+log_fac        = (k GT 0.)
+tot_en         = SQRT(2d0*!DPI*scale/dt[0])*(!PI^(-0.25))
+WHILE (i LT jj - 1L) DO BEGIN
+;FOR i=0L, jj - 1L DO BEGIN
+  expnt          = -1d0*(k*scale[i] - k0[0])^2/2d0*log_fac
+  term0          = (tot_en[i]*EXP(expnt > (-1d2)))*(expnt GT -1d2)*log_fac
+;  term0         *= (expnt GT -1d2)*log_fac
+;  term0         *= log_fac
+  morlet[*,i]    = term0
+  i             += 1
+ENDWHILE
+;ENDFOR
+;log_fac        = (k GT 0.) # REPLICATE(1,jj)                  ; => [n,jj]-Element array
+;term_0         = k # scale                                    ; => [n,jj]-Element array
+;expnt          = -1d0*(term_0 - k0[0])^2/2d0*log_fac
+;tot_en         = SQRT(2d0*!DPI*scale/dt[0])*(!PI^(-0.25))     ; => [jj]-Element array
+; => [Eq. 7 from TC1998]
+;morlet         = REPLICATE(1,n) # tot_en                      ; => [n,jj]-Element array
+
+;morlet        *= EXP(expnt > (-1d2))                          ; => Prevent underflow
+;morlet        *= (expnt GT -1d2)
+;morlet        *= log_fac
+;-----------------------------------------------------------------------------------------
+; => Define Cone of influence [Sec. 3g from TC1998]
+;-----------------------------------------------------------------------------------------
+dofmin         = 2                 ; => Degrees of freedom with no smoothing
+Cdelta         = -1
+IF (k0 EQ 6) THEN Cdelta = 0.776   ; => reconstruction factor
+
+
+RETURN,morlet
+END

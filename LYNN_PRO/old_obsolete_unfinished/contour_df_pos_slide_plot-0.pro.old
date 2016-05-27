@@ -1,0 +1,813 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   contour_df_pos_slide_plot.pro
+;  PURPOSE  :   Takes an input array of particle distribution structures and a set of
+;                 time series plots and plots the 3 DFs in the middle of the defined
+;                 time range with locations.
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TIMESERIES  :  [N]-Element array of data structures, each with a
+;                                tag = 'Tj', where j = 0,1,...,N-1 and inside each of
+;                                these structures is another structure with the
+;                                following format:
+;                                    X    :  Unix time stamps
+;                                    Y    :  [N,3]- or [N]-Element array of data
+;                                    LIM  :  Structure containing relevant plot
+;                                              information and tags consistent with
+;                                              those accepted by PLOT.PRO
+;               DAT         :  [M]-Element array of particle distributions from either
+;                                Wind/3DP or THEMIS ESA
+;               VECTOR1     :  [3,3]-Element vector to be used for "parallel" direction
+;                                in a 3D rotation of the input data
+;                                [e.g. see rotate_3dp_structure.pro]
+;                                [Default = MAGF ELSE {1.,0.,0.}]
+;               VECTOR2     :  [3,3]-Element vector to be used with VECTOR1 to define
+;                                a 3D rotation matrix.  The new basis will have the
+;                                following:
+;                                  X'  :  parallel to VECTOR1
+;                                  Z'  :  parallel to (VECTOR1 x VECTOR2)
+;                                  Y'  :  completes the right-handed set
+;                                [Default = VSW ELSE {0.,1.,0.}]
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               VLIM        :  Limit for x-y velocity axes over which to plot data
+;                                [Default = max vel. from energy bin values]
+;               NGRID       :  # of isotropic velocity grids to use to triangulate the
+;                                data [Default = 30L]
+;               XNAME       :  Scalar string defining the name of vector associated
+;                                with the VECTOR1 input
+;                                [Default = 'X']
+;               YNAME       :  Scalar string defining the name of vector associated with
+;                                the VECTOR2 input
+;                                [Default = 'Y']
+;               DFRA        :  2-Element array specifying a DF range (s^3/km^3/cm^3)
+;                                for the cuts of the contour plot
+;                                [Default = defined by range of data]
+;               VCIRC       :  Scalar or array defining the value(s) to plot as a
+;                                circle(s) of constant speed [km/s] on the contour
+;                                plot [e.g. gyrospeed of specularly reflected ion]
+;               EX_VEC0     :  3-Element unit vector for a quantity like heat flux or
+;                                a wave vector, etc.
+;               EX_VN0      :  A string name associated with EX_VEC0
+;                                [Default = 'Vec 1']
+;               EX_VEC1     :  3-Element unit vector for another quantity like the sun
+;                                direction or shock normal vector vector, etc.
+;               EX_VN1      :  A string name associated with EX_VEC1
+;                                [Default = 'Vec 2']
+;               NOKILL_PH   :  If set, program will not call pesa_high_bad_bins.pro for
+;                                PESA High structures to remove "bad" data bins
+;                                [Default = 0]
+;               PLANE       :  Scalar string defining the plane projection to plot with
+;                                corresponding cuts [Let V1 = VECTOR1, V2 = VECTOR2]
+;                                  'xy'  :  horizontal axis parallel to V1 and normal
+;                                             vector to plane defined by (V1 x V2)
+;                                             [default]
+;                                  'xz'  :  horizontal axis parallel to (V1 x V2) and
+;                                             vertical axis parallel to V1
+;                                  'yz'  :  horizontal axis defined by (V1 x V2) x V1
+;                                             and vertical axis (V1 x V2)
+;               NO_TRANS    :  If set, routine will not transform data into SW frame
+;                                [Default = 0 (i.e. DAT transformed into SW frame)]
+;               INTERP      :  If set, data is interpolated to original energy estimates
+;                                after transforming into new reference frame
+;               SM_CONT     :  If set, program plots the smoothed contours of DF
+;                                [Note:  Smoothed to the minimum # of points]
+;               DFMIN       :  Scalar defining the minimum allowable phase space density
+;                                to plot, which is useful for ion distributions with
+;                                large angular gaps in data
+;                                [prevents lower bound from falling below DFMIN]
+;               DFMAX       :  Scalar defining the maximum allowable phase space density
+;                                to plot, which is useful for distributions with data
+;                                spikes
+;                                [prevents upper bound from exceeding DFMAX]
+;               TRANGE      :  [2]-Element array specifying the range of the time-
+;                                series to plot [Unix time]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  use wrapping routine to call this...
+;
+;   CREATED:  03/30/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  03/30/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+;PRO contour_df_pos_slide_plot,timeseries,dat,vector1,vector2,VLIM=vlim,NGRID=ngrid,    $
+PRO contour_df_pos_slide_plot,timeseries,dat,VLIM=vlim,NGRID=ngrid,    $
+                              XNAME=xname,YNAME=yname, $
+                              DFRA=dfra,VCIRC=vcirc,EX_VEC0=ex_vec0,EX_VN0=ex_vn0,     $
+                              EX_VEC1=ex_vec1,EX_VN1=ex_vn1,NOKILL_PH=nokill_ph,       $
+                              PLANE=plane,NO_TRANS=no_trans,INTERP=interpo,            $
+                              SM_CONT=sm_cont,DFMIN=dfmin,DFMAX=dfmax,TRANGE=trange
+
+;-----------------------------------------------------------------------------------------
+; => Define some constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+
+; => Position of all contour plots
+;               Xo    Yo    X1    Y1
+pos_acon   = [0.20,0.60,0.80,0.80]
+; => Position of 1st contour plot
+pos_0con   = [0.20,0.60,0.40,0.80]
+; => Position of 2nd contour plot
+pos_1con   = [0.40,0.60,0.60,0.80]
+; => Position of 3rd contour plot
+pos_2con   = [0.60,0.60,0.80,0.80]
+; => Position of time series plots
+;      [includes all plots]
+pos_atime  = [0.20,0.20,0.80,0.50]
+pos_0time  = [0.20,0.35,0.80,0.50]
+pos_1time  = [0.20,0.20,0.80,0.35]
+
+; => Dummy error messages
+noinpt_msg = 'No input supplied...'
+notstr_msg = 'Must be an IDL structure...'
+nofint_msg = 'No finite data...'
+
+lower_lim  = 1e-20  ; => Lowest expected value for DF
+upper_lim  = 1e-2   ; => Highest expected value for DF
+; => Dummy tick mark arrays
+exp_val    = LINDGEN(50) - 50L                    ; => Array of exponent values
+ytns       = '10!U'+STRTRIM(exp_val[*],2L)+'!N'   ; => Y-Axis tick names
+ytvs       = 1d1^FLOAT(exp_val[*])                ; => Y-Axis tick values
+; => Defined user symbol for outputing locations of data on contour
+xxo        = FINDGEN(17)*(!PI*2./16.)
+USERSYM,0.27*COS(xxo),0.27*SIN(xxo),/FILL
+
+vc1_col    = 250L  ;  color of EX_VEC0 and EX_VN0 output
+vc2_col    =  50L  ;  color of EX_VEC1 and EX_VN1 output
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 2) THEN BEGIN
+  ; => no input???
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  ; => Create empty plot
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Check TIMESERIES structure format
+;-----------------------------------------------------------------------------------------
+IF (SIZE(timeseries,/TYPE) NE 8) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  ; => Create empty plot
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA
+  RETURN
+ENDIF
+; => check for appropriate tags
+;;n_str  = N_TAGS(timeseries)  ;  # of different timeseries plots
+;;;;;;;;;
+;;  test   = check_input_routine(timeseries)
+;;;;;;;;;
+
+; for now just assume two inputs, |B| and B
+n_str      = 2L                 ;  # of different timeseries plots
+data_y0    = timeseries.T0.Y    ;  |B| [nT]
+data_x0    = timeseries.T0.X    ;  Unix times for |B|
+lim_00     = timeseries.T0.LIM  ;  plot limits structure
+szy0       = SIZE(data_y0,/N_DIMENSIONS)
+str_element,lim_00,'POSITION',pos_0time,/ADD_REPLACE
+str_element,lim_00,'XSTYLE',5,/ADD_REPLACE
+str_element,lim_00,'XMINOR',5,/ADD_REPLACE
+;;;;;;;;;
+;;  need to remove certain tags, but for now assume they are okay
+;;;;;;;;;
+data_y1    = timeseries.T1.Y    ;  B [(Coords), nT]
+data_x1    = timeseries.T1.X    ;  Unix times for |B|
+lim_11     = timeseries.T1.LIM  ;  plot limits structure
+szy1       = SIZE(data_y1,/N_DIMENSIONS)
+str_element,lim_11,'POSITION',pos_1time,/ADD_REPLACE
+str_element,lim_11,'XMINOR',5,/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Determine time range of interest
+;-----------------------------------------------------------------------------------------
+out_tra    = [MIN([data_x0,data_x1],/NAN),MAX([data_x0,data_x1],/NAN)] + [-6d1,6d1]
+IF ~KEYWORD_SET(trange) THEN tra = out_tra ELSE tra = trange
+time_ra    = time_range_define(TRANGE=tra)
+tra        = time_ra.TR_UNIX
+
+good_0     = WHERE(data_x0 GE tra[0] AND data_x0 LE tra[1],gd0)
+good_1     = WHERE(data_x1 GE tra[0] AND data_x1 LE tra[1],gd1)
+IF (gd0 GT 0) THEN BEGIN
+  IF (szy0 EQ 1) THEN data_y0 = data_y0[good_0]
+  IF (szy0 EQ 2) THEN data_y0 = data_y0[good_0,*]
+  data_x0 = data_x0[good_0]
+ENDIF ELSE BEGIN
+  n_str   = 1
+  data_x0 = 0
+  data_y0 = 0
+  lim_00  = 0
+ENDELSE
+
+IF (gd1 GT 0) THEN BEGIN
+  IF (szy1 EQ 1) THEN data_y1 = data_y1[good_1]
+  IF (szy1 EQ 2) THEN data_y1 = data_y1[good_1,*]
+  data_x1 = data_x1[good_1]
+ENDIF ELSE BEGIN
+  n_str   = 0
+  data_x1 = 0
+  data_y1 = 0
+  lim_11  = 0
+ENDELSE
+
+IF (n_str LT 1) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  ; => Create empty plot
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Check DAT structure format
+;-----------------------------------------------------------------------------------------
+test0      = test_wind_vs_themis_esa_struct(dat,/NOM)
+test       = (test0.(0) + test0.(1)) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  ; => Create empty plot
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Check which spacecraft is being used
+;-----------------------------------------------------------------------------------------
+data       = dat
+IF (test0.(0)) THEN BEGIN
+  ;-------------------------------------------
+  ; Wind
+  ;-------------------------------------------
+  ; => Check which instrument is being used
+  strns   = dat_3dp_str_names(data[0])
+  IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+    ; => Create empty plot
+    !P.MULTI = 0
+    PLOT,[0.0,1.0],[0.0,1.0],/NODATA
+    RETURN
+  ENDIF
+  shnme   = STRLOWCASE(STRMID(strns.SN[0],0L,2L))
+  CASE shnme[0] OF
+    'ph' : BEGIN
+      ; => Remove data glitch if necessary in PH data
+      IF NOT KEYWORD_SET(nokill_ph) THEN BEGIN
+        pesa_high_bad_bins,data
+        IF (SIZE(onec,/TYPE) EQ 8) THEN BEGIN
+          pesa_high_bad_bins,onec
+        ENDIF
+      ENDIF
+      convert_ph_units,data,'df'
+    END
+    ELSE : BEGIN
+      data  = conv_units(data,'df')
+    END
+  ENDCASE
+ENDIF ELSE BEGIN
+  ;-------------------------------------------
+  ; THEMIS
+  ;-------------------------------------------
+  ; => make sure the structure has been modified
+  test_un = STRLOWCASE(data[0].UNITS_PROCEDURE) NE 'thm_convert_esa_units_lbwiii'
+  IF (test_un) THEN BEGIN
+    bad_in = 'If THEMIS ESA structures used, then they must be modified using modify_themis_esa_struc.pro'
+    MESSAGE,bad_in[0],/INFORMATIONAL,/CONTINUE
+    ; => Create empty plot
+    !P.MULTI = 0
+    PLOT,[0.0,1.0],[0.0,1.0],/NODATA
+    RETURN
+  ENDIF
+  ; => structure modified appropriately so convert units
+  data  = conv_units(data,'df')
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Find 3 data structures in middle of time range
+;-----------------------------------------------------------------------------------------
+good_d     = WHERE(data.TIME GE tra[0] AND data.END_TIME LE tra[1],gdd)
+IF (gd1 GT 3) THEN BEGIN
+  data = data[good_d]
+ENDIF ELSE BEGIN
+  badmssg = 'No particle DFs in selected time range...'
+  MESSAGE,badmssg[0],/INFORMATIONAL,/CONTINUE
+  ; => Create empty plot
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA
+  RETURN
+ENDELSE
+ndat       = N_ELEMENTS(data)
+tavg       = (data.TIME + data.END_TIME)/2d0
+tr_mid     = (tra[0] + tra[1])/2d0
+t_diff     = ABS(tavg - tr_mid[0])
+mid_mn     = MIN(t_diff,midel,/NAN)
+; make sure MIDEL is not at the start or end
+test       = (midel[0] EQ 0L) OR (midel[0] EQ (ndat - 1L))
+IF (test) THEN BEGIN
+  badmssg = 'Not enough particle DFs in selected time range...'
+  MESSAGE,badmssg[0],/INFORMATIONAL,/CONTINUE
+  ; => Create empty plot
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA
+  RETURN
+ENDIF
+
+dat_00     = data[midel[0] - 1L]  ;  1st DF to plot
+dat_11     = data[midel[0]]       ;  2nd DF to plot
+dat_22     = data[midel[0] + 1L]  ;  3rd DF to plot
+dat_all    = data[(midel[0] - 1L):(midel[0] + 1L)]
+;-----------------------------------------------------------------------------------------
+; => Define contour plot titles
+;-----------------------------------------------------------------------------------------
+title0     = dat_all.PROJECT_NAME[0]+'  '+dat_all.DATA_NAME[0]
+tra_s      = time_string(dat_all.TIME[0])
+tra_e      = time_string(dat_all.END_TIME[0])
+tra_out    = tra_s+' - '+STRMID(tra_e[*],11)
+con_ttl    = title0+'!C'+tra_out
+;;########################################################################################
+;; => Define version for output
+;;########################################################################################
+mdir       = FILE_EXPAND_PATH('wind_3dp_pros/LYNN_PRO/')+'/'
+file       = FILE_SEARCH(mdir,'contour_df_pos_slide_plot.pro')
+fstring    = read_gen_ascii(file[0])
+test       = STRPOS(fstring,';    LAST MODIFIED:  ') GE 0
+gposi      = WHERE(test,gpf)
+shifts     = STRLEN(';    LAST MODIFIED:  ')
+vers       = STRMID(fstring[gposi[0]],shifts[0])
+vers0      = 'contour_df_pos_slide_plot.pro : '+vers[0]+', '
+version    = vers0[0]+time_string(SYSTIME(1,/SECONDS),PREC=3)
+;-----------------------------------------------------------------------------------------
+; => Check for finite vectors in VSW and MAGF IDL structure tags
+;-----------------------------------------------------------------------------------------
+tags     = 'T'+STRING(FORMAT='(I1.1)',LINDGEN(3))
+v_vsws   = TRANSPOSE(REFORM(dat_all.VSW))
+v_magf   = TRANSPOSE(REFORM(dat_all.MAGF))
+test_v   = TOTAL(FINITE(v_vsws)) NE 9
+test_b   = TOTAL(FINITE(v_magf)) NE 9
+
+IF (test_b) THEN BEGIN
+  ; => MAGF values are not finite
+  v_magf          = CREATE_STRUCT(tags,[1.,0.,0.],[1.,0.,0.],[1.,0.,0.])
+  dat_all.MAGF[0] = 1.
+  dat_all.MAGF[1] = 0.
+  dat_all.MAGF[2] = 0.
+  bname           = 'X!DGSE!N'
+ENDIF ELSE BEGIN
+  ; => MAGF values are okay
+  bname        = 'B!Do!N'
+  v_magf       = CREATE_STRUCT(tags,dat_all[0].MAGF,dat_all[1].MAGF,dat_all[2].MAGF)
+ENDELSE
+
+IF (test_v) THEN BEGIN
+  ; => VSW values are not finite
+  v_temp          = [0.,1.,0.]
+  v_vsws          = CREATE_STRUCT(tags,v_temp,v_temp,v_temp)
+  dat_all.VSW[0]  = 0.
+  dat_all.VSW[1]  = 1.
+  dat_all.VSW[2]  = 0.
+  vname           = 'Y!DGSE!N'
+  notran          = 1
+ENDIF ELSE BEGIN
+  ; => VSW values are okay
+  vname        = 'V!Dsw!N'
+  IF NOT KEYWORD_SET(no_trans) THEN notran = 0 ELSE notran = no_trans[0]
+  v_vsws       = CREATE_STRUCT(tags,dat_all[0].VSW,dat_all[1].VSW,dat_all[2].VSW)
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Check keywords
+;-----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(no_redf)  THEN noredf = 0       ELSE noredf = no_redf[0]
+IF NOT KEYWORD_SET(plane)    THEN projxy = 'xy'    ELSE projxy = STRLOWCASE(plane[0])
+IF NOT KEYWORD_SET(sm_cont)  THEN sm_con = 0       ELSE sm_con = 1
+;IF NOT KEYWORD_SET(nsmooth)  THEN ns     = 3       ELSE ns     = LONG(nsmooth)
+
+IF (N_ELEMENTS(vector1) NE 9) THEN BEGIN
+  ; => V1 is NOT set
+  xname = bname[0]
+  vec1  = v_magf  ;  structure
+ENDIF ELSE BEGIN
+  ; => V1 is set
+  tags  = 'T'+STRING(FORMAT='(I1.1)',LINDGEN(3))
+  IF NOT KEYWORD_SET(xname) THEN xname = 'X' ELSE xname = xname[0]
+  vec1  = CREATE_STRUCT(tags,REFORM(vector1[0,*]),REFORM(vector1[1,*]),REFORM(vector1[2,*]))
+ENDELSE
+
+IF (N_ELEMENTS(vector2) NE 3) THEN BEGIN
+  ; => V2 is NOT set
+  yname = vname[0]
+  vec2  = v_vsws  ;  structure
+ENDIF ELSE BEGIN
+  ; => V2 is set
+  IF NOT KEYWORD_SET(yname) THEN yname = 'Y' ELSE yname = yname[0]
+  vec2  = CREATE_STRUCT(tags,REFORM(vector2[0,*]),REFORM(vector2[1,*]),REFORM(vector2[2,*]))
+ENDELSE
+
+; => Define # of levels to use for contour.pro
+IF NOT KEYWORD_SET(ngrid) THEN ngrid = 30L 
+; => Define velocity limit (km/s)
+IF NOT KEYWORD_SET(vlim) THEN BEGIN
+  allener = dat_all.ENERGY
+  allvlim = SQRT(2d0*allener/dat_all[0].MASS)
+  vlim    = MAX(allvlim,/NAN)
+ENDIF ELSE BEGIN
+  vlim    = DOUBLE(vlim[0])
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Convert into solar wind frame
+;-----------------------------------------------------------------------------------------
+transform_vframe_3d,dat_00,/EASY_TRAN,NO_TRANS=notran,INTERP=interpo
+transform_vframe_3d,dat_11,/EASY_TRAN,NO_TRANS=notran,INTERP=interpo
+transform_vframe_3d,dat_22,/EASY_TRAN,NO_TRANS=notran,INTERP=interpo
+;-----------------------------------------------------------------------------------------
+; => Calculate distribution function in rotated reference frame
+;-----------------------------------------------------------------------------------------
+rotate_3dp_structure,dat_00,vec1.(0L),vec2.(0L),VLIM=vlim[0]
+rotate_3dp_structure,dat_11,vec1.(1L),vec2.(1L),VLIM=vlim[0]
+rotate_3dp_structure,dat_22,vec1.(2L),vec2.(2L),VLIM=vlim[0]
+; => Redefine DAT_ALL
+dat_all    = [dat_00,dat_11,dat_22]
+;-----------------------------------------------------------------------------------------
+; => Define plot parameters
+;-----------------------------------------------------------------------------------------
+xaxist = '(V dot '+xname[0]+') [1000 km/s]'
+yaxist = '('+xname[0]+' x '+yname[0]+') x '+xname[0]+' [1000 km/s]'
+zaxist = '('+xname[0]+' x '+yname[0]+') [1000 km/s]'
+; => Create structures for each...
+tags     = 'T'+STRING(FORMAT='(I1.1)',LINDGEN(3))
+CASE projxy[0] OF
+  'xy'  : BEGIN
+    ;-------------------------------------------------------------------------------------
+    ; => plot Y vs. X
+    ;-------------------------------------------------------------------------------------
+    ; => Define horizontal and vertical axis titles
+    xttl00 = xaxist
+    yttl00 = yaxist
+    ; => Define rotation matrices
+    rmat   = CREATE_STRUCT(tags,dat_00.ROT_MAT,dat_11.ROT_MAT,dat_22.ROT_MAT)
+    ; => Define data projection
+    df2d   = CREATE_STRUCT(tags,dat_00.DF2D_XY,dat_11.DF2D_XY,dat_22.DF2D_XY)
+    ; => Define actual velocities for contour plot
+    vxpts  = CREATE_STRUCT(tags,dat_00.VELX_XY,dat_11.VELX_XY,dat_22.VELX_XY)
+    vypts  = CREATE_STRUCT(tags,dat_00.VELY_XY,dat_11.VELY_XY,dat_22.VELY_XY)
+    vzpts  = CREATE_STRUCT(tags,dat_00.VELZ_XY,dat_11.VELZ_XY,dat_22.VELZ_XY)
+    ; => define elements [x,y]
+    gels   = [0L,1L]
+  END
+  'xz'  : BEGIN
+    ;-------------------------------------------------------------------------------------
+    ; => plot X vs. Z
+    ;-------------------------------------------------------------------------------------
+    ; => Define horizontal and vertical axis titles
+    xttl00 = zaxist
+    yttl00 = xaxist
+    ; => Define rotation matrices
+    rmat   = CREATE_STRUCT(tags,dat_00.ROT_MAT,dat_11.ROT_MAT,dat_22.ROT_MAT)
+    ; => Define data projection
+    df2d   = CREATE_STRUCT(tags,dat_00.DF2D_XZ,dat_11.DF2D_XZ,dat_22.DF2D_XZ)
+    ; => Define actual velocities for contour plot
+    vxpts  = CREATE_STRUCT(tags,dat_00.VELX_XZ,dat_11.VELX_XZ,dat_22.VELX_XZ)
+    vypts  = CREATE_STRUCT(tags,dat_00.VELY_XZ,dat_11.VELY_XZ,dat_22.VELY_XZ)
+    vzpts  = CREATE_STRUCT(tags,dat_00.VELZ_XZ,dat_11.VELZ_XZ,dat_22.VELZ_XZ)
+    ; => define elements [x,y]
+    gels   = [2L,0L]
+  END
+  'yz'  : BEGIN
+    ;-------------------------------------------------------------------------------------
+    ; => plot Z vs. Y
+    ;-------------------------------------------------------------------------------------
+    ; => Define horizontal and vertical axis titles
+    xttl00 = yaxist
+    yttl00 = zaxist
+    ; => Define rotation matrices
+    rmat   = CREATE_STRUCT(tags,dat_00.ROT_MAT_Z,dat_11.ROT_MAT_Z,dat_22.ROT_MAT_Z)
+    ; => Define data projection
+    df2d   = CREATE_STRUCT(tags,dat_00.DF2D_YZ,dat_11.DF2D_YZ,dat_22.DF2D_YZ)
+    ; => Define actual velocities for contour plot
+    vxpts  = CREATE_STRUCT(tags,dat_00.VELX_YZ,dat_11.VELX_YZ,dat_22.VELX_YZ)
+    vypts  = CREATE_STRUCT(tags,dat_00.VELY_YZ,dat_11.VELY_YZ,dat_22.VELY_YZ)
+    vzpts  = CREATE_STRUCT(tags,dat_00.VELZ_YZ,dat_11.VELZ_YZ,dat_22.VELZ_YZ)
+    ; => define elements [x,y]
+    gels   = [0L,1L]
+  END
+  ELSE  : BEGIN
+    ;-------------------------------------------------------------------------------------
+    ; => use default:  Y vs. X
+    ;-------------------------------------------------------------------------------------
+    ; => Define horizontal and vertical axis titles
+    xttl00 = xaxist
+    yttl00 = yaxist
+    ; => Define rotation matrices
+    rmat   = CREATE_STRUCT(tags,dat_00.ROT_MAT,dat_11.ROT_MAT,dat_22.ROT_MAT)
+    ; => Define data projection
+    df2d   = CREATE_STRUCT(tags,dat_00.DF2D_XY,dat_11.DF2D_XY,dat_22.DF2D_XY)
+    ; => Define actual velocities for contour plot
+    vxpts  = CREATE_STRUCT(tags,dat_00.VELX_XY,dat_11.VELX_XY,dat_22.VELX_XY)
+    vypts  = CREATE_STRUCT(tags,dat_00.VELY_XY,dat_11.VELY_XY,dat_22.VELY_XY)
+    vzpts  = CREATE_STRUCT(tags,dat_00.VELZ_XY,dat_11.VELZ_XY,dat_22.VELZ_XY)
+    ; => define elements [x,y]
+    gels   = [0L,1L]
+  END
+ENDCASE
+; => Define regularly gridded velocities for contour plot
+vx2d   = CREATE_STRUCT(tags,dat_00.VX2D,dat_11.VX2D,dat_22.VX2D)
+vy2d   = CREATE_STRUCT(tags,dat_00.VY2D,dat_11.VY2D,dat_22.VY2D)
+;-----------------------------------------------------------------------------------------
+; => Define the 2D projection of the VSW IDL structure tag in DAT and other vectors
+;-----------------------------------------------------------------------------------------
+v_mfac   = (vlim[0]*95d-2)*1d-3          ;  normalization factor
+v_mag    = DBLARR(3L)
+FOR j=0L, 2L DO v_mag[j] = SQRT(TOTAL(v_vsws.(j)^2,/NAN))
+
+IF (test_v EQ 0) THEN BEGIN
+  vswname = '- - - : '+vname[0]+' Projection'
+  vxy_pro = DBLARR(3L,3L)
+  vsw2d00 = DBLARR(3L,2L)
+  FOR j=0L, 2L DO BEGIN
+    ; => Define the unit vector projection onto the plane of interest
+    vxy_pro = REFORM(rmat.(j) ## v_vsws.(j))/v_mag[j]
+    ; => Scale the projection to the appropriate plot limits
+    vsw2d00 = vxy_pro[gels]/SQRT(TOTAL(vxy_pro[gels]^2,/NAN))*v_mfac[0]
+    ; => Create structures of rotated, scaled, and projected Vsw vectors
+    str_element,vsw2dx,tags[j],[0.,vsw2d00[0]],/ADD_REPLACE
+    str_element,vsw2dy,tags[j],[0.,vsw2d00[1]],/ADD_REPLACE
+  ENDFOR
+ENDIF ELSE BEGIN
+  vswname = ''
+  d2f     = REPLICATE(f,2)
+  vsw2dx  = CREATE_STRUCT(tags,d2f,d2f,d2f)
+  vsw2dy  = CREATE_STRUCT(tags,d2f,d2f,d2f)
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Check for EX_VEC0 and EX_VEC1
+;-----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(ex_vec0) THEN evec0 = REPLICATE(f,3) ELSE evec0 = FLOAT(REFORM(ex_vec0))
+IF NOT KEYWORD_SET(ex_vec1) THEN evec1 = REPLICATE(f,3) ELSE evec1 = FLOAT(REFORM(ex_vec1))
+; => Define logic variables for output later
+IF (TOTAL(FINITE(evec0)) NE 3) THEN out_v0 = 0 ELSE out_v0 = 1
+IF (TOTAL(FINITE(evec1)) NE 3) THEN out_v1 = 0 ELSE out_v1 = 1
+IF NOT KEYWORD_SET(ex_vn0) THEN vec0n = 'Vec 1' ELSE vec0n = ex_vn0[0]
+IF NOT KEYWORD_SET(ex_vn1) THEN vec1n = 'Vec 2' ELSE vec1n = ex_vn1[0]
+; => Rotate 1st extra vector
+IF (out_v0) THEN BEGIN
+  evec_0r  = REFORM(rmat ## evec0)/NORM(evec0)
+ENDIF ELSE BEGIN
+  evec_0r  = REPLICATE(f,3)
+ENDELSE
+; => renormalize
+evec_0r  = evec_0r/SQRT(TOTAL(evec_0r[gels]^2,/NAN))*v_mfac[0]
+evec_0x  = [0.,evec_0r[gels[0]]]
+evec_0y  = [0.,evec_0r[gels[1]]]
+; => Rotate 2nd extra vector
+IF (out_v1) THEN BEGIN
+  evec_1r  = REFORM(rmat ## evec1)/NORM(evec1)
+ENDIF ELSE BEGIN
+  evec_1r  = REPLICATE(f,3)
+ENDELSE
+; => renormalize
+evec_1r  = evec_1r/SQRT(TOTAL(evec_1r[gels]^2,/NAN))*v_mfac[0]
+evec_1x  = [0.,evec_1r[gels[0]]]
+evec_1y  = [0.,evec_1r[gels[1]]]
+;-----------------------------------------------------------------------------------------
+; => Define dummy DF ranges of values
+;-----------------------------------------------------------------------------------------
+cf       = 0L  ;  used to count which DFs have finite data
+FOR j=0L, 2L DO BEGIN
+  vel_2d   = (vx2d.(j) # vy2d.(j))/vlim[0]
+  test_vr  = (ABS(vel_2d) LE 0.75*vlim[0])
+  test_df  = (df2d.(j) GT 0.) AND FINITE(df2d.(j))
+  good     = WHERE(test_vr AND test_df,gd)
+  good2    = WHERE(test_df,gd2)
+  IF (gd GT 0) THEN BEGIN
+    ; => Finite data within 75% of Vmax
+    mndf0  = MIN(ABS(df2d.(j)[good]),/NAN) > lower_lim[0]
+    mxdf0  = MAX(ABS(df2d.(j)[good]),/NAN) < upper_lim[0]
+    cf    += 1L
+  ENDIF ELSE BEGIN
+    IF (gd2 GT 0) THEN BEGIN
+      ; => some finite data exists
+      mndf0  = MIN(ABS(df2d.(j)[good2]),/NAN) > lower_lim[0]
+      mxdf0  = MAX(ABS(df2d.(j)[good2]),/NAN) < upper_lim[0]
+      cf    += 1L
+    ENDIF ELSE BEGIN
+      ; => no finite data exists
+      mndf0  = d
+      mxdf0  = d
+    ENDELSE
+  ENDELSE
+  str_element,mndf,tags[j],mndf0[0],/ADD_REPLACE
+  str_element,mxdf,tags[j],mxdf0[0],/ADD_REPLACE
+ENDFOR
+
+IF (cf LT 1) THEN BEGIN
+  ; => no finite data
+  MESSAGE,nofint_msg[0],/INFORMATIONAL,/CONTINUE
+  ; => Create empty plot
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Define DF range and corresponding contour levels, colors, etc.
+;-----------------------------------------------------------------------------------------
+mx_dfra  = MAX([mxdf.(0L),mxdf.(1L),mxdf.(2L)],/NAN)*1.05d0
+mn_dfra  = MIN([mndf.(0L),mndf.(1L),mndf.(2L)],/NAN)*0.95d0
+; => Use ONE scale for all 3 DF plots
+IF NOT KEYWORD_SET(dfra) THEN df_ran = [mn_dfra[0],mx_dfra[0]] ELSE df_ran = dfra
+; => Check if DFMIN is set
+IF KEYWORD_SET(dfmin) THEN df_ran[0] = df_ran[0] > dfmin[0]
+; => Check if DFMAX is set
+IF KEYWORD_SET(dfmax) THEN df_ran[1] = df_ran[1] < dfmax[0]
+
+range    = ALOG10(df_ran)
+lg_levs  = DINDGEN(ngrid)*(range[1] - range[0])/(ngrid - 1L) + range[0]
+levels   = 1d1^lg_levs
+nlevs    = N_ELEMENTS(levels)
+minclr   = 30L
+c_cols   = minclr + LINDGEN(ngrid)*(250L - minclr)/(ngrid - 1L)
+;-----------------------------------------------------------------------------------------
+; => Define plot limits structures
+;-----------------------------------------------------------------------------------------
+xyran    = [-1d0,1d0]*vlim[0]*1d-3
+xyra3    = xyran*3d0
+; => structures for contour plots
+;      [used to set up plot area]
+lim_cont = {XRANGE:xyra3,XSTYLE:5,XLOG:0,XTITLE:xttl00,XMINOR:11, $
+            YRANGE:xyran,YSTYLE:5,YLOG:0,YTITLE:yttl00,YMINOR:11, $
+            NODATA:1,POSITION:pos_acon}
+;      [used to set up plots for each contour]
+
+lim_cn0  = {XRANGE:xyran,XSTYLE:1,XLOG:0,XTITLE:xttl00,XMINOR:11, $
+            YRANGE:xyran,YSTYLE:1,YLOG:0,YTITLE:yttl00,YMINOR:11, $
+            POSITION:pos_0con,TITLE:con_ttl[0L],NODATA:1}
+lim_cn1  = {XRANGE:xyran,XSTYLE:1,XLOG:0,XTITLE:xttl00,XMINOR:11, $
+            YRANGE:xyran,YSTYLE:5,YLOG:0,YMINOR:11, $
+            POSITION:pos_1con,TITLE:con_ttl[1L],NODATA:1}
+lim_cn2  = {XRANGE:xyran,XSTYLE:1,XLOG:0,XTITLE:xttl00,XMINOR:11, $
+            YRANGE:xyran,YSTYLE:1,YLOG:0,YMINOR:11, $
+            POSITION:pos_2con,TITLE:con_ttl[2L],NODATA:1}
+lim_cns  = CREATE_STRUCT(tags,lim_cn0,lim_cn1,lim_cn2)
+;      [used to plot contours]
+con_lim  = {OVERPLOT:1,LEVELS:levels,C_COLORS:c_cols}
+
+; => Smooth contours if desired
+IF KEYWORD_SET(sm_con) THEN BEGIN
+  FOR j=0L, 2L DO BEGIN
+    df2d_0 = SMOOTH(df2d.(j),3L,/EDGE_TRUNCATE,/NAN)
+    str_element,df2ds,tags[j],df2d_0,/ADD_REPLACE
+  ENDFOR
+ENDIF ELSE BEGIN
+  df2ds   = df2d
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Plot
+;-----------------------------------------------------------------------------------------
+;          [plots left, # cols, # rows, # stacked (z-dir), direction of plots]
+; !P.MULTI[4] :  False = (left-to-right, top-to-bottom)
+;                True  = (top-to-bottom, left-to-right)
+!P.MULTI = [5,1,3,0,0]
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=lim_cont
+;  ; => Left axis
+;  AXIS,xyra3[0],YAXIS=0,YSTYLE=1,YRANGE=xyran,YMINOR=11,YTITLE=yttl00
+;  ; => Right axis
+;  AXIS,xyra3[0]+xyran[1],YAXIS=1,YSTYLE=1,YRANGE=xyran,YMINOR=11
+
+;-----------------------------------------------------------------------------------------
+; => Set up 1st contour plot
+;-----------------------------------------------------------------------------------------
+kk = 0L
+PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=lim_cns.(kk)
+  ; => Project locations of actual data points onto 1st contour
+  OPLOT,vxpts.(kk)*1d-3,vypts.(kk)*1d-3,PSYM=8,SYMSIZE=1.0,COLOR=100
+  ;---------------------------------------------------------------------------------------
+  ; => Draw 1st contour
+  ;---------------------------------------------------------------------------------------
+  CONTOUR,df2ds.(kk),vx2d.(kk)*1d-3,vy2d.(kk)*1d-3,_EXTRA=con_lim
+;-----------------------------------------------------------------------------------------
+; => Set up 2nd contour plot
+;-----------------------------------------------------------------------------------------
+kk = 1L
+PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=lim_cns.(kk)
+  ; => Project locations of actual data points onto 1st contour
+  OPLOT,vxpts.(kk)*1d-3,vypts.(kk)*1d-3,PSYM=8,SYMSIZE=1.0,COLOR=100
+  ;---------------------------------------------------------------------------------------
+  ; => Draw 2nd contour
+  ;---------------------------------------------------------------------------------------
+  CONTOUR,df2ds.(kk),vx2d.(kk)*1d-3,vy2d.(kk)*1d-3,_EXTRA=con_lim
+;-----------------------------------------------------------------------------------------
+; => Set up 3rd contour plot
+;-----------------------------------------------------------------------------------------
+kk = 2L
+PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=lim_cns.(kk)
+  ; => Project locations of actual data points onto 1st contour
+  OPLOT,vxpts.(kk)*1d-3,vypts.(kk)*1d-3,PSYM=8,SYMSIZE=1.0,COLOR=100
+  ;---------------------------------------------------------------------------------------
+  ; => Draw 3rd contour
+  ;---------------------------------------------------------------------------------------
+  CONTOUR,df2ds.(kk),vx2d.(kk)*1d-3,vy2d.(kk)*1d-3,_EXTRA=con_lim
+;-----------------------------------------------------------------------------------------
+; => Plot 1st time series
+;-----------------------------------------------------------------------------------------
+;PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=lim_00,/NOERASE,/NODATA
+PLOT,data_x0,data_y0,_EXTRA=lim_00,/NOERASE,/NODATA,YTICK_GET=ytick_0
+  ; => Put top X-Axis on plot
+  AXIS,XAXIS=1,XTICKNAME=REPLICATE(' ',N_ELEMENTS(ytick_0)),XSTYLE=1,XMINOR=lim_00.XMINOR
+  IF (szy0 EQ 2) THEN BEGIN
+    ; => 2D data
+    OPLOT,data_x0,data_y0[*,0],COLOR=250L
+    OPLOT,data_x0,data_y0[*,1],COLOR=150L
+    OPLOT,data_x0,data_y0[*,2],COLOR= 50L
+  ENDIF ELSE BEGIN
+    ; => 1D data
+    OPLOT,data_x0,data_y0
+  ENDELSE
+  ;---------------------------------------------------------------------------------------
+  ; => Draw ESA Times on plot
+  ;---------------------------------------------------------------------------------------
+  yra0  = !Y.CRANGE
+  ;  start times
+  OPLOT,[dat_00.TIME,dat_00.TIME],yra0,COLOR=250L
+  OPLOT,[dat_11.TIME,dat_11.TIME],yra0,COLOR=250L
+  OPLOT,[dat_22.TIME,dat_22.TIME],yra0,COLOR=250L
+  deltr = MAX(tra,/NAN) - MIN(tra,/NAN)
+  deltd = MAX([dat_00.END_TIME,dat_11.END_TIME,dat_22.END_TIME],/NAN) - $
+          MIN([dat_00.TIME,dat_11.TIME,dat_22.TIME],/NAN)
+  ;  end times
+  IF (deltr[0]/deltd[0] LT 4d0) THEN BEGIN
+    ; => only plot if small enough time range to see them
+    OPLOT,[dat_00.END_TIME,dat_00.END_TIME],yra0,COLOR= 30L
+    OPLOT,[dat_11.END_TIME,dat_11.END_TIME],yra0,COLOR=250L
+    OPLOT,[dat_22.END_TIME,dat_22.END_TIME],yra0,COLOR=250L
+  ENDIF
+;-----------------------------------------------------------------------------------------
+; => Plot 2nd time series
+;-----------------------------------------------------------------------------------------
+;PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=lim_11,/NOERASE,/NODATA
+PLOT,data_x1,data_y1,_EXTRA=lim_11,/NOERASE,/NODATA
+  IF (szy1 EQ 2) THEN BEGIN
+    ; => 2D data
+    OPLOT,data_x1,data_y1[*,0],COLOR=250L
+    OPLOT,data_x1,data_y1[*,1],COLOR=150L
+    OPLOT,data_x1,data_y1[*,2],COLOR= 50L
+  ENDIF ELSE BEGIN
+    ; => 1D data
+    OPLOT,data_x1,data_y1
+  ENDELSE
+  ;---------------------------------------------------------------------------------------
+  ; => Draw ESA Times on plot
+  ;---------------------------------------------------------------------------------------
+  yra0  = !Y.CRANGE
+  ;  start times
+  OPLOT,[dat_00.TIME,dat_00.TIME],yra0,COLOR=250L
+  OPLOT,[dat_11.TIME,dat_11.TIME],yra0,COLOR=250L
+  OPLOT,[dat_22.TIME,dat_22.TIME],yra0,COLOR=250L
+  deltr = MAX(tra,/NAN) - MIN(tra,/NAN)
+  deltd = MAX([dat_00.END_TIME,dat_11.END_TIME,dat_22.END_TIME],/NAN) - $
+          MIN([dat_00.TIME,dat_11.TIME,dat_22.TIME],/NAN)
+  ;  end times
+  IF (deltr[0]/deltd[0] LT 4d0) THEN BEGIN
+    ; => only plot if small enough time range to see them
+    OPLOT,[dat_00.END_TIME,dat_00.END_TIME],yra0,COLOR= 30L
+    OPLOT,[dat_11.END_TIME,dat_11.END_TIME],yra0,COLOR=250L
+    OPLOT,[dat_22.END_TIME,dat_22.END_TIME],yra0,COLOR=250L
+  ENDIF
+
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;-----------------------------------------------------------------------------------------
+; => Output version # and date produced
+;-----------------------------------------------------------------------------------------
+XYOUTS,0.815,0.10,version[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.
+;-----------------------------------------------------------------------------------------
+; => Return
+;-----------------------------------------------------------------------------------------
+!P.MULTI = 0
+
+RETURN
+END
+
+
+
+
+
+
+

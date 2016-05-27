@@ -1,0 +1,211 @@
+function mom_sum,data,format=sumformat, $
+   sc_pot=pot, $
+   maxmoment=mm, $
+;   bins = bins, $
+   oldway = oldway, $
+   pardens = pardens, $
+   dvolume = dvolume, $
+   erange=er, $
+   mass=mass
+
+;Purpose: Integrates moments of a 3-D distribution
+;Author:  Davin Larson
+
+
+f = !values.f_nan
+mxm = keyword_set(mm) ? mm : 4
+
+if data_type(sumformat) eq 8 then sum = sumformat else $
+   sum = {n:f, $
+         nv:replicate(f,3),  $
+         nvv:replicate(f,6), $
+         nvvv:replicate(f,10), $
+         nvvvv:replicate(f,15), $
+         map_r2:bytarr(3,3) ,    map_v2:bytarr(6), $
+         map_r3:bytarr(3,3,3),   map_v3:bytarr(10), $
+         map_r4:bytarr(3,3,3,3), map_v4:bytarr(15), $
+         sc_pot:f, mass:f, charge:0, magf:replicate(f,3), erange:[f,f], $
+         maxmoment:mxm}
+
+sum.map_r2 = [[0,3,4],[3,1,5],[4,5,2]]
+sum.map_v2   = [0,4,8,1,2,5]
+
+sum.map_r3 = [[[3,5,2],[5,6,9],[2,9,7]],[[5,6,9],[6,4,1],[9,1,8]],[[2,9,7],[9,1,8],[7,8,0]]]
+sum.map_v3 = [26,14,2,0,13,1,4,8,17,5]
+
+sum.map_r4 =[ 2,14,10,14, 3,11,10,11, 5, $
+             14, 3,11, 3,13,12,11,12, 8, $
+             10,11, 5,11,12, 8, 5, 8, 7, $
+             14, 3,11, 3,13,12,11,12, 8, $
+              3,13,12,13, 1, 9,12, 9, 4, $
+             11,12, 8,12, 9, 4, 8, 4, 6, $
+             10,11, 5,11,12, 8, 5, 8, 7, $
+             11,12, 8,12, 9, 4, 8, 4, 6, $
+              5, 8, 7, 8, 4, 6, 7, 6, 0]
+
+sum.map_v4 = [80,40,0,4,44,8,53,26,17,41,2,5,14,13,1]
+
+if n_params() eq 0 then return,sum
+if data.valid eq 0 then return,sum
+
+data3d = conv_units(data,"eflux")		; Use Energy Flux
+
+sum.magf = data3d.magf
+
+e = data3d.energy
+nn = data3d.nenergy
+
+if keyword_set(er) then begin
+   err = 0 >  er < (nn-1)
+   s = e
+   s[*] = 0.
+   s[err[0]:err[1],*] = 1.
+   data3d.data= data3d.data * s
+endif else err=[0,nn-1]
+
+sum.erange = data3d.energy[err,0]
+
+
+if n_elements(pot) eq 0 then str_element,data3d,'sc_pot',pot
+if n_elements(pot) eq 0 then pot = 0.
+if not finite(pot) then pot = 0.
+sum.sc_pot = pot
+
+sum.mass = data3d.mass
+if not keyword_set(charge) then charge = round(sqrt(sum.mass/0.010438871))
+if charge eq 0 then charge = -1
+sum.charge = charge
+
+
+if not keyword_set(dvolume) then $
+   dvolume = replicate(1.,nn) # data3d.domega  ; cluge
+
+if keyword_set(oldway) then begin
+ de_e = abs(shift(e,1) - shift(e,-1))/2./e
+ de_e[0,*] = de_e[1,*]
+ de_e[nn-1,*] = de_e[nn-2,*]
+ de = de_e * e
+endif else begin
+ de = data3d.denergy
+ de_e = de/e
+endelse
+
+
+weight = 0. > ((e+pot/charge)/de+.5) < 1.
+
+e_inf = (e + pot/charge) > 0.
+
+wv = sqrt(e_inf)
+
+data_dv = wv/e * data3d.data/1e5 * de_e * dvolume * weight
+
+; at this point the following are required:
+;  wv,theta,phi,data_dv
+;  mass and charge are NOT needed.
+
+
+;if keyword_set(bins) then begin
+;  ndb = ndimen(bins)
+;  wb = where(bins eq 0,c)
+;  if c ne 0 then begin
+;    if ndb eq 1 then data_dv[*,wb] = 0 else data_dv[wb] = 0
+;  endif
+;endif
+wb = where(data3d.bins eq 0,c)
+if c ne 0 then data_dv[wb] = 0
+if c ne 0 then wv[wb] = 0
+
+;Density calculation:
+
+pardens = total(data_dv,2)
+sum.n = total(pardens)
+pardens = pardens/sqrt(abs(2*sum.charge/sum.mass))
+
+if mxm le 0 then return,sum
+
+;FLUX calculation
+
+sin_phi = sin(data3d.phi/!radeg)
+cos_phi = cos(data3d.phi/!radeg)
+sin_th  = sin(data3d.theta/!radeg)
+cos_th  = cos(data3d.theta/!radeg)
+
+x = cos_th * cos_phi
+y = cos_th * sin_phi
+z = sin_th
+
+dsum = data_dv * wv
+
+fx = total(x * dsum)
+fy = total(y * dsum)
+fz = total(z * dsum)
+
+if arg_present(parvel) then $
+   parvel = sqrt(total(fx,2)^2 + total(fy,2)^2 + total(fz,2)^2)
+
+sum.nv = [fx,fy,fz]   
+
+if mxm le 1 then return,sum
+
+;VELOCITY FLUX:
+
+dsum = dsum * wv
+
+vfxx = total(x*x  * dsum) 
+vfyy = total(y*y  * dsum)
+vfzz = total(z*z  * dsum)
+vfxy = total(x*y  * dsum)
+vfxz = total(x*z  * dsum)
+vfyz = total(y*z  * dsum)
+
+sum.nvv = [vfxx,vfyy,vfzz,vfxy,vfxz,vfyz] 
+
+if mxm le 2 then return,sum
+
+; heat flux
+
+dsum = dsum * wv
+
+qfxxx = total(x*x*x * dsum)
+qfxyy = total(x*y*y * dsum)
+qfxzz = total(x*z*z * dsum)
+qfxxy = total(x*x*y * dsum)
+qfxxz = total(x*x*z * dsum)
+qfxyz = total(x*y*z * dsum)
+
+qfyyz = total(y*y*z * dsum)
+qfyzz = total(y*z*z * dsum)
+qfyyy = total(y*y*y * dsum)
+qfzzz = total(z*z*z * dsum)
+
+;    nvvv = ['zzz','yyz','xxz','xxx','yyy','xxy','xyy','xzz','yzz','xyz']
+sum.nvvv = [qfzzz,qfyyz,qfxxz,qfxxx,qfyyy,qfxxy,qfxyy,qfxzz,qfyzz,qfxyz]
+;              0     1     2     3     4     5     6     7     8     9
+
+if mxm le 3 then return,sum
+
+dsum = dsum * wv
+
+rzzzz = total(z*z*z*z * dsum)
+ryyzz = total(y*y*z*z * dsum)
+rxxzz = total(x*x*z*z * dsum)
+ryyyy = total(y*y*y*y * dsum)
+rxxxx = total(x*x*x*x * dsum)
+rxxyy = total(x*x*y*y * dsum)
+
+ryzzz = total(y*z*z*z * dsum)
+rxzzz = total(x*z*z*z * dsum)
+rxyzz = total(x*y*z*z * dsum)
+ryyyz = total(y*y*y*z * dsum)
+rxxxz = total(x*x*x*z * dsum)
+rxxyz = total(x*x*y*z * dsum)
+rxyyz = total(x*y*y*z * dsum)
+rxyyy = total(x*y*y*y * dsum)
+rxxxy = total(x*x*x*y * dsum)
+
+sum.nvvvv = [rzzzz,ryyyy,rxxxx,rxxyy,ryyzz,rxxzz,  $
+ryzzz,rxzzz,rxyzz,ryyyz,rxxxz,rxxyz,rxyyz,rxyyy,rxxxy]
+
+
+return,sum   ; dimensions:  (eV)^((i-1)/2) cm^-3 km/s
+end

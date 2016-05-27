@@ -1,0 +1,28 @@
+;+
+;PROCEDURE: ang_data, n1,n2
+;PURPOSE:
+;   Creates a tplot variable that is the angle between two tplot variables.
+;INPUT: n1,n2  tplot variable names (strings)
+;   These should each be 3 element vectors
+;-
+PRO ang_data,n1,n2,newname=newname,dot=dotp
+get_data,n1,data=d1
+get_data,n2,data=d2
+if not keyword_set(d1) or not keyword_set(d2) then begin
+   message,/info,'data not defined!'
+   return
+endif
+c = keyword_set(dotp) ? '.' : '@'
+if not keyword_set(newname) then newname = n1+c+n2
+y2 = data_cut(d2,d1.x)
+y1 = d1.y
+dot = total(y1*y2,2)
+y1m = sqrt(total(y1^2,2))
+y2m = sqrt(total(y2^2,2))
+;help,y1,y2,dot,y1m,y2m
+ang = acos(dot/y1m/y2m) * !radeg
+
+dat = {x:d1.x,y:(keyword_set(dotp) ? dot :ang)}
+store_data,newname,data=dat
+return
+end

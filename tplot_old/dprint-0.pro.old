@@ -1,0 +1,228 @@
+;+
+; PROJECT:
+;       SOHO - CDS/SUMER
+;       THEMIS
+;
+; NAME:
+;       DPRINT
+;
+; PURPOSE:
+;       Diagnostic PRINT (activated only when DEBUG reaches DLEVEL)
+;
+; EXPLANATION:
+;       This routine acts similarly to the PRINT command, except that
+;       it is activated only when the common block variable DEBUG is
+;       set to be equal to or greater than the debugging level set by
+;       DLEVEL (default to 0).  It is useful for debugging.
+;       If DLEVEL is not provided it uses a persistent (common block) value set with the
+;       keyword SETDEBUG.
+;
+; CALLING SEQUENCE (typically written into code):
+;       DPRINT, v1 [,v2 [,v3...]]] [,format=format] [,dlevel=dlevel] [,verbose=verbose]
+;             The values of v1,v2,v3 will only be printed if verbose >= dlevel
+;
+; CALLING SEQUENCE to change options (typically typed from IDL command line)
+;       DPRINT, setdebug=d   ; define persistent debug level
+;       DPRINT, print_trace=[0,1,2, or 3]  ; Display program trace info in subsequent calls to DPRINT
+;       DPRINT, /print_dtime       ; Display delta time between DPRINT statements.
+;
+; INPUTS:
+;       V1, V2, ... - List of variables to be printed out (20 max).
+;
+; OPTIONAL INPUTS:
+;       None.
+;
+; OUTPUTS:
+;       All input variables are printed out on the screen (or the
+;       given unit)
+;
+; OPTIONAL Keywords:
+;       FORMAT - Output format to be used
+;       UNIT   - Output unit through which the variables are printed. If
+;                missing, the standard output (i.e., your terminal) is used.
+;
+; KEYWORD PARAMETERS:
+;       DLEVEL = DLEVEL - An integer indicating the debugging level; defaults to 0
+;       VERBOSE = VERBOSE - An integer indicating current verbosity level, If verbose is set
+;       it will override the current value of debug, for the specific call of dprint in which
+;       it is set.
+;       SETDEBUG=value            - Set debug level to value
+;       GETDEBUG=named variable   - Get current debug level
+;       DWAIT = NSECONDS  ; provides an additional constraint on printing.
+;              It will only print if more than NSECONDS has elapsed since last dprint.
+;
+; CALLS:
+;       PTRACE()
+;
+; COMMON BLOCKS:
+;       DPRINT_COM.
+;
+; RESTRICTIONS:
+;     - Changed see SETDEBUG above
+;       Can print out a maximum of 12 variables (depending on how many
+;          is listed in the code)
+;
+; SIDE EFFECTS:
+;       None.
+;
+; CATEGORY:
+;       Utility, miscellaneous
+;
+; PREVIOUS HISTORY:
+;       Written March 18, 1995, Liyun Wang, GSFC/ARC
+;
+; MODIFICATION HISTORY:
+;       Version 1, Liyun Wang, GSFC/ARC, March 18, 1995
+;       Version 2, Zarro, SM&A, 30 November 1998 - added error checking
+;       Version 3, Zarro, (EIT/GSFC), 23 Aug 2000 - removed DATATYPE calls
+;       Version 4, Larson  (2007) stripped out calls to "execute" so that it can be called from IDL VM
+;                          Fixed bug that allows format keyword to be used.
+;                          Added PTRACE() call
+;                          Added SETDEBUG keyword and GETDEBUG keyword
+;                          Added DWAIT keyword
+;
+;-
+
+PRO DPRINT,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,  $
+           v11,v12,v13,v14,v15,v16,v17,v18,v19,v20, $
+           format=format,unit=unit,dlevel=dlevel,setdebug=setdebug,getdebug=getdebug,verbose=verbose,$
+           filename=filename, $
+           print_dlevel=print_dlevel,  $
+           print_time = print_time   , $
+           get_header = get_header   , $
+           print_dtime =print_dtime,   $
+           print_trace= print_trace,  $
+           names=names,dwait=dwait,phelp=phelp
+
+   on_error,2
+
+   common dprint_com, debug, lasttime, lastflushtime, print_dlevel_c, print_dtime_c, print_time_c, print_trace_c, file_unit_c, file_name_c
+   newtime = systime(1)
+   if not keyword_set(lasttime) then lasttime = newtime
+   if not keyword_set(lastflushtime) then lastflushtime = newtime
+;   ON_ERROR, 2
+   ON_IOERROR, io_error  ; Not needed?
+   if n_elements(debug) eq 0 then  debug = FIX(getenv('DEBUG'))
+   getdebug = debug
+   if n_elements(file_unit_c) eq 0 then file_unit_c = -1  ; standard output
+   np = N_PARAMS()
+;   if np eq 0 then begin
+      if n_elements(option) ne 0  then print_trace = option
+      if n_elements(dtime)  ne 0  then print_dtime = dtime
+      if n_elements(print_dlevel) ne 0 then print_dlevel_c=print_dlevel
+      if n_elements(print_dtime)  ne 0 then begin
+          print_dtime_c =print_dtime
+          lasttime = newtime
+      endif
+      if n_elements(print_time)   ne 0 then print_time_c  =print_time
+      if n_elements(print_trace)  ne 0 then begin
+          print_trace_c= print_trace
+          dummy= ptrace(option=print_trace_c)
+      endif
+      if n_elements(filename) ne 0 then begin
+          if file_unit_c gt 0  then free_lun,file_unit_c
+          file_unit_c = -1
+          if keyword_set(filename)  then begin
+              openw,file_unit_c,filename,/get_lun
+              fs = fstat(file_unit_c)
+              file_name_c = fs.name
+          endif
+      endif
+      if n_elements(setdebug) ne 0 then begin
+          debug = setdebug
+          return
+      endif
+;      return
+;   endif
+
+   IF N_ELEMENTS(dlevel) EQ 0 THEN dlevel = 0 ;1 changed by DL 2007-08-06
+
+   if keyword_set(dwait) then begin
+      if dwait ge (newtime-lasttime)  then return
+   endif
+
+   if newtime-lastflushtime gt 15. then begin
+      lastflushtime = newtime
+      wait,.01    ; This wait statement is the only way I know of to flush the print buffer. This is a low overhead.
+   endif
+
+   dbg = keyword_set(verbose) ? verbose : debug
+   IF dlevel GT dbg THEN RETURN
+
+   prefix = ''
+   if keyword_set(print_dlevel_c) then prefix = prefix + string(dlevel,dbg,format='(i0.0,"/",i0.0,": ")')
+   if keyword_set(print_dtime_c)  then prefix = prefix + string(format='(f6.3,": ")',newtime-lasttime)
+   if keyword_set(print_trace_c)  then prefix = prefix + ptrace(/sublevel)
+
+   lasttime = newtime
+
+   if file_unit_c gt 0 then begin   ; perform safety check
+       fs = fstat(file_unit_c)
+       if fs.open eq 0 or fs.name ne file_name_c then begin
+           file_unit_c = -1
+           file_name_c = ''
+       endif
+   endif
+   u = n_elements(unit) ? unit : file_unit_c
+   printf,u,prefix,format='(a,$)'
+
+   if keyword_set(phelp) then begin
+        vnames0=scope_varname(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12)
+        vnames1=scope_varname(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,level=-1)
+;        vnames1=vnames1[0:np-1]
+
+        for i=0,np-1 do begin
+           printdat,unit=u,scope_varfetch(vnames0[i]),varname=vnames1[i],recursemax=phelp ;,pgmtrace=2,width=300
+
+        endfor
+        return
+   endif
+
+
+   if keyword_set(names) then begin
+        vnames=scope_varname(v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,level=-1,count=count)
+        printf,u,ptrace(/sublevel),'<'+vnames[0:n_params()-1]+'>',format='(a,20a8)'
+   endif
+
+   case np of
+   0:  printf,u,format=format
+   1:  printf,u,format=format,v1
+   2:  printf,u,format=format,v1,v2
+   3:  printf,u,format=format,v1,v2,v3
+   4:  printf,u,format=format,v1,v2,v3,v4
+   5:  printf,u,format=format,v1,v2,v3,v4,v5
+   6:  printf,u,format=format,v1,v2,v3,v4,v5,v6
+   7:  printf,u,format=format,v1,v2,v3,v4,v5,v6,v7
+   8:  printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8
+   9:  printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9
+   10: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10
+   11: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11
+   12: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12
+   13: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13
+   14: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14
+   15: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15
+   16: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16
+   17: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17
+   18: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18
+   19: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19
+   20: printf,u,format=format,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15,v16,v17,v18,v19,v20
+   else: printf,u,'Get real! 12 variables is enough!'
+   endcase
+
+   if keyword_set(dwait) then wait, .01      ; This  line is used to update the display
+
+   if debug ge 10 then stop
+   return
+
+io_error:
+;---------------------------------------------------------------------------
+;  If the conversion fails, it means that either DEBUG is not set, or
+;  set to something else that cannot be converted to integer
+;---------------------------------------------------------------------------
+   debug= keyword_set(setdebug) ? setdebug : 0
+   RETURN
+END
+
+;---------------------------------------------------------------------------
+; End of 'dprint.pro'.
+;---------------------------------------------------------------------------

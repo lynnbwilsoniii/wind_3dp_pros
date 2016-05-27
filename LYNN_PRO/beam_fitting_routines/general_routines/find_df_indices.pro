@@ -1,0 +1,105 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   find_df_indices.pro
+;  PURPOSE  :   This routine finds the fractional indices for an NxN array from
+;                 the vector defined by {Vx_out, Vy_out}.  The fractional indices
+;                 are with respect to the regularly gridded inputs Vx_in and Vy_in.
+;
+;  CALLED BY:   
+;               find_dist_func_cuts.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               VX_IN    :  [N]-Element array of regularly gridded velocities [km/s]
+;                             corresponding to the 1st dimension in some function,
+;                             f(Vx,Vy) [e.g. parallel velocities]
+;               VY_IN    :  [N]-Element array of regularly gridded velocities [km/s]
+;                             corresponding to the 2nd dimension in FV
+;                             [e.g. perpendicular velocities]
+;               VX_OUT   :  [K]-Element array of X-velocities [km/s] to find the
+;                             corresponding 1st dimension indices of for FV
+;               VY_OUT   :  [K]-Element array of Y-velocities [km/s] to find the
+;                             corresponding 2nd dimension indices of for FV
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Fixed a typo                                     [09/08/2012   v1.0.1]
+;
+;   NOTES:      
+;               1)  The units of VEL[X,Y] AND V_0[X,Y] do not actually matter, just as
+;                     long as they are all consistent
+;               2)  V[X,Y]_IN cannot have ANY elements = NaN
+;
+;   CREATED:  08/17/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/08/2012   v1.0.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION find_df_indices,vx_in,vy_in,vx_out,vy_out
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;; => Dummy error messages
+bad_fv_msg     = 'FV must be an [N,N]-element array...'
+bad_in_msg     = 'Incorrect input format!'
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+testvi         = (N_ELEMENTS(vx_in)  EQ 0) OR (N_ELEMENTS(vy_in)  EQ 0)
+testvo         = (N_ELEMENTS(vx_out) EQ 0) OR (N_ELEMENTS(vy_out) EQ 0)
+test           = testvi OR testvo OR (N_PARAMS() NE 4)
+IF (test) THEN RETURN,0b
+
+vxi            = REFORM(vx_in)
+vyi            = REFORM(vy_in)
+vxo            = REFORM(vx_out)
+vyo            = REFORM(vy_out)
+
+nvx            = N_ELEMENTS(vxi)
+nvy            = N_ELEMENTS(vyi)
+test           = (nvx NE nvy)
+IF (test) THEN BEGIN
+  MESSAGE,notstr_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+
+dgsx           = (MAX(vxi,/NAN) - MIN(vxi,/NAN))/(nvx - 1L)
+dgsy           = (MAX(vyi,/NAN) - MIN(vyi,/NAN))/(nvy - 1L)
+;;----------------------------------------------------------------------------------------
+;; => Find indices
+;;----------------------------------------------------------------------------------------
+;;  Find closest indices of original regularly gridded input velocities
+testx          = VALUE_LOCATE(vxi,vxo)
+testy          = VALUE_LOCATE(vyi,vyo)
+;;  Convert long indices to floats
+diffx          = (vxo - vxi[testx])/dgsx[0]
+diffy          = (vyo - vyi[testy])/dgsy[0]
+index_x        = testx + diffx
+index_y        = testy + diffy
+;;----------------------------------------------------------------------------------------
+;; => Create return structure
+;;----------------------------------------------------------------------------------------
+tags   = ['X_IND','Y_IND']
+struct = CREATE_STRUCT(tags,index_x,index_y)
+;;----------------------------------------------------------------------------------------
+;; => Return structure to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END

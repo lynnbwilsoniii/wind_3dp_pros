@@ -1,0 +1,114 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   beam_fit_unset_common.pro
+;  PURPOSE  :   This routine undefines all the specified common block variables
+;                 defined by the inputs.
+;
+;  CALLED BY:   
+;               beam_fit_change_parameter.pro
+;               beam_fit_keywords_init.pro
+;               beam_fit_1df_plot_fit.pro
+;
+;  CALLS:
+;               beam_fit_keyword_com.pro
+;               beam_fit_params_com.pro
+;               array_where.pro
+;               delete_variable.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               LOGIC   :  Scalar(or array) [string] that matches the name of a common
+;                            block variable
+;
+;  EXAMPLES:    
+;               ;;  To undefine the variable VSW, enter the following:
+;               beam_fit_unset_common,'vsw'
+;
+;  KEYWORDS:    
+;               STATUS  :  Set to a named variable to return the status of the program
+;                            0  :  Failed to undefine common block variable
+;                            1  :  Successfully undefine common block variable
+;
+;   CHANGED:  1)  Continued to write routine                       [08/30/2012   v1.0.0]
+;             2)  Continued to write routine                       [09/07/2012   v1.0.0]
+;
+;   NOTES:      
+;               1)  User should not call this routine
+;               2)  See also:  beam_fit_keyword_com.pro, beam_fit_params_com.pro,
+;                              beam_fit___set_common.pro, beam_fit___get_common.pro,
+;                              beam_fit_struc_common.pro
+;               3)  STATUS has the same dimensions as LOGIC on output
+;
+;   CREATED:  08/29/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/07/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO beam_fit_unset_common,logic,STATUS=status
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+status         = 0b
+
+;;  Define strings associated with all the common block variables available
+key_com_str    = ['vlim','ngrid','nsmooth','sm_cuts','sm_cont','dfra','dfmin','dfmax',$
+                  'plane','angle','fill','perc_pk','save_dir','file_pref','file_midf']
+key_par_str    = ['vsw','vcmax','v_bx','v_by','vb_reg','vbmax','def_fill','def_perc', $
+                  'def_dfmin','def_dfmax','def_ngrid','def_nsmth','def_plane',        $
+                  'def_sdir','def_pref','def_midf','def_vlim']
+;key_par_str    = ['vsw','vcmax','v_bx','v_by','vb_reg','def_fill','def_perc','def_dfmin',$
+;                  'def_dfmax','def_ngrid','def_nsmth','def_plane','def_sdir','def_pref', $
+;                  'def_midf','def_vlim']
+key_all_str    = [key_com_str,key_par_str]
+
+exc_pref       = 'delete_variable,'
+;;----------------------------------------------------------------------------------------
+;; => Load Common Block
+;;----------------------------------------------------------------------------------------
+@beam_fit_keyword_com.pro
+@beam_fit_params_com.pro
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1)
+IF (test) THEN RETURN
+;;----------------------------------------------------------------------------------------
+;; => Determine what user wants to change
+;;----------------------------------------------------------------------------------------
+log            = STRLOWCASE(logic)
+nl             = N_ELEMENTS(log)
+status         = REPLICATE(0b,nl)
+check          = array_where(key_all_str,log,/N_UNIQ)
+IF (check[0] GE 0) THEN BEGIN
+  good_k         = REFORM(check[*,0])
+  good_l         = REFORM(check[*,1])
+  gd             = N_ELEMENTS(good_k)
+  ;; => Make sure order has not changed
+  gind           = LINDGEN(gd)
+  gind           = gind[good_k]
+  sp             = SORT(gind)
+  good_k         = good_k[sp]
+  good_l         = good_l[sp]
+  ;;--------------------------------------------------------------------------------------
+  ;; => Undefine desired common block variables
+  ;;--------------------------------------------------------------------------------------
+  FOR j=0L, gd - 1L DO BEGIN
+    exc_str           = exc_pref[0]+key_all_str[good_k[j]]
+    status[good_l[j]] = EXECUTE(exc_str[0])
+  ENDFOR
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

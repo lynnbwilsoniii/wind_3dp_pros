@@ -1,0 +1,427 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   calc_log_scale_tickv.pro
+;  PURPOSE  :   This routine tries to improve upon IDL's attempt to automatically choose
+;                 appropriate tick mark values when plotting data on a logarithmic
+;                 scale.  This is particularly useful when the data does not span more
+;                 than one power of ten causing IDL to output a plot with minor tick
+;                 marks but no major tick mark labels.
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               DATA  :  [N]-Element [integer/long/float/double] array of values for
+;                          which the user wishes to determine appropriate tick mark
+;                          values to show on a logarithmic scale
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  11/13/2013
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  11/13/2013   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION calc_log_scale_tickv,data
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+bad_numin_msg  = 'DAT must be an [N]-element (integer/long/float/double) array...'
+bad_ndims_msg  = 'DAT must be a one-dimensional array...'
+bad_a_neg_msg  = 'DAT must contain more than 3 elments that are > 0...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() NE 1) OR (N_ELEMENTS(data) EQ 0)
+IF (test) THEN BEGIN
+  ;;  Must be 1 input supplied
+  MESSAGE,bad_numin_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+
+test           = (SIZE(REFORM(data),/N_DIMENSIONS) NE 1)
+IF (test) THEN BEGIN
+  ;;  Input must be 1-D
+  MESSAGE,bad_ndims_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Eliminate negative values which cannot be shown on logarithmic plots
+;;----------------------------------------------------------------------------------------
+dat            = REFORM(data)                     ;;  Change [1,N]- to a [N]-element array
+nn             = N_ELEMENTS(dat)
+bad            = WHERE(dat LE 0,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+test           = (gd LE 3)
+IF (test) THEN BEGIN
+  ;;  Input must be > 0
+  MESSAGE,bad_a_neg_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;  Ignore negative values
+dat            = dat[good]
+;;----------------------------------------------------------------------------------------
+;;  Determine data range and relevant parameters
+;;----------------------------------------------------------------------------------------
+dat_min        = MIN(dat,MAX=dat_max,/NAN)
+dat_aran       = ABS(dat_max[0] - dat_min[0])     ;;  Abs. range of data
+dat_10per      = 1d-1*dat_aran[0]                 ;;  10% of Abs. range
+min_10per      = 1d-1*dat_min[0]                  ;;  10% of Min.
+max_10per      = 1d-1*dat_max[0]                  ;;  10% of Max.
+min_20per      = 2d-1*dat_min[0]                  ;;  20% of Min.
+max_20per      = 2d-1*dat_max[0]                  ;;  20% of Max.
+;;  Expand range by ±10% and ±20%
+mnmx_10        = [dat_min[0],dat_max[0]] + [-1d0,1d0]*[min_10per[0],max_10per[0]]
+mnmx_20        = [dat_min[0],dat_max[0]] + [-1d0,1d0]*[min_20per[0],max_20per[0]]
+l_ex_mnmx      = ALOG10([MIN(mnmx_10,/NAN),MAX(mnmx_10,/NAN)])
+l_20_mnmx      = ALOG10([MIN(mnmx_20,/NAN),MAX(mnmx_20,/NAN)])
+;;  Convert to base-10 log-scale and define as L_j
+l_mnmx         = ALOG10([dat_min[0],dat_max[0]])
+fl_l_mnmx      = FLOOR(l_mnmx)
+ce_l_mnmx      = CEIL(l_mnmx)
+;;  Find the adjacent power of 10 and define as £_j
+l_mnmx_adj     = [FLOOR(MIN(l_mnmx,/NAN)),CEIL(MAX(l_mnmx,/NAN))]
+;;----------------------------------------------------------------------------------------
+;;  Determine whether or not to expand range
+;;----------------------------------------------------------------------------------------
+test_a         = (fl_l_mnmx[0] EQ fl_l_mnmx[1]) OR (ce_l_mnmx[0] EQ ce_l_mnmx[1])
+test_b         = (ce_l_mnmx[0] EQ fl_l_mnmx[1])
+test_c         = (dat_min[0] EQ dat_max[0])
+check          = WHERE([test_a[0],test_b[0],test_c[0]],ch)
+CASE check[0] OF
+  0L   : BEGIN                                          ;;  Case A
+    ;;------------------------------------------------------------------------------------
+    ;;  £_(j-1)     £_j     £_(j+1)
+    ;;  ---|---------|---------|---
+    ;;                  y0  y1
+    ;;------------------------------------------------------------------------------------
+    logy0  = fl_l_mnmx[0] < l_ex_mnmx[0]                ;;  ∆Y_0 = £_j
+    logy1  = ce_l_mnmx[1] > l_ex_mnmx[1]                ;;  ∆Y_1 = £_(j+1)
+  END
+  1L   : BEGIN                                          ;;  Case B
+    L_j            = ce_l_mnmx[0]                       ;;  = 100% of £_j
+    Lj__50         = ALOG10(5d-1*1d1^L_j[0])            ;;  =  50% of £_j
+    Lj_150         = ALOG10(15d-1*1d1^L_j[0])           ;;  = 150% of £_j
+    Lj_200         = ALOG10(20d-1*1d1^L_j[0])           ;;  = 200% of £_j
+    L_jm1          = L_j[0] - 1d0                       ;;  = £_(j-1)
+    L_jp1          = L_j[0] + 1d0                       ;;  = £_(j+1)
+    diff01         = ABS([(ce_l_mnmx[0] - l_mnmx[0]),(ce_l_mnmx[0] - l_mnmx[1])])
+    test_up        = (diff01[0] GE diff01[1])
+    test0          = (l_mnmx[0] GE Lj__50[0])           ;;  TRUE  :  ∆Y_0 ≥  50% of £_j
+    test1          = (l_mnmx[1] LT Lj_150[0])           ;;  TRUE  :  ∆Y_1 < 150% of £_j
+    test2          = (l_mnmx[1] LT Lj_200[0])           ;;  TRUE  :  ∆Y_1 < 200% of £_j
+    test200        = (test2[0] AND (test1[0] EQ 0))     ;;  TRUE  :  150% < ∆Y_1 < 200% of £_j
+    test50         = (test0[0] OR test1[0])
+    IF (test_up) THEN BEGIN                             ;;  Case B i)
+      ;;----------------------------------------------------------------------------------
+      ;;  £_(j-1)     £_j     £_(j+1)
+      ;;  ---|---------|---------|---
+      ;;       y0        y1
+      ;;----------------------------------------------------------------------------------
+      IF (test50) THEN BEGIN
+        ;;  At least one bound within 50% of £_j
+        test   = (test0[0] AND test1[0])
+        IF (test) THEN BEGIN
+          ;;  Both values are within 50% of £_j
+          ;;    => use (Y_j ± 50%) instead
+          logy0  = Lj__50[0]
+          logy1  = Lj_150[0]
+        ENDIF ELSE BEGIN
+          ;;    => ∆Y_j = Y_j ± 50%
+          low_00 = ([Lj__50[0],fl_l_mnmx[0]]) < l_ex_mnmx[0]
+          upp_00 = [l_ex_mnmx[1] < ce_l_mnmx[1], Lj_150[0] > l_ex_mnmx[1]]
+          IF (test0) THEN BEGIN
+            logy0 = low_00[0]
+            logy1 = upp_00[0]
+          ENDIF ELSE BEGIN
+            logy0 = low_00[1]
+            logy1 = upp_00[1]
+          ENDELSE
+;          IF (test0) THEN logy0 = Lj__50[0] ELSE logy0 = fl_l_mnmx[0] < l_ex_mnmx[0]
+;          IF (test0) THEN logy1 = l_ex_mnmx[1] < ce_l_mnmx[1] ELSE logy1 = Lj_150[0]
+;          logy0  = l_20_mnmx[0]
+;          logy1  = l_20_mnmx[1]
+        ENDELSE
+      ENDIF ELSE BEGIN
+        ;;  Neither bound within 50% of £_j
+        logy0  = fl_l_mnmx[0] < l_ex_mnmx[0]            ;;  ∆Y_0 = £_(j-1) < (Y_0 - 10%)
+        logy1  = l_ex_mnmx[1] < ce_l_mnmx[1]            ;;  ∆Y_1 = (Y_1 + 10%) < £_j
+      ENDELSE
+    ENDIF ELSE BEGIN                                    ;;  Case B ii)
+      ;;----------------------------------------------------------------------------------
+      ;;  £_(j-1)     £_j     £_(j+1)
+      ;;  ---|---------|---------|---
+      ;;            y0        y1
+      ;;----------------------------------------------------------------------------------
+      IF (test50) THEN BEGIN
+        ;;  At least one bound within 50% of £_j
+        test   = (test0[0] AND test1[0])
+        IF (test) THEN BEGIN
+          ;;  Both values are within 50% of £_j
+          ;;    => use (Y_j ± 50%) instead
+          logy0  = Lj__50[0]
+          logy1  = Lj_150[0]
+        ENDIF ELSE BEGIN
+          ;;    => ∆Y_j = Y_j ± 50%
+;          low_00 = [Lj__50[0] < l_ex_mnmx[0],l_ex_mnmx[0] < fl_l_mnmx[0]]
+          low_00 = ([Lj__50[0],fl_l_mnmx[0]]) < l_ex_mnmx[0]
+          upp_00 = ([ce_l_mnmx[1],Lj_150[0]]) > l_ex_mnmx[1]
+          IF (test0) THEN BEGIN
+            ;;  ∆Y_0 ≥  50% of £_j
+            logy0 = low_00[0]
+            IF (test200) THEN logy1 = Lj_200[0] ELSE logy1 = upp_00[0]
+          ENDIF ELSE BEGIN
+            ;;  ∆Y_1 < 150% of £_j
+            logy0 = low_00[1]
+            logy1 = upp_00[1]
+;            logy0 = l_ex_mnmx[0] > fl_l_mnmx[0]
+;            logy1 = Lj_150[0]
+          ENDELSE
+        ENDELSE
+      ENDIF ELSE BEGIN
+        ;;  Neither bound within 50% of £_j
+        logy0  = l_ex_mnmx[0] > fl_l_mnmx[0]            ;;  ∆Y_0 = (Y_0 - 10%) > £_(j-1)
+        ;;  ∆Y_1 = [£_(j+1) > (Y_1 + 10%)] OR [200% of £_j]
+        IF (test200) THEN logy1 = Lj_200[0] ELSE logy1  = ce_l_mnmx[1] > l_ex_mnmx[1]
+      ENDELSE
+    ENDELSE
+  END
+  2L   : BEGIN                                          ;;  Case C
+    ;;------------------------------------------------------------------------------------
+    ;;  £_(j-1)     £_j     £_(j+1)
+    ;;  ---|---------|---------|---
+    ;;                   y0
+    ;;                   y1
+    ;;------------------------------------------------------------------------------------
+    logy0  = fl_l_mnmx[0] < l_ex_mnmx[0]                ;;  ∆Y_0 = £_j
+    logy1  = ce_l_mnmx[1] > l_ex_mnmx[1]                ;;  ∆Y_1 = £_(j+1)
+  END
+  ELSE : BEGIN                                          ;;  Case D
+    ;;  Do not need to expand more than 10%
+    logy0  = l_ex_mnmx[0]                               ;;  ∆Y_0 = (Y_0 - 10%)
+    logy1  = l_ex_mnmx[1]                               ;;  ∆Y_1 = (Y_1 + 10%)
+  END
+ENDCASE
+;;----------------------------------------------------------------------------------------
+;;  Define logarithmic Y-Range
+;;----------------------------------------------------------------------------------------
+log_ran        = [logy0[0],logy1[0]]
+;;  Define data range
+dat_ran        = 1d1^(log_ran)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,dat_ran
+END
+
+
+
+
+
+
+
+
+
+
+
+
+;;;  Check if data is closer to upper or lower power of 10
+;diff_upper     = ABS(MAX(l_mnmx,/NAN) - l_mnmx_adj)
+;diff_lower     = ABS(MIN(l_mnmx,/NAN) - l_mnmx_adj)
+;diff_mean      = ABS(MEAN(l_mnmx,/NAN) - l_mnmx_adj)
+;;;  Make sure L_min ≠ L_max (just in case)
+;test           = (MIN(l_mnmx,/NAN) EQ MAX(l_mnmx,/NAN))
+;IF (test) THEN BEGIN
+;  ;;  Data is single-valued
+;  ;;    --> Is it closer to upper/lower power of 10?
+;  ;;      a)  Closer to upper => +1 to L_max
+;  ;;      b)  Closer to lower => -1 to L_min
+;  IF (diff_lower[0] GT diff_upper[1]) THEN BEGIN
+;    ;;      a)  Closer to upper => +1 to L_max
+;    
+;  ENDIF ELSE BEGIN
+;    ;;      b)  Closer to lower => -1 to L_min
+;    
+;  ENDELSE
+;ENDIF ELSE BEGIN
+;  ;;  Data is "okay"
+;  ;;    --> Does it span more than one power of 10?
+;  ;;      a)  Yes => okay
+;  ;;      b)  No  => adjust upper/lower depending on location
+;  
+;  
+;  
+;  log_ran        = l_mnmx_adj
+;ENDELSE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;CASE check[0] OF
+;  0L   : BEGIN                                ;;  Case A
+;    ;;  £_(j-1)     £_j     £_(j+1)
+;    ;;  ---|---------|---------|---
+;    ;;                  y0  y1
+;    logy0  = fl_l_mnmx[0] < l_ex_mnmx[0]      ;;  ∆Y_0 = £_j
+;    logy1  = ce_l_mnmx[1] > l_ex_mnmx[1]      ;;  ∆Y_1 = £_(j+1)
+;  END
+;  1L   : BEGIN                                ;;  Case B
+;    diff01         = ABS([(ce_l_mnmx[0] - l_mnmx[0]),(ce_l_mnmx[0] - l_mnmx[1])])
+;    test_up        = (diff01[0] GE diff01[1])
+;    L_j            = ce_l_mnmx[0]             ;;  = 100% of £_j
+;    Lj__50         = ALOG10(5d-1*1d1^L_j[0])  ;;  =  50% of £_j
+;    Lj_150         = ALOG10(15d-1*1d1^L_j[0]) ;;  = 150% of £_j
+;    L_jm1          = L_j[0] - 1d0             ;;  = £_(j-1)
+;    L_jp1          = L_j[0] + 1d0             ;;  = £_(j+1)
+;    IF (test_up) THEN BEGIN                   ;;  Case B i)
+;      ;;  £_(j-1)     £_j     £_(j+1)
+;      ;;  ---|---------|---------|---
+;      ;;       y0        y1
+;      logy0  = fl_l_mnmx[0] < l_ex_mnmx[0]    ;;  ∆Y_0 = £_(j-1) < (Y_0 - 10%)
+;      logy1  = l_ex_mnmx[1] < ce_l_mnmx[1]    ;;  ∆Y_1 = (Y_1 + 10%) < £_j
+;      ;;  Make sure jump not too large...
+;;      test   = ((l_mnmx[0]/logy0[0]) GE ALOG10(8d-1))
+;      test0  = (ROUND(1d1^logy0[0]) EQ CEIL(1d1^logy0[0]))      ;;  TRUE  :  ∆Y_0 ≥  50% of £_j
+;      test1  = (ROUND(1d1^logy1[0]) EQ FLOOR(1d1^logy1[0]))     ;;  TRUE  :  ∆Y_1 ≤ 150% of £_j
+;      test   = (test0[0] OR test1[0])
+;      stop
+;      IF (test) THEN BEGIN
+;;        test   = (ROUND(logy1[0]) NE ROUND(l_ex_mnmx[0]))
+;        ;;  At least one bound within 50% of £_j
+;        test   = (test0[0] AND test1[0])
+;        IF (test) THEN BEGIN
+;          ;;  Both values are within 50% of £_j
+;          ;;    => use (Y_j ± 50%) instead
+;          logy0  = Lj__50[0]
+;          logy1  = Lj_150[0]
+;        ENDIF ELSE BEGIN
+;          ;;    => ∆Y_j = Y_j ± 50%
+;          IF (test0) THEN logy0 = Lj__50[0] ELSE logy1 = Lj_150[0]
+;;          logy0  = l_20_mnmx[0]
+;;          logy1  = l_20_mnmx[1]
+;        ENDELSE
+;      ENDIF
+;    ENDIF ELSE BEGIN                          ;;  Case B ii)
+;      ;;  £_(j-1)     £_j     £_(j+1)
+;      ;;  ---|---------|---------|---
+;      ;;            y0        y1
+;      logy0  = l_ex_mnmx[0] > fl_l_mnmx[0]    ;;  ∆Y_0 = (Y_0 - 10%) > £_(j-1)
+;      logy1  = ce_l_mnmx[1] > l_ex_mnmx[1]    ;;  ∆Y_1 = £_(j+1) > (Y_1 + 10%)
+;      ;;  Make sure jump not too large...
+;;      test   = ((l_mnmx[1]/logy1[0]) LE ALOG10(2d-1))
+;      test0  = (ROUND(1d1^logy0[0]) EQ CEIL(1d1^logy0[0]))      ;;  TRUE  :  ∆Y_0 ≥  50% of £_j
+;      test1  = (ROUND(1d1^logy1[0]) EQ FLOOR(1d1^logy1[0]))     ;;  TRUE  :  ∆Y_1 ≤ 150% of £_j
+;      test   = (test0[0] OR test1[0])
+;      stop
+;      IF (test) THEN BEGIN
+;;        test   = (ROUND(logy0[0]) NE ROUND(l_ex_mnmx[1]))
+;        ;;  At least one bound within 50% of £_j
+;        test   = (test0[0] AND test1[0])
+;        IF (test) THEN BEGIN
+;          ;;  Both values are within 50% of £_j
+;          ;;  upper bound > 180% of Max(data)
+;          ;;    => use (Y_1 + 10%) instead
+;          logy1  = l_ex_mnmx[1]
+;        ENDIF ELSE BEGIN
+;          ;;  Both values are close to £_j
+;          ;;    => ∆Y = Y ± 20%
+;          logy0  = l_20_mnmx[0]
+;          logy1  = l_20_mnmx[1]
+;        ENDELSE
+;      ENDIF
+;    ENDELSE
+;  END
+;  2L   : BEGIN                                ;;  Case C
+;    ;;  £_(j-1)     £_j     £_(j+1)
+;    ;;  ---|---------|---------|---
+;    ;;                   y0
+;    ;;                   y1
+;    logy0  = fl_l_mnmx[0] < l_ex_mnmx[0]      ;;  ∆Y_0 = £_j
+;    logy1  = ce_l_mnmx[1] > l_ex_mnmx[1]      ;;  ∆Y_1 = £_(j+1)
+;  END
+;  ELSE : BEGIN                                ;;  Case D
+;    ;;  Do not need to expand more than 10%
+;    logy0  = l_ex_mnmx[0]                     ;;  ∆Y_0 = (Y_0 - 10%)
+;    logy1  = l_ex_mnmx[1]                     ;;  ∆Y_1 = (Y_1 + 10%)
+;  END
+;ENDCASE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

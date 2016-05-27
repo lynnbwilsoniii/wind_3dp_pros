@@ -1,0 +1,668 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   wrapper_beam_fit_header_format.pro
+;  PURPOSE  :   Returns the header and format statement for the output ASCII file
+;
+;  CALLED BY:   
+;               wrapper_beam_fit_array.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               headform = wrapper_beam_fit_header_format()
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Fixed header strings                             [09/17/2012   v1.1.0]
+;
+;   NOTES:      
+;               
+;
+;   CREATED:  09/08/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/17/2012   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION wrapper_beam_fit_header_format
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;----------------------------------------------------------------------------------------
+;; => Define header strings
+;;----------------------------------------------------------------------------------------
+line0          = '                       Date/Time                                      '
+line1          = '       Beam Density [cm^(-3)]                                         '
+line2          = '  Parallel Thermal Speed [km/s]                                      P'
+line3          = 'erpendicular Thermal Speed [km/s]                                     '
+line4          = '  Parallel Drift Speed [km/s]                                        P'
+line5          = 'erpendicular Drift Speed [km/s]                                       '
+line6          = ' Bulk Flow Velocity [Core, km/s]                             Bulk Flow'
+line7          = ' Velocity [Beam, km/s]                 Mask Core [km/s]    Mask Beam ['
+line8          = 'km/s]      Parallel Drift    Perpendicular Drift     Dens. (MA)       '
+line9          = 'Para. V_Tb (MA)     Perp. V_Tb (MA)     Para. V_ob (MA)     Perp. V_ob'
+line10         = ' (MA)              Plane of Proj.          Number of Points           '
+line11         = 'Smoothed Cuts            Smoothed Cuts'
+head0          = line0[0]+line1[0]+line2[0]+line3[0]+line4[0]+line5[0]+line6[0]+line7[0]
+head0          = head0[0]+line8[0]+line9[0]+line10[0]+line11[0]
+line0          = '           start                      end                         valu'
+line1          = 'e        fixed            lower               upper               valu'
+line2          = 'e        fixed            lower               upper               valu'
+line3          = 'e        fixed            lower               upper               valu'
+line4          = 'e        fixed            lower               upper               valu'
+line5          = 'e        fixed            lower               upper                   '
+line6          = '              vsw_core                                                '
+line7          = '   vsw_beam                                  vcmax               vbmax'
+line8          = '            vob_x [km/s]        vob_x [km/s]          [cm^(-3)]       '
+line9          = '     [km/s]              [km/s]              [km/s]              [km/s'
+line10         = ']               [V1 = Bo, V2 = Vsw]            Smoothed              ['
+line11         = 'TRUE or FALSE]          [TRUE or FALSE]'
+head1          = line0[0]+line1[0]+line2[0]+line3[0]+line4[0]+line5[0]+line6[0]+line7[0]
+head1          = head1[0]+line8[0]+line9[0]+line10[0]+line11[0]
+line0          = '======================================================================'
+line1          = '======================================================================'
+line2          = '======================================================================'
+line3          = '======================================================================'
+line4          = '======================================================================'
+line5          = '======================================================================'
+line6          = '======================================================================'
+line7          = '======================================================================'
+line8          = '======================================================================'
+line9          = '======================================================================'
+line10         = '======================================================================'
+line11         = '==========================================='
+head2          = line0[0]+line1[0]+line2[0]+line3[0]+line4[0]+line5[0]+line6[0]+line7[0]
+head2          = head2[0]+line8[0]+line9[0]+line10[0]+line11[0]
+;;----------------------------------------------------------------------------------------
+;; => Define format statement
+;;----------------------------------------------------------------------------------------
+fit_form       = 'f20.5,b10.1,2f20.5,'  ;; format for each parameter
+fit_forms      = STRJOIN(REPLICATE(fit_form[0],5),/SINGLE)
+vel_form       = '10f20.5,'
+time_form      = '2a26,'
+mom_form       = '5f20.5,'
+pro_form       = 'a25,3I25.2'
+mform          = '('+time_form[0]+fit_forms[0]+vel_form[0]+mom_form[0]+pro_form[0]+')'
+;;----------------------------------------------------------------------------------------
+;; => Create return structure
+;;----------------------------------------------------------------------------------------
+tags           = ['HEAD_L0','HEAD_L1','HEAD_L2','FORMAT']
+struct         = CREATE_STRUCT(tags,head0,head1,head2,mform)
+;;----------------------------------------------------------------------------------------
+;; => Return results
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END
+
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   wrapper_beam_fit_array.pro
+;  PURPOSE  :   This is a wrapping routine that takes an array of particle velocity
+;                 distributions from Wind/3DP or THEMIS ESA and iteratively locates,
+;                 isolates, and fits to a beam in the distribution.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               beam_fit_keywords_init.pro
+;               beam_fit_options.pro
+;               beam_fit___get_common.pro
+;               beam_fit_1df_plot_fit.pro
+;               beam_fit_gen_prompt.pro
+;               beam_fit_test_struct_format.pro
+;               time_string.pro
+;               wrapper_beam_fit_header_format.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT        :  [N]-Element array of data structures containing particle
+;                               velocity distribution functions (DFs) from either the
+;                               Wind/3DP instrument [use get_??.pro, ?? = e.g. phb]
+;                               or from the THEMIS ESA instruments.  Regardless, the
+;                               structures must satisfy the criteria needed to produce
+;                               a contour plot showing the phase (velocity) space density
+;                               of the DF.  The structures must also have the following
+;                               two tags with finite [3]-element vectors:  VSW and MAGF.
+;
+;  EXAMPLES:    
+;               wrapper_beam_fit_array,dat
+;
+;  KEYWORDS:    
+;               ***  INPUT  ***
+;               DFRA_IN    :  [2]-Element array [float/double] defining the DF range
+;                               [cm^(-3) km^(-3) s^(3)] that defines the minimum and
+;                               maximum value for both the contour levels and the
+;                               Y-Axis of the cuts plot
+;                               [Default = range of data]
+;               EX_VECN    :  [V]-Element structure array containing extra vectors the
+;                               user wishes to project onto the contour, each with
+;                               the following format:
+;                                  VEC   :  [3]-Element vector in the same coordinate
+;                                             system as the bulk flow velocity etc.
+;                                             contour plot projection
+;                                             [e.g. VEC[0] = along X-GSE]
+;                                  NAME  :  Scalar [string] used as a name for VEC
+;                                             output onto the contour plot
+;                                             [Default = 'Vec_j', j = index of EX_VECS]
+;
+;  KEYWORDS:    
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               STRUC_OUT  :  Set to a named variable to return a structure containing
+;                               the relevant information associated with the plots,
+;                               plot analysis, and fit results for each DF in DAT
+;
+;   CHANGED:  1)  Continued to write routine                       [08/27/2012   v1.0.0]
+;             2)  Continued to write routine                       [08/28/2012   v1.0.0]
+;             3)  Continued to write routine                       [08/29/2012   v1.0.0]
+;             4)  Continued to write routine                       [08/31/2012   v1.0.0]
+;             5)  Continued to write routine                       [09/01/2012   v1.0.0]
+;             6)  Continued to write routine                       [09/03/2012   v1.0.0]
+;             7)  Continued to write routine                       [09/04/2012   v1.0.0]
+;             8)  Continued to write routine                       [09/05/2012   v1.0.0]
+;             9)  Continued to write routine                       [09/06/2012   v1.0.0]
+;            10)  Added moment analysis results to output ASCII file
+;                                                                  [09/08/2012   v1.0.0]
+;            11)  Added smoothing and plane of projection information to
+;                   output ASCII file and added output keyword:  DATA_OUT
+;                                                                  [09/08/2012   v1.0.0]
+;            12)  Continued to write routine                       [09/11/2012   v1.0.0]
+;            13)  Fixed header strings                             [09/17/2012   v1.0.0]
+;            14)  Finished writing the beta version of routine
+;                                                                  [09/21/2012   v1.0.0]
+;
+;   NOTES:      
+;               1)  This is the main routine for the beam fitting software package.
+;               2)  See beam_fit_1df_plot_fit.pro for fitting routines outline
+;
+;   CREATED:  08/25/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/21/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO wrapper_beam_fit_array,data,DFRA_IN=dfra_in,EX_VECN=ex_vecn,STRUC_OUT=struc_out
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+
+xyzvecf        = ['V1','V1xV2xV1','V1xV2']
+xy_suff        = xyzvecf[1]+'_vs_'+xyzvecf[0]+'_'
+xz_suff        = xyzvecf[0]+'_vs_'+xyzvecf[2]+'_'
+yz_suff        = xyzvecf[2]+'_vs_'+xyzvecf[1]+'_'
+;; => Dummy error messages
+noinpt_msg     = 'No input supplied...'
+notstr_msg     = 'DAT must be an IDL structure...'
+notvdf_msg     = 'DAT must be an ion velocity distribution IDL structure...'
+;; => Define working directory
+osvers         = !VERSION.OS_FAMILY
+IF (osvers NE 'unix') THEN slash = '\' ELSE slash = '/'
+work_dir       = FILE_EXPAND_PATH('')+slash[0]
+;;----------------------------------------------------------------------------------------
+;; => Setup color scales and plot options
+;;----------------------------------------------------------------------------------------
+DEVICE,GET_DECOMPOSED=decomp0
+; => Keep track of original system vars
+xyzp_win       = {X:!X,Y:!Y,Z:!Z,P:!P,DECOMP:decomp0}
+thick0         = !P.THICK
+charsize0      = !P.CHARSIZE
+; => Load current colors [*_orig] so they can be reset after done with routine
+COMMON colors, r_orig, g_orig, b_orig, r_curr, g_curr, b_curr
+r_orig0 = r_orig
+g_orig0 = g_orig
+b_orig0 = b_orig
+
+DEVICE,DECOMPOSED=0
+LOADCT,39,/SILENT
+;;----------------------------------------------------------------------------------------
+;; => Check input and initialize keywords
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(data) EQ 0) OR (N_PARAMS() NE 1) OR (SIZE(data,/TYPE) NE 8)
+IF (test) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;; => Make sure user did not enter more than 2000 structures
+;;      => Define dummy copy of DATA to avoid changing input
+IF (N_ELEMENTS(data) GT 2000L) THEN dat = data[0L:1999L] ELSE dat = data
+ndat           = N_ELEMENTS(dat)
+;;----------------------------------------------------------------------------------------
+;; => Initialize keywords
+;;----------------------------------------------------------------------------------------
+;; Clean up first
+beam_fit_keywords_init,dat,/CLEAN_UP
+beam_fit_keywords_init,dat,DFRA_IN=dfra_in,READ_OUT=read_out
+;;----------------------------------------------------------------------------------------
+;; => Check READ_OUT
+;;----------------------------------------------------------------------------------------
+test           = (SIZE(read_out,/TYPE)  NE 7) OR (N_ELEMENTS(read_out) EQ 0)
+IF (test) THEN GOTO,JUMP_END
+;; => Check if user wishes to quit
+test           = (read_out EQ '') OR (read_out EQ 'q')
+IF (test) THEN GOTO,JUMP_END
+s_times        = dat[*].TIME
+e_times        = dat[*].END_TIME
+;;----------------------------------------------------------------------------------------
+;; => Print the list of DF dates/times and associated index
+;;----------------------------------------------------------------------------------------
+read_in        = 'index'
+beam_fit_options,data,read_in,INDEX=index,READ_OUT=read_out,VALUE_OUT=value_out,$
+                              OLD_VALUE=old_value
+;; => Check if user wishes to quit
+test           = (read_out EQ '') OR (read_out EQ 'q')
+IF (test) THEN GOTO,JUMP_END
+;;----------------------------------------------------------------------------------------
+;; => Define output ASCII file name
+;;----------------------------------------------------------------------------------------
+ymdb_s         = time_string(s_times,PREC=3)
+tdates         = STRMID(ymdb_s,0L,10L)         ;; e.g.   '2009-07-13'
+tyears         = STRMID(ymdb_s,0L,4L)
+file_pref      = beam_fit___get_common('file_pref',DEFINED=defined)
+gposi          = STRPOS(file_pref[0],tyears[0])
+IF (gposi[0] GE 0) THEN BEGIN
+  out_file = work_dir[0]+STRMID(file_pref[0],0L,gposi[0])+'Fit-Results_'+tyears[0]+'.txt'
+ENDIF ELSE BEGIN
+  out_file = work_dir[0]+'DF_Fit-Results_'+tyears[0]+'.txt'
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;; => Get relevant parameters
+;;----------------------------------------------------------------------------------------
+;; Default value names
+key_def_str    = ['def_vlim','def_ngrid','def_nsmth','','','def_dfmin','def_dfmax',    $
+                  'def_plane','','def_fill','def_perc','def_sdir','def_pref','def_midf']
+;; Value names
+key_com_str    = ['vlim','ngrid','nsmooth','sm_cuts','sm_cont','dfmin','dfmax',      $
+                  'plane','angle','fill','perc_pk','save_dir','file_pref','file_midf']
+nkey           = N_ELEMENTS(key_com_str)
+;;----------------------------------------------------------------------------------------
+;; => Start Loop
+;;----------------------------------------------------------------------------------------
+;; Define parameters and initializations
+;index          = 195L
+;index          = 0L
+true           = 1
+WHILE (true) DO BEGIN
+  ;; Reset outputs
+  read_out       = ''
+;  data_out       = 0
+  ps_fname       = ''
+  finished       = 0
+  keep_out       = 0
+  delete_variable,data_out
+  ;;--------------------------------------------------------------------------------------
+  ;; Define keywords for plotting routines
+  ;;--------------------------------------------------------------------------------------
+  FOR j=0L, nkey - 1L DO BEGIN
+    nval           = beam_fit___get_common(key_com_str[j],DEFINED=defined)
+    IF (defined EQ 0) THEN CONTINUE  ;; go to next iteration
+    CASE j[0] OF
+      0L   :  BEGIN
+        vlim       = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          vlim       = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      1L   :  BEGIN
+        ngrid      = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          ngrid      = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      2L   :  BEGIN
+        nsmooth    = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          nsmooth    = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      3L   :  BEGIN
+        sm_cuts    = nval[0]
+        IF (defined EQ 0) THEN sm_cuts = 0
+      END
+      4L   :  BEGIN
+        sm_cont    = nval[0]
+        IF (defined EQ 0) THEN sm_cont = 0
+      END
+      5L   :  BEGIN
+        dfmin      = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          dfmin      = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      6L   :  BEGIN
+        dfmax      = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          dfmax      = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      7L   :  BEGIN
+        plane      = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          plane      = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      8L   :  BEGIN
+        angle      = nval[0]
+        IF (defined EQ 0) THEN angle = 0.
+      END
+      9L   :  BEGIN
+        fill       = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          fill       = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      10L  :  BEGIN
+        perc_pk    = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          perc_pk    = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      11L  :  BEGIN
+        save_dir   = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          save_dir   = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      12L  :  BEGIN
+        file_pref  = nval
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          file_pref  = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+      13L  :  BEGIN
+        file_midf  = nval[0]
+        IF (defined EQ 0) THEN BEGIN
+          ;; => If not set, then get defaults
+          file_midf  = beam_fit___get_common(key_def_str[j],DEFINED=defined)
+        ENDIF
+      END
+    ENDCASE
+  ENDFOR
+  ;; => set file name variables
+  ind0           = index[0]
+  midf_f         = file_midf[0]
+  ;;--------------------------------------------------------------------------------------
+  ;; Plot and Fit
+  ;;--------------------------------------------------------------------------------------
+  beam_fit_1df_plot_fit,dat,VLIM=vlim,NGRID=ngrid,NSMOOTH=nsmooth,SM_CUTS=sm_cuts,    $
+                        SM_CONT=sm_cont,DFMIN=dfmin,DFMAX=dfmax,PLANE=plane,          $
+                        ANGLE=angle,FILL=fill,PERC_PK=perc_pk,SAVE_DIR=save_dir,      $
+                        FILE_PREF=file_pref,FILE_MIDF=midf_f[0],INDEX=ind0,           $
+                        EX_VECN=ex_vecn,DATA_OUT=data_out,READ_OUT=read_out,          $
+                        PS_FNAME=ps_fname
+  ;;--------------------------------------------------------------------------------------
+  ;; => Check if user quit
+  ;;--------------------------------------------------------------------------------------
+  IF (read_out EQ 'q') THEN GOTO,JUMP_CHECK  ;; go to next iteration or quit
+  ;;--------------------------------------------------------------------------------------
+  ;; => Check if user changed index
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check current index value
+  true           = (ind0 LT ndat - 1L) AND (ind0 GE 0L)
+  test           = (read_out EQ 'next') OR (read_out EQ 'prev') OR (read_out EQ 'index')
+  IF (test) THEN BEGIN
+    ;; user changed index, so check if index is valid
+    IF (true) THEN index = ind0
+    ;; Jump back to end of loop
+    GOTO,JUMP_SKIP
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;; => Check if user finished
+  ;;--------------------------------------------------------------------------------------
+  IF (N_ELEMENTS(ps_fname) EQ 6) THEN finished = 1 ELSE finished = 0
+  IF (finished) THEN BEGIN
+    str_out        = "Do you want to add results to output (type 'a') or just move on to another DF (type 'n'):  "
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'a' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    IF (read_out EQ 'a') THEN keep_out = 1 ELSE keep_out = 0
+    IF (read_out EQ 'q') THEN GOTO,JUMP_END
+  ENDIF ELSE keep_out = 0
+  IF (keep_out EQ 0 OR SIZE(data_out,/TYPE) NE 8) THEN GOTO,JUMP_CHECK  ;; go to next iteration
+  ;;--------------------------------------------------------------------------------------
+  ;; => Add to output structure
+  ;;--------------------------------------------------------------------------------------
+  i_str        = 'DF_'+STRCOMPRESS(STRING(ind0,FORMAT='(I4.4)'),/REMOVE_ALL)
+  str_element,struc_out,i_str[0],data_out[0],/ADD_REPLACE
+  ;;--------------------------------------------------------------------------------------
+  ;; => Define parameters to print/save
+  ;;--------------------------------------------------------------------------------------
+  ;; => Make sure DATA_OUT has correct tags
+  temp_out     = beam_fit_test_struct_format(data_out)
+  ;; => Define start/end Unix times
+  s__unix      = temp_out.TIME[0]
+  e__unix      = temp_out.TIME[1]
+  ;; => Convert start/end Unix to string times  {2-values; [string]}
+  se_ymdb      = time_string([s__unix[0],e__unix[0]],PREC=3)  ;;  e.g.  '2009-07-13/08:58:30.000'
+  ;; => Define fit result values  {5-values; [float]}
+  fit_results  = temp_out.FIT_RESULTS
+  ;; => Define limits  {10-values; [float]}
+  lim_consts   = temp_out.FIT_CONSTRAINTS        ;; equivalent to part of PARINFO
+  limits_low   = REFORM(lim_consts.LIMITS[0,*])
+  limits_upp   = REFORM(lim_consts.LIMITS[1,*])
+  ;; => Define constraints  {5-values; [byte]}
+  limits_con   = lim_consts.FIXED
+  ;; => Define bulk velocities
+  vswc         = temp_out.CORE_VELS.ORIG_VSW
+  vswb         = temp_out.BEAM_VELS.V_B_GSE_SC
+  ;; => Define mask radial velocities  {2-values; [float]}
+  vcmax        = temp_out.CORE_VELS.CORE_VCMAX[0]
+  vbmax        = temp_out.BEAM_VELS.VBMAX[0]
+  ;; => Define beam drift velocities [core bulk frame]
+  vob_x        = temp_out.BEAM_VELS.V_B_BFRAME[0]
+  vob_y        = temp_out.BEAM_VELS.V_B_BFRAME[1]
+  ;; => Define moment analysis values  {5-values; [float]}
+  moments      = temp_out.MOMENTS
+  ;; => Define smoothing and plane information  {4-values; [1 string, 3 long]}
+  sm_str       = temp_out.SMOOTHING
+  ;;--------------------------------------------------------------------------------------
+  ;; => Add to output parameters to print/save
+  ;;--------------------------------------------------------------------------------------
+  ;; => Define start/end times
+  IF (N_ELEMENTS(s__ymdb) EQ 0) THEN s__ymdb = se_ymdb[0]     ELSE s__ymdb = [s__ymdb,se_ymdb[0]]     ;; [N]-Element array
+  IF (N_ELEMENTS(e__ymdb) EQ 0) THEN e__ymdb = se_ymdb[1]     ELSE e__ymdb = [e__ymdb,se_ymdb[1]]     ;; [N]-Element array
+  ;; => Define fit solutions
+  IF (N_ELEMENTS(n_b)     EQ 0) THEN n_b     = fit_results[0] ELSE n_b     = [n_b,fit_results[0]]     ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tbx)   EQ 0) THEN V_Tbx   = fit_results[1] ELSE V_Tbx   = [V_Tbx,fit_results[1]]   ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tby)   EQ 0) THEN V_Tby   = fit_results[2] ELSE V_Tby   = [V_Tby,fit_results[2]]   ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_bx)   EQ 0) THEN Vo_bx   = fit_results[3] ELSE Vo_bx   = [Vo_bx,fit_results[3]]   ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_by)   EQ 0) THEN Vo_by   = fit_results[4] ELSE Vo_by   = [Vo_by,fit_results[4]]   ;; [N]-Element array
+  ;; => Define fit lower limits
+  IF (N_ELEMENTS(n_b_l)   EQ 0) THEN n_b_l   = limits_low[0]  ELSE n_b_l   = [n_b_l,limits_low[0]]    ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tbx_l) EQ 0) THEN V_Tbx_l = limits_low[1]  ELSE V_Tbx_l = [V_Tbx_l,limits_low[1]]  ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tby_l) EQ 0) THEN V_Tby_l = limits_low[2]  ELSE V_Tby_l = [V_Tby_l,limits_low[2]]  ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_bx_l) EQ 0) THEN Vo_bx_l = limits_low[3]  ELSE Vo_bx_l = [Vo_bx_l,limits_low[3]]  ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_by_l) EQ 0) THEN Vo_by_l = limits_low[4]  ELSE Vo_by_l = [Vo_by_l,limits_low[4]]  ;; [N]-Element array
+  ;; => Define fit upper limits
+  IF (N_ELEMENTS(n_b_u)   EQ 0) THEN n_b_u   = limits_upp[0]  ELSE n_b_u   = [n_b_u,limits_upp[0]]    ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tbx_u) EQ 0) THEN V_Tbx_u = limits_upp[1]  ELSE V_Tbx_u = [V_Tbx_u,limits_upp[1]]  ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tby_u) EQ 0) THEN V_Tby_u = limits_upp[2]  ELSE V_Tby_u = [V_Tby_u,limits_upp[2]]  ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_bx_u) EQ 0) THEN Vo_bx_u = limits_upp[3]  ELSE Vo_bx_u = [Vo_bx_u,limits_upp[3]]  ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_by_u) EQ 0) THEN Vo_by_u = limits_upp[4]  ELSE Vo_by_u = [Vo_by_u,limits_upp[4]]  ;; [N]-Element array
+  ;; => Define fit constraints
+  IF (N_ELEMENTS(n_b_c)   EQ 0) THEN n_b_c   = limits_con[0]  ELSE n_b_c   = [n_b_c,limits_con[0]]    ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tbx_c) EQ 0) THEN V_Tbx_c = limits_con[1]  ELSE V_Tbx_c = [V_Tbx_c,limits_con[1]]  ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tby_c) EQ 0) THEN V_Tby_c = limits_con[2]  ELSE V_Tby_c = [V_Tby_c,limits_con[2]]  ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_bx_c) EQ 0) THEN Vo_bx_c = limits_con[3]  ELSE Vo_bx_c = [Vo_bx_c,limits_con[3]]  ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_by_c) EQ 0) THEN Vo_by_c = limits_con[4]  ELSE Vo_by_c = [Vo_by_c,limits_con[4]]  ;; [N]-Element array
+  ;; => Define bulk velocities
+  IF (N_ELEMENTS(vsw_c)   EQ 0) THEN vsw_c   = vswc           ELSE vsw_c   = [[vsw_c],[vswc]]         ;;  [3,N]-Element array
+  IF (N_ELEMENTS(vsw_b)   EQ 0) THEN vsw_b   = vswb           ELSE vsw_b   = [[vsw_b],[vswb]]         ;;  [3,N]-Element array
+  ;; => Define mask radial velocities
+  IF (N_ELEMENTS(vmax_c)  EQ 0) THEN vmax_c  = vcmax[0]       ELSE vmax_c  = [vmax_c,vcmax[0]]        ;; [N]-Element array
+  IF (N_ELEMENTS(vmax_b)  EQ 0) THEN vmax_b  = vbmax[0]       ELSE vmax_b  = [vmax_b,vbmax[0]]        ;; [N]-Element array
+  ;; => Define beam drift velocities [core bulk frame]
+  IF (N_ELEMENTS(v_ob_x)  EQ 0) THEN v_ob_x  = vob_x[0]       ELSE v_ob_x  = [v_ob_x,vob_x[0]]        ;; [N]-Element array
+  IF (N_ELEMENTS(v_ob_y)  EQ 0) THEN v_ob_y  = vob_y[0]       ELSE v_ob_y  = [v_ob_y,vob_y[0]]        ;; [N]-Element array
+  ;; => Define moment analysis solutions
+  IF (N_ELEMENTS(n_b_m)   EQ 0) THEN n_b_m   = moments[0]     ELSE n_b_m   = [n_b_m,moments[0]]       ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tbx_m) EQ 0) THEN V_Tbx_m = moments[1]     ELSE V_Tbx_m = [V_Tbx_m,moments[1]]     ;; [N]-Element array
+  IF (N_ELEMENTS(V_Tby_m) EQ 0) THEN V_Tby_m = moments[2]     ELSE V_Tby_m = [V_Tby_m,moments[2]]     ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_bx_m) EQ 0) THEN Vo_bx_m = moments[3]     ELSE Vo_bx_m = [Vo_bx_m,moments[3]]     ;; [N]-Element array
+  IF (N_ELEMENTS(Vo_by_m) EQ 0) THEN Vo_by_m = moments[4]     ELSE Vo_by_m = [Vo_by_m,moments[4]]     ;; [N]-Element array
+  ;; => Define smoothing and plane information
+  IF (N_ELEMENTS(proj_xy) EQ 0) THEN proj_xy = sm_str.(0)     ELSE proj_xy = [proj_xy,sm_str.(0)]     ;; [N]-Element array
+  IF (N_ELEMENTS(num_sm)  EQ 0) THEN num_sm  = sm_str.(1)     ELSE num_sm  = [num_sm, sm_str.(1)]     ;; [N]-Element array
+  IF (N_ELEMENTS(smcuts)  EQ 0) THEN smcuts  = sm_str.(2)     ELSE smcuts  = [smcuts, sm_str.(2)]     ;; [N]-Element array
+  IF (N_ELEMENTS(smcont)  EQ 0) THEN smcont  = sm_str.(3)     ELSE smcont  = [smcont, sm_str.(3)]     ;; [N]-Element array
+  ;;--------------------------------------------------------------------------------------
+  ;; => Check if user quit
+  ;;--------------------------------------------------------------------------------------
+  ;;======================================================================================
+  JUMP_CHECK:
+  ;;======================================================================================
+  ;;  Check current index value
+  IF (index EQ ind0) THEN index += true
+  IF (N_ELEMENTS(read_out) EQ 0) THEN read_out = ''
+  test           = (read_out EQ '') OR (read_out EQ 'q')
+  IF (test) THEN BEGIN
+    str_out        = "Did you want to quit (type 'q') or just move on to another DF (type 'n'):  "
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_END
+    ;; user quit, so reset values and move to next index
+    index += true
+    ;; Jump back to end of loop
+    GOTO,JUMP_SKIP
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;; => Check if user wants to stop fitting and print out ASCII file
+  ;;--------------------------------------------------------------------------------------
+  ;; => Set/Reset outputs
+  read_out       = ''
+  str_out        = "Did you want to continue (type 'c') or print results to ASCII file and quit (type 'p'):  "
+  pro_out        = ["[Type 'q' to quit at any time]"]
+  WHILE (read_out NE 'c' AND read_out NE 'p' AND read_out NE 'q') DO BEGIN
+    read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+    IF (read_out EQ 'debug') THEN STOP
+  ENDWHILE
+  ;; => Check if user wishes to quit [leave everything print nothing]
+  IF (read_out EQ 'q') THEN GOTO,JUMP_PAST
+  ;; => Check if user wishes to continue fitting
+  IF (read_out EQ 'c') THEN true = 1 ELSE true = 0
+  ;;======================================================================================
+  JUMP_SKIP:
+  ;;======================================================================================
+ENDWHILE
+;=========================================================================================
+JUMP_END:
+;=========================================================================================
+IF (keep_out EQ 0 OR SIZE(data_out,/TYPE) NE 8) THEN GOTO,JUMP_PAST  ;; skip file printing
+;;----------------------------------------------------------------------------------------
+;; => Print/Save
+;;----------------------------------------------------------------------------------------
+;; => Define header strings and format statement
+headform       = wrapper_beam_fit_header_format()
+head0          = headform.HEAD_L0
+head1          = headform.HEAD_L1
+head2          = headform.HEAD_L2
+mform          = headform.FORMAT
+;; => Define # of fits
+nfit           = N_ELEMENTS(s__ymdb)
+;; => Open file
+OPENW,gunit,out_file[0],/GET_LUN
+  ;;--------------------------------------------------------------------------------------
+  ;; => Define/Print header values/quantities
+  ;;--------------------------------------------------------------------------------------
+  PRINTF,gunit,head0
+  PRINTF,gunit,head1
+  PRINTF,gunit,head2
+  ;;--------------------------------------------------------------------------------------
+  ;; => Print data
+  ;;--------------------------------------------------------------------------------------
+  FOR j=0L, nfit - 1L DO BEGIN
+    t_out     = [s__ymdb[j],e__ymdb[j]]
+    ;; Define parameter outputs
+    nb_out    = [n_b[j],n_b_c[j],n_b_l[j],n_b_u[j]]
+    vtpar_out = [V_Tbx[j],V_Tbx_c[j],V_Tbx_l[j],V_Tbx_u[j]]
+    vtper_out = [V_Tby[j],V_Tby_c[j],V_Tby_l[j],V_Tby_u[j]]
+    vopar_out = [Vo_bx[j],Vo_bx_c[j],Vo_bx_l[j],Vo_bx_u[j]]
+    voper_out = [Vo_by[j],Vo_by_c[j],Vo_by_l[j],Vo_by_u[j]]
+    ;; Define bulk velocity outputs
+    vsw_cout  = REFORM(vsw_c[*,j])
+    vsw_bout  = REFORM(vsw_b[*,j])
+    ;; Define mask velocity outputs
+    vrad_out  = [vmax_c[j],vmax_b[j]]
+    ;; Define beam drift velocity outputs
+    vdrb_out  = [v_ob_x[j],v_ob_y[j]]
+    ;; Define moment analysis outputs
+    moms_out  = [n_b_m[j],V_Tbx_m[j],V_Tby_m[j],Vo_bx_m[j],Vo_by_m[j]]
+    ;; Define smoothing and plane information outputs
+    proj_out  = proj_xy[j]
+    smth_out  = [num_sm[j],smcuts[j],smcont[j]]
+    ;; Print outputs
+    PRINTF,gunit,FORMAT=mform,t_out,nb_out,vtpar_out,vtper_out,vopar_out,voper_out,  $
+                              vsw_cout,vsw_bout,vrad_out,vdrb_out,moms_out,proj_out, $
+                              smth_out
+  ENDFOR
+;;----------------------------------------------------------------------------------------
+;; => Close file
+;;----------------------------------------------------------------------------------------
+CLOSE,gunit
+FREE_LUN,gunit
+
+;=========================================================================================
+JUMP_PAST:
+;=========================================================================================
+;;----------------------------------------------------------------------------------------
+;; => Quit so reset defaults
+;;----------------------------------------------------------------------------------------
+; => Reset color table
+TVLCT,r_orig0,g_orig0,b_orig0
+; => Return plot window to original state
+!X             = xyzp_win.X
+!Y             = xyzp_win.Y
+!Z             = xyzp_win.Z
+!P             = xyzp_win.P
+DEVICE,DECOMPOSED=xyzp_win.DECOMP
+;;----------------------------------------------------------------------------------------
+;; => Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+

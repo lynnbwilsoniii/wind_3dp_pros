@@ -1,0 +1,246 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   t_hodogram_plot.pro
+;  PURPOSE  :   This is a wrapping routine for hodogram_plot.pro that interfaces with
+;                 TPLOT using a TPLOT handle to plot two components of an input 3-vector
+;                 versus each other.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               test_tplot_handle.pro
+;               get_data.pro
+;               tplot_struct_format_test.pro
+;               format_2d_vec.pro
+;               is_a_number.pro
+;               get_valid_trange.pro
+;               t_get_current_trange.pro
+;               trange_clip_data.pro
+;               str_element.pro
+;               hodogram_plot.pro
+;               popen.pro
+;               pclose.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TPNAME       :  Scalar [string or integer] defining the TPLOT handle
+;                                 for which the user wishes to create hodogram plots
+;                                 in all three planes of the input coordinate basis
+;
+;  EXAMPLES:    
+;               ;;  General calling sequence
+;               t_hodogram_plot,tpname,TRANGE=trange,TITLES=titles,EX_VECN=ex_vecn,$
+;                                      WIND_N=wind_n,WIND_TTLE=wind_ttle,          $
+;                                      VERSION=version,XYZ_TITLES=xyz_titles,      $
+;                                      FILE_PREF=file_pref,_EXTRA=ex_str
+;
+;  KEYWORDS:    
+;               TRANGE       :  [2]-Element [double] array specifying the Unix time
+;                                 range for which to limit the data to plot
+;                                 [Default = currently plotted time range]
+;               TITLES       :  [9]-Element [string] array defining the plot titles of
+;                                 the nine hodograms for each projected plane
+;                                 [Default = the array elements shown in each panel]
+;               EX_VECN      :  [V]-Element [structure] array containing extra vectors
+;                                 the user wishes to project onto each hodogram, each
+;                                 with the following format:
+;                                    VEC   :  [3]-Element vector in the same coordinate
+;                                               basis as the input V_IN
+;                                               [Default = REPLICATE(!VALUES.D_NAN,3L)]
+;                                    NAME  :  Scalar [string] used as a name for VEC
+;                                               to output as a label on each plot
+;                                               [Default = '']
+;               WIND_N       :  Scalar [integer/long] defining the 1st IDL window to use
+;                                 for plotting the data.  The next two windows will be
+;                                 sequentially numbered from this first one
+;                                 [Default = use WINDOW with FREE keyword set]
+;               WIND_TTLE    :  Scalar [string] defining the title prefix of each device
+;                                 Window shown.  The components will be defined within
+;                                 this routine
+;                                 [Default = 'Hodogram Plots:  ']
+;               VERSION      :  Scalar [string or integer] defining whether [TRUE] or
+;                                 not [FALSE] to output the current routine version and
+;                                 date to be placed on outside of lower-right-hand
+;                                 corner.  If a string is supplied, the string is output.
+;                                 If TRUE is supplied, then routine_version.pro is
+;                                 called to get the current version and date/time for
+;                                 output.  If FALSE is supplied, nothing is output.
+;                                 See NOTES section below for more details.
+;                                 [Default  :  current UTC time]
+;               XYZ_TITLES   :  [3]-Element [string] array defining the X-, Y-, and Z-
+;                                 axis titles, respectively to use for the hodograms
+;                                 [Default = default defined within hodogram_plot.pro]
+;               FILE_PREF    :  Scalar [string] defining the prefix of the file names
+;                                 to use when saving
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  keywords accepted by PLOT.PRO and OPLOT.PRO  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               _EXTRA       :  See IDL's documentation on PLOT.PRO and OPLOT.PRO
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [10/20/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [10/20/2015   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [10/21/2015   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [10/28/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  See also:  hodogram_plot.pro
+;               2)  The following keywords are passed directly to hodogram_plot.pro
+;                     without testing at this level:  TITLES, EX_VECN, and VERSION
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  10/10/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/28/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO t_hodogram_plot,tpname,TRANGE=trange,TITLES=titles,EX_VECN=ex_vecn,WIND_N=wind_n,$
+                           WIND_TTLE=wind_ttle,VERSION=version,XYZ_TITLES=xyz_titles,$
+                           FILE_PREF=file_pref,_EXTRA=ex_str
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION test_tplot_handle, tplot_struct_format_test, format_2d_vec, is_a_number, $
+                 get_valid_trange, t_get_current_trange, trange_clip_data
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+n_plot         = 9L               ;;  # of plots on output
+min_nvec       = 27L              ;;  Make sure there are at least this many 3-vectors
+def_planes     = ['yx','xz','zy']
+def_win_pre    = 'Hodogram Plots: '
+vec_str        = ['x','y','z']
+vec_stru       = STRUPCASE(vec_str)
+def_xyzttls    = vec_stru+'-Component'
+win_suffs      = STRARR(3L)       ;;  Suffixes for device window titles
+x              = [0L,2L,1L]
+y              = [1L,0L,2L]
+win_suffs      = vec_stru[y]+' vs. '+vec_stru[x]
+file_suffs     = vec_stru[y]+'_vs_'+vec_stru[x]
+
+;;  Dummy error messages
+badvfor_msg    = 'Incorrect input format:  TPNAME must represent a TPLOT handle containing an [N,3]-element [numeric] array of 3-vectors'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+;;  Verify TPLOT handle
+test           = test_tplot_handle(tpname,TPNMS=tpnms)
+IF (test[0] EQ 0) THEN BEGIN
+  ;;  Not a valid TPLOT handle --> Return to user
+  RETURN    ;;  error message handled within test_tplot_handle.pro
+ENDIF
+;;  Define TPLOT handle
+tpnm           = tpnms[0]
+;;  Get TPLOT data
+get_data,tpnm[0],DATA=data,DLIM=dlim,LIM=lim
+;;  Verify that DATA is a TPLOT structure
+test           = tplot_struct_format_test(data)
+IF (test[0] EQ 0) THEN RETURN  ;;  error message handled within tplot_struct_format_test.pro
+;;  Verify that DATA contains a 3-vector
+v_in           = format_2d_vec(data.Y)    ;;  If a vector, routine will force to [N,3]-elements, even if N = 1
+test           = ((N_ELEMENTS(v_in) LT 3L*min_nvec[0]) OR ((N_ELEMENTS(v_in) MOD 3) NE 0))
+IF (test[0]) THEN BEGIN
+  MESSAGE,badvfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check WIND_TTLE
+test           = (N_ELEMENTS(wind_ttle) EQ 0) OR (SIZE(wind_ttle,/TYPE) NE 7)
+IF (test[0]) THEN win_pre = def_win_pre[0] ELSE win_pre = wind_ttle[0]
+;;  Check TRANGE
+test           = (N_ELEMENTS(trange) EQ 2) AND is_a_number(trange,/NOMSSG)
+IF (test[0]) THEN BEGIN
+  trstr = get_valid_trange(TRANGE=trange,PRECISION=9L)
+  tran  = trstr.UNIX_TRANGE
+ENDIF ELSE BEGIN
+  tran = t_get_current_trange()
+ENDELSE
+;;  Check XYZ_TITLES
+test_xyz       = (N_ELEMENTS(xyz_titles) EQ 3) AND (SIZE(xyz_titles,/TYPE) EQ 7)
+IF (test_xyz[0]) THEN xyz_ttls = REFORM(xyz_titles) ELSE xyz_ttls = 0b
+;;  Check FILE_PREF
+test_save      = (N_ELEMENTS(file_pref) GT 0) AND (SIZE(file_pref,/TYPE) EQ 7)
+IF (test_save[0]) THEN BEGIN
+  ;;  User defined FILE_PREF --> save files to PS
+  popen_str  = {PORT:1,UNITS:'inches',XSIZE:8.,YSIZE:8.,ASPECT:1.}
+;  popen_str  = {PORTRAIT:1,UNITS:'inches',XSIZE:8.,YSIZE:8.,ASPECT:1.}
+  file_names = file_pref[0]+'_'+file_suffs
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define parameters
+;;----------------------------------------------------------------------------------------
+;;  Define device window titles
+win_ttles      = win_pre[0]+win_suffs
+;;  Define data within time range
+data_clipped   = trange_clip_data(data,TRANGE=tran,PRECISION=9L)
+vecs           = data_clipped.Y
+;;----------------------------------------------------------------------------------------
+;;  Plot hodograms
+;;----------------------------------------------------------------------------------------
+FOR j=0L, 2L DO BEGIN
+  plane = def_planes[j]
+  wttle = win_ttles[j]
+  IF (test_xyz[0]) THEN BEGIN
+    str_element,ex_str,'XTITLE',xyz_ttls[x[j]],/ADD_REPLACE
+    str_element,ex_str,'YTITLE',xyz_ttls[y[j]],/ADD_REPLACE
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Plot hodograms
+  ;;--------------------------------------------------------------------------------------
+  IF (j[0] EQ 0) THEN BEGIN
+    hodogram_plot,vecs,PLANE=plane[0],TITLES=titles,EX_VECN=ex_vecn,WIND_N=wind_n,$
+                       WIND_TTLE=wttle[0],VERSION=version,_EXTRA=ex_str
+  ENDIF ELSE BEGIN
+    wnum = wind_n + j[0]
+    hodogram_plot,vecs,PLANE=plane[0],TITLES=titles,EX_VECN=ex_vecn,WIND_N=wnum[0],$
+                       WIND_TTLE=wttle[0],VERSION=version,_EXTRA=ex_str
+  ENDELSE
+  ;;--------------------------------------------------------------------------------------
+  ;;  Save file if user desires
+  ;;--------------------------------------------------------------------------------------
+  IF (test_save[0]) THEN BEGIN
+    popen,file_names[j],_EXTRA=popen_str
+      hodogram_plot,vecs,PLANE=plane[0],TITLES=titles,EX_VECN=ex_vecn,$
+                         VERSION=version,_EXTRA=ex_str
+    pclose
+  ENDIF
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

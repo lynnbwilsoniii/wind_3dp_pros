@@ -1,0 +1,259 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   resistivity_calculation.pro
+;  PURPOSE  :   This routine calculates the Spitzer-Harm electron-ion collision frequency
+;                 and electron thermal energy density.  If the ion temperature and
+;                 wave amplitudes are included, then the anomalous resistivity for
+;                 [] wave types are calculated as well.
+;
+;  CALLED BY:   
+;               resistivity_calc_wrapper.pro
+;
+;  CALLS:
+;               str_element.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               N_E  :  [N]-Element array of electron densities [cm^(-3)]
+;               T_E  :  [N]-Element array of electron temperatures [eV]
+;  OPTIONAL INPUTS:
+;               D_E  :  [N]-Element array of wave amplitudes [mV/m]
+;               B_O  :  [N]-Element array of ambient magnetic field magnitudes [nT]
+;               T_I  :  [N]-Element array of ion temperatures [eV]
+;               V_D  :  [N]-Element array of electron-ion relative drift speeds [km/s]
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Simplified some of the calculations               [04/14/2012   v1.0.1]
+;
+;   NOTES:      
+;               1)  IAW  = ion-acoustic wave
+;               2)  LHD  = lower hybrid drift
+;               3)  LHDI = lower hybrid drift instability
+;
+;  REFERENCES:  
+;               1)  Spitzer, L. and R. Harm (1953), "Transport Phenomena in a
+;                      Completely Ionized Gas," Phys. Rev., Vol. 89, pp. 977.
+;               2)  Labelle, J.W. and R.A. Treumann (1988), "Plasma Waves at the
+;                      Dayside Magnetopause," Space Sci. Rev., Vol. 47, pp. 175.
+;               3)  Coroniti, F.V. (1985), "Space Plasma Turbulent Dissipation:
+;                      Reality or Myth?," Space Sci. Rev., Vol. 42, pp. 399.
+;
+;   CREATED:  04/09/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/14/2012   v1.0.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION resistivity_calculation,n_e,t_e,d_e,b_o,t_i,v_d
+
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+;-----------------------------------------------------------------------------------------
+; => Define multiplication factors
+;-----------------------------------------------------------------------------------------
+;;  factor for electron-ion collision frequency [Spitzer and Harm, 1953]
+ei_c_freq_fac = qq[0]^4/(32d0*epo[0]^2*SQRT(!DPI*me[0])*2d0^(3d0/2d0))
+;;  factor for electron Debye length [m]
+debye_fac     = SQRT(epo[0]/qq[0]^2)
+;;  factor for electron plasma frequency [rad/s]
+eplasma_w_fac = SQRT(qq[0]^2/(epo[0]*me[0]))
+;;  factor for electron(ion) cyclotron frequency [rad/s]
+wce_fac       = qq[0]/me[0]
+wci_fac       = qq[0]/mp[0]
+;;  factor for electron(ion) thermal speed
+vte_fac       = SQRT(2d0/me[0])
+vti_fac       = SQRT(2d0/mp[0])
+
+IF (N_PARAMS() LT 2) THEN RETURN,0b
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Define electron Debye length and plasma frequency
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;;  convert Ne to # m^(-3)
+ne_m3         = n_e*1d6
+;;  convert Te to Joules
+kB_Te         = kB[0]*K_eV[0]*t_e
+;;  define the electron Debye length [m]
+debye_e       = debye_fac[0]*SQRT(kB_Te/ne_m3)
+;;  define the electron plasma frequency [rad/s]
+w_pe          = eplasma_w_fac[0]*SQRT(ne_m3)
+;;  define the electron thermal speed [m/s]
+vte           = vte_fac[0]*SQRT(kB_Te)
+;;  define conversion factor from collision frequency to resistivity
+cf_to_res     = 1d0/(epo[0]*w_pe^2)
+;;  define the natural log of the plasma parameter
+plasma_param  = 12d0*!DPI*ne_m3*debye_e^3
+log_pp        = ALOG(plasma_param)
+;-----------------------------------------------------------------------------------------
+; => Define electron-ion collision frequency and resistivity [Spitzer and Harm, 1953]
+;-----------------------------------------------------------------------------------------
+;;  => Electron-Ion collision frequency  [rad/s]
+ei_c_freq     = ei_c_freq_fac[0]*ne_m3*log_pp/(kB_Te)^(3d0/2d0)
+;;  => Electron-Ion resistivity  [Ohm meter]
+ei_c_resist   = ei_c_freq*cf_to_res
+;;  add results to output structure
+str_element,struct_out,'ELECTRONION_COLL_FREQ_SH1953',ei_c_freq,/ADD_REPLACE
+str_element,struct_out,'ELECTRONION_RESISTIVITY_SH1953',ei_c_resist,/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Define electron thermal energy density [J m^(-3)]
+;-----------------------------------------------------------------------------------------
+therm_e_dens  = ne_m3*kB_Te
+;;  add results to output structure
+str_element,struct_out,'ELECTRON_THERM_E_DENS',therm_e_dens,/ADD_REPLACE
+IF (N_PARAMS() EQ 2) THEN RETURN,struct_out
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Define wave energy density per electron number density [Joules]
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;;  convert d_E to Volts per meter
+dE_Vm         = d_e*1d-3
+wave_e_dens   = epo[0]*ABS(dE_Vm)^2/(2d0*ne_m3)
+;-----------------------------------------------------------------------------------------
+; => Define anomalous resistivity due to IAWs [Labelle and Treumann, 1988]
+;-----------------------------------------------------------------------------------------
+;;  => Anomalous collision frequency  [rad/s]
+iaw_c_freq    = (w_pe/kB_Te)*wave_e_dens
+;;  => Anomalous resistivity  [Ohm meter]
+iaw_c_resist  = iaw_c_freq*cf_to_res
+;;  add results to output structure
+str_element,struct_out,'IAW_COLL_FREQ_LT1988',iaw_c_freq,/ADD_REPLACE
+str_element,struct_out,'IAW_RESISTIVITY_LT1988',iaw_c_resist,/ADD_REPLACE
+IF (N_PARAMS() EQ 3) THEN RETURN,struct_out
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Define anomalous resistivity due to LHD [Coroniti, 1985]
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;;  convert Bo to Teslas
+Bo_T          = b_o*1d-9
+;;  calculate electron/ion cyclotron frequency
+w_ce          = wce_fac[0]*Bo_T
+w_ci          = wci_fac[0]*Bo_T
+;;  calculate lower hybrid resonance frequency
+w_lh          = SQRT(w_ce*w_ci)
+;;  => Anomalous collision frequency  [rad/s]
+lhd_c_freq    = (w_pe^2/(w_lh*kB_Te))*wave_e_dens
+;;  => Anomalous resistivity  [Ohm meter]
+lhd_c_resist  = lhd_c_freq*cf_to_res
+;;  add results to output structure
+str_element,struct_out,'LHD_COLL_FREQ_C1985',lhd_c_freq,/ADD_REPLACE
+str_element,struct_out,'LHD_RESISTIVITY_C1985',lhd_c_resist,/ADD_REPLACE
+IF (N_PARAMS() EQ 4) THEN RETURN,struct_out
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Define ion thermal energy density [J m^(-3)]
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;;  convert Ti to Joules
+kB_Ti         = kB[0]*K_eV[0]*t_i
+;;  define the ion thermal speed [m/s]
+vti           = vti_fac[0]*SQRT(kB_Ti)
+therm_i_dens  = ne_m3*kB_Ti
+;;  add results to output structure
+str_element,struct_out,'ION_THERM_E_DENS',therm_i_dens,/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Define anomalous resistivity due to LHDI [Labelle and Treumann, 1988]
+;-----------------------------------------------------------------------------------------
+lhdi_freq_fac = SQRT(!DPI/8d0)*(mp[0]/me[0])*w_lh/kB_Ti
+;;  => Anomalous collision frequency  [rad/s]
+lhdi_c_freq   = lhdi_freq_fac[0]*wave_e_dens
+;;  => Anomalous resistivity  [Ohm meter]
+lhdi_c_resist = lhdi_c_freq*cf_to_res
+;;  add results to output structure
+str_element,struct_out,'LHDI_COLL_FREQ_C1985',lhdi_c_freq,/ADD_REPLACE
+str_element,struct_out,'LHDI_RESISTIVITY_C1985',lhdi_c_resist,/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Define anomalous resistivity due to ECDI [Labelle and Treumann, 1988]
+;-----------------------------------------------------------------------------------------
+ecdi_freq_fac = (t_e/t_i)*(w_pe/(7d0*me[0]*vte^2))
+;;  => Anomalous collision frequency  [rad/s]
+ecdi_c_freq   = ecdi_freq_fac[0]*wave_e_dens
+;;  => Anomalous resistivity  [Ohm meter]
+ecdi_c_resist = ecdi_c_freq*cf_to_res
+;;  add results to output structure
+str_element,struct_out,'ECDI_COLL_FREQ_C1985',ecdi_c_freq,/ADD_REPLACE
+str_element,struct_out,'ECDI_RESISTIVITY_C1985',ecdi_c_resist,/ADD_REPLACE
+IF (N_PARAMS() EQ 5) THEN RETURN,struct_out
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Define anomalous resistivity due to MTSI [Labelle and Treumann, 1988]
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;;  convert Vd to meters per second
+Vd_ms         = v_d*1d3
+mtsi_freq_fac = (w_lh/(me[0]*Vd_ms^2))
+;;  => Anomalous collision frequency  [rad/s]
+mtsi_c_freq   = mtsi_freq_fac[0]*wave_e_dens
+mtsi_c_resist = mtsi_c_freq*cf_to_res
+;;  add results to output structure
+str_element,struct_out,'MTSI_COLL_FREQ_C1985',mtsi_c_freq,/ADD_REPLACE
+str_element,struct_out,'MTSI_RESISTIVITY_C1985',mtsi_c_resist,/ADD_REPLACE
+
+;-----------------------------------------------------------------------------------------
+; => Return result
+;-----------------------------------------------------------------------------------------
+RETURN,struct_out
+END
+
+;;  List of old commands
+
+;  LBW III    04/14/2012   v1.0.1
+;ei_c_freq_fac = qq[0]^4/(32d0*epo[0]^2*SQRT(!DPI*me[0])*(2d0*kB[0]*K_eV[0])^(3d0/2d0))
+;wce_fac       = qq[0]*1d-9/me[0]
+;wci_fac       = qq[0]*1d-9/mp[0]
+;debye_fac     = SQRT((epo[0]*kB[0]*K_eV[0])/(1d6*qq[0]^2))
+;eplasma_w_fac = SQRT((1d6*qq[0]^2)/(epo[0]*me[0]))
+;therm_e_fac   = 1d6*(kB[0]*K_eV[0])
+;vte_fac       = SQRT(2d0*kB[0]*K_eV[0]/me[0])
+;vti_fac       = SQRT(2d0*kB[0]*K_eV[0]/mp[0])
+;
+;debye_e       = debye_fac[0]*SQRT(t_e/n_e)
+;w_pe          = eplasma_w_fac[0]*SQRT(n_e)
+;ei_c_freq     = ei_c_freq_fac[0]*(n_e*1d6)*log_pp/(t_e)^(3d0/2d0)  ;  [rad/s]
+;ei_c_resist   = ei_c_freq/(epo[0]*w_pe^2)
+;iaw_c_freq    = w_pe*epo[0]*ABS(d_e*1d-3)^2/(2d0*therm_e_dens)  ;  [rad/s]
+;iaw_c_resist  = iaw_c_freq/(epo[0]*w_pe^2)                      ;  [Ohm meter]
+;lhd_c_freq    = w_pe^2/w_lh*epo[0]*ABS(d_e*1d-3)^2/(2d0*therm_e_dens)  ;  [rad/s]
+;lhd_c_resist  = lhd_c_freq/(epo[0]*w_pe^2)                             ;  [Ohm meter]
+;lhdi_freq_fac = SQRT(!DPI/8d0)*(mp[0]/me[0])*w_lh*epo[0]/(2d0*therm_i_dens)
+;lhdi_c_freq   = lhdi_freq_fac[0]*ABS(d_e*1d-3)^2                       ;  [rad/s]
+;lhdi_c_resist = lhdi_c_freq/(epo[0]*w_pe^2)                            ;  [Ohm meter]
+;ecdi_freq_fac = (t_e*w_pe*epo[0])/(14d0*me[0]*(n_e*1d6)*t_i*vte^2)
+;ecdi_c_freq   = ecdi_freq_fac[0]*ABS(d_e*1d-3)^2                       ;  [rad/s]
+;ecdi_c_resist = ecdi_c_freq/(epo[0]*w_pe^2)                            ;  [Ohm meter]
+;mtsi_freq_fac = (w_lh*epo[0])/(2d0*me[0]*(n_e*1d6)*(v_d*1d-3)^2)
+;mtsi_c_freq   = mtsi_freq_fac[0]*ABS(d_e*1d-3)^2                       ;  [rad/s]
+;mtsi_c_resist = mtsi_c_freq/(epo[0]*w_pe^2)                            ;  [Ohm meter]
+;
+;therm_e_dens  = therm_e_fac[0]*(n_e*t_e)
+;therm_i_dens  = therm_e_fac[0]*(n_e*t_i)
+
+
+
+
+
+

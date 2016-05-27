@@ -1,0 +1,229 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   get_valid_trange.pro
+;  PURPOSE  :   This routine determines a time range in several formats from inputs
+;                 define by the optional keywords or prompts to the user.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               test_tdate_format.pro
+;               is_a_number.pro
+;               general_prompt_routine.pro
+;               time_double.pro
+;               time_string.pro
+;               time_struct.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               test = get_valid_trange(TDATE=tdate,TRANGE=trange,PRECISION=prec)
+;
+;  KEYWORDS:    
+;               TDATE          :  Scalar [string] defining the date of interest of the form:
+;                                   'YYYY-MM-DD' [MM=month, DD=day, YYYY=year]
+;               TRANGE         :  [2]-Element [double] array specifying the Unix time range for
+;                                   which to get STEREO TDS ASCII data and send the results to
+;                                   TPLOT
+;               PRECISION      :  Scalar [long] defining precision of the string output:
+;                                   = -5  :  Year only
+;                                   = -4  :  Year, month
+;                                   = -3  :  Year, month, date
+;                                   = -2  :  Year, month, date, hour
+;                                   = -1  :  Year, month, date, hour, minute
+;                                   = 0   :  Year, month, date, hour, minute, sec
+;                                   = >0  :  fractional seconds
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [09/25/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  If no keywords are given, the routine will prompt the user for a
+;                     single date and define the time range as that given date.
+;               2)  See also:  time_range_define.pro, time_string.pro, time_struct.pro
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  09/23/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/25/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION get_valid_trange,TDATE=tdate,TRANGE=trange,PRECISION=prec
+
+;;----------------------------------------------------------------------------------------
+;;  Define some defaults
+;;----------------------------------------------------------------------------------------
+;;  Default time-related values
+start_of_day   = '00:00:00.000000000000000'
+end___of_day   = '23:59:59.999999999999999'
+;;  Define the DOY values at the start of each month for non-leap and leap years
+mdt            = [[0, 31,  59,  90, 120, 151, 181, 212, 243, 273, 304, 334, 365], $
+                  [0, 31,  60,  91, 121, 152, 182, 213, 244, 274, 305, 335, 366]]
+;;  Define the # of days in each month for non-leap and leap years
+nd_per_mon     = INTARR(13,2)
+x              = LINDGEN(12)  & y = x + 1L
+nd_per_mon[y,*] = mdt[y,*] - mdt[x,*]     ;;  # of days in each month
+;;  Default prompting info
+yearmin        = 1957L                   ;;  Year Sputnik 1 spacecraft was launched --> cannot start before this
+tdate_min      = '1957-10-04'            ;;  Date Sputnik 1 spacecraft was launched
+unix_min       = time_double(tdate_min[0]+'/'+end___of_day[0])
+unix_max       = SYSTIME(1,/SECONDS)
+current_time   = SYSTIME()               ;;  Current time
+yearmax        = LONG(STRMID(current_time,STRLEN(current_time)-4,4))
+prompt_yy      = "Please enter a year between "+STRING(yearmin[0],FORMAT='(I4.4)')+$
+                 " and "+STRING(yearmax[0],FORMAT='(I4.4)')+":"
+prompt_mm      = "Please enter a month between 1 and 12:"
+prompt_dd      = "Please enter a day between 1 and 31:"     ;;  this will change below
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check TDATE
+test           = (N_ELEMENTS(tdate) LT 1) OR (test_tdate_format(tdate) EQ 0)
+IF (test[0]) THEN tdate_on = 0b ELSE tdate_on = 1b
+;;  Check TRANGE
+test           = (N_ELEMENTS(trange) GE 2) AND is_a_number(trange,/NOMSSG)
+IF (test[0]) THEN BEGIN
+;  test = ((TOTAL(trange GT unix_min[0]) LT 2) OR (TOTAL(trange LT unix_max[0]) LT 2)) AND $
+  test = ((TOTAL(trange GT unix_min[0]) EQ 2) OR (TOTAL(trange LT unix_max[0]) EQ 2)) AND $
+          (trange[0] NE trange[1])
+ENDIF
+IF (test[0]) THEN tran__on = 1b ELSE tran__on = 0b
+;;  Check PRECISION
+test           = (N_ELEMENTS(prec) GE 1) AND is_a_number(prec,/NOMSSG)
+IF (test[0]) THEN prec = (LONG(prec[0]))[0] < 15L ELSE prec = 0L
+;;----------------------------------------------------------------------------------------
+;;  Define Time Range
+;;----------------------------------------------------------------------------------------
+test           = (tdate_on[0] EQ 0) AND (tran__on[0] EQ 0)
+IF (test[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Niether TDATE or TRANGE were set
+  ;;--------------------------------------------------------------------------------------
+  ;;    --> Prompt user for a year
+  read_out       = 0L
+  val__out       = 0L
+  WHILE (val__out[0] LT yearmin[0] OR val__out[0] GT yearmax[0]) DO BEGIN
+    val__out = general_prompt_routine(read_out,STR_OUT=prompt_yy[0])
+    test     = (is_a_number(val__out,/NOMSSG) EQ 0)
+    IF (test[0]) THEN val__out = 0L
+  ENDWHILE
+  ;;  Define year [force long integer format too]
+  year           = (LONG(STRING(val__out[0],FORMAT='(I4.4)')))[0]
+  leap           = ((year[0] MOD 4) EQ 0) - ((year[0] MOD 100) EQ 0) + ((year[0] MOD 400) EQ 0) $
+                    - ((year[0] MOD 4000) EQ 0)
+  ;;    --> Prompt user for a month
+  read_out       = 0L
+  val__out       = 0L
+  WHILE (val__out[0] LT 1L OR val__out[0] GT 12L) DO BEGIN
+    val__out = general_prompt_routine(read_out,STR_OUT=prompt_mm[0])
+    test     = (is_a_number(val__out,/NOMSSG) EQ 0)
+    IF (test[0]) THEN val__out = 0L
+  ENDWHILE
+  ;;  Define month [force long integer format too]
+  month          = (LONG(STRING(val__out[0],FORMAT='(I2.2)')))[0]
+  ;;  Define the max number of days in this month
+;  max_nd         = dom_ny[(month[0] - 1L),leap[0]]
+  max_nd         = nd_per_mon[month[0],leap[0]]
+  ;;  Re-define the day prompt
+  prompt_dd      = "Please enter a day between 1 and "+STRING(max_nd[0],FORMAT='(I2.2)')+":"
+  read_out       = 0L
+  val__out       = 0L
+  WHILE (val__out[0] LT 1L OR val__out[0] GT max_nd[0]) DO BEGIN
+    val__out = general_prompt_routine(read_out,STR_OUT=prompt_dd[0])
+    test     = (is_a_number(val__out,/NOMSSG) EQ 0)
+    IF (test[0]) THEN val__out = 0L
+  ENDWHILE
+  ;;  Define day [force long integer format too]
+  day            = (LONG(STRING(val__out[0],FORMAT='(I2.2)')))[0]
+  ;;  Define TDATE [e.g., '2007-01-01']
+  tdate          = STRING(year[0],FORMAT='(I4.4)')+'-'+STRING(month[0],FORMAT='(I2.2)')+$
+                   '-'+STRING(day[0],FORMAT='(I2.2)')
+  ;;  Define TRANGE
+  tra_t          = tdate[0]+'/'+[start_of_day[0],end___of_day[0]]
+  trange         = time_double(tra_t)
+  ;;  Constrain to within valid time ranges [force min ∆t = 1 hour]
+  trange[0]      = trange[0] > unix_min[0]
+  trange[1]      = (trange[1] < unix_max[0]) > (trange[0] + 36d2)
+  ;;  Redefine string time range in case it changed
+  tra_t          = time_string(trange,PREC=prec)
+  ;;  Define TDATES in case it changed
+  tdates         = STRMID(tra_t,0L,10L)
+  ;;  Let user know the date they chose
+  outmssg        = 'Getting TDS ASCII data for '+tdate[0]
+  MESSAGE,outmssg[0],/INFORMATIONAL,/CONTINUE
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Either TDATE and/or TRANGE was set
+  ;;--------------------------------------------------------------------------------------
+  test           = (TOTAL([(tdate_on[0] EQ 0),(tran__on[0] EQ 0)]) LT 2)
+  IF (test[0]) THEN BEGIN
+    ;;  Only one is set
+    CASE 1 OF
+      (tdate_on[0] EQ 0)  :  BEGIN
+        ;;  TRANGE was set
+        ;;    --> Constrain to within valid time ranges [force min ∆t = 1 hour]
+        trange         = trange[SORT(trange)]
+        trange[0]      = trange[0] > unix_min[0]
+        trange[1]      = (trange[1] < unix_max[0]) > (trange[0] + 36d2)
+        tra_t          = time_string(trange,PRECISION=prec)
+        ;;  Define TDATES [e.g., '2007-01-01']
+        tdates         = STRMID(tra_t,0L,10L)
+      END
+      (tran__on[0] EQ 0)  :  BEGIN
+        ;;  TDATE was set --> Load one full day
+        ;;    --> Check
+        tra_t          = tdate[0]+'/'+[start_of_day[0],end___of_day[0]]
+        ;;  Define TRANGE
+        trange         = time_double(tra_t)
+        ;;    --> Constrain to within valid time ranges [force min ∆t = 1 hour]
+        trange[0]      = trange[0] > unix_min[0]
+        trange[1]      = (trange[1] < unix_max[0]) > (trange[0] + 36d2)
+        ;;  Redefine string time range in case it changed
+        tra_t          = time_string(trange,PRECISION=prec)
+        ;;  Define TDATES in case it changed
+        tdates         = STRMID(tra_t,0L,10L)
+      END
+      ELSE                :  STOP   ;;  This should not be able to happen... debug!
+    ENDCASE
+  ENDIF ELSE BEGIN
+    ;;  Both are set --> Check [TRANGE has priority]
+    ;;    --> Constrain to within valid time ranges [force min ∆t = 1 hour]
+    trange         = trange[SORT(trange)]
+    trange[0]      = trange[0] > unix_min[0]
+    trange[1]      = (trange[1] < unix_max[0]) > (trange[0] + 36d2)
+    tra_t          = time_string(trange,PRECISION=prec)
+    ;;  Define TDATES in case it changed
+    tdates         = STRMID(tra_t,0L,10L)
+  ENDELSE
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Determine day of year (DOY) range
+;;----------------------------------------------------------------------------------------
+tstruc         = time_struct(tra_t,/NO_CLEAN)
+test           = (SIZE(tstruc,/TYPE) EQ 8)
+IF (test[0]) THEN doy_ra = tstruc.DOY ELSE doy_ra = REPLICATE(-1,2L)
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+tags           = ['DATE','DOY','STRING','UNIX']+'_TRANGE'
+struct         = CREATE_STRUCT(tags,tdates,doy_ra,tra_t,trange)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END

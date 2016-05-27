@@ -1,0 +1,147 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   convert_esa_units.pro
+;  PURPOSE  :   Converts the units of the data array of Eesa data structures.  The data
+;                 associated with data.DATA is rescaled to the new units and
+;                 data.UNITS_NAME is changed to the appropriate units.
+;
+;  CALLED BY: 
+;               conv_units.pro
+;
+;  CALLS:
+;               convert_flux_units.pro
+;
+;  REQUIRES:    NA
+;
+;  INPUT:
+;               DATA      :  A 3DP data structure returned by get_e?.pro
+;               UNITS     :  A scalar string defining the units to convert to
+;                              One of the following are allowed:
+;                              1)  'counts'  ; => # per data bin per energy bin
+;                              2)  'rate'    ; => [s^(-1)]
+;                              3)  'crate'   ; => [s^(-1)] scaled rate
+;                              4)  'eflux'   ; => energy flux
+;                              5)  'flux'    ; => number flux
+;                              6)  'df'      ; => distribution function units
+;
+;  EXAMPLES:    NA
+;
+;  KEYWORDS:  
+;               SCALE     :  Set to a named variable to return the conversion factor
+;                              array used to scale the data
+;
+;   CHANGED:  1)  Davin Larson changed something...       [??/??/????   v1.0.?]
+;             2)  Re-wrote and cleaned up                 [06/22/2009   v1.1.0]
+;             3)  Added error handling for unit conversion to E2FLUX or E3FLUX etc.
+;                   which is not handled by convert_flux_units.pro
+;                                                         [07/30/2009   v1.1.1]
+;             4)  Updated 'man' page
+;                   and fixed syntax issue if data is an array of structures
+;                                                         [09/19/2009   v1.2.0]
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  09/19/2009   v1.2.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO convert_esa_units, data, units, SCALE=scale
+
+;-----------------------------------------------------------------------------------------
+; => Define default parameters and check input format
+;-----------------------------------------------------------------------------------------
+IF (N_PARAMS() EQ 0) THEN RETURN
+IF (STRUPCASE(units) EQ STRUPCASE(data[0].UNITS_NAME)) THEN RETURN
+
+fluxindx = WHERE(['FLUX','EFLUX','DF'] EQ STRUPCASE(data[0].UNITS_NAME),fluxcnt)
+efluxinx = WHERE(['COUNTS','RATE','CRATE','E2FLUX','E3FLUX'] EQ STRUPCASE(units),eflxcnt)
+IF (fluxcnt GT 0L AND eflxcnt EQ 0L) THEN BEGIN
+  convert_flux_units,data,units,SCALE=scale
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Define relevant parameters
+;-----------------------------------------------------------------------------------------
+n_e      = data[0].NENERGY              ; => Number of energies          integer
+nbins    = data[0].NBINS                ; => Number of bins              integer
+mass     = data[0].MASS                 ; => Proton mass [eV/(km/sec)^2] double
+energy   = data.ENERGY                  ; => (eV)                        [n_e,nbins]
+dt       = data.DT                      ; => Integration time            [n_e,nbins]
+gf       = data.GF * data[0].GEOMFACTOR ; => Geometric factor            [n_e,nbins]
+                                        ;  * mcp_efficiency(data.energy+400.)
+deadtime = data.DEADTIME                ; => Time between integration (samples)
+rate     = data.DATA/dt                 ; => Data[units] per integration time
+
+; => IF   (deadtime GT dt)  THEN = BAD =>> DTC used to kill unreliable data
+dtc      = (1d0 - rate*deadtime)        ; => Scaled "efficiency rate"  ??
+n_str    = N_ELEMENTS(data)
+w        = WHERE(dtc LT 0.2,c)
+IF (n_str EQ 1) THEN BEGIN
+  IF (c NE 0) THEN dtc[w] = !VALUES.F_NAN
+ENDIF ELSE BEGIN
+  IF (c NE 0) THEN BEGIN
+    cind                               = ARRAY_INDICES(dtc,c)
+    dtc[cind[0,*],cind[1,*],cind[2,*]] = !VALUES.F_NAN
+  ENDIF
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Determine type of units to convert to
+;-----------------------------------------------------------------------------------------
+scale = 1.
+CASE STRUPCASE(units) OF 
+  'COUNTS' :  sfact = 1.
+  'RATE'   :  sfact = 1. / dt
+  'CRATE'  :  sfact = 1. / (dtc * dt)
+  'EFLUX'  :  sfact = 1. / (dtc * (dt * gf))
+  'E2FLUX' :  sfact = 1. / (dtc * (dt * gf)) * energy
+  'E3FLUX' :  sfact = 1. / (dtc * (dt * gf)) * energy^2
+  'FLUX'   :  sfact = 1. / (dtc * (dt * gf * energy))
+  'DF'     :  sfact = 1. / (dtc * (dt * gf * energy^2 * (2e5/mass^2) ))
+;  'COUNTS' :  scale = 1.
+;  'RATE'   :  scale = 1. / dt
+;  'CRATE'  :  scale = 1. /dtc / dt
+;  'EFLUX'  :  scale = 1. /dtc / (dt * gf)
+;  'E2FLUX' :  scale = 1. /dtc / (dt * gf) * energy
+;  'E3FLUX' :  scale = 1. /dtc / (dt * gf) * energy^2
+;  'FLUX'   :  scale = 1. /dtc / (dt * gf * energy)
+;  'DF'     :  scale = 1. /dtc / (dt * gf * energy^2 * (2e5/mass^2) )
+  ELSE: BEGIN
+    MESSAGE,'Undefined units: ',UNITS
+    RETURN
+  END
+ENDCASE
+scale *= sfact
+;-----------------------------------------------------------------------------------------
+; => Determine type of units to convert from
+;-----------------------------------------------------------------------------------------
+CASE STRUPCASE(data[0].UNITS_NAME) OF 
+  'COUNTS' :  sfact = 1.
+  'RATE'   :  sfact = dt
+  'CRATE'  :  sfact = (dtc * dt)
+  'EFLUX'  :  sfact = (dtc * (dt * gf))
+  'FLUX'   :  sfact = (dtc * (dt * gf * energy))
+  'DF'     :  sfact = (dtc * (dt * gf * energy^2 * 2e5/mass^2))
+;  'COUNTS' :  scale = scale * 1.
+;  'RATE'   :  scale = scale * dt
+;  'CRATE'  :  scale = scale * dtc * dt
+;  'EFLUX'  :  scale = scale * dtc * (dt * gf)
+;  'FLUX'   :  scale = scale * dtc * (dt * gf * energy)
+;  'DF'     :  scale = scale * dtc * (dt * gf * energy^2 * 2./mass/mass*1e5)
+  ELSE: BEGIN
+    PRINT,'Unknown starting units: ',data.UNITS_NAME
+    RETURN
+  END
+ENDCASE
+scale *= sfact
+
+data.UNITS_NAME = units[0]
+tags            = TAG_NAMES(data)
+gtag            = WHERE(tags EQ 'DDATA',gtg)
+data.DATA      *= scale
+IF (gtg GT 0L) THEN data.DDATA *= scale  ; => Scale d(data) too!
+
+RETURN
+END

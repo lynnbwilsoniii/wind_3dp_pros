@@ -1,0 +1,147 @@
+;-----------------------------------------------------------------------------------------
+; => test shock input
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+
+tdate  = '1997-12-10'
+tup    = '1997-12-10/0'+['4:21:00.000','4:30:00.000']
+tdn    = '1997-12-10/0'+['4:34:10.000','4:34:43.000']
+
+magup  = [[2.0495618,-6.6144025,-1.2113086], [1.7663630,-6.6618953,-1.4080609], $
+          [1.7382041,-6.5163455,-2.0594910], [2.1364691,-6.4368992,-1.7514881], $
+          [1.9701257,-6.4069041,-1.5581573], [1.9256350,-6.5366329,-1.5791442], $
+          [1.6505548,-6.5228014,-1.4258301], [1.8062041,-6.5440396,-1.9108562], $
+          [1.9626056,-6.6020469,-1.4909541], [1.3249638,-6.8034779,-1.0220203], $
+          [2.3674003,-6.7001593,-1.6847385]  ]
+vswup  = [[-298.42923,7.0329719,8.8173094], [-297.73477,4.9924798,6.0725775], $
+          [-297.16071,6.2249880,1.8190622], [-292.87903,8.1913757,-2.3052062], $
+          [-298.26273,8.5029621,-4.1345792], [-293.37744,7.6591954,3.3643355], $
+          [-301.32974,6.6147823,-1.8453517], [-300.92087,5.3754864,-1.3439834], $
+          [-298.40622,4.6542845,0.25752079], [-298.95749,8.3204288,1.9996956], $
+          [-294.84436,7.2093582,-2.1990477]  ]
+denup  = [11.425707,10.658062,11.280027,11.368994,11.668767,11.488538,11.497508,$
+          11.822701,11.180645,11.906875,11.486233]
+tempup = [20.283726,20.835808,21.078954,20.775059,20.448105,20.782595,20.582528,$
+          20.735186,20.708021,21.190722,21.102959]  ; => Used <Tec> + <Ti>
+
+
+magdn  = [[1.1896197,-15.530858,-4.5200775], [1.1433621,-15.570941,-4.5276632], $
+          [1.1904526,-15.588540,-4.5955429], [1.2138935,-15.646912,-4.6061081], $
+          [1.2360383,-15.714932,-4.6187942], [1.2589373,-15.784042,-4.5940909], $
+          [1.2124557,-15.881397,-4.4775286], [1.1985376,-15.926291,-4.5015241], $
+          [1.2270153,-15.959307,-4.5211604], [1.3280946,-15.980569,-4.4918521], $
+          [1.4081595,-15.951006,-4.5142210]  ]
+vswdn  = [[-371.63510,12.623555,-36.427386], [-373.94293,11.975860,-34.134796], $
+          [-369.54129,8.0284414,-32.518097], [-369.25357,8.8045034,-28.502319], $
+          [-352.06491,13.025156,-38.872013], [-363.96552,9.6974459,-38.112679], $
+          [-370.08737,5.8294368,-22.410383], [-364.25281,7.5720963,-41.611328], $
+          [-373.84592,6.5412188,-34.463131], [-366.31223,12.911589,-47.855164], $
+          [-368.65643,9.4563856,-39.580582]  ]
+dendn  = [28.799348,28.312181,27.016388,26.533714,27.611736,27.922453,27.360785,$
+          26.334246,26.535583,27.263573,26.620255]
+tempdn = [32.061337,32.198217,31.941504,32.542409,31.754916,32.016433,32.873481,$
+          32.495488,32.615132,32.526247,32.570025]  ; => Used <Tec> + <Ti>
+
+avsw   = [[[TRANSPOSE(vswup)]],[[TRANSPOSE(vswdn)]]]        ; => [N,3,2]-Element Array
+amagf  = [[[TRANSPOSE(magup)]],[[TRANSPOSE(magdn)]]]        ; => [N,3,2]-Element Array
+adens  = [[denup],[dendn]]                                  ; => [N,2]-Element Array
+atemp  = [[tempup],[tempdn]]                                ; => [N,2]-Element Array
+
+; => Generate dummy array of angles
+m          = 100L
+phi        = DINDGEN(m)*2d0*!DPI/(m - 1L)
+the        = DINDGEN(m)*!DPI/(m - 1L) - !DPI/2d0
+ph         = REFORM(phi)
+th         = REFORM(the)
+; => Generate shock normal vector
+;            [theta, phi, 3]
+nor        = DBLARR(m,m,3L)
+nor[*,*,0] = COS(th) # COS(ph)
+nor[*,*,1] = COS(th) # SIN(ph)
+nor[*,*,2] = SIN(th) # REPLICATE(1,m)
+;-----------------------------------------------------------------------------------------
+; => Calculate chi-squared distribution using Equations 2, 3, 4, 5, and 6 for 1997-12-10
+;-----------------------------------------------------------------------------------------
+nqq        = [1,1,1,1,1]
+chisq      = rh_solve_lmq(adens,avsw,amagf,atemp,NEQS=nqq,SOLN=soln)
+; => Print out best fit angles
+PRINT,';', soln.THETA*18d1/!DPI
+;         Avg.          Std. Dev.
+;      -22.290909       6.3262974
+PRINT,';', soln.PHI*18d1/!DPI
+;         Avg.          Std. Dev.
+;       167.56364       2.9541958
+
+; => Print out best fit shock normal speed in spacecraft frame [km/s]
+PRINT,';', soln.VSHN
+;       401.05219       27.929917
+
+; => Print out best fit upstream shock normal speed in shock frame [km/s]
+PRINT,';', soln.USHN_UP
+;      -133.18804       16.392315
+
+; => Print out best fit shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,0]
+;     -0.89712733      0.19784031     -0.37712047
+
+; => Print out uncertainty of shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,1]
+;     0.040895515     0.046225610      0.10007386
+;-----------------------------------------------------------------------------------------
+; => Region of 68.3% confidence -> ∆X^2 = 2.30 (for 2 degrees of freedom)
+;      Theorem D from numerical recipes [Section 15.6]
+;-----------------------------------------------------------------------------------------
+mnchsq  = MIN(chisq,/NAN,ln)
+conf683 = mnchsq[0] + 2.30
+region  = WHERE(chisq LE conf683[0],greg)
+rind    = ARRAY_INDICES(chisq,region)
+;chi_reg = REPLICATE(d,100L,100L)
+;chi_reg[rind[0,*],rind[1,*]] = chisq[rind[0,*],rind[1,*]]
+;-----------------------------------------------------------------------------------------
+; => plot chi-squared
+;-----------------------------------------------------------------------------------------
+yra       = [-9d1,9d1]
+xra       = [0d0,36d1]
+xttl      = 'phi (deg)'
+yttl      = 'theta (deg)'
+
+nlevels   = 60L
+result    = ALOG(chisq*1d0)/ALOG(1d1)
+range     = [MIN(result,/NAN),MAX(result,/NAN)]
+cpd0      = FLOOR(nlevels/(range[1] - range[0])) > 1.
+cpd       = FIX(nlevels/(range[1] - range[0])) > 1
+nn2       = nlevels - 1L
+mxres     = CEIL(MAX(result,/NAN))
+levels    = FINDGEN(nlevels)*(mxres[0] - range[0])/nn2 + range[0]
+levels    = roundsig(levels,SIG=2)
+color     = LONARR(nlevels)
+color     = LINDGEN(nlevels)*(254L - 15L)/(nlevels - 1L) + 15L
+color     = ROUND((color*1e3)^(2e0/3e0)/16e0)
+c_colors  = BYTE(color)
+good_lbs           = INDGEN(nlevels/3L)*3L + 2L
+c_labels           = REPLICATE(0,nlevels)
+c_labels[good_lbs] = 1
+
+ttle      = '!7v!3'+'!U2!N'+'(!7h!3'+',!7u!3'+') for an interplanetary shock on: '+tdate[0]
+pstr      = {NLEVELS:nlevels,XTITLE:xttl,YTITLE:yttl,$
+             XSTYLE:1,YSTYLE:1,ZSTYLE:1,FILL:1,C_COLORS:c_colors,   $
+             XRANGE:xra,YRANGE:yra,XLOG:0,YLOG:0,ZLOG:0,XMINOR:11L, $
+             YMINOR:11L,TITLE:ttle}
+
+WINDOW,1,RETAIN=2
+WSET,1
+!P.MULTI = 0
+CONTOUR,TRANSPOSE(result),phi*18d1/!DPI,the*18d1/!DPI,_EXTRA=pstr
+  OPLOT,[soln.PHI[0]*18d1/!DPI],[soln.THETA[0]*18d1/!DPI],PSYM=2,COLOR=250
+  ; => Plot "ellipse" containing the 68.3% confidence interval
+  CONTOUR,TRANSPOSE(result),phi*18d1/!DPI,the*18d1/!DPI,/OVERPLOT,XSTYLE=0,YSTYLE=0,$
+          C_THICK=2,C_LINESTYLE=3,LEVELS=ALOG(conf683[0])/ALOG(1d1)
+
+
+
+
+
+
+
+

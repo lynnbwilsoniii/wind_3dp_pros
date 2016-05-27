@@ -1,0 +1,211 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   region_cursor_select.pro
+;  PURPOSE  :   This routine allows a user to select the lower-left-hand and upper-
+;                 right-hand corners of a region of interest from a currently open
+;                 and used plot window.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               ;;  If !D.WINDOW matches the window you want to select from, then:
+;               test = region_cursor_select(XSCALE=!X.S,YSCALE=!Y.S)
+;
+;  KEYWORDS:    
+;               XSCALE   :  [2]-Element array defining the scale factors for converting
+;                             between X-NORMAL and X-DATA coordinates
+;                             [Default = !X.S]
+;               YSCALE   :  [2]-Element array defining the scale factors for converting
+;                             between Y-NORMAL and Y-DATA coordinates
+;                             [Default = !Y.S]
+;               WINDN    :  Scalar defining the index of the window to use when
+;                             selecting the region of interest
+;                             [Default = !D.WINDOW]
+;               XFACT    :  Scalar defining a scale factor that was used when plotting
+;                             the data that defined XSCALE
+;                             [e.g. if (plot,x*1d3,y) was used  => set XFACT=1d3]
+;                             [Default = 1.0]
+;               YFACT    :  Scalar defining a scale factor that was used when plotting
+;                             the data that defined YSCALE
+;                             [e.g. if (plot,x,y*1d3) was used  => set YFACT=1d3]
+;                             [Default = 1.0]
+;
+;   CHANGED:  1)  Continued to write routine                   [08/18/2012   v1.0.0]
+;
+;   NOTES:      
+;               1)  Make sure the scales and window are set to the appropriate plot
+;                     and display
+;
+;   CREATED:  08/17/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/18/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION region_cursor_select,XSCALE=xscale,YSCALE=yscale,WINDN=windn,$
+                              XFACT=xfact,YFACT=yfact
+
+;;----------------------------------------------------------------------------------------
+;; => Define defaults
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+form_str       = '(g25.5)'
+form_out       = '("( ",a," , ",a," )")'
+
+;; => logic testing
+read_low       = ''
+read_hig       = ''
+
+def_win        = !D.WINDOW    ;; default window #
+def_xsc        = !X.S         ;; default X-Coordinate scale
+def_ysc        = !Y.S         ;; default Y-Coordinate scale
+
+dumb           = REPLICATE(d,4)
+; => Dummy error messages
+nowind_msg     = 'There must be an active window display currently set and in use...'
+;;----------------------------------------------------------------------------------------
+;; => Check keywords
+;;----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(xscale) NE 2) THEN xsc  = def_xsc ELSE xsc  = xscale
+IF (N_ELEMENTS(yscale) NE 2) THEN ysc  = def_ysc ELSE ysc  = yscale
+IF (N_ELEMENTS(windn)  NE 1) THEN win  = def_win ELSE win  = windn[0]
+IF (N_ELEMENTS(xfact)  NE 1) THEN xfac = 1e0     ELSE xfac = xfact[0]
+IF (N_ELEMENTS(yfact)  NE 1) THEN yfac = 1e0     ELSE yfac = yfact[0]
+
+test           = (win LT 0)
+IF (test) THEN BEGIN
+  MESSAGE,nowind_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,dumb
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Prompt user for lower-left-hand corner
+;;----------------------------------------------------------------------------------------
+PRINT, ''
+PRINT, ''
+WHILE (read_low NE 'y') DO BEGIN
+  ;; Set/Reset cursor outputs
+  read_out       = ''
+  x_n_low        = 0e0
+  y_n_low        = 0e0
+  x_d_low        = 0e0
+  y_d_low        = 0e0
+  ;; Inform user of procedure
+  PRINT, ''
+  PRINT, '     Please use the cursor to select a single point that identifies'
+  PRINT, 'the lower-left-hand corner of the region of interest.  Make sure'
+  PRINT, 'you press the mouse button only once and do not click on the window'
+  PRINT, 'to try and move it prior to selecting this set of coordinates.'
+  PRINT, ''
+  ;; => Choose lower left-hand bound of beam
+  WSET,win[0]
+  WSHOW,win[0]
+  CURSOR,x_n_low,y_n_low,/NORMAL,/WAIT,/CHANGE
+  ;; => Convert to data coordinates on contour plot
+  x_d_low        = (x_n_low[0] - xsc[0])/xsc[1]*xfac[0]
+  y_d_low        = (y_n_low[0] - ysc[0])/ysc[1]*yfac[0]
+  xd_low_str     = STRTRIM(STRING([x_d_low[0],y_d_low[0]],FORMAT=form_str),2L)
+  xd_low_out     = STRING(xd_low_str,FORMAT=form_out)
+  ;; => Prompt user to say whether they wish to try again
+  PRINT, ''
+  PRINT, 'You selected the following point (x,y) in DATA coordinates:  '+xd_low_out
+  PRINT, ''
+  PRINT, "     If you wish to try again, type 'n' at the following prompt,"
+  PRINT, "otherwise type 'y'.  [Type 'q' to quit at any time]"
+  PRINT, ''
+  WHILE (read_out NE 'y' AND read_out NE 'n' AND read_out NE 'q') DO BEGIN
+    READ,read_out,PROMPT='Are you satisfied with this coordinate? (y/n):  '
+    read_out = STRLOWCASE(read_out[0])
+  ENDWHILE
+  read_low = STRLOWCASE(read_out[0])
+  ;; => Check if user wishes to quit
+  IF (read_low EQ 'q') THEN RETURN,dumb
+ENDWHILE
+;;----------------------------------------------------------------------------------------
+;; => Prompt user for upper-right-hand corner
+;;----------------------------------------------------------------------------------------
+PRINT, ''
+PRINT, ''
+WHILE (read_hig NE 'y' AND read_hig NE 'n') DO BEGIN
+  ;;======================================================================================
+  JUMP_TRY_AGAIN:
+  ;;======================================================================================
+  ;; Set/Reset cursor outputs
+  read_out       = ''
+  x_n_high       = 0e0
+  y_n_high       = 0e0
+  x_d_high       = 0e0
+  y_d_high       = 0e0
+  ;; Inform user of procedure
+  PRINT, ''
+  PRINT, '     Please use the cursor to select a single point that identifies'
+  PRINT, 'the upper-right-hand corner of the region of interest.  Make sure'
+  PRINT, 'you press the mouse button only once and do not click on the window'
+  PRINT, 'to try and move it prior to selecting this set of coordinates.'
+  PRINT, ''
+  ;; => Choose lower left-hand bound of beam
+  WSET,win[0]
+  WSHOW,win[0]
+  CURSOR,x_n_high,y_n_high,/NORMAL,/WAIT,/CHANGE
+  ;; => Convert to data coordinates on contour plot
+  x_d_high       = (x_n_high[0] - xsc[0])/xsc[1]*xfac[0]
+  y_d_high       = (y_n_high[0] - ysc[0])/ysc[1]*yfac[0]
+  xd_high_str    = STRTRIM(STRING([x_d_high[0],y_d_high[0]],FORMAT=form_str),2L)
+  xd_high_out    = STRING(xd_high_str,FORMAT=form_out)
+  ;; => Make sure user selected points larger than lower-left-hand corner
+  test           = (x_n_high[0] LE x_n_low[0]) OR (y_n_high[0] LE y_n_low[0])
+  IF (test) THEN BEGIN
+    ;; bad selection
+    PRINT, ''
+    PRINT, '*********  Warning!  *********'
+    PRINT, '     You selected a coordinate with components smaller than the'
+    PRINT, 'lower-left-hand corner selected previously.  This cannot pass.'
+    PRINT, 'Please try again...'
+    PRINT, '*********  Warning!  *********'
+    PRINT, ''
+    ;; try again
+    GOTO,JUMP_TRY_AGAIN
+  ENDIF
+  ;; => Prompt user to say whether they wish to try again
+  PRINT, ''
+  PRINT, 'You selected the following point (x,y) in DATA coordinates:  '+xd_high_out
+  PRINT, ''
+  PRINT, "     If you wish to try again, type 'n' at the following prompt,"
+  PRINT, "otherwise type 'y'.  [Type 'q' to quit at any time]"
+  PRINT, ''
+  WHILE (read_out NE 'y' AND read_out NE 'n' AND read_out NE 'q') DO BEGIN
+    READ,read_out,PROMPT='Are you satisfied with this coordinate? (y/n):  '
+    read_out = STRLOWCASE(read_out[0])
+  ENDWHILE
+  read_hig = STRLOWCASE(read_out[0])
+  ;; => Check if user wishes to quit
+  IF (read_hig EQ 'q') THEN RETURN,dumb
+ENDWHILE
+;;----------------------------------------------------------------------------------------
+;; => Create return structure
+;;----------------------------------------------------------------------------------------
+tags   = ['X_NORM','Y_NORM','X_DATA','Y_DATA']
+x_norm = [x_n_low[0],x_n_high[0]]
+x_data = [x_d_low[0],x_d_high[0]]
+y_norm = [y_n_low[0],y_n_high[0]]
+y_data = [y_d_low[0],y_d_high[0]]
+struct = CREATE_STRUCT(tags,x_norm,y_norm,x_data,y_data)
+;;----------------------------------------------------------------------------------------
+;; => Return coordinates to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END

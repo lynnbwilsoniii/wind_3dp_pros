@@ -1,0 +1,547 @@
+;-----------------------------------------------------------------------------------------
+; => Initialize UMN Wind/3DP software
+;-----------------------------------------------------------------------------------------
+
+; => From the prompt, type:
+uidl
+
+;-----------------------------------------------------------------------------------------
+; -Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+ma     = 4d0*(mp + me)     ; -Alpha-Particle mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+mm     = [-1d0,0d0,1d0]    ; -[Normal Cyclotron, Landau, Anomalous Cyclotron]
+mass_e = 0.5109906d6       ; -Electron mass in eV/c^2
+mass_p = mp*c^2/qq         ; -Proton mass in eV/c^2
+u_mass = mass_e/c2         ; -Electron mass [eV/(km/s)^2]
+p_mass = mass_p/c2         ; -Proton mass [eV/(km/s)^2]
+;-----------------------------------------------------------------------------------------
+; => Date and time
+;-----------------------------------------------------------------------------------------
+date  = '040396'
+t     = ['1996-04-03/08:45:00','1996-04-03/10:45:00']
+tr3   = time_double(t)
+tramp = '1996-04-03/09:47:17.152'
+tura  = time_double(tramp)
+
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE  ; -('MMDDYY')
+mdate  = mydate.DATE    ; -('YYYYMMDD')
+ldate  = STRMID(mdate,4L,4L)+STRMID(mdate,0L,4L)
+tdate  = mydate.TDATE   ; -('YYYY-MM-DD')
+;-----------------------------------------------------------------------------------------
+; => Find DC B-field data
+;-----------------------------------------------------------------------------------------
+mag3  = read_wind_mfi(TRANGE=tr3)
+t3x   = mag3.MAG.X
+bmag4 = mag3.MAG.Y
+magf4 = mag3.BGSE.Y
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+
+bmag    = SQRT(TOTAL(magf4^2,2L,/NAN))
+fc_fac  = (qq*1d-9)/(2d0*!DPI)             ; => Cyclo. Freq. Multi. Factor
+fci     = fc_fac*bmag/mp                   ; => Proton Cyclotron Frequency (Hz)
+fce     = fc_fac*bmag/me                   ; => Electron " "
+flh     = SQRT(fci*fce)                    ; => Lower Hybrid Frequency (Hz)
+
+store_data,'flh',DATA={X:t3x,Y:flh}
+store_data,'fce',DATA={X:t3x,Y:fce}
+store_data,'fci',DATA={X:t3x,Y:fci}
+options,'flh','YTITLE','f!Dlh!N (Hz)'      ; => Change Y-Axis Titles
+options,'fce','YTITLE','f!Dce!N (Hz)'
+options,'fci','YTITLE','f!Dci!N (Hz)'
+options,'flh','YRANGE',[2e0,3e1]           ; => Change Y-Axis range
+options,'fce','YRANGE',[1e2,1e3]
+options,'fci','YRANGE',[1e-2,1e0]
+options,['flh','fce','fci'],'YLOG',1       ; => Set Y-Axis to a log-scale
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+sh_mit     = read_shocks_jck_database()
+mit_dates  = sh_mit.SDATES                 ; => 'MMDDYY'
+shocks     = sh_mit.SHOCK
+anorms     = shocks.SH_NORM                ; => Shock normal vectors [GSE]
+a_compr    = shocks.COMPRESSION            ; => Shock compression ratio
+gshock     = WHERE(mit_dates EQ date,gsh)
+IF (gsh GT 0L) THEN gnorm = REFORM(anorms[gshock[0],*]) ELSE gnorm = REPLICATE(f,3)
+
+midra      = tura[0]
+gcomp      = (REFORM(a_compr[gshock[0]]))[0]
+;-----------------------------------------------------------------------------------------
+; => Plot vertical lines on plot windows
+;-----------------------------------------------------------------------------------------
+toxs = time_double(['1996-04-03/09:32:50','1996-04-03/09:39:40','1996-04-03/09:40:00',$
+                    '1996-04-03/09:40:24.972'])
+
+nna = ['wi_B3_MAG(GSE)','wi_B3(GSE)']
+tplot,nna,TRANGE=time_double(['1996-04-03/09:29:25','1996-04-03/09:54:30'])
+time_bar,toxs,VARNAME=nna,COLOR=50L
+time_bar,toxe,VARNAME=nna,COLOR=250L
+;-----------------------------------------------------------------------------------------
+; => Load 3DP data
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+
+; => If on a non-SunMachine computer with IDL save files, do the following:
+mfiles = FILE_SEARCH(mdir,'*.sav')
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; => Note:  In the IDL save files I used, variables like "ael" are arrays of all the 
+;             Wind/3DP data structures within some time period (defined else where)
+;             for the Eesa Low detector.  Thus, "aelb" is for Eesa Low Burst, "apl" is
+;             for Pesa Low, etc.  The prefix "a" is used loosely to represent ALL here.
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;-----------------------------------------------------------------------------------------
+; => Calculate ion and electron moments and send results to TPLOT
+;-----------------------------------------------------------------------------------------
+eesa_pesa_low_to_tplot,DATE=hdate,TRANGE=tr3,/G_MAGF,PLM=apl,PLBM=aplb,
+                       ELM=ael,ELBM=aelb,/TO_TPLOT
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; => Note:  Core and Halo electron energies were determined by fitting the core to a
+;             Maxwellian and the halo to a modified Lorentzian.  The point at which the
+;             modified Lorentzian dominated over the Maxwellian is the break energy.  The
+;             break energy is then used in eesa_pesa_low_to_tplot.pro defined by the
+;             variables "c_el_ens" and "h_el_ens."  These define the energy bins to use.
+;             More details can be found in:
+;
+;             Wilson, L. B., III, C. A. Cattell, P. J. Kellogg, K. Goetz, K. Kersten, 
+;               J. C. Kasper, A. Szabo, and K. Meziane (2009), Low-frequency whistler 
+;               waves and shocklets observed at quasi-perpendicular interplanetary 
+;               shocks, J. Geophys. Res., 114, 10,106Ð+, doi:10.1029/2009JA014376.
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+;=========================================================================================
+; => Otherwise, if on a SunMachine then:
+; => Load 3DP data shared object files in IDL
+load_3dp_data,'96-04-02/10:00:00',60,qu=2,memsize=150.
+; => Calibrate ion density from Pesa Low and then calibrate SC Potential
+pesa_low_moment_calibrate,DATE=date,TRANGE=tr3,COMPRESS=gcomp,MIDRA=midra
+; => Get all ion data from both Pesa Low and Pesa High within time range TR3
+pldat  = get_3dp_structs('pl' ,TRANGE=tr3)  ; => Pesa Low
+plbdat = get_3dp_structs('plb',TRANGE=tr3)  ; => Pesa Low Burst
+phdat  = get_3dp_structs('ph' ,TRANGE=tr3)  ; => Pesa High
+phbdat = get_3dp_structs('phb',TRANGE=tr3)  ; => Pesa High Burst
+apl    = pldat.DATA
+aplb   = plbdat.DATA
+aph    = phdat.DATA
+aphb   = phbdat.DATA
+; => Get all electron data from both Pesa Low and Pesa High within time range TR3
+eldat  = get_3dp_structs('el' ,TRANGE=tr3)  ; => Eesa Low
+elbdat = get_3dp_structs('elb',TRANGE=tr3)  ; => Eesa Low Burst
+ehdat  = get_3dp_structs('eh' ,TRANGE=tr3)  ; => Eesa High
+ehbdat = get_3dp_structs('ehb',TRANGE=tr3)  ; => Eesa High Burst
+ael    = eldat.DATA
+aelb   = elbdat.DATA
+aeh    = ehdat.DATA
+aehb   = ehbdat.DATA
+; => Get all electron and ion data from the SST instruments within time range TR3
+sfdat  = get_3dp_structs('sf' ,TRANGE=tr3)  ; => SST-Foil (electrons)
+sodat  = get_3dp_structs('so' ,TRANGE=tr3)  ; => SST-Open (protons)
+sfbdat = get_3dp_structs('sfb',TRANGE=tr3)  ; => SST-Foil Burst (electrons)
+sobdat = get_3dp_structs('sob',TRANGE=tr3)  ; => SST-Open Burst (protons)
+asf    = sfdat.DATA
+aso    = sodat.DATA
+asfb   = sfbdat.DATA
+asob   = sobdat.DATA
+;-----------------------------------------------------------------------------------------
+; => Add the solar wind velocity, magnetic field, and SC potential to structures
+;-----------------------------------------------------------------------------------------
+; => Define TPLOT handles for each
+sw_name = 'V_sw2'
+magfnme = 'wi_B3(GSE)'
+scpotnm = 'sc_pot_3'
+
+add_vsw2,apl,sw_name[0]
+add_magf2,apl,magfnme[0]
+add_scpot,apl,scpotnm[0]
+
+add_vsw2,aplb,sw_name[0]
+add_magf2,aplb,magfnme[0]
+add_scpot,aplb,scpotnm[0]
+
+add_vsw2,aph,sw_name[0]
+add_magf2,aph,magfnme[0]
+add_scpot,aph,scpotnm[0]
+
+add_vsw2,aphb,sw_name[0]
+add_magf2,aphb,magfnme[0]
+add_scpot,aphb,scpotnm[0]
+
+
+add_vsw2,ael,sw_name[0]
+add_magf2,ael,magfnme[0]
+add_scpot,ael,scpotnm[0]
+
+add_vsw2,aelb,sw_name[0]
+add_magf2,aelb,magfnme[0]
+add_scpot,aelb,scpotnm[0]
+
+add_vsw2,aeh,sw_name[0]
+add_magf2,aeh,magfnme[0]
+add_scpot,aeh,scpotnm[0]
+
+add_vsw2,aehb,sw_name[0]
+add_magf2,aehb,magfnme[0]
+add_scpot,aehb,scpotnm[0]
+
+
+; => Note:  Since the SST energies are so high, their velocities far exceed that of the
+;             solar wind, but I add it anyways just to be thorough...
+add_vsw2,asf,sw_name[0]
+add_magf2,asf,magfnme[0]
+add_scpot,asf,scpotnm[0]
+
+add_vsw2,aso,sw_name[0]
+add_magf2,aso,magfnme[0]
+add_scpot,aso,scpotnm[0]
+;=========================================================================================
+;-----------------------------------------------------------------------------------------
+; => Look at Electron moments in solar wind frame (SWF)
+;-----------------------------------------------------------------------------------------
+nelb     = N_ELEMENTS(aelb)
+; => Calculate distribution functions (DFs) and pitch-angle distributions (PADs) after
+;      converting into SWF
+test     = eesa_data_4(aelb,NUM_PA=24L)
+myb_delb = test.MOMENTS
+myb_pdb  = test.PADS
+nel      = N_ELEMENTS(ael)
+test     = eesa_data_4(ael,NUM_PA=24L)
+my_delb  = test.MOMENTS
+my_pdb   = test.PADS
+;-----------------------------------------------------------------------------------------
+; => Calculate various moments in SWF of the DF and send results to TPLOT
+;-----------------------------------------------------------------------------------------
+moments_array_3dp,PLM=my_delb,PLBM=myb_delb,AVGTEMP=avtempe,T_PERP=tperp_e,$
+                  T_PARA=tpara_e,V_THERM=vtherme,VELOCITY=elb_vels,$
+                  PRESSURE=press_e,MOMS=moms,/TO_TPLOT,SUFFX='el'
+atimes   = moms.TIME
+tanis_e  = tperp_e/tpara_e   ; => Temperature Anisotropy
+;-----------------------------------------------------------------------------------------
+; => The moments are calculated with the following commands
+;-----------------------------------------------------------------------------------------
+j    = 0
+dat  = ael[j]
+PRINT,time_string(dat.TIME,PREC=3)
+; => For j=0
+;  1996-04-03/08:45:24.660
+temp = moments_3d(dat,SC_POT=dat.SC_POT)   ; => SC rest frame
+dat  = my_delb[j]
+temp = moments_3d(dat,SC_POT=dat.SC_POT)   ; => SWF
+
+avt  = temp.AVGTEMP                        ; => Avg. Temperature [eV]
+dens = temp.DENSITY                        ; => Density [cm^(-3)]
+vth  = temp.VTHERMAL                       ; => Avg. Thermal Speed [km/s]
+flux = temp.FLUX                           ; => GSE Flux vector [cm^(-2) s^(-1)]
+t3   = temp.T3                             ; => GSE pseudo Temp vector [eV]
+t3fa = temp.MAGT3                          ; => (perp1,perp2,para)-Temp [eV]
+tmag = temp.MAGF                           ; => B-field at time of sample [nT]
+vele = temp.VELOCITY                       ; => 1st Moment = Velocity [km/s]
+umag = tmag/(SQRT(TOTAL(tmag^2,/NAN)))[0]
+
+; => To calculate the heat flux in the SWF [GSE]
+dat     = my_delb[j]
+sum     = mom_sum(dat,SC_POT=dat.SC_POT)
+sumt    = mom_translate(sum)
+charge  = sumt.CHARGE
+mass    = sumt.MASS                         ; => Particle mass [eV/(km/sec)^2]
+nnorm   = SQRT(ABS(2*charge/mass))          ; => Normalization constant [(km/s) eV^(-1/2)]
+i3      = [[0,4,8],[9,13,17],[18,22,26]]
+qtens   = (mass*nnorm^2)*sumt.NVVV          ; => Heat flux tensor
+; => Get only specific elements by assuming symmetries
+qqqs    = (sumt.NVVV[sumt.MAP_R3])[i3]
+qvec    = TOTAL(qqqs,1L,/NAN)               ; => Q_vec [eV km/s cm^(-3), GSE]
+qmag    = SQRT(TOTAL(qvec^2,/NAN))          ; => Magnitude of Heat flux [eV km/s cm^(-3)]
+uqvec   = qvec/qmag[0]
+bmag    = SQRT(TOTAL(dat.MAGF^2,/NAN))
+umag    = dat.MAGF/bmag[0]
+PRINT, uqvec, umag
+; => For j=0
+;    -0.607552     0.735675     0.299437
+;    -0.399553     0.829386     0.390483
+; => Rotate into FACs
+mrot    = rot_mat(umag,qvec)
+rqvec   = REFORM(mrot ## uqvec)*qmag[0]*1d-3   ; => [keV km/s cm^(-3)]
+PRINT, rqvec*1d3/qmag[0]
+; => For j=0
+;      0.24377211       0.0000000      0.96983260
+qpara   = rqvec[2]        ; => Heat flux //-magnetic field
+qperp   = rqvec[0]        ; => Perp. heat flux
+
+; => Or one can do the following:
+dat     = my_delb[j]
+temp    = mom3d(dat)
+; => The "true" FA heat flux in FACs is found from rotating the tensor...
+rqvec   = temp.QVEC                   ; => <perp1,perp2,para> of FACs
+qmag    = SQRT(TOTAL(rqvec^2,/NAN))
+PRINT, rqvec/qmag[0]
+; => For j=0
+;    -0.240047    0.0424558     0.969832
+PRINT, SQRT(TOTAL(rqvec[0:1]^2,/NAN))/qmag[0]*1d0, rqvec[2]/qmag[0]*1d0
+; => For j=0
+;      0.24377213      0.96983248
+
+; => Rotate FA heat flux back into GSE coordinates
+mrot   = rot_mat(umag)
+test   = REFORM(TRANSPOSE(mrot) ## rqvec)
+PRINT, test/qmag[0], test/qmag[0] - uqvec
+; => For j=0
+;     -0.60755234      0.73567509      0.29943671
+;   1.1131370e-08  -9.4564504e-09  -6.8105602e-09
+;-----------------------------------------------------------------------------------------
+; => Calculate the dot and cross products of various quantities
+;-----------------------------------------------------------------------------------------
+elb_magf = TRANSPOSE(moms.MAGF)
+elb_vsw  = [TRANSPOSE(my_delb.VSW),TRANSPOSE(myb_delb.VSW)]
+
+elb_vmag = SQRT(TOTAL(elb_vels^2,2,/NAN))   ; => Magnitude of 1st electron moment (km/s)
+elb_bmag = SQRT(TOTAL(elb_magf^2,2,/NAN))
+elb_vsmg = SQRT(TOTAL(elb_vsw^2,2,/NAN))
+; => Unit vectors
+elb_umag = [[elb_magf[*,0]/elb_bmag],[elb_magf[*,1]/elb_bmag],[elb_magf[*,2]/elb_bmag]]
+elb_uvel = [[elb_vels[*,0]/elb_vmag],[elb_vels[*,1]/elb_vmag],[elb_vels[*,2]/elb_vmag]]
+elb_uvsw = [[elb_vsw[*,0]/elb_vsmg],[elb_vsw[*,1]/elb_vsmg],[elb_vsw[*,2]/elb_vsmg]]
+; => Dot products
+ev_dot_b   = my_dot_prod(elb_umag,elb_uvel)   ; => Returns an N-Element scalar array
+ev_dot_vsw = my_dot_prod(elb_uvel,elb_uvsw)
+vsw_dot_b  = my_dot_prod(elb_umag,elb_uvsw)
+ev_dot_nsh = my_dot_prod(elb_uvel,gnorm)
+; => Cross products
+ev_crsp_b   = my_crossp_2(elb_umag,elb_uvel)  ; => Returns an [N,3]-Element vector array
+ev_crsp_vsw = my_crossp_2(elb_uvel,elb_uvsw)
+vsw_crsp_b  = my_crossp_2(elb_umag,elb_uvsw)
+ev_crsp_nsh = my_crossp_2(elb_uvel,gnorm)
+
+; => Rotate into field-aligned coordinates (2-D =>> [perp,NaNs,para])
+frot        = rot_mat(elb_umag,elb_uvel)
+fac_elb_vel = REFORM(frot ## elb_uvel)
+;-----------------------------------------------------------------------------------------
+; => Calculate Plasma Frequencies
+;-----------------------------------------------------------------------------------------
+get_data,'N_i3',DATA=ions
+tip     = ions.X
+idens   = ions.Y   ; => Ion Density (cm^-3)
+fp_fac  = SQRT(qq^2*1d6/epo)/(2d0*!DPI)    ; => Plasma Freq. Multi. Factor
+fpi     = fp_fac*SQRT(idens/mp)            ; => Proton Plasma Frequency (Hz)
+fpe     = fp_fac*SQRT(idens/me)            ; => Electron " "
+;-----------------------------------------------------------------------------------------
+; => Plot DFs
+;-----------------------------------------------------------------------------------------
+
+; => electrons
+ngrid   = 30
+vlim    = 2d4
+pdir    = '../3DP_contours/'+date[0]+'/PS_EL/'
+pbdir   = '../3DP_contours/'+date[0]+'/PS_ELB/'
+contour_2d_eesa_plots,DATE=date,NGRID=ngrid,VLIM=vlim,GNORM=gnorm,TRANGE=tr3,$
+                          /NOLOAD,/HEAT_F,ELM=ael,ELBM=aelb,       $
+                          EL_DIR=pdir,ELB_DIR=pbdir
+
+; => ions
+ngrid    = 20L
+vlim     = 25e2
+mdir     = '~/Desktop/3DP_contours/'+date+'/Pesa_High_Burst_Dists/'
+pref     = 'PHB_SM-CUTS_Fixed-E-Bins_'
+nphb     = N_ELEMENTS(aphb)
+mts      = my_time_string(aphb.TIME,UNIX=1)
+ymdb     = mts.DATE_TIME
+UTtime   = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+           STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate    = STRMID(ymdb[*],0L,10L)
+; => Smoothed DF cuts
+FOR j=0L, nphb - 1L DO BEGIN                                          $
+  dat    = aphb[j]                                                  & $
+  popen,mdir+pref+gdate[j]+'_'+UTtime[j]+'-Vsw_norm-velpts'         & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NNORM=gnorm,/SM_CUTS     & $
+  pclose
+
+;=========================================================================================
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; => Note:  The plots produced in contour_2d_eesa_plots.pro are created in the following
+;             steps:
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+; => Plot the 3D electron DF WITHOUT assuming gyrotropy => truly 3D
+ngrid   = 30
+vlim    = 2d4
+suffx   = '_3D-30Grids-All-Energies_e-frame-DF'
+mtsel   = my_time_string(ael.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+FOR j=0L, nel - 1L DO BEGIN                                          $
+  dat  = ael[j]                                                    & $
+  fnam = pdir+'el_'+gdate[j]+'_'+UTtime[j]+suffx                   & $
+  popen,fnam,/PORT                                                 & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NSMOOTH=5,/SM_CUTS,/ONE_C  & $
+  pclose
+
+; => Plot the 3D electron DF WITH assuming gyrotropy => truly 2D
+el_tani = interp(tanis_e,atimes,ael.TIME,/NO_EXTRAP)
+pdir    = '~/Desktop/3DP_contours/'+date[0]+'/PS_EL/'
+suffx   = '_24PAs-30Grids-All-Energies_e-frame-DF_w-One-Count'
+mtsel   = my_time_string(ael.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+ngrid  = 30L
+vlim   = 2d4
+vout   = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+FOR j=0L, nel - 1L DO BEGIN                                                           $
+  dat      = ael[j]                                                                 & $
+  dfpara   = one_count_level(dat,VLIM=vlim,NGRID=ngrid,NUM_PA=24L)                  & $
+  delb     = my_delb[j]                                                             & $
+  fnam     = pdir+'el_'+gdate[j]+'_'+UTtime[j]+suffx                                & $
+  popen,fnam,/PORT                                                                  & $
+    cont2d,delb,NGRID=30,VLIM=2d4,ANI_TEMP=el_tani[j],GNORM=gnorm,/HEAT_F           & $
+    OPLOT,vout*1e-3,dfpara,COLOR=150,LINESTYLE=4                                    & $
+    XYOUTS,.60,.380,'- - - : One-Count Level',COLOR=150,/NORMAL                     & $
+  pclose
+;-----------------------------------------------------------------------------------------
+; => The one count level is calculated in the following manner in one_count_level.pro
+;      for Eesa distributions
+;-----------------------------------------------------------------------------------------
+dat      = ael[j]
+; => Set all data equal to 1.0 [units = counts]
+dat.DATA = 1.
+; => Convert into the SWF [units = df units = s^3 km^(-3) cm^(-3)]
+donc_el  = convert_vframe(dat,/INTERP)
+; => Calculate the PAD
+pdnc_el  = pad(donc_el,NUM_PA=24)
+; => Calculate the DF
+dfnc_el  = distfunc(pdnc_el.ENERGY,pdnc_el.ANGLES,MASS=pdnc_el.MASS,DF=pdnc_el.DATA)
+; => Get the structure tags from DFNC_EL and put them into DONC_EL
+extract_tags,donc_el,dfnc_el
+; => Calculate the parallel cut of the one count level
+dfpara   = distfunc(vout,0.,PARAM=donc_el)
+;=========================================================================================
+
+
+;-----------------------------------------------------------------------------------------
+; => Look at Hammer-Aitoff Projections of 3D data
+;-----------------------------------------------------------------------------------------
+plot3d_options,MAP='ham',LOG =1,TRIANGULATE=1,COMPRESS=1
+
+ymdb    = ymdso
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+
+j   = 0
+dat = aso[j]
+plot3d,dat,BNCENTER=-1,UNITS='flux',EX_VEC=gnorm
+;-----------------------------------------------------------------------------------------
+; => Plot PADs [Only 9 Highest Energies]
+;-----------------------------------------------------------------------------------------
+j   = 0
+dat = my_delb[j]
+my_padplot_both,dat,UNITS='flux',EBINS=[0,8]
+;-----------------------------------------------------------------------------------------
+; => Create stacked line plots of particle spectra data for ELB with only
+;      the 8 highest energies.  Also create smoothed, shifted, and normalized
+;      plots of the same data.
+;-----------------------------------------------------------------------------------------
+data = calc_padspecs('elb',DAT_ARR=aelb,/G_MAGF,NUM_PA=16L,EBINS=[0,7], $
+                     /DAT_CLN,/DAT_SHFT,/DAT_NORM)
+
+; => Delete all these TPLOT names
+store_data,DELETE=tnames('*elb_pads*')
+;-----------------------------------------------------------------------------------------
+; => Create ASCII files for stacked line plots of particle spectra data for ELB with only
+;      the 8 highest energies with the units of energy flux
+;-----------------------------------------------------------------------------------------
+g_ael = [ael,aelb]
+sp    = SORT(g_ael.TIME)
+g_ael = g_ael[sp]
+write_padspec_ascii,'el',NUM_PA=16L,DAT_ARR=g_ael,UNITS='eflux',/G_MAGF,EBINS=[0,7]
+
+;-----------------------------------------------------------------------------------------
+; => Read in the files we just created, clean the spectra, normalize by range define by
+;      the keyword RANGE_AVG, and make sure the program grabs the files associated with
+;      energy flux.
+;-----------------------------------------------------------------------------------------
+name      = 'el'
+date      = '082698'
+units     = 'eflux'
+range_avg = time_double(['1998-08-23/00:00:00','1998-08-24/00:00:00'])
+padspec_ascii_to_tplot,name,DATE=date,/DAT_NORM,/DAT_CLN,UNITS=units,RANGE_AVG=range_avg
+
+
+;=========================================================================================
+; => General Calculations
+;=========================================================================================
+
+;-----------------------------------------------------------------------------------------
+; => Calculate the wavelet transform of the magnetic field data
+;-----------------------------------------------------------------------------------------
+t_o    = time_string(tr3)
+
+stime  = STRMID(t_o[*],0,10)+'_'+STRMID(t_o[*],11,2)+STRMID(t_o[*],14,2)
+sstime = stime[0]+'_'+stime[1]
+
+utx = t3x
+bx  = magf4[*,0]
+by  = magf4[*,1]
+bz  = magf4[*,2]
+store_data,'Bx_'+sstime[0],DATA={X:utx,Y:bx}
+wavelet_to_tplot,utx,bx,NEW_NAME='Bx_'+sstime[0]+'_wavelet'
+store_data,'By_'+sstime[0],DATA={X:utx,Y:by}
+wavelet_to_tplot,utx,by,NEW_NAME='By_'+sstime[0]+'_wavelet'
+store_data,'Bz_'+sstime[0],DATA={X:utx,Y:bz}
+wavelet_to_tplot,utx,bz,NEW_NAME='Bz_'+sstime[0]+'_wavelet'
+
+nnxyz = ['Bx_'+sstime[0],'By_'+sstime[0],'Bz_'+sstime[0]]
+wwxyz = nnxyz+'_wavelet'
+
+options,nnxyz[0],'YTITLE','B!Dx!N (nT)'
+options,nnxyz[1],'YTITLE','B!Dy!N (nT)'
+options,nnxyz[2],'YTITLE','B!Dz!N (nT)'
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+op_names = tnames(['*_Conf_Level_95','*_Cone_of_Influence'])
+options,op_names,'YRANGE',[3e-4,2e-1]
+options,['fci','flh'],'YRANGE',[3e-4,2e-1]
+options,wwxyz,'ZRANGE',[1e-2,5e2]
+options,wwxyz,'YRANGE',[3e-4,2e-1]
+;-----------------------------------------------------------------------------------------
+; => Over plot the proton cyclotron freq, cone of influence, and 95% confidence levels
+;-----------------------------------------------------------------------------------------
+lims       = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',1.5)
+nn0        = [nnxyz[1],wwxyz[1]]
+nn2        = ['fci',wwxyz[1]+'_Cone_of_Influence',wwxyz[1]+'_Conf_Level_95']
+oplot_tplot_spec,nn0,nn2,LIMITS=lims
+
+
+
+
+
+

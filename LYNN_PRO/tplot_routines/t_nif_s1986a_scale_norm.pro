@@ -1,0 +1,569 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   t_nif_s1986a_test_struct.pro
+;  PURPOSE  :   This routine tests the format of the input structure NIF_STR for use
+;                 in t_nif_s1986a_scale_norm.pro.
+;
+;  CALLED BY:   
+;               t_nif_s1986a_scale_norm.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               NIF_STR    :  Scalar [structure] with format defined in man page of
+;                               t_nif_s1986a_scale_norm.pro
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;   CREATED:  01/23/2013
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  01/23/2013   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION t_nif_s1986a_test_struct,nif_str
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+def_tags       = ['NORM','U_SHN','V_SHN','B_UP','B_DN','VSW_UP','VSW_DN','N_UP','N_DN']
+ndeft          = N_ELEMENTS(def_tags)
+spdef          = SORT(def_tags)
+;; => Dummy error messages
+noinpt_msg     = 'No input supplied...'
+notstr_msg     = 'NIF_STR must be a structure...'
+badstr_msg     = 'Incorrect NIF_STR structure format...'
+;;----------------------------------------------------------------------------------------
+;; => Check input structure
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 1) THEN BEGIN
+  ;; => no input???
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+
+IF (SIZE(nif_str,/TYPE) NE 8) THEN BEGIN
+  ;; => not a structure
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;  Determine structure tag names and # of tags
+ntags          = N_TAGS(nif_str)
+tag_nms        = STRUPCASE(TAG_NAMES(nif_str))
+sp_tags        = SORT(tag_nms)
+
+test_numb      = (ntags NE ndeft)
+test_name      = (STRLOWCASE(def_tags[spdef]) NE STRLOWCASE(tag_nms[sp_tags]))
+test_nm        = TOTAL(test_name) GT 0
+test           = (test_numb OR test_nm)
+IF (test) THEN BEGIN
+  ;; => not a structure
+  MESSAGE,badstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Return TRUE
+;;----------------------------------------------------------------------------------------
+
+RETURN,1
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   t_nif_s1986a_scale_norm.pro
+;  PURPOSE  :   This routine is specifically made for collisionless shock calculations.
+;                 Definitions:
+;                 ICB  :  Input Coordinate Basis (e.g., GSE)
+;                 NIF  :  Normal Incidence Frame
+;                 SCF  :  SpaceCraft Frame
+;                 NCB  :  Normal Incidence Frame Coordinate Basis
+;                 SRF  :  Shock Rest Frame
+;
+;                 This routine calculates:
+;                   1)  the NIF rotation matrix
+;                   2)  NIF transformation velocity from SCF
+;                   3)  convection electric field in NIF in the ICB
+;                   4)  magnetic field rotated into NCB
+;                   5)  spatial scale along shock normal vector
+;                   6)  part of 2 components of the curl(B)/µ_o in NIF in the
+;                         NCB  -->>  estimate of current density
+;                   7)  the magnitude of the curl(B)/µ_o in NIF in the NCB
+;                   8)  the smoothed current density
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               t_nif_s1986a_test_struct.pro
+;               time_range_define.pro
+;               time_double.pro
+;               tnames.pro
+;               r_matrix_nif_s1986a.pro
+;               get_data.pro
+;               my_crossp_2.pro
+;               interp.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NIF_STR    :  Scalar [structure] defining the shock geometry and jump
+;                               conditions with the following structure tags:
+;                                 NORM    :  [3]-Element vector in ICB [unitless]
+;                                 U_SHN   :  Scalar [float] defining the upstream shock
+;                                              normal velocity [km/s] in the SRF
+;                                 V_SHN   :  Scalar [float] defining the upstream shock
+;                                              normal velocity [km/s] in the SCF
+;                                 B_UP    :  [3]-Element vector defining the upstream
+;                                              average magnetic field [nT] vector in ICB
+;                                 B_DN    :  [3]-Element vector defining the downstream
+;                                              average magnetic field [nT] vector in ICB
+;                                 VSW_UP  :  [3]-Element vector defining the upstream
+;                                              average bulk flow velocity [km/s]
+;                                              vector in ICB
+;                                 VSW_DN  :  [3]-Element vector defining the downstream
+;                                              average bulk flow velocity [km/s]
+;                                              vector in ICB
+;                                 N_UP    :  Scalar [float] defining the average
+;                                              upstream plasma number density
+;                                              [cm^(-3)]
+;                                 N_DN    :  Scalar [float] defining the average
+;                                              downstream plasma number density
+;                                              [cm^(-3)]
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               VSW_TPNM    :  Scalar [string,long] defining the TPLOT handle to use for
+;                                the bulk flow velocity [km/s] in ICB
+;               MAGF_TPNM   :  Scalar [string,long] defining the TPLOT handle to use for
+;                                the magnetic field vector [nT] in ICB
+;               SCPOS_TPNM  :  Scalar [string,long] defining the TPLOT handle to use for
+;                                the SC position [km] in ICB
+;               NSM         :  Scalar [long] defining the # of points over which to
+;                                smooth current densities
+;               TRANGE      :  [2]-Element [double] array specifying the Unix time range
+;                                over which calculations should be performed
+;               TRAMP       :  Scalar [double] Unix time defining the center of the
+;                                shock ramp or timestamp about which relative spatial
+;                                scales wish to be known
+;
+;   CHANGED:  1)  Fixed a sign error for |j| calculations
+;                                                                 [02/08/2013   v1.1.0]
+;             2)  Now calls r_matrix_nif_s1986a.pro
+;                                                                 [02/08/2013   v1.2.0]
+;
+;   NOTES:      
+;               1)  There are implicit assumptions in the estimation of both the NIF
+;                     and the current density.  The assumptions are:
+;                       A)  the shock front can be characterized as a planar stationary
+;                             surface with a well defined temporal location
+;                       B)  the Rankine-Hugoniot conservation relations hold without
+;                             the addition of sources/sinks [e.g., reflected ions,
+;                             anomalous resistivity, heat flux considerations, etc.]
+;                       C)  the stationary solutions give a shock velocity which is
+;                             constant, thus allowing one to convert temporal abscissa
+;                             to spatial abscissa
+;                       D)  the current density can be entirely characterized by the
+;                             curl of the magnetic field divided by the permeability
+;                             of free space
+;                               => use spatial abscissa to estimate part of two
+;                                    components of the current density
+;
+;  REFERENCES:  
+;               1)  Scudder, J.D., A. Mangeney, C. Lacombe, C.C. Harvey, T.L. Aggson,
+;                      R.R. Anderson, J.T. Gosling, G. Paschmann, and C.T. Russell
+;                      (1986a) "The Resolved Layer of a Collisionless, High ß,
+;                      Supercritical, Quasi-Perpendicular Shock Wave 1:
+;                      Rankine-Hugoniot Geometry, Currents, and Stationarity,"
+;                      J. Geophys. Res. Vol. 91, pp. 11,019-11,052.
+;               2)  Scudder, J.D., A. Mangeney, C. Lacombe, C.C. Harvey, T.L. Aggson
+;                      (1986b) "The Resolved Layer of a Collisionless, High ß,
+;                      Supercritical, Quasi-Perpendicular Shock Wave 2:
+;                      Dissipative Fluid Electrodynamics," J. Geophys. Res. Vol. 91,
+;                      pp. 11,053-11,073.
+;               3)  Scudder, J.D., A. Mangeney, C. Lacombe, C.C. Harvey, C.S. Wu,
+;                      R.R. Anderson (1986c) "The Resolved Layer of a Collisionless,
+;                      High ß, Supercritical, Quasi-Perpendicular Shock Wave 3:
+;                      Vlasov Electrodynamics," J. Geophys. Res. Vol. 91,
+;                      pp. 11,075-11,097.
+;               4)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;
+;   CREATED:  01/23/2013
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/08/2013   v1.2.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION t_nif_s1986a_scale_norm,nif_str,VSW_TPNM=vsw_tpnm,MAGF_TPNM=magf_tpnm, $
+                                 SCPOS_TPNM=scpostpnm,NSM=nsm,TRANGE=trange,    $
+                                 TRAMP=tramp
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+me             = 9.1093829100d-31     ;; => Electron mass [kg]
+mp             = 1.6726217770d-27     ;; => Proton mass [kg]
+ma             = 6.6446567500d-27     ;; => Alpha-Particle mass [kg]
+c              = 2.9979245800d+08     ;; => Speed of light in vacuum [m/s]
+epo            = 8.8541878170d-12     ;; => Permittivity of free space [F/m]
+muo            = !DPI*4.00000d-07     ;; => Permeability of free space [N/A^2 or H/m]
+qq             = 1.6021765650d-19     ;; => Fundamental charge [C]
+kB             = 1.3806488000d-23     ;; => Boltzmann Constant [J/K]
+hh             = 6.6260695700d-34     ;; => Planck Constant [J s]
+GG             = 6.6738400000d-11     ;; => Newtonian Constant [m^(3) kg^(-1) s^(-1)]
+
+f_1eV          = qq[0]/hh[0]          ;; => Freq. associated with 1 eV of energy [Hz]
+J_1eV          = hh[0]*f_1eV[0]       ;; => Energy associated with 1 eV of energy [J]
+;; => Temp. associated with 1 eV of energy [K]
+K_eV           = qq[0]/kB[0]          ;; ~ 11,604.519 K
+R_E            = 6.37814d3            ;; => Earth's Equitorial Radius [km]
+
+;;  Define conversion factors
+wpi_fac        = SQRT(1d6*qq[0]^2/(mp[0]*epo[0]))
+wci_fac        = qq[0]*1d-9/mp[0]
+ckm            = c[0]*1d-3
+e_fac          = 1d3*1d-9*1d3         ;;  km/s -> m/s, nT -> T, V/m -> mV/m
+j_fac          = 1d-9*1d6/muo[0]      ;;  nT -> T, A -> µA, divide by µ_o
+;;----------------------------------------------------------------------------------------
+;; => Check input structure
+;;----------------------------------------------------------------------------------------
+test           = t_nif_s1986a_test_struct(nif_str) NE 1
+IF (test) THEN BEGIN
+  E_conv_str     = 0
+  db_struc       = 0
+  dx_struc       = 0
+  dj_struc       = 0
+  ;;------------------------------
+  ;;  Skip calculations
+  ;;------------------------------
+  GOTO,JUMP_SKIP_E
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Determine time range and center of ramp
+;;----------------------------------------------------------------------------------------
+time_ra        = time_range_define(DATE=date,TRANGE=trange)
+tra            = time_ra.TR_UNIX
+tdates         = time_ra.TDATE_SE
+fdate          = time_ra.FDATE_SE
+tdate          = tdates[0]
+;;  Check for center of ramp time
+IF (N_ELEMENTS(tramp) EQ 0) THEN tramp = MEAN(tra,/NAN) ELSE tramp = time_double(tramp[0])
+;;----------------------------------------------------------------------------------------
+;; => Check keywords
+;;----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(nsm)       EQ 0) THEN nsm      = 10L ELSE nsm      = LONG(nsm[0])
+
+IF (N_ELEMENTS(vsw_tpnm)  EQ 0) THEN vel__in  = ' ' ELSE vel__in  = vsw_tpnm[0]
+IF (N_ELEMENTS(magf_tpnm) EQ 0) THEN magf_in  = ' ' ELSE magf_in  = magf_tpnm[0]
+IF (N_ELEMENTS(scpostpnm) EQ 0) THEN scpos_in = ' ' ELSE scpos_in = scpostpnm[0]
+
+vsw_name        = tnames(vel__in[0])
+magfname        = tnames(magf_in[0])
+pos_name        = tnames(scpos_in[0])
+IF (vsw_name[0] NE '') THEN test_vsw = 0 ELSE test_vsw = 1
+IF (magfname[0] NE '') THEN test_mag = 0 ELSE test_mag = 1
+IF (pos_name[0] NE '') THEN test_pos = 0 ELSE test_pos = 1
+;;----------------------------------------------------------------------------------------
+;; => Define average shock parameters and normalized scale lengths
+;;----------------------------------------------------------------------------------------
+;;  Shock Parameters
+gnorm          = nif_str.NORM
+ushn_up        = nif_str.U_SHN
+vshn_up        = nif_str.V_SHN
+;;  Avg. upstream/downstream Vsw, Bo, and Ni
+magf_up        = nif_str.B_UP         ;;  Avg. upstream   B-field  vector in ICB [nT]
+magf_dn        = nif_str.B_DN         ;;  Avg. downstream B-field  vector in ICB [nT]
+vsw_up         = nif_str.VSW_UP       ;;  Avg. upstream   velocity vector in ICB [km/s]
+vsw_dn         = nif_str.VSW_DN       ;;  Avg. downstream velocity vector in ICB [km/s]
+dens_up        = nif_str.N_UP         ;;  Avg. upstream   density [cm^(-3)]
+dens_dn        = nif_str.N_DN         ;;  Avg. downstream density [cm^(-3)]
+;;  Define magnitudes
+vmag_up        = SQRT(TOTAL(vsw_up^2,/NAN))
+vmag_dn        = SQRT(TOTAL(vsw_dn^2,/NAN))
+bmag_up        = SQRT(TOTAL(magf_up^2,/NAN))
+bmag_dn        = SQRT(TOTAL(magf_dn^2,/NAN))
+;;  Avg. upstream/downstream ion plasma frequency [rad/s]
+wpi_up         = wpi_fac[0]*SQRT(dens_up[0])
+wpi_dn         = wpi_fac[0]*SQRT(dens_dn[0])
+;;  Avg. upstream/downstream ion cyclotron frequency [rad/s]
+wci_up         = wci_fac[0]*bmag_up[0]
+wci_dn         = wci_fac[0]*bmag_dn[0]
+;;-----------------------------------------------------------
+;;  Define upstream ion inertial length [km]
+;;-----------------------------------------------------------
+Lii_up         = ckm[0]/wpi_up[0]
+;;-----------------------------------------------------------
+;;  Define convected ion gyroradii [km]
+;;-----------------------------------------------------------
+rho_convi      = ABS(ushn_up[0])/wci_dn[0]
+;;----------------------------------------------------------------------------------------
+;; => Define NCB rotation matrix
+;;        {Use Scudder et al., [1986a]}
+;;----------------------------------------------------------------------------------------
+;; => X'-vector
+xvnor          = gnorm/NORM(REFORM(gnorm))
+;;  Get rotation Matrix from NCB(ICB) to ICB(NCB)
+rmats          = r_matrix_nif_s1986a(magf_up,magf_dn,xvnor)
+;; => Rotation Matrix from NCB to ICB
+rotgse         = rmats.R_NCB_2_ICB
+;; => Define rotation from ICB to NCB
+rotnif         = rmats.R_ICB_2_NCB
+;;----------------------------------------------------------------------------------------
+;; => Calculate spatial scales along shock normal
+;;----------------------------------------------------------------------------------------
+IF (test_pos) THEN BEGIN
+  ;; => no SC position TPLOT handle input???
+  IF (test_mag) THEN BEGIN
+    ;; => no Bo TPLOT handle input???
+    IF (test_vsw) THEN BEGIN
+      ;; => no Vsw TPLOT handle input???
+      E_conv_str     = 0
+      db_struc       = 0
+      dx_struc       = 0
+      dj_struc       = 0
+      ;;------------------------------
+      ;;  Skip calculations
+      ;;------------------------------
+      GOTO,JUMP_SKIP_E
+    ENDIF ELSE BEGIN
+      ;;  Get SC position [use Vsw timestamps]
+      get_data,vsw_name[0],DATA=temp_pos,DLIM=dlim_pos,LIM=lim_pos
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;;  Get SC position [use B-field timestamps]
+    get_data,magfname[0],DATA=temp_pos,DLIM=dlim_pos,LIM=lim_pos
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;;  Get SC position
+  get_data,pos_name[0],DATA=temp_pos,DLIM=dlim_pos,LIM=lim_pos
+ENDELSE
+;;  Use only data within time range
+times0         = temp_pos.X
+good           = WHERE(times0 GE tra[0] AND times0 LE tra[1],gd)
+IF (gd GT 0) THEN times = times0[good] ELSE times = times0
+;;  Define low/high indices
+i_low          = LINDGEN(N_ELEMENTS(times) - 1L)
+i_high         = i_low + 1L
+;;  Define scales for tick marks
+;;  => Define center of ramp [now well defined here, but close...]
+t_center       = tramp[0]
+dt_cent        = times - t_center[0]        ;;  time [s] from center of ramp
+delta_xncen    = vshn_up[0]*dt_cent         ;;  displacement along shock normal [km]
+delta_xncenr   = delta_xncen/rho_convi[0]   ;;  displacement along shock normal [r_conv,i]
+delta_xncenL   = delta_xncen/Lii_up[0]      ;;  displacement along shock normal [c/wpi_up]
+;;  Define ∆x structure
+dxtags         = ['TIME','LI_UP','RHOI_CONV',['T','DELTA_T','DELTA_XN']+'_CEN',$
+                  'DELTA_XN_CEN'+['_RHO','_ILI'],'ROT_NCB_ICB','ROT_ICB_NCB']
+dx_struc       = CREATE_STRUCT(dxtags,times,Lii_up[0],rho_convi[0],t_center[0],dt_cent,$
+                               delta_xncen,delta_xncenr,delta_xncenL,rotgse,rotnif)
+;;----------------------------------------------------------------------------------------
+;; => Get magnetic field in ICB
+;;----------------------------------------------------------------------------------------
+IF (test_mag) THEN BEGIN
+  ;; => no Bo TPLOT handle input???
+  E_conv_str     = 0
+  db_struc       = 0
+  dj_struc       = 0
+  GOTO,JUMP_SKIP_E
+ENDIF
+;;  Get Bo
+get_data,magfname[0],DATA=temp_magf,DLIM=dlim_magf,LIM=lim_magf
+magf_t0        = temp_magf.X
+magf_B0        = temp_magf.Y
+;;  Use only data within time range
+good           = WHERE(magf_t0 GE tra[0] AND magf_t0 LE tra[1],gd)
+IF (gd GT 0) THEN magf_t = magf_t0[good]   ELSE magf_t = magf_t0
+IF (gd GT 0) THEN magf_B = magf_B0[good,*] ELSE magf_B = magf_B0
+;;  Define adjacent indices
+n_mag          = N_ELEMENTS(magf_t)
+i_low          = LINDGEN(n_mag - 1L)
+i_high         = i_low + 1L
+;;----------------------------------------------------------------------------------------
+;; => Calculate current density components in NIF in ICB
+;;----------------------------------------------------------------------------------------
+max_gap        = 1d0   ;;  maximum time gap in timestamps
+;;-----------------------------------------------------
+;;  Define time different between adjacent timestamps
+;;    ∆t_{i} = (t_{k} - t_{j})
+;;-----------------------------------------------------
+delta_t        = (magf_t[i_high] - magf_t[i_low])
+bad            = WHERE(delta_t GT max_gap[0],bd)
+IF (bd GT 0) THEN delta_t[bad] = d
+;;-----------------------------------------------------
+;;  Define new timestamps
+;;    T_{i} = (t_{k} + t_{j})/2
+;;-----------------------------------------------------
+t_new          = (magf_t[i_high] + magf_t[i_low])/2d0
+IF (bd GT 0) THEN t_new[bad] = d
+;;-----------------------------------------------------
+;;  Define spatial scale [m] along shock normal
+;;    ∆x_{i} = Vshn ∆t_{i}
+;;-----------------------------------------------------
+delta_xn       = vshn_up[0]*delta_t*1d3    ;; [m]
+;;-----------------------------------------------------
+;;  Rotate B-field into NIF in NCB
+;;-----------------------------------------------------
+magf_b_nif     = REFORM(rotnif ## magf_B)
+bmag_B         = SQRT(TOTAL(magf_b_nif^2,2L,/NAN))           ;;  |B|
+magf_nif_str   = {TIME:magf_t,VEC:magf_b_nif,MAG:bmag_B}
+;;-----------------------------------------------------------
+;;  Define ∆B [nT] in NIF in NCB
+;;    [∆B(T_{i})]_{m} = [B(t_{k}) - B(t_{j})]_{m}
+;;        m      =  vector component
+;;        i      =  abscissa value for new timestamps
+;;        [j,k]  =  abscissa value for B-field timestamps
+;;-----------------------------------------------------------
+delta_Bx       = (magf_b_nif[i_high,0] - magf_b_nif[i_low,0])
+delta_By       = (magf_b_nif[i_high,1] - magf_b_nif[i_low,1])
+delta_Bz       = (magf_b_nif[i_high,2] - magf_b_nif[i_low,2])
+delta_B_nif    = [[delta_Bx],[delta_By],[delta_Bz]]
+;;-----------------------------------------------------
+;;  Define |∆B| [nT]
+;;    |∆B|  =  [ ∑_{m} [∆B(T_{i})]_{m}^{2} ]^{1/2}
+;;-----------------------------------------------------
+mag_delta_B    = SQRT(TOTAL(delta_B_nif^2,2L,/NAN))
+;;-----------------------------------------------------
+;;  Define ∆|B| [nT]
+;;    ∆|B|  =  |B(t_{k})| - |B(t_{j})|
+;;-----------------------------------------------------
+delta_Bmag     = (bmag_B[i_high] - bmag_B[i_low])
+;; => Remove bad points
+IF (bd GT 0) THEN delta_B_nif[bad,*] = d
+IF (bd GT 0) THEN mag_delta_B[bad]   = d
+IF (bd GT 0) THEN delta_Bmag[bad]    = d
+;;  Define ∆B structure
+dbtags         = ['MAGF_NIF_STR','DELTA_T','T_NEW','DELTA_X_N','DELTA_B_NIF',$
+                  'MAG_DELTA_B','DELTA_BMAG']
+db_struc       = CREATE_STRUCT(dbtags,magf_nif_str,delta_t,t_new,delta_xn,delta_B_nif,$
+                               mag_delta_B,delta_Bmag)
+;;----------------------------------------------------------------------------------------
+;;  Define:  j = (∆ x B)/µ  [NIF in NCB]
+;;
+;;    Due to only having one spatial component, then we can only estimate one part
+;;      of two components of curl(B):
+;;        j_ny = -(∂Bz/∂x)/µ ~ -(∆Bz/∆x)/µ
+;;        j_nz =  (∂By/∂x)/µ ~  (∆By/∆x)/µ
+;;----------------------------------------------------------------------------------------
+j_ny           = -1d0*j_fac[0]*delta_Bz/delta_xn                  ;;  [µA m^(-2)]
+j_nz           =      j_fac[0]*delta_By/delta_xn                  ;;  [µA m^(-2)]
+;;-----------------------------------------------------
+;;  Define |j| [µA m^(-2)]
+;;    |j|  = |(∆ x B)/µ| ~ |∆B|/(|∆x| µ)
+;;-----------------------------------------------------
+j_mag          =      j_fac[0]*ABS(mag_delta_B/delta_xn)          ;;  [µA m^(-2)]
+;;-----------------------------------------------------
+;;  Define ∆|j| [µA m^(-2), = pseudo-current]
+;;    ∆|j| = (∆ x |B|)/µ ~ ∆|B|/(|∆x| µ)
+;;-----------------------------------------------------
+dj_Bmag        =      j_fac[0]*ABS(ABS(delta_Bmag)/delta_xn)      ;;  [µA m^(-2)]
+;;-----------------------------------------------------
+;;  j-vector [NIF in NCB], |j|, and ∆|j|
+;;-----------------------------------------------------
+j_nx           = REPLICATE(d,n_mag - 1L)
+j_vec          = [[j_nx],[j_ny],[j_nz]]
+jmag_dj        = [[j_mag],[dj_Bmag]]
+;;  Define j structure
+djtags         = ['TIME','JVEC_NIF','JMAG_NIF']
+jvec_str       = CREATE_STRUCT(djtags,t_new,j_vec,jmag_dj)
+;;---------------------------------------
+;; => Smooth currents
+;;---------------------------------------
+;;  j-vector
+temp_smvx      = SMOOTH(j_vec[*,0],nsm[0],/NAN,/EDGE_TRUNCATE)
+temp_smvy      = SMOOTH(j_vec[*,1],nsm[0],/NAN,/EDGE_TRUNCATE)
+temp_smvz      = SMOOTH(j_vec[*,2],nsm[0],/NAN,/EDGE_TRUNCATE)
+j_vec_sm       = [[temp_smvx],[temp_smvy],[temp_smvz]]
+;; |j| and ∆|j|
+temp_smmx      = SMOOTH(jmag_dj[*,0],nsm[0],/NAN,/EDGE_TRUNCATE)
+temp_smmy      = SMOOTH(jmag_dj[*,1],nsm[0],/NAN,/EDGE_TRUNCATE)
+jmag_dj_sm     = [[temp_smmx],[temp_smmy]]
+;;  Define smoothed j structure
+djtags         = ['TIME',['JVEC_NIF','JMAG_NIF']+'_SM']
+jvec_sm_str    = CREATE_STRUCT(djtags,t_new,j_vec_sm,jmag_dj_sm)
+;;  Define ∆j structure
+djtags         = ['DELTA_J_NIF_STR','DELTA_J_SM_NIF_STR']
+dj_struc       = CREATE_STRUCT(djtags,jvec_str,jvec_sm_str)
+;;----------------------------------------------------------------------------------------
+;; => Calculate convective electric field in NIF in ICB
+;;----------------------------------------------------------------------------------------
+IF (test_vsw) THEN BEGIN
+  ;; => no Vsw TPLOT handle input???
+  E_conv_str     = 0
+  GOTO,JUMP_SKIP_E
+ENDIF
+;;  Get Vsw
+get_data,vsw_name[0],DATA=temp_vsw,DLIM=dlim_vsw,LIM=lim_vsw
+Vsw_t0         = temp_vsw.X
+Vsw_gse0       = temp_vsw.Y
+;;  Use only data within time range
+good           = WHERE(Vsw_t0 GE tra[0] AND Vsw_t0 LE tra[1],gd)
+IF (gd GT 0) THEN Vsw_t   = Vsw_t0[good]     ELSE Vsw_t   = Vsw_t0
+IF (gd GT 0) THEN Vsw_gse = Vsw_gse0[good,*] ELSE Vsw_gse = Vsw_gse0
+;; Calculate V_u [upstream shock rest frame inflow velocity]
+;;        {e.g., see Equation 10.3 of Paschmann and Daly, [1998]}
+vsh_nn         = REPLICATE(vshn_up[0],N_ELEMENTS(Vsw_t))
+V_ux           = Vsw_gse[*,0] - vsh_nn*xvnor[0]
+V_uy           = Vsw_gse[*,1] - vsh_nn*xvnor[1]
+V_uz           = Vsw_gse[*,2] - vsh_nn*xvnor[2]
+V_u            = [[V_ux],[V_uy],[V_uz]]
+;; Calculate V_NIF transformation velocity
+;;        {e.g., see Equation 10.4 of Paschmann and Daly, [1998]}
+;;    V_NIF = n x (V_u x n)
+;;          = n x [(Vsw - Vsh n) x n]
+;;          = n x (Vsw x n) - Vsh [n x (n x n)]
+;;          = n x (Vsw x n)
+V_NIF_tr       = my_crossp_2(xvnor,my_crossp_2(Vsw_gse,xvnor,/NOM),/NOM)
+;; Transform Vsw into NIF [still in ICB]
+V_NIF          = V_u - V_NIF_tr
+;; => Define convection velocity difference between SCF and NIF
+delta_V        = Vsw_gse - V_NIF    ;;  = (Vsh . n) + V_NIF_tr
+;; => Interpolate Bo to Vsw timestamps
+tempx          = interp(magf_B[*,0],magf_t,Vsw_t,/NO_EXTRAP)
+tempy          = interp(magf_B[*,1],magf_t,Vsw_t,/NO_EXTRAP)
+tempz          = interp(magf_B[*,2],magf_t,Vsw_t,/NO_EXTRAP)
+magf_it        = [[tempx],[tempy],[tempz]]
+;; => Define E_conv in NIF in ICB
+E_conv         = -1d0*my_crossp_2(delta_V,magf_it,/NOM)*e_fac[0]
+;;  Define E_conv structure
+detags         = ['TIME','VTRANS_NIF_ICB','E_CONV_NIF_ICB','VSW_NIF_ICB','DELTA_V_NIF_ICB']
+E_conv_str     = CREATE_STRUCT(detags,Vsw_t,V_NIF_tr,E_conv,V_NIF,delta_V)
+;;========================================================================================
+JUMP_SKIP_E:
+;;========================================================================================
+;;----------------------------------------------------------------------------------------
+;; => Define return structure
+;;----------------------------------------------------------------------------------------
+tags           = ['DELTA_XSTR','DELTA_BSTR','DELTA_JSTR','E_CONV_STR']
+struc          = CREATE_STRUCT(tags,dx_struc,db_struc,dj_struc,E_conv_str)
+;;----------------------------------------------------------------------------------------
+;; => Return structure to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END

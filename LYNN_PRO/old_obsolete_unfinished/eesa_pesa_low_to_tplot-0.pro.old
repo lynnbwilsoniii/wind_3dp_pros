@@ -1,0 +1,538 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   eesa_pesa_low_to_tplot.pro
+;  PURPOSE  :   The purpose of this program is to take an input array of Eesa and/or Pesa
+;                 Low data structures (only modified by having previously added the
+;                 magnetic field, solar wind velocity, and spacecraft potential to the
+;                 structures before calling this routine) and calculate the moments
+;                 of the distribution function.  The output depends on a few of the
+;                 optional keywords, specifically TO_TPLOT and TO_SAVE.  If TO_TPLOT
+;                 is set, then the program creates TPLOT variables for both the Pesa
+;                 Low moments and Eesa Low moments.  The Eesa Low moments are calculated
+;                 in the spacecraft frame, solar wind frame, and for the halo and core
+;                 of the distribution.  The Pesa Low moments are calibrated if in the
+;                 presence of a shock.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               my_str_date.pro
+;               read_shocks_jck_database.pro
+;               my_time_string.pro
+;               time_string.pro
+;               time_double.pro
+;               pesa_low_moment_calibrate.pro
+;               moments_array_3dp.pro
+;               eesa_data_4.pro
+;               tnames.pro
+;               store_data.pro
+;               options.pro
+;               eesa_pesa_low_to_psfile.pro
+;               my_array_where.pro
+;
+;  REQUIRES:    
+;               UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               DATE      :  [string] 'MMDDYY' [MM=month, DD=day, YY=year]
+;               TRANGE    :  [Double] 2-Element array specifying the time range over 
+;                              which to get data structures for [Unix time]
+;               PLM       :  N-Element array of Pesa Low 3DP moment structures.  
+;                              This keyword is intended to be used if Pesa Low moments
+;                              are available for given time period.
+;               PLBM      :  N-Element array of Pesa Low Burst 3DP moment structures.
+;                              This keyword is intended to be used if Pesa Low Burst
+;                              moments are available for given time period.
+;               ELM       :  N-Element array of 3DP Eesa particle data structures from a 
+;                              non-burst mode program (e.g. get_el.pro)
+;               ELBM      :  M-Element array of 3DP Eesa particle data structuresfrom a 
+;                              burst mode program (e.g. get_elb.pro)
+;               G_MAGF    :  If set, tells program that the structures in PLM or PLBM
+;                              already have the magnetic field added to them thus 
+;                              preventing this program from calling add_magf2.pro 
+;                              again.
+;               TO_TPLOT  :  If set, data quantities are sent to TPLOT
+;               TO_SAVE   :  If set, quantities are plotted and saved as PS files
+;               SUFFX     :  Scalar string to differentiate TPLOT handles if program
+;                              called multiple times
+;
+;   CHANGED:  1)  Finished writing program and added new program called
+;                   eesa_pesa_low_to_psfile.pro for PS files      [09/29/2009   v1.0.1]
+;             2)  Fixed issue with 02/11/2000 events              [12/01/2009   v1.1.0]
+;             3)  Added information for 10/11/2001, 10/21/2001, 10/25/2001, and
+;                   11/24/2001                                    [02/10/2010   v1.2.0]
+;             4)  Fixed issue when entering only PLM and ELM but NOT PLBM and ELBM
+;                                                                 [02/10/2010   v1.3.0]
+;             5)  Added information for 04/23/1998, 04/30/1998, and 05/15/1998
+;                                                                 [03/07/2010   v1.4.0]
+;             6)  Fixed typo in input error handling              [12/15/2011   v1.4.1]
+;
+;   NOTES:      
+;               1)  At least one of the PLM, PLBM, ELM, or ELBM keywords MUST be set
+;
+;   CREATED:  09/28/2009
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  12/15/2011   v1.4.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO eesa_pesa_low_to_tplot,DATE=date,TRANGE=trange,PLM=plm,PLBM=plbm,         $
+                           ELM=elm,ELBM=elbm,G_MAGF=g_magf,TO_TPLOT=to_tplot, $
+                           TO_SAVE=to_save,SUFFX=suffx
+
+;*****************************************************************************************
+ex_start = SYSTIME(1)
+;*****************************************************************************************
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables
+;-----------------------------------------------------------------------------------------
+f         = !VALUES.F_NAN
+d         = !VALUES.D_NAN
+tdate     = ''             ; => ['YYYY-MM-DD']
+mdate     = ''             ; => ['YYYYMMDD']
+ldate     = ''             ; => ['YYYYMMDD']
+yearsh    = ''             ; => ['YY']
+mthsh     = ''             ; => ['MM']
+daysh     = ''             ; => ['DD']
+str_check = 0              ; => Logic test for keywords: 'PLM', 'PLBM', 'ELM', and 'ELBM'
+rstr      = ''             ; => Strings associated with keywords: (see immediately above)
+g_str     = ''             ; => Array of strings from RSTR but null where keywords not set
+dstr      = 0              ; => Dummy structure containing all the keywords from STR_CHECK
+  ;.....................................................................................;
+  ; => Dummy structure used as a logic test to determine which keyword is set initially ;
+  ;      set to all 0's and then set to 1's where KEYWORD_SET is satisfied              ;
+  ;.....................................................................................;
+typ_str   = 0
+gcheck    = -1             ; => Array of elements of STR_CHECK = 1
+;..................................................................................;
+; => Set logic variables for Eesa and Pesa Low structures that equal the number of ;
+;      associated keywords set called eesa_str and pesa_str, e.g.                  ;
+;      = 0                 ; => Neither P(E)LM NOR P(E)LBM are set                 ;
+;                               =>> No ions(electrons) moments!                    ;
+;      = 1                 ; => Either P(E)LM OR P(E)LBM is set                    ;
+;                               =>> One ion(electron) moment!                      ;
+;      = 2                 ; => Both P(E)LM AND P(E)LBM are set                    ;
+;                               =>> Two ion(electron) moments!                     ;
+;..................................................................................;
+eesa_str  = 0
+pesa_str  = 0
+; => Logic check to see if user even supplied any particle data structures
+test      = 0
+; => Define structure arrays
+struct_e  = 0              ; => Array of Eesa Low (and possibly Burst) data structures
+struct_p  = 0              ; => Array of Pesa Low (and possibly Burst) data structures
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+;test = (KEYWORD_SET(plm) OR KEYWORD_SET(plbm) $
+;        AND KEYWORD_SET(elm) OR KEYWORD_SET(elbm))
+test = (                                             $
+        ( KEYWORD_SET(plm) OR KEYWORD_SET(plbm) ) OR $
+        ( KEYWORD_SET(elm) OR KEYWORD_SET(elbm) )    $
+       )
+IF (NOT test) THEN BEGIN
+  MESSAGE,'No data was input... nothing will be done',/INFORMATIONAL,/CONTINUE
+  RETURN
+END
+
+IF NOT KEYWORD_SET(plm)  THEN plm  = 0
+IF NOT KEYWORD_SET(plbm) THEN plbm = 0
+IF NOT KEYWORD_SET(elm)  THEN elm  = 0
+IF NOT KEYWORD_SET(elbm) THEN elbm = 0
+str_check = [KEYWORD_SET(plm),KEYWORD_SET(plbm),KEYWORD_SET(elm),KEYWORD_SET(elbm)]
+rstr      = ['PLM','PLBM','ELM','ELBM']
+g_str     = ['','','','']
+dstr      = CREATE_STRUCT(rstr,plm,plbm,elm,elbm)
+typ_str   = CREATE_STRUCT(rstr,0,0,0,0)
+;-----------------------------------------------------------------------------------------
+; => Check to make sure inputs are structures
+;-----------------------------------------------------------------------------------------
+gcheck    = WHERE(str_check,gch)
+test      = [(gcheck[0] EQ 0L),(gcheck[0] EQ 1L),(gcheck[0] EQ 2L),(gcheck[0] EQ 3L)]
+CASE gch OF
+  1L   : BEGIN  ; => Only one keyword was set
+    typ_str.(gcheck[0]) = SIZE(dstr.(gcheck[0]),/TYPE) EQ 8L
+    g_str[gcheck[0]]    = rstr[gcheck[0]]
+  END
+  2L   : BEGIN
+    typ_str.(gcheck[0]) = SIZE(dstr.(gcheck[0]),/TYPE) EQ 8L
+    typ_str.(gcheck[1]) = SIZE(dstr.(gcheck[1]),/TYPE) EQ 8L
+    g_str[gcheck[0:1]]  = rstr[gcheck[0:1]]
+  END
+  3L   : BEGIN
+    typ_str.(gcheck[0]) = SIZE(dstr.(gcheck[0]),/TYPE) EQ 8L
+    typ_str.(gcheck[1]) = SIZE(dstr.(gcheck[1]),/TYPE) EQ 8L
+    typ_str.(gcheck[2]) = SIZE(dstr.(gcheck[2]),/TYPE) EQ 8L
+    g_str[gcheck[0:2]]  = rstr[gcheck[0:2]]
+  END
+  4L   : BEGIN
+    typ_str.(gcheck[0]) = SIZE(dstr.(gcheck[0]),/TYPE) EQ 8L
+    typ_str.(gcheck[1]) = SIZE(dstr.(gcheck[1]),/TYPE) EQ 8L
+    typ_str.(gcheck[2]) = SIZE(dstr.(gcheck[2]),/TYPE) EQ 8L
+    typ_str.(gcheck[3]) = SIZE(dstr.(gcheck[3]),/TYPE) EQ 8L
+    g_str[gcheck[0:3]]  = rstr[gcheck[0:3]]
+  END
+  ELSE : BEGIN
+    MESSAGE,'How did you manage this...',/INFORMATIONAL,/CONTINUE
+    RETURN
+  END
+ENDCASE
+;-----------------------------------------------------------------------------------------
+; => Determine which structure types exactly were set
+;-----------------------------------------------------------------------------------------
+tchck    = WHERE([typ_str.(0),typ_str.(1),typ_str.(2),typ_str.(3)],tch)
+test0    = (tchck[*] LT 2L)
+test1    = (tchck[*] GE 2L)
+good0    = WHERE(test0,gd0)
+good1    = WHERE(test1,gd1)
+
+CASE tch OF
+  1L   : BEGIN
+    IF (tchck[0] LT 2L) THEN BEGIN
+      eesa_str = 0
+      pesa_str = 1
+    ENDIF ELSE BEGIN
+      eesa_str = 1
+      pesa_str = 0
+    ENDELSE
+  END
+  2L   : BEGIN
+    ; => IF test2 THEN (2 inputs are from ONLY Pesa)
+    test2 = test0[0] AND test0[1]
+    ; => IF test3 THEN (2 inputs are from ONLY Eesa)
+    test3 = test1[0] AND test1[1]
+    IF (test2) THEN BEGIN
+      ; => Both from Pesa
+      eesa_str = 0
+      pesa_str = 2
+    ENDIF ELSE BEGIN
+      IF (test3) THEN BEGIN
+        ; => Both from Eesa
+        eesa_str = 2
+        pesa_str = 0
+      ENDIF ELSE BEGIN
+        ; => One from each
+        eesa_str = 1
+        pesa_str = 1
+      ENDELSE
+    ENDELSE
+  END
+  3L   : BEGIN
+  ; => One set of particle structure keywords was input while the other is half set
+    ; => IF test1 THEN (2 inputs are from ONLY Pesa)
+    test2 = (test0[0] AND test0[1]) OR (test0[1] AND test0[2]) OR (test0[1] AND test0[2])
+    IF (test2) THEN BEGIN
+      eesa_str = 1
+      pesa_str = 2
+    ENDIF ELSE BEGIN
+      eesa_str = 2
+      pesa_str = 1
+    ENDELSE
+  END
+  4L   : BEGIN
+  ; => Both sets of particle structure keywords were set
+    eesa_str = 2
+    pesa_str = 2
+  END
+  ELSE : BEGIN
+    bstr = rstr[0]+', '+rstr[1]+', '+rstr[2]+', and '+rstr[3]
+    MESSAGE,'Incorrect keyword format:  '+bstr,/INFORMATIONAL,/CONTINUE
+    RETURN
+  END
+ENDCASE
+;-----------------------------------------------------------------------------------------
+; => Define structure arrays
+;-----------------------------------------------------------------------------------------
+struct_e  = {T0:0,T1:0}
+struct_p  = {T0:0,T1:0}
+
+IF (eesa_str GT 0) THEN BEGIN
+  IF (gd1 GT 0) THEN BEGIN
+    IF (eesa_str GT 1) THEN BEGIN
+      struct_e     = {T0:dstr.(2),T1:dstr.(3)}
+    ENDIF ELSE BEGIN
+      CASE tchck[good1[0]] OF
+        2L  : BEGIN  ; => EL
+          struct_e     = {T0:dstr.(tchck[good1[0]]),T1:0}
+        END
+        3L  : BEGIN  ; => ELB
+          struct_e     = {T0:0,T1:dstr.(tchck[good1[0]])}
+        END
+      ENDCASE
+    ENDELSE
+  ENDIF
+ENDIF
+
+IF (pesa_str GT 0) THEN BEGIN
+  IF (gd0 GT 0) THEN BEGIN
+    IF (pesa_str GT 1) THEN BEGIN
+      struct_p     = {T0:dstr.(0),T1:dstr.(1)}
+    ENDIF ELSE BEGIN
+      CASE tchck[good0[0]] OF
+        0L  : BEGIN  ; => PL
+          struct_p     = {T0:dstr.(tchck[good0[0]]),T1:0}
+        END
+        1L  : BEGIN  ; => PLB
+          struct_p     = {T0:0,T1:dstr.(tchck[good0[0]])}
+        END
+      ENDCASE
+    ENDELSE
+  ENDIF
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Determine date of interest
+;-----------------------------------------------------------------------------------------
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; => ['MMDDYY']
+mdate  = mydate.DATE[0]    ; => ['YYYYMMDD']
+tdate  = mydate.TDATE[0]   ; => ['YYYY-MM-DD']
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+sh_mit     = read_shocks_jck_database()
+mit_dates  = sh_mit.SDATES             ; => 'MMDDYY'
+mit_ymdb   = sh_mit.HEADER.DATE_TIME   ; => ['YYYY-MM-DD/HH:MM:SS.sss']
+shocks     = sh_mit.SHOCK
+; => Definitions:
+;      SHF  :  SHock Frame
+;      SCF  :  SpaceCraft Frame
+;      SWF  :  Solar Wind Frame
+anorms     = shocks.SH_NORM                ; => Shock normal vector
+a_compr    = shocks.COMPRESSION            ; => Shock compression ratio
+gshock     = WHERE(mit_dates EQ date,gsh)
+IF (gsh GT 0L) THEN BEGIN
+  IF (date[0] EQ '021100') THEN shel = 1 ELSE shel = 0
+  gcomp      = (REFORM(a_compr[gshock[shel]]))[0]
+  gnorm      = REFORM(anorms[gshock[shel],*])
+  lmitdate   = (REFORM(mit_ymdb[gshock[shel]]))[0]
+ENDIF ELSE BEGIN
+  ; => Pesa Low moments, if available, will NOT be calibrated for downstream turbulence
+  gcomp      = 1.0
+  gnorm      = REPLICATE(f,3L)
+  lmitdate   = tdate[0]+'/00:00:00.000'
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Find default time range stuff
+;-----------------------------------------------------------------------------------------
+CASE date OF
+  '040396' : BEGIN
+    t        = ['1996-04-03/08:45:00','1996-04-03/10:45:00']
+    tramp    = '1996-04-03/09:47:17.152'
+    c_el_ens = [[10L,14L],[8L,14L]]
+    h_el_ens = [[0L, 9L],[0L, 7L]]
+  END
+  '040896' : BEGIN
+    t        = ['1996-04-08/01:41:00','1996-04-08/03:41:00']
+    tramp    = '1996-04-08/02:41:09.767'
+    c_el_ens = [[10L,14L],[8L,14L]]
+    h_el_ens = [[0L, 9L],[0L, 7L]]
+  END
+  '102497' : BEGIN
+    t        = ['1997-10-24/10:14:00','1997-10-24/12:14:00']
+    tramp    = '1997-10-24/11:18:10.114'
+    c_el_ens = [[9L,14L],[7L,14L]]
+    h_el_ens = [[0L, 8L],[0L, 6L]]
+  END
+  '121097' : BEGIN
+    t        = ['1997-12-10/03:33:00','1997-12-10/05:33:00']
+    tramp    = '1997-12-10/04:33:14.664'
+    c_el_ens = [[7L,14L],[6L,14L]]
+    h_el_ens = [[0L, 6L],[0L, 5L]]
+  END
+  '042398' : BEGIN
+    t        = ['1998-04-23/16:29:00','1998-04-23/18:29:00']
+    tramp    = '1998-04-23/17:29:02.445'
+    c_el_ens = [[7L,14L],[6L,14L]]
+    h_el_ens = [[0L, 6L],[0L, 5L]]
+  END
+  '043098' : BEGIN
+    t        = ['1998-04-30/07:43:00','1998-04-30/09:43:00']
+    tramp    = '1998-04-30/08:43:15.291'
+    c_el_ens = [[7L,14L],[6L,14L]]
+    h_el_ens = [[0L, 6L],[0L, 5L]]
+  END
+  '051598' : BEGIN
+    t        = ['1998-05-15/12:53:00','1998-05-15/14:53:00']
+    tramp    = '1998-05-15/13:53:46.079'
+    c_el_ens = [[7L,14L],[6L,14L]]
+    h_el_ens = [[0L, 6L],[0L, 5L]]
+  END
+  '081098' : BEGIN
+    ; => unusual event and JCK's values are wrong
+    t        = ['1998-08-09/21:31:17.202','1998-08-10/03:31:17.202']
+    tramp    = '1998-08-10/00:31:17.202'
+    c_el_ens = [[7L,14L],[6L,14L]]
+    h_el_ens = [[0L, 6L],[0L, 5L]]
+  END
+  '082698' : BEGIN
+    t        = ['1998-08-26/05:40:00','1998-08-26/07:40:00']
+    tramp    = '1998-08-26/06:40:24.972'
+    c_el_ens = [[5L,14L],[4L,14L]]
+    h_el_ens = [[0L, 4L],[0L, 3L]]
+  END
+  '092498' : BEGIN
+    t        = ['1998-09-24/22:20:00','1998-09-25/00:20:00']
+    tramp    = '1998-09-24/23:20:37.000'
+    c_el_ens = [[6L,14L],[5L,14L]]
+    h_el_ens = [[0L, 5L],[0L, 4L]]
+  END
+  '021100' : BEGIN
+    t        = ['2000-02-11/22:33:00','2000-02-12/00:33:00']
+    tramp    = '2000-02-11/23:33:55.3240'
+    c_el_ens = [[5L,14L],[4L,14L]]
+    h_el_ens = [[0L, 4L],[0L, 3L]]
+  END
+  '040600' : BEGIN
+    t        = ['2000-04-06/15:00:00','2000-04-06/18:00:00']
+    tramp    = '2000-04-06/16:32:09.237'
+    c_el_ens = [[5L,14L],[4L,14L]]
+    h_el_ens = [[0L, 4L],[0L, 3L]]
+  END
+  '101101' : BEGIN
+    t        = ['2001-10-11/15:50:00','2001-10-11/17:50:00']
+    tramp    = '2001-10-11/16:50:55.000'
+    c_el_ens = [[6L,14L],[5L,14L]]
+    h_el_ens = [[0L, 5L],[0L, 4L]]
+  END
+  '102101' : BEGIN
+    t        = ['2001-10-21/15:40:00','2001-10-21/17:40:00']
+    tramp    = '2001-10-21/16:40:43.000'
+    c_el_ens = [[7L,14L],[5L,14L]]
+    h_el_ens = [[0L, 6L],[0L, 4L]]
+  END
+  '102501' : BEGIN
+    t        = ['2001-10-25/07:59:00','2001-10-25/09:59:00']
+    tramp    = '2001-10-25/08:59:28.000'
+    c_el_ens = [[8L,14L],[6L,14L]]
+    h_el_ens = [[0L, 7L],[0L, 5L]]
+  END
+  '112401' : BEGIN
+    t        = ['2001-11-24/04:31:00','2001-11-24/06:51:00']
+    tramp    = '2001-11-24/05:51:55.000'
+    c_el_ens = [[8L,14L],[5L,14L]]
+    h_el_ens = [[0L, 7L],[0L, 4L]]
+  END
+  ELSE     : BEGIN
+    mts      = my_time_string(lmitdate[0],STR=1,FORM=1)
+    dumt     = mts.UNIX[0] + [-36d2,36d2]
+    t        = time_string(dumt,PREC=3)
+    tramp    = lmitdate[0]
+    c_el_ens = [[10L,14L],[8L,14L]]
+    h_el_ens = [[0L, 9L],[0L, 7L]]
+  END
+ENDCASE
+IF NOT KEYWORD_SET(trange) THEN tr3 = time_double(t) ELSE tr3 = REFORM(trange)
+tura  = time_double(tramp)
+midra = tura[0]
+;-----------------------------------------------------------------------------------------
+; => Get TPLOT names prior to loading any new variables
+;-----------------------------------------------------------------------------------------
+old_tplotn = tnames(INDEX=old_ind)
+;-----------------------------------------------------------------------------------------
+; => Calibrate ion moments if supplied
+;-----------------------------------------------------------------------------------------
+IF (pesa_str GT 0) THEN BEGIN
+  pesa_low_moment_calibrate,DATE=date,TRANGE=tr3,COMPRESS=gcomp,MIDRA=midra,/NOLOAD,$
+                            G_MAGF=g_magf,PLM=struct_p.(0),PLBM=struct_p.(1)
+  
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Calculate electron moments if supplied
+;-----------------------------------------------------------------------------------------
+IF (eesa_str GT 0) THEN BEGIN
+  IF NOT KEYWORD_SET(suffx) THEN suffx = '' ELSE suffx = suffx[0]
+  old_tplot_key = KEYWORD_SET(to_tplot)
+  ; => Electron moments [Spacecraft Frame]
+  ael      = struct_e.(0)
+  aelb     = struct_e.(1)
+  IF (old_tplot_key EQ 0) THEN to_tplot = 1
+  moments_array_3dp,PLM=ael,PLBM=aelb,MOMS=moms_sc,TO_TPLOT=to_tplot,$
+                    SUFFX='el_sc'+suffx
+  ; => Calculate DFs and PADs and converts into SWF
+  IF (SIZE(ael,/TYPE) EQ 8L) THEN BEGIN
+    d_ael   = eesa_data_4(ael,NUM_PA=24L)
+    sw_ael  = d_ael.MOMENTS                ; => Data in the SWF
+    nel     = N_ELEMENTS(sw_ael)
+  ENDIF ELSE BEGIN
+    sw_ael  = 0
+    nel     = 0
+  ENDELSE
+  IF (SIZE(aelb,/TYPE) EQ 8L) THEN BEGIN
+    d_aelb  = eesa_data_4(aelb,NUM_PA=24L)
+    sw_aelb = d_aelb.MOMENTS               ; => Data in the SWF
+    nelb    = N_ELEMENTS(sw_aelb)
+  ENDIF ELSE BEGIN
+    sw_aelb = 0
+    nelb    = 0
+  ENDELSE
+  ; => Electron moments [Solar Wind Frame]
+  moments_array_3dp,PLM=sw_ael,PLBM=sw_aelb,MOMS=moms_sw,TO_TPLOT=to_tplot,$
+                    SUFFX='el_sw'+suffx
+  ; => Look at halo/core electrons
+  core_els   = LONARR(nel+nelb,2L)
+  halo_els   = LONARR(nel+nelb,2L)
+  FOR j=0L, nelb + nel - 1L DO BEGIN
+    IF (moms_sc[j].TIME+3d0 LT tura[0]) THEN fftop = 0 ELSE fftop = 1
+    core_els[j,*] = c_el_ens[*,fftop]
+    halo_els[j,*] = h_el_ens[*,fftop]
+  ENDFOR
+  ; => Calculate Core Moments
+  moments_array_3dp,PLM=sw_ael,PLBM=sw_aelb,ERANGE=core_els,MOMS=moms_core_sw,$
+                    TO_TPLOT=to_tplot,SUFFX='ce_sw'+suffx,T_PERP=tperp_c_sw,  $
+                    T_PARA=tpara_c_sw
+  ; => Calculate Halo Moments
+  moments_array_3dp,PLM=sw_ael,PLBM=sw_aelb,ERANGE=halo_els,MOMS=moms_halo_sw,$
+                    TO_TPLOT=to_tplot,SUFFX='he_sw'+suffx,T_PERP=tperp_h_sw,  $
+                    T_PARA=tpara_h_sw
+  tanis_c = tperp_c_sw/tpara_c_sw
+  tanis_h = tperp_h_sw/tpara_h_sw
+  tpar_hc = tpara_h_sw/tpara_c_sw
+  tper_hc = tperp_h_sw/tperp_c_sw
+;  IF KEYWORD_SET(to_tplot) THEN BEGIN
+  store_data,'Tpara_Core-Halo_sw',DATA={X:moms_sw.TIME,Y:tpar_hc}
+  store_data,'Tperp_Core-Halo_sw',DATA={X:moms_sw.TIME,Y:tper_hc}
+  options,'Tpara_Core-Halo_sw','YTITLE',"T!Dhe"+"!9#!3"+"!N"+"/T!Dce"+"!9#!3"+"!N"
+  options,'Tperp_Core-Halo_sw','YTITLE',"T!Dhe"+"!9x!3"+"!N"+"/T!Dce"+"!9x!3"+"!N"
+;  ENDIF
+  IF (old_tplot_key EQ 0) THEN to_tplot = 0
+ENDIF
+; => Format TPLOT options
+IF KEYWORD_SET(to_tplot) THEN BEGIN
+  nnw = tnames()
+  options,nnw,"YSTYLE",1
+  options,nnw,"PANEL_SIZE",2.
+  options,nnw,'XMINOR',5
+  options,nnw,'XTICKLEN',0.04
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Save plots to PS files if desired
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(to_save) THEN BEGIN
+  eesa_pesa_low_to_psfile,DATE=date,TRANGE=trange,/NOMSSG
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Remove stored TPLOT data produced by this program in if TO_TPLOT NOT set
+;-----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(to_tplot) THEN BEGIN
+  new_tplotn = tnames(INDEX=new_ind)
+  overlap    = my_array_where(old_ind,new_ind,NCOMP1=bold1,NCOMP2=bnew2)
+  IF (bnew2[0] NE -1) THEN BEGIN
+    store_data,DELETE=new_ind[bnew2]
+  ENDIF
+ENDIF
+;*****************************************************************************************
+ex_time = SYSTIME(1) - ex_start
+MESSAGE,STRING(ex_time)+' seconds execution time.',/INFORMATIONAL,/CONTINUE
+;*****************************************************************************************
+RETURN
+END

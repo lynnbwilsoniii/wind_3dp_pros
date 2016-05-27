@@ -1,0 +1,279 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   @start_umn_3dp.pro
+;  PURPOSE  :   Start up routine to initialize UMN versions of Berkeley SSL 
+;                 Wind/3DP software upon starting IDL.
+;
+;  CALLED BY:   
+;               umn3dp_start
+;               umn3dp_start_64
+;
+;  CALLS:
+;               get_os_slash.pro
+;               umn_graphics_config.pro
+;               wind_3dp_umn_init.pro
+;               plot3d_options.pro
+;               TMlib_wrapper.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               @start_umn_3dp
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Changed compliation list                         [09/17/2009   v1.0.1]
+;             2)  Changed compliation list                         [09/18/2009   v1.0.2]
+;             3)  Added plot3d.pro options by calling plot3d_options.pro with default
+;                   options already chosen                         [09/18/2009   v1.0.3]
+;             4)  Changed compliation list                         [09/21/2009   v1.0.4]
+;             5)  Added a device call for default formats          [09/21/2009   v1.0.5]
+;             6)  Changed compliation list                         [09/24/2009   v1.0.6]
+;             7)  Added extra option for plot3d_options.pro        [09/25/2009   v1.0.7]
+;             8)  Added extra option for TMlib Client Software compilation which acts
+;                   similar to calling "sidl" from command prompt instead of "uidl"
+;                                                                  [10/22/2009   v1.1.0]
+;             9)  No longer compiles routines on entry             [06/16/2011   v1.2.0]
+;            10)  Cleaned up, changed path specification, and added error handling for
+;                   TMlib_wrapper.pro batch call
+;                                                                  [08/23/2012   v1.3.0]
+;            11)  Now calls umn_graphics_config.pro to initialize graphics
+;                                                                  [08/27/2012   v1.4.0]
+;            12)  Now calls get_os_slash.pro to increase portability to other OS's
+;                                                                  [08/07/2013   v1.5.0]
+;            13)  Fixed a bug [i.e., removed DELVAR,slash]
+;                                                                  [08/08/2013   v1.5.1]
+;            14)  Forgot to remove hard-coded slash in tdir definition
+;                                                                  [08/26/2013   v1.5.2]
+;            15)  Updated the IDL_PATH definition procedure and man page
+;                                                                  [03/28/2014   v1.6.0]
+;            16)  Cleaned up and improved portability across multiple OS's,
+;                   removed hard-coded path specifications, and updated Man. page
+;                                                                  [09/10/2014   v1.7.0]
+;            17)  For some foolish reason, I placed umn_graphics_config.pro before
+;                   the IDL paths had been redefined, which would lead to several
+;                   compilation errors if the user had not set their IDL paths
+;                   externally.  I have now moved this routine to a point after the IDL
+;                   paths have been redefined to correct this issue.
+;                                                                  [04/28/2015   v1.7.1]
+;
+;   NOTES:      
+;               0)  Still in production...
+;               1)  This routine can be called in 2 ways:
+;                     1  :  using bash functions in your .bash_profile to source either
+;                             umn3dp_start or umn3dp_start_64
+;                     2  :  after starting IDL, type @start_umn_3dp.pro
+;                             Note:  if IDL cannot find this routine, you can define the
+;                                      path to it, e.g., for me it would be
+;                 IDL> @/Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/start_umn_3dp.pro
+;               3)  Of the above 2 methods, I would recommend method 1 if you have a
+;                     Unix or Linux machine because then you need only type in 4 or 6
+;                     characters to start IDL and reset all the paths accordingly.  Once
+;                     you exit IDL, the function in your .bash_profile will reset all
+;                     your environment variables accordingly by sourcing your
+;                     .bash_profile.
+;               4)  See also:  umn3dp_start, umn3dp_start_64, and setup_wind3dp_bash
+;               5)  Note that after IDL version 7.0.3, the IDL path could be updated by
+;                     directly redefining the system variable !PATH.  Prior to that
+;                     IDL version, the path had to be set by changing the environment
+;                     variable.  After version 6.2 and 7.0.3, one could ensure that
+;                     the path was changed by also using the routine PREF_SET.PRO with
+;                     the COMMIT keyword set.  After version 7.0.3, the user needs to
+;                     explicitly change the system variable !PATH, the environment
+;                     variable 'IDL_PATH', and use PREF_SET.PRO to ensure that IDL will
+;                     be able to find the routines in the user defined search path.
+;               6)  There are several variables defined herein that will change for
+;                     each user -->  ** CHANGE ACCORDINGLY **
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  09/16/2009
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/28/2015   v1.7.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+;;    --> LBW III  09/10/2014   v1.7.0
+FORWARD_FUNCTION get_os_slash
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
+!PROMPT        = 'UMN> '                ;;  change prompt
+
+vers           = !VERSION.OS_FAMILY     ;;  e.g., 'unix'
+vern           = !VERSION.RELEASE       ;;  e.g., '7.1.1'
+;;  Define the current working location
+mdir           = FILE_EXPAND_PATH('')
+;;  Check for trailing '/'
+ll             = STRMID(mdir, STRLEN(mdir) - 1L,1L)
+test_ll        = (ll[0] NE slash[0])
+IF (test_ll) THEN mdir = mdir[0]+slash[0]
+;;----------------------------------------------------------------------------------------
+;;  Get the characters for search path separators and current working directory
+;;    --> LBW III  09/10/2014   v1.7.0
+;;----------------------------------------------------------------------------------------
+;;  Define the search path separator character
+IF (vern[0] GE '5.5') THEN sepath_sep = PATH_SEP(/SEARCH_PATH)  ;;  e.g., ':' [for unix and linux]
+IF (vern[0] LT '5.5') THEN $
+  IF (vers[0] NE 'unix') THEN sepath_sep = ';' ELSE sepath_sep = ':'
+;;  Windows    = ';'
+;;  Unix/Linux = ':'
+
+;ENDIF ELSE BEGIN
+;  IF (vers[0] NE 'unix') THEN BEGIN
+;    ;;  Windows
+;    sepath_sep = ';'
+;  ENDIF ELSE BEGIN
+;    ;;  Unix or Linux
+;    sepath_sep = ':'
+;  ENDELSE
+;ENDELSE
+
+;;  Define the current working directory character
+;;    e.g., './' [for unix and linux] otherwise guess './' or '.\'
+test           = (vern[0] GE '6.0')
+IF (test[0]) THEN cwd_char = FILE_DIRNAME('',/MARK_DIRECTORY) ELSE cwd_char = '.'+slash[0]
+
+;IF (vern[0] GE '6.0') THEN BEGIN
+;  cwd_char = FILE_DIRNAME('',/MARK_DIRECTORY)  ;;  e.g., './' [for unix and linux]
+;ENDIF ELSE BEGIN
+;  ;;  Guess './' or '.\', as both Unix and Windows use '.' for current directory
+;  cwd_char = '.'+slash[0]
+;ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define some relevant directory locations
+;;    --> LBW III  03/28/2014   v1.6.0
+;;----------------------------------------------------------------------------------------
+;;  Define the location of the IDL libraries ** [this will change for each user] **
+;def_idldir     = slash[0]+'Applications'+slash[0]+'itt'+slash[0]+'idl'+slash[0]
+;def_idllib     = def_idldir[0]+'lib'+slash[0] ;;  e.g., '/Applications/itt/idl/lib/'
+;;    --> LBW III  09/10/2014   v1.7.0
+def_idldir     = !DIR                         ;;  e.g., '/Applications/itt/idl71'
+IF (test_ll) THEN def_idldir = def_idldir[0]+slash[0]
+def_idllib     = def_idldir[0]+'lib'+slash[0] ;;  e.g., '/Applications/itt/idl71/lib/'
+test           = (GETENV('IDL_DIR') EQ '')
+IF (test) THEN env_idldir = def_idldir[0] ELSE env_idldir = GETENV('IDL_DIR')
+IF (test_ll AND ~test) THEN env_idldir += slash[0]  ;;  Add slash if necessary
+IF (test) THEN SETENV,'IDL_DIR='+env_idldir[0]
+;;  Define the user home directory
+;def_home       = slash[0]+'Users'+slash[0]+'lbwilson'+slash[0]
+;;    --> LBW III  09/10/2014   v1.7.0
+def_home       = FILE_SEARCH('~')
+IF (test_ll) THEN def_home = def_home[0]+slash[0]
+test           = (GETENV('HOME') EQ '')
+IF (test) THEN env_home = def_home[0] ELSE env_home = GETENV('HOME')
+IF (test_ll AND ~test) THEN env_home += slash[0]  ;;  Add slash if necessary
+IF (test) THEN SETENV,'HOME='+env_home[0]
+;;  Define the default location(s) of extra software [i.e., not TDAS or SPEDAS]
+;;     ** [this will change for each user] **
+def_extra0     = env_home[0]+'Desktop'+slash[0]+'idllibs'+slash[0]
+def_extras     = EXPAND_PATH('+'+def_extra0[0],/ARRAY)
+test_extra     = (def_extras[0] NE '')
+;;  Define a default IDL path
+default_path   = '+'+def_idllib[0]
+;IF (test_extra) THEN default_path += ':+'+def_extra0[0]
+;;    --> LBW III  09/10/2014   v1.7.0
+IF (test_extra) THEN default_path += sepath_sep[0]+'+'+def_extra0[0]
+;;  Clean up
+DELVAR,def_idldir,def_idllib,env_idldir,def_home,env_home,def_extra0,def_extras
+DELVAR,test_extra
+;;----------------------------------------------------------------------------------------
+;;  Get info about currently set paths
+;;----------------------------------------------------------------------------------------
+;;  Define current working directory
+;cur_wdir       = FILE_EXPAND_PATH('.'+slash[0])  ;;  last part means current working directory
+;;    --> LBW III  09/10/2014   v1.7.0
+cur_wdir       = FILE_EXPAND_PATH(cwd_char[0])
+IF (test_ll) THEN cur_wdir += slash[0]  ;;  Add slash if necessary
+;;  Define location of UMN Modified Wind/3DP IDL Libraries
+;;    --> LBW III  03/28/2014   v1.6.0
+tdir           = FILE_EXPAND_PATH(cur_wdir[0]+'wind_3dp_pros'+slash[0])
+;t_path         = EXPAND_PATH('+'+tdir[0],/ARRAY)
+;;    --> LBW III  09/10/2014   v1.7.0
+t_path0        = EXPAND_PATH('+'+tdir[0],/ARRAY)
+gposi          = STRPOS(t_path0,'wind_data_dir') GE 0
+bad            = WHERE(gposi,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+;t_path         = STRJOIN(t_path[good],/SINGLE)
+;;    --> LBW III  03/28/2014   v1.6.0
+;t_path         = STRJOIN(t_path[good],':',/SINGLE)
+;;    --> LBW III  09/10/2014   v1.7.0
+t_path1        = t_path0[good]
+t_path         = STRJOIN(t_path1,sepath_sep[0],/SINGLE)
+
+;;  Get current path [environment variable]
+;;    --> LBW III  09/10/2014   v1.7.0
+idlpath        = GETENV('IDL_PATH')
+test_idl       = (idlpath[0] EQ '')
+;IF (test_idl) THEN idlpath = default_path[0]+':+'+cur_wdir[0] & SETENV,'IDL_PATH='+idlpath[0]
+IF (test_idl) THEN idlpath = default_path[0]+sepath_sep[0]+'+'+cur_wdir[0]
+IF (test_idl) THEN SETENV,'IDL_PATH='+idlpath[0]
+;;----------------------------------------------------------------------------------------
+;;  Reset IDL Path
+;;----------------------------------------------------------------------------------------
+;;    --> LBW III  09/10/2014   v1.7.0
+
+;;  Update path to include Wind/3DP libraries
+;;    Check to see if user sourced setup_wind3dp_bash
+lynnidl        = GETENV('IDL_LYNN_PRO_DIR')
+test           = (lynnidl[0] EQ '')
+;;    Prefix current path with UMN Modified Wind/3DP IDL Library paths
+;IF (test AND ~test_idl) THEN new_path = t_path[0]+':'+idlpath[0]
+;IF (test_idl AND test)  THEN new_path = t_path[0]+':'+default_path[0]
+;;    --> LBW III  09/10/2014   v1.7.0
+IF (test AND ~test_idl) THEN new_path = t_path[0]+sepath_sep[0]+idlpath[0]
+IF (test_idl AND test)  THEN new_path = t_path[0]+sepath_sep[0]+default_path[0]
+test_new       = (N_ELEMENTS(new_path) EQ 0)
+IF (test_new) THEN new_path = idlpath[0]       ;;  Use path set in setup_wind3dp_bash
+;;  Eliminate duplicate paths
+;;    --> LBW III  09/10/2014   v1.7.0
+new_path_a     = EXPAND_PATH('+'+new_path[0],/ARRAY)
+unq            = UNIQ(new_path_a,LINDGEN(N_ELEMENTS(new_path_a))) ;;  find unique elements, but do not change order
+new_path       = STRJOIN(new_path_a[unq],sepath_sep[0],/SINGLE)  ;; redefine and join
+IF (test) THEN SETENV,'IDL_PATH='+new_path[0]
+;;  Test to see if after version 7.0.3 and/or after version 6.2
+test__62       = (vern[0] GE '6.2') AND (vern[0] LT '7.0.3')
+test_703       = (vern[0] GE '7.0.3')
+IF (test__62) THEN PREF_SET,'IDL_PATH',new_path[0],/COMMIT
+IF (test_703) THEN !PATH = EXPAND_PATH(new_path[0])
+
+;;  Clean up
+DELVAR,t_path,t_path0,t_path1,new_path,idlpath,gposi,bad,good,bd,gd
+DELVAR,test_idl,test_idls,cur_wdir,test__62,test_703,test_new
+;;----------------------------------------------------------------------------------------
+;;  Initialize Graphics
+;;----------------------------------------------------------------------------------------
+;;    --> LBW III  04/28/2015   v1.7.1
+umn_graphics_config
+;;----------------------------------------------------------------------------------------
+;;  Initialize !wind3dp_umn system variable
+;;----------------------------------------------------------------------------------------
+wind_3dp_umn_init
+;;----------------------------------------------------------------------------------------
+;;  Set up plot3d.pro options
+;;----------------------------------------------------------------------------------------
+;;  Default to a Hammer-Aitoff Projection
+plot3d_options,MAP='ham',LOG =1,TRIANGULATE=1,COMPRESS=1,GRID=[30,30]
+;;----------------------------------------------------------------------------------------
+;;  Check for TMlib_wrapper
+;;----------------------------------------------------------------------------------------
+test           = slash[0]+'Applications'+slash[0]+'STEREO'+slash[0]+'TMlib_Client'+$
+                 slash[0]+'lib'+slash[0]+'idl'+slash[0]
+tdir           = FILE_EXPAND_PATH(test)
+test           = FILE_TEST(tdir,/DIRECTORY)
+IF (test EQ 0) THEN STOP
+@TMlib_wrapper
+;;  Clean up
+DELVAR,tmfile,old_dir,test,tdir
+
+
+

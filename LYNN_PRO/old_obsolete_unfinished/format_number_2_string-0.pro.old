@@ -1,0 +1,448 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   format_number_2_string.pro
+;  PURPOSE  :   This routine converts an input number to a string with a user defined
+;                 format.
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               NUMBERS  :  [N]-Element array [int/long/float/double] of values of
+;                             numeric type
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               NV       :  Scalar [int/long] defining the total # of character digits
+;                             to include in the output
+;                             [Default = 15 (unless value is larger)]
+;               ND       :  Scalar [int/long] defining the # of character digits
+;                             to include after the decimal place (only matters for
+;                             float/double type inputs
+;                             [Default = 2]
+;               NEXP     :  Scalar [int/long] defining the maximum base-10 logarithmic
+;                             exponent to allow before converting the output to an
+;                             exponential format.  Meaning, if ALOG10(NUMBERS) > NEXP,
+;                             then those numbers will be converted to exponential form.
+;                                       { 1  for  float/double input types
+;                             Default = {
+;                                       {24  for  integer-like input types
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  If ND is too large relative to NV, then NV will be increased to
+;                     force all output to have ND decimal places
+;               2)  For integer-like inputs, if we define NSL[i] = STRLEN(NUMBERS[i]) and
+;                     L10[i] = ALOG10(ABS(NUMBERS[i])), then if the following holds
+;                       (L10[i] < NEXP) = TRUE
+;                       (NSL[i] > ND)   = TRUE
+;                     then the i-th output will have the format:  '(I'NSL[i].NSL[i]')'
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  04/29/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/29/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION format_number_2_string,numbers,NV=nv,ND=nd,NEXP=nexp
+
+;;----------------------------------------------------------------------------------------
+;;  Constants/Defaults
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+is_int_vals    = [1,2,3,12,13,14,15]     ;;  Type codes for all integer-like numbers
+is_fdc_vals    = [4,5,6,9]               ;;  Type codes for float/double numbers
+is_rel_vals    = [4,5]
+def_nv         = 15L
+def_nd         = 2L
+def_nes        = [1L,24L]
+min_nv         = 6L
+max_nv         = 200L
+;gei_str        = ['G','E','I']
+;gei_form       = '('+gei_str+')'
+geif_str       = ['G','E','I','F']
+geif_form      = '('+geif_str+')'
+plus_min_str   = ['-','+']
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (is_a_number(numbers,/NOMSSG) EQ 0) OR (N_ELEMENTS(numbers) EQ 0)
+IF (test) THEN RETURN,0b
+;;----------------------------------------------------------------------------------------
+;;  Determine the maximum number of characters in the result
+;;----------------------------------------------------------------------------------------
+nums           = REFORM(numbers)
+nn             = N_ELEMENTS(nums)
+type           = SIZE(nums,/TYPE)
+test_int       = (TOTAL(type[0] EQ is_int_vals) EQ 1)   ;;  TRUE  -->  Input is integer-like [ Max allowed input = 18446744073709551615ULL ]
+test_fdc       = (TOTAL(type[0] EQ is_fdc_vals) EQ 1)   ;;  TRUE  -->  Input is float-like
+test_rel       = (TOTAL(type[0] EQ is_rel_vals) EQ 1)   ;;  TRUE  -->  Input is float-like and real
+;;  Define the default Ne value
+def_ne         = def_nes[test_int[0]]
+mx_abs_val     = MAX(ABS(nums),/NAN)
+;IF (test_int) THEN sform = gei_form[2] ELSE sform = '(G200)'
+IF (test_int) THEN sform = geif_form[2] ELSE sform = '(G200)'
+mx_av_str      = STRTRIM(STRING(mx_abs_val[0],FORMAT=sform[0]),2L)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;;  Check NEXP
+;test           = (N_ELEMENTS(nexp) EQ 1) AND (is_a_number(nexp,/NOMSSG))
+;IF (test[0]) THEN tne = (LONG(nexp[0]) > 1) ELSE tne = def_ne[0]
+;;  Check NV
+test           = (N_ELEMENTS(nv) EQ 1) AND (is_a_number(nv,/NOMSSG))
+IF (test[0]) THEN BEGIN
+  ;;  NV set --> check format
+  IF (nv[0] GT 1) THEN tnv = (LONG(nv[0]) > min_nv[0]) ELSE tnv = def_nv[0]
+ENDIF ELSE BEGIN
+  ;;  NV not set --> use default
+  tnv = def_nv[0]
+ENDELSE
+;;  Check NEXP
+test           = (N_ELEMENTS(nexp) EQ 1) AND (is_a_number(nexp,/NOMSSG))
+IF (test[0]) THEN tne = (LONG(nexp[0]) > 1L) ELSE tne = def_ne[0] > (tnv[0] + 1L)
+;;  Check ND
+test           = (N_ELEMENTS(nd) EQ 1) AND (is_a_number(nd,/NOMSSG))
+IF (test[0]) THEN tnd = (LONG(nd[0]) > (-1)) ELSE tnd = def_nd[0]
+;;  Make sure NV is not too small
+IF (test_int) THEN tnv = (tnv[0] > tnd[0]) ELSE tnv = (tnv[0] > (tnd[0] + 5L))
+;;;  Make sure ND is not too large [IF = 0 --> no decimal point on output]
+;IF (test_int) THEN tnd = (tnd[0] < tnv[0]) ELSE tnd = (tnd[0] < (tnv[0] - 5L))
+;IF (test_int) THEN tnd = (tnd[0] < tnv[0]) ELSE tnd = (tnd[0] < (tnv[0] - 6L))
+IF (tnd[0] LT 1) THEN find_dec = 1b ELSE find_dec = 0b    ;;  Logic to determine whether to find decimal place
+;;  Define maximum negative exponent allowed for float/double
+neg_tne        = (tnd[0] - 1) > 0
+;;  Convert keyword inputs to string formats
+;tne_str        = STRTRIM(STRING(tne[0],FORMAT=gei_form[2]),2L)
+;tnv_str        = STRTRIM(STRING(tnv[0],FORMAT=gei_form[2]),2L)
+;tnd_str        = STRTRIM(STRING(tnd[0],FORMAT=gei_form[2]),2L)
+;tnd_e_str      = STRTRIM(STRING((tnd[0] - 1L) > 0L,FORMAT=gei_form[2]),2L)
+;tnd_e_str      = STRTRIM(STRING((tnd[0] - 1L) > 0L,FORMAT=geif_form[2]),2L)
+tne_str        = STRTRIM(STRING(tne[0],FORMAT=geif_form[2]),2L)
+tnv_str        = STRTRIM(STRING(tnv[0],FORMAT=geif_form[2]),2L)
+tnd_str        = STRTRIM(STRING(tnd[0],FORMAT=geif_form[2]),2L)
+;;  Define exponent cases
+tnv_e_str      = STRTRIM(STRING((tnv[0] + 1L),FORMAT=geif_form[2]),2L)
+tnd_e_str      = tnd_str[0]
+;STOP
+;;----------------------------------------------------------------------------------------
+;;  Define format statements
+;;----------------------------------------------------------------------------------------
+dumb_type_out  = REPLICATE('',nn)
+out_form       = REPLICATE('',nn)
+IF (test_fdc AND test_rel) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Real float/double type
+  ;;--------------------------------------------------------------------------------------
+  ;;  Find decimal point --> determine default number of digits excluding decimal places
+  dp_posi = STRPOS(mx_av_str[0],'.')
+  IF (dp_posi[0] GT 0) THEN BEGIN
+    max_nv = dp_posi[0]
+;    def_nv = dp_posi[0] + 1L
+  ENDIF
+  ;;  Initialize format type and statements
+  dumb_type_out  = REPLICATE(geif_str[3],nn)
+  out_form       = '('+dumb_type_out+tnv_str[0]+'.'+tnd_str[0]+')'
+  ;;  Check to see if any elements exceed the user defined allowed values without resorting to exponent format
+  test_exp       = (ABS(ALOG10(ABS(nums))) GT tne[0])
+  test_big       = ( (ABS(ALOG10(ABS(nums))) + 1 + tnd[0]) GT tnv[0] ) OR (ALOG10(ABS(nums)) LT -1*neg_tne[0])
+;  test_big       = (ABS(ALOG10(ABS(nums))) GT (tnv[0] + 1 + tnd[0])) OR (ALOG10(ABS(nums)) LT -1*neg_tne[0])
+;  test_big       = (ABS(ALOG10(ABS(nums))) GT (tnv[0] + 1)) OR (ALOG10(ABS(nums)) LT -1*neg_tne[0])
+  yes_exp        = WHERE(test_exp,y_exp,COMPLEMENT=no__exp,NCOMPLEMENT=n_exp)
+  yes_big        = WHERE(test_big,y_big,COMPLEMENT=no__big,NCOMPLEMENT=n_big)
+  ;;  Define the format statements
+  IF (y_exp GT 0 OR y_big GT 0) THEN BEGIN
+    ;;  Some values exceed NEXP or NV limit
+    IF (y_exp GT 0 AND y_big GT 0) THEN BEGIN
+      yes_out = [yes_exp,yes_big]
+    ENDIF ELSE BEGIN
+      IF (y_exp GT 0) THEN yes_out = yes_exp ELSE yes_out = yes_big
+    ENDELSE
+    ;;  Only alter "bad" numbers
+    y_out   = N_ELEMENTS(yes_out)
+    dumb_type_out[yes_out] = geif_str[1]
+    out_form[yes_out]      = '('+dumb_type_out[yes_out]+tnv_e_str[0]+'.'+tnd_e_str[0]+')'
+;    out_form[yes_out]      = '('+dumb_type_out[yes_out]+tnv_str[0]+'.'+tnd_e_str[0]+')'
+  ENDIF ELSE BEGIN
+    ;;  Only one format statement
+    out_form       = out_form[0]
+  ENDELSE
+;    IF (n_exp GT 0) THEN no__out = no__exp
+;  dumb_type_out  = REPLICATE(gei_str[0],nn)
+;  ;;  Define the format statements
+;  IF (y_exp GT 0) THEN BEGIN
+;    ;;  Multiple format statements
+;;    dumb_type_out[yes_exp] = gei_str[1]
+;    dumb_type_out[yes_exp] = geif_str[1]
+;    out_form[yes_exp]      = '('+dumb_type_out[yes_exp]+tnv_str[0]+'.'+tnd_e_str[0]+')'
+;    IF (n_exp GT 0) THEN BEGIN
+;      ;;  Define the rest
+;      out_form[no__exp] = '('+dumb_type_out[no__exp]+tnv_str[0]+'.'+tnd_str[0]+')'
+;    ENDIF
+;  ENDIF ELSE BEGIN
+;    ;;  Only one format statement
+;;    out_form       = '('+gei_str[0]+tnv_str[0]+'.'+tnd_str[0]+')'
+;    out_form       = '('+geif_str[0]+tnv_str[0]+'.'+tnd_str[0]+')'
+;  ENDELSE
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Integer or complext type
+  ;;--------------------------------------------------------------------------------------
+  IF (test_int) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Integer-like
+    ;;------------------------------------------------------------------------------------
+    ;;  Initialize format type
+;    dumb_type_out  = REPLICATE(gei_str[2],nn)
+    dumb_type_out  = REPLICATE(geif_str[2],nn)
+    out_form       = '('+dumb_type_out+tnv_str[0]+'.'+tnd_str[0]+')'
+    ;;  Integer-like --> define the minimum length for each
+    min_nv_i       = STRLEN(STRTRIM(STRING(nums,FORMAT=sform[0]),2L))
+    min_nd_i       = min_nv_i
+    ;;  Check for negative values --> need to subtract +1 from decimal widths
+    neg_nums       = WHERE(nums LT 0,neg)
+    IF (neg GT 0) THEN min_nd_i[neg_nums] -= 1L
+    ;;  Convert lengths to strings
+;    min_nv_i_str   = STRTRIM(STRING(min_nv_i,FORMAT=gei_form[2]),2L)
+;    min_nd_i_str   = STRTRIM(STRING(min_nd_i,FORMAT=gei_form[2]),2L)
+    min_nv_i_str   = STRTRIM(STRING(min_nv_i,FORMAT=geif_form[2]),2L)
+    min_nd_i_str   = STRTRIM(STRING(min_nd_i,FORMAT=geif_form[2]),2L)
+    ;;  Check to see if any elements exceed the user defined allowed values without resorting to exponent format
+;    yes_exp        = WHERE(ALOG10(ABS(DOUBLE(nums))) GT tne[0],y_exp,COMPLEMENT=no__exp,NCOMPLEMENT=n_exp)
+    test_exp       = (ABS(ALOG10(ABS(DOUBLE(nums)))) GT tne[0])
+    test_big       = (min_nd_i GT tnv[0])
+    yes_exp        = WHERE(test_exp,y_exp,COMPLEMENT=no__exp,NCOMPLEMENT=n_exp)
+    yes_big        = WHERE(test_big,y_big,COMPLEMENT=no__big,NCOMPLEMENT=n_big)
+    IF (y_exp GT 0 OR y_big GT 0) THEN BEGIN
+      ;;  Some values exceed exponent limit
+      IF (y_exp GT 0) THEN BEGIN
+        yes_out = yes_exp
+        ;;  Only alter "bad" numbers
+        y_out   = N_ELEMENTS(yes_out)
+        dumb_type_out[yes_out] = geif_str[1]
+        out_form[yes_out]      = '('+dumb_type_out[yes_out]+tnv_e_str[0]+'.'+tnd_e_str[0]+')'
+      ENDIF
+      IF (y_big GT 0) THEN BEGIN
+        yes_out = yes_big
+        dumb_type_out[yes_out] = geif_str[2]
+        out_form[yes_out]      = '('+dumb_type_out[yes_out]+min_nv_i_str[yes_out]+'.'+min_nd_i_str[yes_out]+')'
+      ENDIF
+    ENDIF ELSE BEGIN
+      ;;  No values exceed NEXP or NV limits
+      test           = (N_ELEMENTS(UNIQ(min_nv_i,SORT(min_nv_i))) EQ 1)
+      IF (test) THEN BEGIN
+        ;;  Only one format statement --> All inputs have the same number of characters
+        out_form       = '('+geif_str[2]+min_nv_i_str[0]+'.'+min_nd_i_str[0]+')'
+      ENDIF ELSE BEGIN
+        ;;  Multiple formats, but one format type
+        out_form = '('+geif_str[2]+min_nv_i_str+'.'+min_nd_i_str+')'
+      ENDELSE
+    ENDELSE
+;    IF (y_exp GT 0) THEN BEGIN
+;      ;;  Some values exceed exponent limit
+;;      dumb_type_out[yes_exp] = gei_str[1]
+;      dumb_type_out[yes_exp] = geif_str[1]
+;      ;;  Define the format statements
+;      out_form               = REPLICATE('',nn)
+;      out_form[yes_exp]      = '('+dumb_type_out[yes_exp]+tnv_e_str[0]+'.'+tnd_str[0]+')'
+;;      out_form[yes_exp]      = '('+dumb_type_out[yes_exp]+tnv_str[0]+'.'+tnd_str[0]+')'
+;      IF (n_exp GT 0) THEN BEGIN
+;        ;;  Define the rest
+;;        out_form[no__exp] = '('+dumb_type_out[no__exp]+tnv_str[0]+'.'+tnd_str[0]+')'
+;        ;;  Handle cases where only integer format but:  NV LT STRLEN(NUMBER[i]) = TRUE
+;        lower             = WHERE(min_nv_i[no__exp] LT tnv[0],low)
+;        IF (n_exp GT 0) THEN BEGIN
+;          ;;  NV LT STRLEN(NUMBER[i]) = TRUE
+;;          out_form[lower] = '('+gei_str[2]+min_nv_i_str[lower]+'.'+min_nd_i_str[lower]+')'
+;          out_form[lower] = '('+geif_str[2]+min_nv_i_str[lower]+'.'+min_nd_i_str[lower]+')'
+;        ENDIF
+;      ENDIF
+;    ENDIF ELSE BEGIN
+;      ;;  No values exceed exponent limit
+;      test           = (N_ELEMENTS(UNIQ(min_nv_i,SORT(min_nv_i))) EQ 1)
+;      IF (test) THEN BEGIN
+;        ;;  Only one format statement --> All inputs have the same number of characters
+;;        out_form       = '('+gei_str[2]+min_nv_i_str[0]+'.'+min_nd_i_str[0]+')'
+;        out_form       = '('+geif_str[2]+min_nv_i_str[0]+'.'+min_nd_i_str[0]+')'
+;      ENDIF ELSE BEGIN
+;        ;;  Multiple formats, but one format type
+;;        out_form = '('+gei_str[2]+min_nv_i_str+'.'+min_nd_i_str+')'
+;        out_form = '('+geif_str[2]+min_nv_i_str+'.'+min_nd_i_str+')'
+;      ENDELSE
+;    ENDELSE
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Imaginary input --> ?
+    ;;------------------------------------------------------------------------------------
+    STOP  ;;  fix later
+  ENDELSE
+ENDELSE
+
+;STOP
+;;----------------------------------------------------------------------------------------
+;;  If float --> define sign and take absolute value
+;;----------------------------------------------------------------------------------------
+IF (test_fdc) THEN BEGIN
+  ss    = sign(nums) EQ 1
+  s_pre = plus_min_str[ss]
+  n_out = ABS(nums)
+  neg_n = WHERE(nums LT 0,ng_n)
+ENDIF ELSE BEGIN
+  s_pre = REPLICATE('',nn)
+  n_out = nums
+  ng_n  = 0
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define string outputs
+;;----------------------------------------------------------------------------------------
+n_oform        = N_ELEMENTS(out_form)
+IF (n_oform GT 0) THEN BEGIN
+  ;;  Multiple output formats
+  s_out          = REPLICATE('',nn)
+  FOR j=0L, nn[0] - 1L DO BEGIN
+    s_out[j] = STRTRIM(STRING(n_out[j],FORMAT=out_form[j]),2L)
+  ENDFOR
+ENDIF ELSE BEGIN
+  ;;  Only one output formats
+  s_out          = STRTRIM(STRING(n_out,FORMAT=out_form[0]),2L)
+ENDELSE
+;;  Check if '-' needs to be added
+IF (ng_n GT 0) THEN s_out[neg_n] = s_pre[neg_n]+s_out[neg_n]
+
+;STOP
+;;----------------------------------------------------------------------------------------
+;;  Remove decimal place if ND = 0 on input
+;;----------------------------------------------------------------------------------------
+IF (tnd[0] EQ 0) THEN BEGIN
+  ;;  User wishes to remove decimal points
+  dp_posi = STRPOS(s_out,'.')
+  good_dp = WHERE(dp_posi GE 0,gd_dp)
+  IF (gd_dp[0] GT 0) THEN BEGIN
+    ;;  decimal points found --> remove
+    s_bef = REPLICATE('',gd_dp[0])
+    s_aft = REPLICATE('',gd_dp[0])
+    FOR j=0L, gd_dp[0] - 1L DO BEGIN
+      k        = good_dp[j]
+      s_bef[j] = STRMID(s_out[k],0L,dp_posi[k])
+      s_aft[j] = STRMID(s_out[k],dp_posi[k] + 1L)
+    ENDFOR
+    ;;  Remove
+    s_out[good_dp] = s_bef+s_aft
+  ENDIF
+ENDIF
+
+;STOP
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,s_out
+END
+
+
+;IF (test_int) THEN BEGIN
+;  ;;  Input is integer-like [ Max allowed input = 18446744073709551615ULL ]
+;  mx_av_str = STRING()
+;ENDIF
+
+;CASE type[0] OF
+;   1    :  BEGIN
+;    ;;   1  :  BYTE     [8-bit UI]
+;    read_out       = 0B
+;    func           = 'BYTE'
+;  END
+;  2    :  BEGIN
+;    ;;   2  :  INT      [16-bit SI]
+;    read_out       = 0S
+;    func           = 'INT'
+;  END
+;  3    :  BEGIN
+;    ;;   3  :  LONG     [32-bit SI]
+;    read_out       = 0L
+;    func           = 'LONG'
+;  END
+;  4    :  BEGIN
+;    ;;   4  :  FLOAT    [32-bit, SP, FPN]
+;    read_out       = 0e0
+;    func           = 'FLOAT'
+;  END
+;  5    :  BEGIN
+;    ;;   5  :  DOUBLE   [64-bit, DP, FPN]
+;    read_out       = 0d0
+;    func           = 'DOUBLE'
+;  END
+;  6    :  BEGIN
+;    ;;   6  :  COMPLEX  [32-bit, SP, FPN for Real and Imaginary]
+;    func           = 'COMPLEX'
+;    read_out       = CALL_FUNCTION(func[0],0e0,0e0)
+;  END
+;  9    :  BEGIN
+;    ;;   9  :  DCOMPLEX [64-bit, DP, FPN for Real and Imaginary]
+;    func           = 'DCOMPLEX'
+;    read_out       = CALL_FUNCTION(func[0],0d0,0d0)
+;  END
+;  12    :  BEGIN
+;    ;;  12  :  UINT     [16-bit UI]
+;    read_out       = 0U
+;    func           = 'UINT'
+;  END
+;  13    :  BEGIN
+;    ;;  13  :  ULONG    [32-bit UI]
+;    read_out       = 0UL
+;    func           = 'ULONG'
+;  END
+;  14    :  BEGIN
+;    ;;  14  :  LONG64   [64-bit SI]
+;    read_out       = 0LL
+;    func           = 'LONG64'
+;  END
+;  15    :  BEGIN
+;    ;;  15  :  ULONG64  [64-bit UI]
+;    read_out       = 0ULL
+;    func           = 'ULONG64'
+;  END
+;  ELSE  :  BEGIN
+;    ;;  stop for now --> fix later
+;    STOP
+;  END
+;ENDCASE
+
+
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check keywords
+  ;;--------------------------------------------------------------------------------------
+;  ;;  Check NEXP
+;  test           = (N_ELEMENTS(nexp) EQ 1) AND (is_a_number(nexp,/NOMSSG))
+;  IF (test[0]) THEN tne = (LONG(nexp[0]) > 1) ELSE tne = def_ne[0]
+;  ;;  Check NV
+;  test           = (N_ELEMENTS(nv) EQ 1) AND (is_a_number(nv,/NOMSSG))
+;  IF (test[0]) THEN BEGIN
+;    ;;  NV set --> check format
+;    IF (nv[0] GT 1) THEN tnv = (LONG(nv[0]) > min_nv[0]) ELSE tnv = def_nv[0]
+;  ENDIF ELSE BEGIN
+;    ;;  NV not set --> use default
+;    tnv = def_nv[0]
+;  ENDELSE
+;  ;;  Check ND
+;  test           = (N_ELEMENTS(nd) EQ 1) AND (is_a_number(nd,/NOMSSG))
+;  IF (test[0]) THEN tnd = (LONG(nd[0]) > -1) ELSE tnd = def_nd[0]
+;  ;;  Make sure ND is not too large [IF = 0 --> no decimal point on output]
+;  tnd            = tnd[0] < (tnv[0] - 5L)
+;  IF (tnd[0] LT 1) THEN find_dec = 1 ELSE find_dec = 0    ;;  Logic to determine whether to find decimal place
+

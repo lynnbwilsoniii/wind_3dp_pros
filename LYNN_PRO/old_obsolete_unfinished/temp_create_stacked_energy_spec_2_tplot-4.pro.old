@@ -1,0 +1,557 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_calc_ener_spect.pro
+;  PURPOSE  :   This routine calculates the omni-directional energy spectra from an
+;                 input array of 3D particle velocity distributions.  The results are
+;                 very similar to those returned by get_spec.pro.
+;
+;  CALLED BY:   
+;               temp_create_stacked_energy_spec_2_tplot.pro
+;
+;  CALLS:
+;               wind_3dp_units.pro
+;               format_esa_bins_keyword.pro
+;               conv_units.pro
+;               calc_log_scale_yrange.pro
+;               extract_tags.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT         :  [N]-Element [structure] array of THEMIS ESA or Wind/3DP
+;                                IDL data structures containing the 3D velocity
+;                                distribution functions to use to create the stacked
+;                                energy spectra plots
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               UNITS       :  Scalar [string] defining the units to use for the
+;                                vertical axis of the plot and the outputs YDAT and DYDAT
+;                                [Default = 'flux' or number flux]
+;               BINS        :  [N]-Element [byte] array defining which solid angle bins
+;                                should be plotted [i.e., BINS[good] = 1b] and which
+;                                bins should not be plotted [i.e., BINS[bad] = 0b].
+;                                One can also define bins as an array of indices that
+;                                define which solid angle bins to plot.  If this is the
+;                                case, then on output, BINS will be redefined to an
+;                                array of byte values specifying which bins are TRUE or
+;                                FALSE.
+;                                [Default:  BINS[*] = 1b]
+;               TRANGE      :  [2]-Element [double] array of Unix times specifying the
+;                                time range over which to calculate spectra
+;                                [Default : [MIN(DAT.TIME),MAX(DAT.END_TIME)] ]
+;               ERANGE      :  [2]-Element [double] array defining the energy [eV] range
+;                                over which to calculate spectra
+;                                [Default : [MIN(DAT.ENERGY),MAX(DAT.ENERGY)] ]
+;               LIMITS      :  Scalar [structure] that may contain any combination of the
+;                                following structure tags or keywords accepted by
+;                                PLOT.PRO:
+;                                  XLOG,   YLOG,   ZLOG,
+;                                  XRANGE, YRANGE, ZRANGE,
+;                                  XTITLE, YTITLE,
+;                                  TITLE, POSITION, REGION, etc.
+;                                  (see IDL documentation for a description)
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [02/01/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [02/01/2015   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [02/06/2015   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [02/06/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  See also:  get_spec.pro, get_padspecs.pro
+;
+;  REFERENCES:  
+;               1)  Carlson et al., (1983), "An instrument for rapidly measuring
+;                      plasma distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70.
+;               2)  Curtis et al., (1989), "On-board data analysis techniques for
+;                      space plasma particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372.
+;               3)  Lin et al., (1995), "A Three-Dimensional Plasma and Energetic
+;                      particle investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125.
+;               4)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;               5)  McFadden, J.P., C.W. Carlson, D. Larson, M. Ludlam, R. Abiad,
+;                      B. Elliot, P. Turin, M. Marckwordt, and V. Angelopoulos
+;                      "The THEMIS ESA Plasma Instrument and In-flight Calibration,"
+;                      Space Sci. Rev. 141, pp. 277-302, (2008).
+;               6)  McFadden, J.P., C.W. Carlson, D. Larson, J.W. Bonnell,
+;                      F.S. Mozer, V. Angelopoulos, K.-H. Glassmeier, U. Auster
+;                      "THEMIS ESA First Science Results and Performance Issues,"
+;                      Space Sci. Rev. 141, pp. 477-508, (2008).
+;               7)  Auster, H.U., K.-H. Glassmeier, W. Magnes, O. Aydogar, W. Baumjohann,
+;                      D. Constantinescu, D. Fischer, K.H. Fornacon, E. Georgescu,
+;                      P. Harvey, O. Hillenmaier, R. Kroth, M. Ludlam, Y. Narita,
+;                      R. Nakamura, K. Okrafka, F. Plaschke, I. Richter, H. Schwarzl,
+;                      B. Stoll, A. Valavanoglou, and M. Wiedemann "The THEMIS Fluxgate
+;                      Magnetometer," Space Sci. Rev. 141, pp. 235-264, (2008).
+;               8)  Angelopoulos, V. "The THEMIS Mission," Space Sci. Rev. 141,
+;                      pp. 5-34, (2008).
+;
+;   CREATED:  02/01/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/06/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION temp_calc_ener_spect,dat,UNITS=units,BINS=bins,TRANGE=trange,ERANGE=erange,$
+                                  LIMITS=limits
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION wind_3dp_units, format_esa_bins_keyword, conv_units, $
+                 calc_log_scale_yrange
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+mission_logic  = [0b,0b]                ;;  Logic variable used for determining which mission is associated with DAT
+;;  Dummy error messages
+noinpt_msg     = 'User must supply an array of velocity distribution functions as IDL structures...'
+notstr_msg     = 'DAT must be an array of IDL structures...'
+notvdf_msg     = 'Input must be a velocity distribution function as an IDL structure...'
+badtra_msg     = 'TRANGE must be a 2-element array of Unix times and DAT must have a range of times as well...'
+badera_msg     = 'ERANGE must be a 2-element array of energies [eV] and DAT.ENERGY must have a range of energies as well...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 1) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+IF (SIZE(dat,/TYPE) NE 8L OR N_ELEMENTS(dat) LT 2) THEN BEGIN
+  MESSAGE,notstr_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check UNITS
+test           = (N_ELEMENTS(units) EQ 0) OR (SIZE(units,/TYPE) NE 7)
+IF (test[0]) THEN units = 'flux'
+;;  Format to allowable units
+temp           = wind_3dp_units(units)
+gunits         = temp.G_UNIT_NAME      ;;  e.g. 'flux'
+units          = gunits[0]             ;;  redefine UNITS incase it changed
+;;  Check ERANGE
+test           = (N_ELEMENTS(erange) NE 2)
+ener0          = dat.ENERGY
+def_eran       = [MIN(ener0,/NAN),MAX(ener0,/NAN)]      ;;  Default energy range [eV]
+IF (test[0]) THEN eran = def_eran ELSE eran = [MIN(erange),MAX(erange)]
+test           = (eran[0] EQ eran[1]) AND (def_eran[0] EQ def_eran[1])
+IF (test[0]) THEN BEGIN
+  MESSAGE,badera_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF ELSE BEGIN
+  IF (eran[0] EQ eran[1]) THEN eran = def_eran
+ENDELSE
+;;  Clean up
+ener0          = 0
+;;  Check TRANGE
+test           = (N_ELEMENTS(trange) NE 2)
+IF (test[0]) THEN tra = [MIN(dat.TIME),MAX(dat.END_TIME)] ELSE tra = [MIN(trange),MAX(trange)]
+test           = (N_ELEMENTS(tra) NE 2) OR (tra[0] EQ tra[1])
+IF (test[0]) THEN BEGIN
+  MESSAGE,badtra_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check BINS
+n_b            = dat[0].NBINS[0]        ;;  # of solid angle bins per structure
+bstr           = format_esa_bins_keyword(dat,BINS=bins)
+test           = (SIZE(bstr,/TYPE) NE 8)
+IF (test[0]) THEN STOP     ;;  Debug --> something is wrong
+;;----------------------------------------------------------------------------------------
+;;  Define parameters relevant to structure format
+;;----------------------------------------------------------------------------------------
+n_dat          = N_ELEMENTS(dat)        ;;  # of data structures
+n_b            = dat[0].NBINS[0]        ;;  # of solid angle bins per structure
+n_e            = dat[0].NENERGY[0]      ;;  # of energy bins per structure
+;;----------------------------------------------------------------------------------------
+;;  Define data parameters
+;;----------------------------------------------------------------------------------------
+;;  Keep DAT within TRANGE
+test           = (dat.TIME GE tra[0]) AND (dat.END_TIME LE tra[1])
+good           = WHERE(test,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+IF (gd[0] GT 0 AND gd[0] LT n_dat[0]) THEN BEGIN
+  ;;  Remove data out of time range
+  dat2   = conv_units(dat[good],gunits[0])
+ENDIF ELSE BEGIN
+  dat2   = conv_units(dat,gunits[0]) ;;  Else --> use all
+ENDELSE
+;;  Redefine # of structures and data
+;;    E = # of energy bins per structure
+;;    A = # solid angle bins per energy per structure
+;;    D = # of structures
+n_dat          = N_ELEMENTS(dat2)       ;;  # of data structures
+energy         = dat2.ENERGY            ;;  [E,A,D]-Element array
+data0          = dat2.DATA              ;;  [E,A,D]-Element array
+;;----------------------------------------------------------------------------------------
+;;  Keep only data within TRANGE and ERANGE and with BINS = 1
+;;----------------------------------------------------------------------------------------
+;;  Keep DAT.ENERGY within ERANGE
+n_all_en       = N_ELEMENTS(energy)
+test           = (energy GE eran[0]) AND (energy LE eran[1])
+good           = WHERE(test,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+test           = (gd[0] GT 20) AND (bd[0] LT n_all_en[0] - 30L)
+IF (test) THEN BEGIN
+  ;;  Remove data out of energy range
+  bind         = REPLICATE(0e0,n_e[0],n_b[0],n_dat[0])
+  bind[good]   = 1e0
+  energy      *= bind
+  data0       *= bind
+  ;;  Clean up
+  bind         = 0
+ENDIF ;;  Else --> use all
+;;  Keep only DAT.DATA satisfying BINS
+good           = WHERE(bins,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+test           = (gd[0] GT 5) AND (bd[0] LT n_b[0] - 5L)
+IF (test) THEN BEGIN
+  ;;  Remove bad bins
+  bind           = REPLICATE(0e0,n_e[0],n_b[0],n_dat[0])
+  bind[*,good,*] = 1e0
+  data0         *= bind
+  ;;  Clean up
+  bind           = 0
+ENDIF ELSE bins = REPLICATE(1b,data[0].NBINS) ;;  Else --> use all
+;;----------------------------------------------------------------------------------------
+;;  Calculate omni-directional spectra
+;;----------------------------------------------------------------------------------------
+spec_data      = REPLICATE(f,n_dat[0],n_e[0])     ;;  Omin-directional UNITS spectra
+spec_ener      = REPLICATE(f,n_dat[0],n_e[0])     ;;  Avg. energy bin values for each structure
+spec_midt      = REPLICATE(d,n_dat[0])            ;;  Unix times at center of range for each structure
+;;  Define normalization factor
+count          = n_b[0]
+IF (gunits[0] EQ 'counts') THEN fnorm = 1 ELSE fnorm = count
+spec_midt      = (dat2.TIME + dat2.END_TIME)/2d0
+spec_data      = TRANSPOSE(TOTAL(data0,2L,/NAN)/fnorm[0])
+spec_ener      = TRANSPOSE(TOTAL(energy,2L,/NAN)/count[0])
+;;  Change 0 --> NaN
+test           = (spec_data GT 0) AND FINITE(spec_ener)
+good           = WHERE(test,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+IF (bd[0] GT 0) THEN spec_data[bad] = f
+;;----------------------------------------------------------------------------------------
+;;  Define labels and colors for TPLOT
+;;----------------------------------------------------------------------------------------
+ener_cols      = LONARR(n_e[0])
+ener_labs      = STRARR(n_e[0])
+avg_ener       = TOTAL(spec_ener,1L,/NAN)/TOTAL(FINITE(spec_ener),1L,/NAN)
+;;  Check if any entire energy bin is full of NaNs or 0's
+test           = TOTAL(FINITE(spec_data),1L,/NAN) EQ 0
+bad            = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+;good           = WHERE(test,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+test           = (gd[0] GT 0) AND (bd[0] GT 0L)
+IF (test) THEN BEGIN
+  ;;  Remove bad energies
+  avg_ener[bad]   = f
+  ener_labs[good] = STRTRIM(ROUND(avg_ener[good]),2L)+' eV'
+  ener_cols[good] = LINDGEN(gd[0])*(250L - 30L)/(gd[0] - 1L) + 30L
+ENDIF ELSE BEGIN
+  IF (gd[0] GT 0) THEN BEGIN
+    ener_labs = STRTRIM(ROUND(avg_ener),2L)+' eV'
+    ener_cols = LINDGEN(n_e[0])*(250L - 30L)/(n_e[0] - 1L) + 30L
+  ENDIF
+ENDELSE
+;;  Want lowest(highest) energy = Red(Purple)
+;;    --> Reverse order of colors if E[0] < E[1]
+diff           = MAX(avg_ener,lx,/NAN) - MIN(avg_ener,ln,/NAN)
+IF (lx[0] GT ln[0]) THEN ener_cols = REVERSE(ener_cols)
+;;----------------------------------------------------------------------------------------
+;;  Estimate YRANGE for TPLOT
+;;----------------------------------------------------------------------------------------
+temp           = REFORM(spec_data,n_dat[0]*n_e[0])
+yran0          = calc_log_scale_yrange(temp)
+test           = (N_ELEMENTS(yran0) EQ 2)
+IF (test) THEN IF (yran0[0] NE yran0[1]) THEN yran = yran0
+;;----------------------------------------------------------------------------------------
+;;  Define return structures
+;;----------------------------------------------------------------------------------------
+data_str       = {X:spec_midt,Y:spec_data,V:spec_ener}
+opts_str       = {PANEL_SIZE:2.,YSTYLE:1,XMINOR:5,XTICKLEN:0.04,YTICKLEN:0.01}
+IF (N_ELEMENTS(yran) EQ 2) THEN BEGIN
+  dopts_str      = {YLOG:1,LABELS:ener_labs,COLORS:ener_cols,YRANGE:yran,SPEC:0,YMINOR:9L}
+ENDIF ELSE BEGIN
+  dopts_str      = {YLOG:1,LABELS:ener_labs,COLORS:ener_cols,SPEC:0,YMINOR:9L}
+ENDELSE
+;;  Add LIMITS info if applicable
+IF (SIZE(limits,/TYPE) EQ 8) THEN BEGIN
+  extract_tags,dlim,dopts_str                      ;;  Get current default plot limits settings
+  extract_tags,dlim,limits,/PLOT                   ;;  Get plot limits settings from LIMITS, if present
+  dlim_tags = TAG_NAMES(dlim)
+  extract_tags,lim,opts_str,EXCEPT_TAGS=dlim_tags  ;;  Try to avoid overlapping tags
+ENDIF ELSE BEGIN
+  dlim      = dopts_str
+  lim       = opts_str
+ENDELSE
+struct         = {DATA:data_str,DLIMITS:dlim,LIMITS:lim,UNITS:gunits[0],BINS:bins}
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   temp_create_stacked_energy_spec_2_tplot.pro
+;  PURPOSE  :   This routine calculates the omni-directional energy spectra from an
+;                 input array of 3D particle velocity distributions and sends the
+;                 results to TPLOT.  The results are very similar to those returned
+;                 by get_spec.pro.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               temp_calc_ener_spect.pro
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               dat_3dp_str_names.pro
+;               dat_themis_esa_str_names.pro
+;               temp_calc_ener_spect.pro
+;               wind_3dp_units.pro
+;               str_element.pro
+;               store_data.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT         :  [N]-Element [structure] array of THEMIS ESA or Wind/3DP
+;                                IDL data structures containing the 3D velocity
+;                                distribution functions to use to create the stacked
+;                                energy spectra plots
+;
+;  EXAMPLES:    
+;               temp_create_stacked_energy_spec_2_tplot,dat,LIMITS=limits,UNITS=units, $
+;                                                       BINS=bins,NAME=name,           $
+;                                                       TRANGE=trange,ERANGE=erange,   $
+;                                                       _EXTRA=ex_str
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***       DIRECT  INPUTS       ***
+;               **********************************
+;               LIMITS      :  Scalar [structure] that may contain any combination of the
+;                                following structure tags or keywords accepted by
+;                                PLOT.PRO:
+;                                  XLOG,   YLOG,   ZLOG,
+;                                  XRANGE, YRANGE, ZRANGE,
+;                                  XTITLE, YTITLE,
+;                                  TITLE, POSITION, REGION, etc.
+;                                  (see IDL documentation for a description)
+;               UNITS       :  Scalar [string] defining the units to use for the
+;                                vertical axis of the plot and the outputs YDAT and DYDAT
+;                                [Default = 'flux' or number flux]
+;               BINS        :  [N]-Element [byte] array defining which solid angle bins
+;                                should be plotted [i.e., BINS[good] = 1b] and which
+;                                bins should not be plotted [i.e., BINS[bad] = 0b].
+;                                One can also define bins as an array of indices that
+;                                define which solid angle bins to plot.  If this is the
+;                                case, then on output, BINS will be redefined to an
+;                                array of byte values specifying which bins are TRUE or
+;                                FALSE.
+;                                [Default:  BINS[*] = 1b]
+;               NAME        :  Scalar [string] defining the TPLOT handle for the energy
+;                                omni-directional spectra
+;                                [Default : '??_ener_spec', ?? = 'el','eh','elb',etc.]
+;               TRANGE      :  [2]-Element [double] array of Unix times specifying the
+;                                time range over which to calculate spectra
+;                                [Default : [MIN(DAT.TIME),MAX(DAT.END_TIME)] ]
+;               ERANGE      :  [2]-Element [double] array defining the energy [eV] range
+;                                over which to calculate spectra
+;                                [Default : [MIN(DAT.ENERGY),MAX(DAT.ENERGY)] ]
+;               _EXTRA      :  Scalar [structure] used by get_??.pro routines for Wind
+;                                or thm_part_dist_array.pro routine for THEMIS
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [02/01/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [02/01/2015   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [02/06/2015   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [02/06/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  See also:  get_spec.pro, get_padspecs.pro
+;               2)  Future Plans:
+;                   A)  improve robustness and portability
+;
+;  REFERENCES:  
+;               1)  Carlson et al., (1983), "An instrument for rapidly measuring
+;                      plasma distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70.
+;               2)  Curtis et al., (1989), "On-board data analysis techniques for
+;                      space plasma particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372.
+;               3)  Lin et al., (1995), "A Three-Dimensional Plasma and Energetic
+;                      particle investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125.
+;               4)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;               5)  McFadden, J.P., C.W. Carlson, D. Larson, M. Ludlam, R. Abiad,
+;                      B. Elliot, P. Turin, M. Marckwordt, and V. Angelopoulos
+;                      "The THEMIS ESA Plasma Instrument and In-flight Calibration,"
+;                      Space Sci. Rev. 141, pp. 277-302, (2008).
+;               6)  McFadden, J.P., C.W. Carlson, D. Larson, J.W. Bonnell,
+;                      F.S. Mozer, V. Angelopoulos, K.-H. Glassmeier, U. Auster
+;                      "THEMIS ESA First Science Results and Performance Issues,"
+;                      Space Sci. Rev. 141, pp. 477-508, (2008).
+;               7)  Auster, H.U., K.-H. Glassmeier, W. Magnes, O. Aydogar, W. Baumjohann,
+;                      D. Constantinescu, D. Fischer, K.H. Fornacon, E. Georgescu,
+;                      P. Harvey, O. Hillenmaier, R. Kroth, M. Ludlam, Y. Narita,
+;                      R. Nakamura, K. Okrafka, F. Plaschke, I. Richter, H. Schwarzl,
+;                      B. Stoll, A. Valavanoglou, and M. Wiedemann "The THEMIS Fluxgate
+;                      Magnetometer," Space Sci. Rev. 141, pp. 235-264, (2008).
+;               8)  Angelopoulos, V. "The THEMIS Mission," Space Sci. Rev. 141,
+;                      pp. 5-34, (2008).
+;
+;   CREATED:  02/01/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/06/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO temp_create_stacked_energy_spec_2_tplot,dat,LIMITS=limits,UNITS=units,BINS=bins,$
+                                            NAME=name,TRANGE=trange,ERANGE=erange,  $
+                                            _EXTRA=ex_str
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION test_wind_vs_themis_esa_struct, dat_3dp_str_names,                 $
+                 dat_themis_esa_str_names, temp_calc_ener_spect, wind_3dp_units
+;;****************************************************************************************
+ex_start = SYSTIME(1)
+;;****************************************************************************************
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+mission_logic  = [0b,0b]                ;;  Logic variable used for determining which mission is associated with DAT
+def_nm_suffx   = '_ener_spec'
+;;  Dummy error messages
+noinpt_msg     = 'User must supply an array of velocity distribution functions as IDL structures...'
+notstr_msg     = 'DAT must be an array of IDL structures...'
+notvdf_msg     = 'Input must be a velocity distribution function as an IDL structure...'
+badtra_msg     = 'TRANGE must be a 2-element array of Unix times and DAT must have a range of times as well...'
+badera_msg     = 'ERANGE must be a 2-element array of energies [eV] and DAT.ENERGY must have a range of energies as well...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 1) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+IF (SIZE(dat,/TYPE) NE 8L OR N_ELEMENTS(dat) LT 2) THEN BEGIN
+  MESSAGE,notstr_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Check to make sure distribution has the correct format
+test0          = test_wind_vs_themis_esa_struct(dat[0],/NOM)
+test           = (test0.(0) + test0.(1)) NE 1
+IF (test[0]) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Determine instrument (i.e., ESA or 3DP) and define electric charge
+dat0           = dat[0]
+IF (test0.(0)) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Wind
+  ;;--------------------------------------------------------------------------------------
+  mission      = 'Wind'
+  strns        = dat_3dp_str_names(dat0[0])
+  IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+    ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+    MESSAGE,not3dp_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF
+  inst_nm_mode = strns.LC[0]         ;;  e.g., 'Pesa Low Burst'
+ENDIF ELSE BEGIN
+  IF (test0.(1)) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  THEMIS
+    ;;------------------------------------------------------------------------------------
+    mission      = 'THEMIS'
+    strns        = dat_themis_esa_str_names(dat0[0])
+    IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+      ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+      MESSAGE,notthm_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    ENDIF
+    temp         = strns.LC[0]                  ;;  e.g., 'IESA 3D Reduced Distribution'
+    tposi        = STRPOS(temp[0],'Distribution') - 1L
+    inst_nm_mode = STRMID(temp[0],0L,tposi[0])  ;;  e.g., 'IESA 3D Reduced'
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Other mission?
+    ;;------------------------------------------------------------------------------------
+    ;;  Not handling any other missions yet
+    MESSAGE,badvdf_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDELSE
+ENDELSE
+mission_logic  = [(test0.(0))[0],(test0.(1))[0]]
+data_str       = strns.SN[0]     ;;  e.g., 'el' for Wind EESA Low or 'peeb' for THEMIS EESA
+;;----------------------------------------------------------------------------------------
+;;  Define parameters relevant to structure format
+;;----------------------------------------------------------------------------------------
+n_dat          = N_ELEMENTS(dat)        ;;  # of data structures
+n_b            = dat[0].NBINS[0]        ;;  # of solid angle bins per structure
+n_e            = dat[0].NENERGY[0]      ;;  # of energy bins per structure
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check NAME
+test           = (N_ELEMENTS(name) EQ 0) OR (SIZE(name,/TYPE) NE 7)
+IF (test[0]) THEN name = data_str[0]+def_nm_suffx[0]
+;;----------------------------------------------------------------------------------------
+;;  Calculate energy spectra
+;;----------------------------------------------------------------------------------------
+spec_struc     = temp_calc_ener_spect(dat,UNITS=units,BINS=bins,TRANGE=trange,$
+                                          ERANGE=erange,LIMITS=limits)
+IF (SIZE(spec_struc,/TYPE) NE 8) THEN STOP     ;;  Debug
+data0          = spec_struc.DATA
+dlim           = spec_struc.DLIMITS
+lim            = spec_struc.LIMITS
+;;  Define YTITLE and YSUBTITLE
+gunits         = spec_struc.UNITS
+temp           = wind_3dp_units(gunits)
+gunits         = temp.G_UNIT_NAME      ;;  e.g. 'flux'
+punits         = temp.G_UNIT_P_NAME    ;;  e.g. ' (# cm!U-2!Ns!U-1!Nsr!U-1!NeV!U-1!N)'
+ytitle         = data_str[0]+' '+gunits[0]
+ysubtl         = STRMID(punits[0],1L)  ;;  e.g. '(# cm!U-2!Ns!U-1!Nsr!U-1!NeV!U-1!N)'
+str_element,dlim,   'YTITLE',ytitle[0],/ADD_REPLACE
+str_element,dlim,'YSUBTITLE',ysubtl[0],/ADD_REPLACE
+out_name       = name[0]+'_'+gunits[0]
+;;----------------------------------------------------------------------------------------
+;;  Send results to TPLOT
+;;----------------------------------------------------------------------------------------
+store_data,out_name[0],DATA=data0,DLIM=dlim,LIM=lim
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+;;****************************************************************************************
+ex_time = SYSTIME(1) - ex_start
+MESSAGE,STRING(ex_time)+' seconds execution time.',/cont,/info
+;;****************************************************************************************
+
+RETURN
+END
+

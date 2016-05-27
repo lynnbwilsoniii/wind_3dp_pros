@@ -1,0 +1,106 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   start_umn_3dp.pro
+;  PURPOSE  :   Start up routine to initialize UMN versions of Berkeley SSL 
+;                 Wind/3DP software upon starting IDL.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               wind_3dp_umn_init.pro
+;               plot3d_options.pro
+;               TMlib_wrapper.pro
+;
+;  REQUIRES:    
+;               UMN Edited 3DP Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               @start_umn_3dp
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Changed compliation list                         [09/17/2009   v1.0.1]
+;             2)  Changed compliation list                         [09/18/2009   v1.0.2]
+;             3)  Added plot3d.pro options by calling plot3d_options.pro with default
+;                   options already chosen                         [09/18/2009   v1.0.3]
+;             4)  Changed compliation list                         [09/21/2009   v1.0.4]
+;             5)  Added a device call for default formats          [09/21/2009   v1.0.5]
+;             6)  Changed compliation list                         [09/24/2009   v1.0.6]
+;             7)  Added extra option for plot3d_options.pro        [09/25/2009   v1.0.7]
+;             8)  Added extra option for TMlib Client Software compilation which acts
+;                   similar to calling "sidl" from command prompt instead of "uidl"
+;                                                                  [10/22/2009   v1.1.0]
+;             9)  No longer compiles routines on entry             [06/16/2011   v1.2.0]
+;            10)  Cleaned up, changed path specification, and added error handling for
+;                   TMlib_wrapper.pro batch call
+;                                                                  [08/23/2012   v1.3.0]
+;
+;   NOTES:      
+;               1)  Still in production...
+;
+;   CREATED:  09/16/2009
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/23/2012   v1.3.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+!PROMPT = 'UMN> '   ;  change prompt
+LOADCT,39
+DEVICE,DECOMPOSED=0;,RETAIN=2
+;DEVICE,SET_GRAPHICS_FUNCTION=3,/CURSOR_CROSSHAIR
+vers = !VERSION.OS_FAMILY
+mdir = FILE_EXPAND_PATH('')
+; => Check for trailing '/'
+ll   = STRMID(mdir, STRLEN(mdir) - 1L,1L)
+
+IF (ll[0] NE '/' OR ll[0] NE '\') THEN slash = 1 ELSE slash = 0
+IF (vers NE 'unix' AND slash) THEN mdir = mdir+'\' ELSE mdir = mdir+'/'
+DELVAR,slash,vers
+
+;;----------------------------------------------------------------------------------------
+;; => Reset IDL Path
+;;----------------------------------------------------------------------------------------
+tdir           = FILE_EXPAND_PATH('wind_3dp_pros/')
+t_path         = EXPAND_PATH('+'+tdir[0],/ARRAY)
+gposi          = STRPOS(t_path,'wind_data_dir') GE 0
+bad            = WHERE(gposi,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+t_path         = STRJOIN(t_path[good],/SINGLE)
+
+;; Get current path
+idlpath        = GETENV('IDL_PATH')
+;; Prefix current path with UMN Modified Wind/3DP IDL Library paths
+new_path       = t_path[0]+':'+idlpath[0]
+SETENV,'IDL_PATH='+new_path[0]
+;idlpath = ':+'+mdir+'wind_3dp_pros'+idlpath
+;SETENV,'IDL_PATH='+idlpath
+DELVAR,t_path,idlpath,gposi,bad,good,bd,gd
+;-----------------------------------------------------------------------------------------
+; => Call wind_3dp_umn_init.pro
+;-----------------------------------------------------------------------------------------
+wind_3dp_umn_init
+
+;-----------------------------------------------------------------------------------------
+; => Set up PLOT3D.PRO options
+;-----------------------------------------------------------------------------------------
+; => Default to a Hammer-Aitoff Projection
+plot3d_options,MAP='ham',LOG =1,TRIANGULATE=1,COMPRESS=1,GRID=[30,30]
+;;----------------------------------------------------------------------------------------
+;; => Check for TMlib_wrapper
+;;----------------------------------------------------------------------------------------
+tdir           = FILE_EXPAND_PATH('/Applications/STEREO/TMlib_Client/lib/idl/')
+test           = FILE_TEST(tdir,/DIRECTORY)
+IF (test EQ 0) THEN STOP
+@TMlib_wrapper
+;; clean up
+DELVAR,tmfile,old_dir,test,tdir
+
+
+

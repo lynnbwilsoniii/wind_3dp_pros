@@ -1,0 +1,87 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   sample_rate.pro
+;  PURPOSE  :   Determines the sample rate of an input time series of data with the
+;                 ability to set gap thresholds to avoid including them in the
+;                 calculation.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               TIME        :  [N]-Element array of time stamps [s] associated with
+;                                a time series for which one is interested in
+;                                determining the sample rate
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               GAP_THRESH  :  Scalar defining the maximum data gap [s] allowed in
+;                                the calculation
+;               AVERAGE     :  If set, routine returns the average sample rate
+;                                [Default = 0, which returns an array of sample rates]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  The output is the sample rate in [# samples per unit time]
+;               2)  If GAP_THRESH is set too small, then the returned result is a 
+;
+;   CREATED:  03/28/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  03/28/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION sample_rate,time,GAP_THRESH=gap_thresh,AVERAGE=average
+
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables
+;-----------------------------------------------------------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN RETURN,0
+
+tt       = REFORM(time)
+nt       = N_ELEMENTS(tt)
+; => sort input just in case
+sp       = SORT(tt)
+tt       = tt[sp]
+; => Define the total time between the first and last data point
+trange   = MAX(tt,/NAN) - MIN(tt,/NAN)
+; => Define shifted difference
+lower    = LINDGEN(nt - 1L)
+upper    = lower + 1L
+sh_diff  = [d,(tt[upper] - tt[lower])]
+;-----------------------------------------------------------------------------------------
+; => Determine the maximum allowable gap and remove "bad" values
+;-----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(gap_thresh) THEN mx_gap = trange ELSE mx_gap = gap_thresh[0]
+bad      = WHERE(sh_diff GT mx_gap[0],bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0 AND bd LT nt) THEN BEGIN
+  sh_diff[bad] = d
+ENDIF ELSE BEGIN
+  IF (bd EQ nt) THEN RETURN,d
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Calculate the sample rate
+;-----------------------------------------------------------------------------------------
+samrates = 1d0/sh_diff
+avgsmrt  = MEAN(samrates,/NAN,/DOUBLE)
+IF NOT KEYWORD_SET(average) THEN sam_rate = samrates ELSE sam_rate = avgsmrt
+
+RETURN,sam_rate
+END

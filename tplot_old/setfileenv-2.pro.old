@@ -1,0 +1,269 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   setfileenv.pro
+;  PURPOSE  :   Sets up environment variables giving information on the location
+;                 of master index files and file paths of WIND 3DP data.
+;
+;  CALLED BY:   
+;               init_wind_lib.pro
+;
+;  CALLS:
+;               get_os_slash.pro
+;               umn_default_env.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  P. Schroeder changed something...
+;                                                                  [09/25/2003   v1.0.26]
+;             2)  Changed path locations
+;                                                                  [01/08/2008   v1.1.0]
+;             3)  Updated man page and added error handling for multiple OS's and
+;                   computer systems
+;                                                                  [08/05/2010   v1.2.0]
+;             4)  Updated file paths for other data quantities
+;                                                                  [06/08/2011   v1.2.1]
+;             5)  Updated file paths for House Keeping quantities and removed
+;                   unnecessary environment variables
+;                                                                  [06/17/2011   v1.2.2]
+;             6)  Changed path locations, fixed a few typos, and updated to match
+;                   new directory tree structure for data and now calls get_os_slash.pro
+;                                                                  [08/07/2013   v1.3.0]
+;
+;   NOTES:      
+;               1)  Users may have to change certain file paths accordingly for their
+;                     own machines
+;               2)  If done correctly, users will not need masterfile lists as this
+;                     routine will create an environment variable that is used by
+;                     loadallcdf.pro or other CDF file loading routines.  The files
+;                     are found by cdf_file_names.pro, which is why the environment
+;                     variables below use '*' in their definitions.
+;               3)  Check paths are correct with:
+;                     HELP,OUTPUT=oo,/SOURCE_FILES
+;                     PRINT, TRANSPOSE(oo)
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Peter Schroeder
+;    LAST MODIFIED:  08/07/2013   v1.3.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO setfileenv
+
+;;----------------------------------------------------------------------------------------
+;;  Define system variable parameters
+;;----------------------------------------------------------------------------------------
+vers           = !VERSION
+mdir           = FILE_EXPAND_PATH('')
+slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
+;;  Check for trailing '/' or '\'
+ll             = STRMID(mdir, STRLEN(mdir) - 1L,1L)
+test_ll        = (ll[0] NE slash[0])
+IF (test_ll) THEN mdir = mdir[0]+slash[0]
+
+;CASE ll[0] OF
+;  '/'  : BEGIN  ;;  Unix
+;    mdir = mdir
+;  END
+;  '\'  : BEGIN  ;;  Windows
+;    mdir = mdir
+;  END
+;  ELSE : BEGIN
+;    IF (STRLOWCASE(vers.OS_FAMILY) NE 'unix') THEN mdir = mdir+'\' ELSE mdir = mdir+'/'
+;  END
+;ENDCASE
+;;----------------------------------------------------------------------------------------
+;;  Setup environment variables
+;;----------------------------------------------------------------------------------------
+defdir         = ''    ;;  Default data directory
+def3dp         = ''    ;;  Default 3DP data directory
+defswe         = ''    ;;  Default 3DP data directory
+mfidir1        = ''    ;;  Location of MFI CDF files
+phwrite        = ''    ;;  Place to write PH stuff to ???
+wind_so        = ''    ;;  Location of shared object libraries
+basedir        = ''    ;;  Location of the 3DP lz files
+
+defdir         = slash[0]+'data1'+slash[0]+'wind'+slash[0]  ;;  e.g., '/data1/wind/
+def3dp         = defdir[0]+'3dp'+slash[0]                   ;;  e.g., '/data1/wind/3dp/'
+defswe         = defdir[0]+'swe'+slash[0]                   ;;  e.g., '/data1/wind/swe/'
+;;  Define environment variable to be checked later to avoid multiple calls to this routine
+SETENV,'FILE_ENV_SET=1'
+;;  Check to see if base directory is already set
+basedir        = GETENV('BASE_DATA_DIR')
+
+IF NOT KEYWORD_SET(basedir) THEN BEGIN
+  basedir = def3dp[0]+'lz'
+  MESSAGE,/INFO,'Warning! Environment variable "BASE_DATA_DIR" is not set!;'
+  MESSAGE,/INFO,'Using default value: "'+basedir+'"'
+ENDIF
+
+IF (STRLOWCASE(vers.OS_NAME) NE 'mac os x') THEN BEGIN
+  ;;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  ;;  Note to users:  You may need to change the Dir. location for the
+  ;;                      Wind MFI CDF files.
+  ;;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  temp_dir  = FILE_EXPAND_PATH('wind_3dp_pros'+slash[0])
+  ;;  Check for trailing '/' or '\'
+  ll        = STRMID(temp_dir, STRLEN(temp_dir) - 1L,1L)
+  test_ll   = ((STRMID(temp_dir, STRLEN(temp_dir) - 1L,1L))[0] NE slash[0])
+  IF (test_ll) THEN temp_dir = temp_dir[0]+slash[0]
+  mfidir1   = temp_dir[0]+'wind_data_dir'+slash[0]+'MFI_CDF'
+  phwrite   = temp_dir[0]+'ARJUN_PRO'
+  wind_so   = temp_dir[0]+'WIND_PRO'
+;  mfidir1 = '/home/lbwilson/overflow/wind_3dp/MFI_CDF'
+;  phwrite = '/home/lbwilson/overflow/wind_3dp/3DP_IDL_PROS/ARJUN_PRO'
+;  wind_so = '/home/lbwilson/overflow/wind_3dp/3DP_IDL_PROS/WIND_PRO'
+ENDIF ELSE BEGIN
+  DEFSYSV,'!wind3dp_umn',EXISTS=exists
+  IF NOT KEYWORD_SET(exists) THEN BEGIN
+    structure = umn_default_env()
+    DEFSYSV,'!wind3dp_umn',structure
+  ENDIF
+  mfidir1 = !wind3dp_umn.WIND_MFI_CDF_DIR
+  phwrite = !wind3dp_umn.IDL_3DP_LIB_DIR+'ARJUN_PRO'
+  wind_so = !wind3dp_umn.IDL_3DP_LIB_DIR+'WIND_PRO'
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define environment variables
+;;----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(GETENV('WIND_DATA_DIR')) THEN BEGIN
+  SETENV,'WIND_DATA_DIR='+basedir[0]
+;  SETENV,'WIND_DATA_DIR=/data1/wind/3dp/lz'
+ENDIF
+;disks          = GETENV('WIND_DATA_DIR')
+;indexdir       = GETENV('CDF_INDEX_DIR')+'/'
+
+;;  I/O-Related environment variables
+SETENV,'PH_DIR_WRITE='        +phwrite
+SETENV,'IDL_3DP_LIB_DIR='     +wind_so
+
+;;  SWE-Related environment variables
+SETENV,'WI_K0_SWE_FILES='     +defswe[0]+'k0'+slash[0]+'????'+slash[0]+'wi_k0_swe*.cdf'
+SETENV,'WI_SWE_K0_FILES='     +defswe[0]+'k0'+slash[0]+'????'+slash[0]+'wi_k0_swe*.cdf'
+SETENV,'WI_SWE_K0_B_FILES='   +defswe[0]+'k0'+slash[0]+'bartel'+slash[0]+'wi_swe_k0*.cdf'
+
+;;  MFI-Related environment variables
+SETENV,'WI_K0_MFI_FILES='     +mfidir1[0]+'wi_k0_mfi*.cdf'
+SETENV,'WI_K0_MFI_B_FILES='   +mfidir1[0]+'wi_*.cdf'
+SETENV,'WI_SP_MFI_FILES='     +mfidir1[0]+'wi_sp_mfi*.cdf'
+SETENV,'WI_H0_MFI_FILES='     +mfidir1[0]+'wi_h0_mfi*.cdf'
+SETENV,'WI_H0_MFI_INDEX='     +mfidir1[0]
+SETENV,'WI_H0_MFI_V3_FILES='  +mfidir1[0]+'wi_h0_mfi*.cdf'
+
+;;  3DP-Related environment variables
+SETENV,'WI_K0_3DP_FILES='     +def3dp[0]+  'k0'+slash[0]+'????'+slash[0]+'wi_k0_3dp*.cdf'
+SETENV,'WI_HKP_3DP_FILES='    +def3dp[0]+ 'hkp'+slash[0]+'????'+slash[0]+'wi_hkp_3dp*'
+SETENV,'WI_3DP_PLSP_FILES='   +def3dp[0]+'plsp'+slash[0]+'????'+slash[0]+'wi_plsp_3dp*.cdf'
+SETENV,'WI_PLSP_3DP_FILES='   +def3dp[0]+'plsp'+slash[0]+'????'+slash[0]+'wi_plsp_3dp*.cdf'
+SETENV,'WI_3DP_ELSP_FILES='   +def3dp[0]+'elsp'+slash[0]+'????'+slash[0]+'wi_elsp_3dp*.cdf'
+SETENV,'WI_ELSP_3DP_FILES='   +def3dp[0]+'elsp'+slash[0]+'????'+slash[0]+'wi_elsp_3dp*.cdf'
+SETENV,'WI_3DP_PLSP_B_FILES=' +def3dp[0]+'plsp'+slash[0]+'bartel'+slash[0]+'wi_3dp_plsp_B*.cdf'
+SETENV,'WI_3DP_ELSP_B_FILES=' +def3dp[0]+'elsp'+slash[0]+'bartel'+slash[0]+'wi_3dp_elsp_B*.cdf'
+
+;SETENV,'WI_K0_MFI_FILES='    +mfidir1+'/wi_k0_mfi*.cdf'
+;SETENV,'WI_K0_MFI_B_FILES='  +mfidir1+'/wi_*.cdf'
+;SETENV,'WI_SP_MFI_FILES='    +mfidir1+'/wi_sp_mfi*.cdf'
+;SETENV,'WI_H0_MFI_FILES='    +mfidir1+'/wi_h0_mfi*.cdf'
+;SETENV,'WI_H0_MFI_V3_FILES=' +mfidir1+'/wi_h0_mfi*.cdf'
+
+; The following environment variables will slowly be replaced.
+
+;IF NOT KEYWORD_SET(GETENV('WIND_DATA_DIR')) THEN $
+;   SETENV,'WIND_DATA_DIR=/data1/wind/3dp/lz'
+;disks    = GETENV('WIND_DATA_DIR')
+;indexdir = GETENV('CDF_INDEX_DIR')+'/'
+
+;;  Uncomment the following as necessary
+;;
+;;  SETENV,'WI_3DP_ELPD_FILES='   +defdir[0]+'elpd/????/wi_3dp_elpd*.cdf'
+;;  SETENV,'WI_3DP_ELPD_B_FILES=' +defdir[0]+'elpd/bartel/wi_3dp_elpd*.cdf'
+;;  SETENV,'WI_3DP_PDFIT_FILES='  +defdir[0]+'pdfit/????/*pdfit*.cdf'
+;;  SETENV,'WI_3DP_EHSP_FILES='   +defdir[0]+'ehsp/????/wi_3dp_ehsp*.cdf'
+;;  SETENV,'WI_3DP_EHSP_B_FILES=' +defdir[0]+'ehsp/bartel/wi_3dp_ehsp*.cdf'
+;;  SETENV,'WI_3DP_SFSP_FILES='   +defdir[0]+'sfsp/????/wi_3dp_sfsp*.cdf'
+;;  SETENV,'WI_3DP_SFSP_B_FILES=' +defdir[0]+'sfsp/bartel/wi_3dp_sfsp_B*.cdf'
+;;  SETENV,'WI_3DP_SFSP2_FILES='  +defdir[0]+'sfsp2/????/wi_sfsp_3dp*.cdf'
+;;  SETENV,'WI_3DP_SFSP2_B_FILES='+defdir[0]+'sfsp2/bartel/wi_3dp_sfsp2_B*.cdf'
+;;  SETENV,'WI_3DP_SOSP_B_FILES=' +defdir[0]+'sosp/bartel/wi_3dp_sosp_B*.cdf'
+;;  SETENV,'WI_EHPD_3DP_FILES='   +defdir[0]+'ehpd/????/wi_ehpd_3dp*.cdf'
+;;  SETENV,'WI_EHSP_3DP_FILES='   +defdir[0]+'ehsp/????/wi_ehsp_3dp*.cdf'
+;;  SETENV,'WI_ELM2_3DP_FILES='   +defdir[0]+'elm2/????/wi_elm2_3dp*.cdf'
+;;  SETENV,'WI_ELPD_3DP_FILES='   +defdir[0]+'elpd/????/wi_elpd_3dp*.cdf'
+;;  SETENV,'WI_EM_3DP_FILES='     +defdir[0]+'em/????/wi_em_3dp*.cdf'
+;;  SETENV,'WI_PM_3DP_FILES='     +defdir[0]+'pm/????/wi_pm_3dp*.cdf'
+;;  SETENV,'WI_SFPD_3DP_FILES='   +defdir[0]+'sfpd/????/wi_sfpd_3dp*'
+;;  SETENV,'WI_SFSP_3DP_FILES='   +basedir+'/wi/3dp/sfsp1/????/wi_sfsp_3dp*'
+;;  SETENV,'WI_SFSP_3DP_FILES='   +defdir[0]+'sfsp/????/wi_sfsp_3dp*'
+;;  SETENV,'WI_SOSP_3DP_FILES='   +defdir[0]+'sosp/????/wi_sosp_3dp*'
+;;  SETENV,'WI_SOPD_3DP_FILES='   +defdir[0]+'sopd/????/wi_sopd_3dp*'
+;;
+;;  SETENV,'WI_H0_WAV_FILES='      +wavdir1+'/wi_h0_wav*.cdf'
+;;  SETENV,'WI_OR_LNG_FILES='    +'/data1/wind/or/lng/????/wi_or_lng*.cdf'
+;;  SETENV,'WI_OR_DEF_FILES='    +'/data1/wind/or/def/????/wi_or_def*.cdf'
+;;  SETENV,'WI_OR_PRE_FILES='    +'/data1/wind/or/pre/????/wi_or_pre*.cdf'
+;;  SETENV,'WI_OR_CMB_FILES='    +'/data1/wind/or/cmb/????/wi_or_*.cdf'
+;;  SETENV,'WI_OR_CMB_B_FILES='  +'/data1/wind/or/cmb/bartel/wi_or_cmb_B*.cdf'
+;;  SETENV,'GE_K0_EPI_FILES='    +basedir+'/ge/epi/k0/????/ge_k0_epi*.cdf'
+;;
+;;  SETENV,'GE_K0_CPI_FILES='+disks+'ge/k0/cpi/ge_k0_cpi*'
+;;  SETENV,'GE_K0_EFD_FILES='+disks+'ge/k0/efd/ge_k0_efd*'
+;;  SETENV,'GE_K0_LEP_FILES='+disks+'ge/k0/lep/ge_k0_lep*'
+;;  SETENV,'GE_K0_MGF_FILES='+disks+'ge/k0/mgf/ge_k0_mgf*'
+;;  SETENV,'GE_K0_PWI_FILES='+disks+'ge/k0/pwi/ge_k0_pwi*'
+;;  SETENV,'IG_K0_PCI_FILES='+disks+'ig/k0/pci/ig_k0_pci*'
+;;  SETENV,'PO_K0_EFI_FILES='+disks+'po/k0/efi/po_k0_efi*'
+;;  SETENV,'PO_K0_HYD_FILES='+disks+'po/k0/hyd/po_k0_hyd*'
+;;  SETENV,'PO_K0_MFE_FILES='+disks+'po/k0/mfe/po_k0_mfe*'
+;;  SETENV,'PO_K0_PIX_FILES='+disks+'po/k0/pix/po_k0_pix*'
+;;  SETENV,'PO_K0_PWI_FILES='+disks+'po/k0/pwi/po_k0_pwi*'
+;;  SETENV,'PO_K0_UVI_FILES='+disks+'po/k0/uvi/po_k0_uvi*'
+;;  SETENV,'SO_K0_CEL_FILES='+disks+'so/k0/cel/so_k0_cel*'
+;;  SETENV,'SO_K0_CST_FILES='+disks+'so/k0/cst/so_k0_cst*'
+;;  SETENV,'SO_K0_ERN_FILES='+disks+'so/k0/ern/so_k0_ern*'
+;;  SETENV,'WI_AT_DEF_FILES='+disks+'wi/at/def/wi_at_def*'
+;;  SETENV,'WI_AT_PRE_FILES='+disks+'wi/at/pre/wi_at_pre*'
+;;  SETENV,'WI_FRM_3DP_FILES='+disks+'wi/3dp/frm/wi_frm_3dp*'
+;;  SETENV,'WI_HKP_3DP_FILES='+disks+'wi/3dp/hkp/wi_hkp_3dp*'
+;;  SETENV,'WI_K0_EPA_FILES='+disks+'wi/k0/epa/wi_k0_epa*'
+;;  SETENV,'WI_K0_SMS_FILES='+disks+'wi/k0/sms/wi_k0_sms*'
+;;  SETENV,'WI_K0_SPHA_FILES='+disks+'wi/k0/spha/wi_k0_spha*'
+;;  SETENV,'WI_LZ_3DP_FILES='+disks+'wi/lz/3dp/wi_lz_3dp*'
+;;  SETENV,'WI_PHSP_3DP_FILES='+disks+'wi/3dp/phsp/wi_phsp_3dp*'
+;;  SETENV,'WI_SOPD_3DP_FILES='+disks+'wi/3dp/sopd/wi_sopd_3dp*'
+;;
+;;  SETENV,'WI_PM_3DP_FILES='+disks+'wi/3dp/pm/wi_pm_3dp*'
+;;  SETENV,'WI_EHPD_3DP_FILES='+disks+'wi/3dp/ehpd/wi_ehpd_3dp*'
+;;  SETENV,'WI_EHSP_3DP_FILES='+disks+'wi/3dp/ehsp/wi_ehsp_3dp*'
+;;  SETENV,'WI_ELM2_3DP_FILES='+disks+'wi/3dp/elm2/wi_elm2_3dp*'
+;;  SETENV,'WI_ELPD_3DP_FILES='+disks+'wi/3dp/elpd/wi_elpd_3dp*'
+;;  SETENV,'WI_ELSP_3DP_FILES='+disks+'wi/3dp/elsp/wi_elsp_3dp*'
+;;  SETENV,'WI_EM_3DP_FILES='+disks+'wi/3dp/em/wi_em_3dp*'
+;;  SETENV,'WI_H0_MFI_FILES='+disks+'wi/h0/mfi/wi_h0_mfi*'
+;;  SETENV,'WI_K0_3DP_FILES='+disks+'wi/k0/3dp/wi_k0_3dp*'
+;;  SETENV,'WI_K0_MFI_FILES='+disks+'wi/k0/mfi/wi_k0_mfi*'
+;;  SETENV,'WI_K0_SWE_FILES='+disks+'wi/k0/swe/wi_k0_swe*'
+;;  SETENV,'WI_K0_WAV_FILES='+disks+'wi/k0/wav/wi_k0_wav*'
+;;  SETENV,'WI_OR_DEF_FILES='+disks+'wi/or/def/wi_or_def*'
+;;  SETENV,'WI_OR_LNG_FILES='+disks+'wi/or/lng/wi_or_lng*'
+;;  SETENV,'WI_OR_PRE_FILES='+disks+'wi/or/pre/wi_or_pre*'
+;;  SETENV,'WI_PLSP_3DP_FILES='+disks+'wi/3dp/plsp/wi_plsp_3dp*'
+;;  SETENV,'WI_SFPD_3DP_FILES='+disks+'wi/3dp/sfpd/wi_sfpd_3dp*'
+;;  SETENV,'WI_SFSP_3DP_FILES='+disks+'wi/3dp/sfsp/wi_sfsp_3dp*'
+;;  SETENV,'WI_SOSP_3DP_FILES='+disks+'wi/3dp/sosp/wi_sosp_3dp*'
+;;  SETENV,'WI_SP_MFI_FILES='+disks+'wi/sp/mfi/wi_sp_mfi*'
+
+
+RETURN
+END

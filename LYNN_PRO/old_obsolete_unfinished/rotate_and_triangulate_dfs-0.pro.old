@@ -1,0 +1,222 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   rotate_and_triangulate_dfs.pro
+;  PURPOSE  :   Uses the velocities corresponding to the energy/angle bins of a
+;                 particle distribution and the corresponding data points to create
+;                 projections onto three different planes defined by user supplied
+;                 rotation matrices.
+;
+;  CALLED BY:   
+;               rotate_esa_htr_structure.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               VELS     :  [K,3]-Element array of particle velocities [km/s]
+;               DATA     :  [K]-Element array of phase (velocity) space densities
+;               ROTMXY   :  [K,3,3]-Element array of rotation matrices for the new
+;                             XY- and XZ-Planes
+;               ROTMZY   :  [K,3,3]-Element array of rotation matrices for the new
+;                             ZY--Plane
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               VLIM       :  Limit for x-y velocity axes over which to plot data
+;                               [Default = max vel. magnitude]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  User should not call this routine
+;               
+;
+;   CREATED:  08/07/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/07/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION rotate_and_triangulate_dfs,vels,data,rotmxy,rotmzy
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+gs             = [dgs,dgs]                   ; => grid spacing for triangulation used later
+;;----------------------------------------------------------------------------------------
+;; => Check input structure format
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 3) THEN RETURN,0b
+
+swfv           = vels                        ;; [K,3]-Element array
+szv            = SIZE(swfv,/DIMENSIONS)
+kk             = szv[0]                      ;; # of vectors
+dat_1d         = data                        ;; [K]-Element array
+rotm           = rotmxy                      ;; [K,3,3]-Element array
+rotz           = rotmzy                      ;; [K,3,3]-Element array
+;;----------------------------------------------------------------------------------------
+;; => Check keywords
+;;----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(vlim) THEN BEGIN
+  vlim = MAX(SQRT(TOTAL(swfv^2,2L,/NAN)),/NAN)
+ENDIF ELSE BEGIN
+  vlim = FLOAT(vlim[0])
+ENDELSE
+
+dgs            = vlim[0]/5e1
+gs             = [dgs,dgs]               ;; => grid spacing for triangulation used later
+xylim          = [-1*vlim[0],-1*vlim[0],vlim[0],vlim[0]]
+dumb1d         = REPLICATE(d,101L)
+dumb2d         = REPLICATE(d,101L,101L)
+;; => Force regularly gridded velocities (for contour plots)
+vx2d           = -1e0*vlim[0] + gs[0]*FINDGEN(FIX((2e0*vlim[0])/gs[0]) + 1L)
+vy2d           = -1e0*vlim[0] + gs[1]*FINDGEN(FIX((2e0*vlim[0])/gs[1]) + 1L)
+;;----------------------------------------------------------------------------------------
+;; => Rotate velocities into new coordinate basis and triangulate
+;;----------------------------------------------------------------------------------------
+vel_r         = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTM
+vel_z         = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTZ
+
+temp_r        = REBIN(swfv,kk,3L,3L)            ;;  expand to a [K,3,3]-element array
+;; => Apply rotations [vectorized]
+temp_rm       = TOTAL(temp_r*rotm,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
+temp_rz       = TOTAL(temp_r*rotz,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
+vel_r         = temp_rm
+vel_z         = temp_rz
+;; => Define new basis velocities components [cal_rot.pro]
+vel2dx        = REFORM(vel_r[*,0])
+vyz2d         = SQRT(TOTAL(vel_r[*,1:2]^2,2,/NAN))
+vel2dy        = vyz2d*REFORM(vel_r[*,1])/ABS(REFORM(vel_r[*,1]))
+vel2dz        = vyz2d*REFORM(vel_r[*,2])/ABS(REFORM(vel_r[*,2]))
+;; => Define new basis velocities components [rot_mat.pro]
+vyz2d_z       = SQRT(TOTAL(vel_z[*,1:2]^2,2,/NAN))
+vel2dx_z      = REFORM(vel_z[*,0])
+vel2dy_z      = vyz2d_z*REFORM(vel_z[*,1])/ABS(REFORM(vel_z[*,1]))
+vel2dz_z      = vyz2d_z*REFORM(vel_z[*,2])/ABS(REFORM(vel_z[*,2]))
+;;----------------------------------------------------------------------------------------
+;; => ONLY Finite data is allowed in TRIANGULATE.PRO and TRIGRID.PRO
+;;----------------------------------------------------------------------------------------
+testf          = (FINITE(dat_1d) EQ 1) AND (dat_1d GE 0.)
+testv          = (FINITE(vel2dx) EQ 1) AND (FINITE(vel2dy) EQ 1) AND (FINITE(vel2dz) EQ 1)
+indx           = WHERE(testf AND testv,cnt,COMPLEMENT=bad,NCOMPLEMENT=bd)
+IF (cnt GT 0L) THEN BEGIN
+  vel2dx_2 = vel2dx[indx]
+  vel2dy_2 = vel2dy[indx]
+  vel2dz_2 = vel2dz[indx]
+  dat_1d2  = dat_1d[indx]
+  ;---------------------------------------------------------------------------------------
+  ; => Y vs. X Plane projection
+  ;---------------------------------------------------------------------------------------
+  TRIANGULATE, vel2dx_2, vel2dy_2, tr
+  ; => put DF on regular grid
+  df2d_xy  = TRIGRID(vel2dx_2,vel2dy_2,dat_1d2,tr,gs,xylim,MISSING=f)
+  vx2d_xy  = vel2dx_2
+  vy2d_xy  = vel2dy_2
+  vz2d_xy  = vel2dz_2
+  ;---------------------------------------------------------------------------------------
+  ; => X vs. Z Plane projection
+  ;---------------------------------------------------------------------------------------
+  TRIANGULATE, vel2dz_2, vel2dx_2, tr
+  ; => put DF on regular grid
+  df2d_xz  = TRIGRID(vel2dz_2,vel2dx_2,dat_1d2,tr,gs,xylim,MISSING=f)
+  vx2d_xz  = vel2dz_2
+  vy2d_xz  = vel2dx_2
+  vz2d_xz  = vel2dy_2
+  ;---------------------------------------------------------------------------------------
+  ; => Force output to have specific # of elements
+  ;---------------------------------------------------------------------------------------
+  IF (bd GT 0) THEN BEGIN
+    nxy     = N_ELEMENTS(vx2d_xy)
+    ndef    = kk
+    nd      = ndef - nxy
+    pad     = REPLICATE(d,nd)
+    ;; => pad the velocities
+    vx2d_xy  = [vx2d_xy,pad]
+    vy2d_xy  = [vy2d_xy,pad]
+    vz2d_xy  = [vz2d_xy,pad]
+    vx2d_xz  = [vx2d_xz,pad]
+    vy2d_xz  = [vy2d_xz,pad]
+    vz2d_xz  = [vz2d_xz,pad]
+  ENDIF
+ENDIF ELSE BEGIN
+  MESSAGE,'No finite XY data',/CONTINUE,/INFORMATIONAL
+  ; => X-Y Plane projection
+  df2d_xy  = dumb2d
+  vx2d_xy  = dumb1d
+  vy2d_xy  = dumb1d
+  vz2d_xy  = dumb1d
+  ; => X-Z Plane projection
+  df2d_xz  = dumb2d
+  vx2d_xz  = dumb1d
+  vy2d_xz  = dumb1d
+  vz2d_xz  = dumb1d
+ENDELSE
+
+testf      = (FINITE(dat_1d) EQ 1) AND (dat_1d GE 0.)
+testv      = (FINITE(vel2dx_z) EQ 1) AND (FINITE(vel2dy_z) EQ 1) AND (FINITE(vel2dz_z) EQ 1)
+indx       = WHERE(testf AND testv,cnt,COMPLEMENT=bad,NCOMPLEMENT=bd)
+IF (cnt GT 0L) THEN BEGIN
+  vel2dx_z = vel2dx_z[indx]
+  vel2dy_z = vel2dy_z[indx]
+  vel2dz_z = vel2dz_z[indx]
+  dat_1dz  = dat_1d[indx]
+  ;---------------------------------------------------------------------------------------
+  ; => Z vs. Y Plane projection
+  ;---------------------------------------------------------------------------------------
+  TRIANGULATE, vel2dx_z, vel2dy_z, tr
+  df2d_yz  = TRIGRID(vel2dx_z,vel2dy_z,dat_1dz,tr,gs,xylim,MISSING=f)
+  vx2d_yz  = vel2dx_z
+  vy2d_yz  = vel2dy_z
+  vz2d_yz  = vel2dz_z
+  ;---------------------------------------------------------------------------------------
+  ; => Force output to have specific # of elements
+  ;---------------------------------------------------------------------------------------
+  IF (bd GT 0) THEN BEGIN
+    nxy     = N_ELEMENTS(vx2d_yz)
+    ndef    = kk
+    nd      = ndef - nxy
+    pad     = REPLICATE(d,nd)
+    ;; => pad the velocities
+    vx2d_yz  = [vx2d_yz,pad]
+    vy2d_yz  = [vy2d_yz,pad]
+    vz2d_yz  = [vz2d_yz,pad]
+  ENDIF
+ENDIF ELSE BEGIN
+  MESSAGE,'No finite Z data',/CONTINUE,/INFORMATIONAL
+  ; => Y-Z Plane projection
+  df2d_yz  = dumb2d
+  vx2d_yz  = dumb1d
+  vy2d_yz  = dumb1d
+  vz2d_yz  = dumb1d
+  vx2d_yzg = dumb1d
+  vy2d_yzg = dumb1d
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;; => Create return structure
+;;----------------------------------------------------------------------------------------
+tags   = ['VX2D','VY2D','PLANE_XY','PLANE_XZ','PLANE_YZ']
+tag_xy = ['DF2D_XY','VELX_XY','VELY_XY','VELZ_XY']
+tag_xz = ['DF2D_XZ','VELX_XZ','VELY_XZ','VELZ_XZ']
+tag_yz = ['DF2D_YZ','VELX_YZ','VELY_YZ','VELZ_YZ']
+
+str_xy = CREATE_STRUCT(tag_xy,df2d_xy,vx2d_xy,vy2d_xy,vz2d_xy)
+str_xz = CREATE_STRUCT(tag_xz,df2d_xz,vx2d_xz,vy2d_xz,vz2d_xz)
+str_yz = CREATE_STRUCT(tag_yz,df2d_yz,vx2d_yz,vy2d_yz,vz2d_yz)
+
+struct = CREATE_STRUCT(tags,vx2d,vy2d,str_xy,str_xz,str_yz)
+;;----------------------------------------------------------------------------------------
+;; => Return structure to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END

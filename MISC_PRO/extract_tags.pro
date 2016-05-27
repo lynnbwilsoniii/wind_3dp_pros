@@ -1,0 +1,259 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   extract_tags.pro
+;  PURPOSE  :   Extracts the structure tag values from an input IDL structure and puts
+;                 the tag and associated value into a new structure.  This procedure
+;                 is very useful for creating a structure that can be passed onto the
+;                 PLOT or OPLOT subroutines using the _EXTRA keyword.  If no tag
+;                 keywords are included then all tag elements of oldstruct are added
+;                 to newstruct.  The mode keyword PRESERVE is used to prevent the
+;                 overwritting of an existing keyword.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               array_union.pro
+;               str_element.pro
+;               struct_value.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NEWSTRUCT    :  New IDL structure to be created or added to
+;               OLDSTRUCT    :  Old IDL structure to extract data from
+;
+;  EXAMPLES:    
+;               ;;  To create a copy of a structure, do the following:
+;               extract_tags,newstruct,oldstruct
+;               ;;  To create a copy of a structure without the YRANGE tag,
+;               ;;    do the following:
+;               extract_tags,newstruct,oldstruct,EXCEPT_TAGS=['YRANGE']
+;               ;;  To create a copy of a structure with only tags associated with
+;               ;;    keywords accepted by PLOT.PRO, do the following:
+;               extract_tags,newstruct,oldstruct,/PLOT
+;
+;  KEYWORDS:    
+;               OPLOT        :  If set, a dummy string array of keywords used by the
+;                                 IDL built-in OPLOT.PRO are used in place of the
+;                                 TAGS keyword
+;               PLOT         :  If set, a dummy string array of keywords used by the
+;                                 IDL built-in PLOT.PRO are used in place of the
+;                                 TAGS keyword
+;               CONTOUR      :  If set, a dummy string array of keywords used by the
+;                                 IDL built-in CONTOUR.PRO are used in place of the
+;                                 TAGS keyword
+;               AXIS         :  If set, a dummy string array of keywords used by the
+;                                 IDL built-in AXIS.PRO are used in place of the
+;                                 TAGS keyword
+;               XYOUTS       :  If set, a dummy string array of keywords used by the
+;                                 IDL built-in XYOUTS.PRO are used in place of the
+;                                 TAGS keyword
+;               TAGS         :  [K]-Element string array of structure tags to be
+;                                 taken from OLDSTRUCT and put into NEWSTRUCT
+;               NTAGS        :  Used in conjunction with the PRESERVE keyword, though
+;                                 it does not have well defined error handling so I
+;                                 would avoid using this keyword.  It looks like it can be
+;                                 set to a named variable for returning tags, though
+;                                 again I would avoid using this keyword.
+;               REPLACE      :  ** Not used **
+;               EXCEPT_TAGS  :  [J]-Element string array of structure tags NOT to be
+;                                 taken from OLDSTRUCT and put into NEWSTRUCT
+;               PRESERVE     :  If set, prevents the overwriting of any existing,
+;                                 non-null structure tags.  This will still add
+;                                 structure tags that were not present in NEWSTRUCT
+;
+;   CHANGED:  1)  Davin Larson created
+;                                                                   [??/??/????   v1.0.0]
+;             2)  Davin Larson changed something...
+;                                                                   [04/17/2002   v1.0.21]
+;             3)  Re-wrote and cleaned up
+;                                                                   [08/16/2011   v1.1.0]
+;             4)  Fixed a bug in the IF THEN ELSE loop that adds new tags to the
+;                   new structure [error occurred while using the PRESERVE keyword]
+;                   and now calls struct_value.pro
+;                                                                   [01/31/2015   v1.1.1]
+;             5)  Fixed several bugs and cleaned up Man. page and
+;                   and now calls struct_value.pro
+;                                                                   [02/10/2015   v1.2.0]
+;             6)  Cleaned up
+;                                                                   [02/10/2015   v1.2.1]
+;
+;   NOTES:      
+;               1)  If no keywords are set, then ALL structure tags and associated
+;                     values are taken from OLDSTRUCT and put into NEWSTRUCT
+;               2)  If PRESERVE is set and a structure tag exists in NEWSTRUCT
+;                     but has "" or 0-values then they will be replaced by the values
+;                     in OLDSTRUCT
+;               3)  YTYPE is a version 3. keyword and not found in the version 4 docs
+;               4)  The following keywords are not used or well defined:
+;                     NTAGS
+;                     REPLACE
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  02/10/2015   v1.2.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO extract_tags,newstruct,oldstruct,OPLOT=oplot,PLOT=plot,CONTOUR=contr,AXIS=axis, $
+                 XYOUTS=xyouts,TAGS=tags,NTAGS=ntags,REPLACE=replace,               $
+                 EXCEPT_TAGS=except_tags,PRESERVE=preserve
+
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (SIZE(oldstruct,/TYPE) NE 8) THEN RETURN
+
+;;----------------------------------------------------------------------------------------
+;;  Check for IDL plotting routine specific keywords
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(oplot) THEN BEGIN
+  ;;  Use only OPLOT.PRO keywords
+  tags = ['clip','color','linestyle','max_value','min_value','noclip',$
+          'nsum','polar','psym','subtitle','symsize','t3d','thick','zvalue']
+ENDIF
+
+IF KEYWORD_SET(plot) THEN BEGIN
+  ;;  Use only PLOT.PRO keywords
+  tags = ['background','charsize','charthick','clip','color','data','device',$
+          'font','linestyle','max_value','min_value','noclip','nodata',      $
+          'noerase','normal','nsum','polar','position','psym','subtitle',    $
+          'symsize','t3d','thick','ticklen','title','xcharsize','xgridstyle',$
+          'xlog','xmargin','xminor','xrange','xstyle','xthick','xtickformat',$
+          'xticklen','xtickname','xticks','xtickv','xtick_get','xtitle',     $
+          'xtype','ycharsize','ygridstyle','ylog','ymargin','yminor',        $
+          'ynozero','yrange','ystyle','ythick','ytickformat','yticklen',     $
+          'ytickname','yticks','ytickv','ytick_get','ytitle','ytype',        $
+          'zcharsize','zgridstyle','zlog','zmargin','zminor','zrange',       $
+          'zstyle','zthick','ztickformat','zticklen','ztickname','zticks',   $
+          'ztickv','ztick_get','ztitle','zvalue','isotropic']
+ENDIF
+
+IF KEYWORD_SET(contr) THEN BEGIN
+  ;;  Use only CONTOUR.PRO keywords
+  tags = ['background','c_annotation','c_charsize','c_colors','c_labels',    $
+          'c_linestyle','c_orientation','c_spacing','c_thick','cell_fill',   $
+          'closed','charsize','charthick','clip','color','data','device',    $
+          'downhill','fill','follow','font','levels','max_value','min_value',$
+          'nlevels','noclip','nodata','noerase','normal','overplot',         $
+          'path_filename','path_info','path_xy','position','subtitle',       $
+          't3d','thick','ticklen','title','triangulation','xcharsize',       $
+          'xgridstyle','xlog','xmargin','xminor','xrange','xstyle','xthick', $
+          'xtickformat','xticklen','xtickname','xticks','xtickv','xtick_get',$
+          'xtitle','xtype','ycharsize','ygridstyle','ylog','ymargin',        $
+          'yminor','ynozero','yrange','ystyle','ythick','ytickformat',       $
+          'yticklen','ytickname','yticks','ytickv','ytick_get','ytitle',     $
+          'ytype','zcharsize','zgridstyle','zaxis','zmargin','zminor',       $
+          'zrange','zstyle','zthick','ztickformat','zticklen','ztickname',   $
+          'zticks','ztickv','ztick_get','ztitle','zvalue','isotropic']
+ENDIF
+
+IF KEYWORD_SET(axis) THEN BEGIN
+  ;;  Use only AXIS.PRO keywords
+  tags = ['charsize','charthick','color','data','device','font','nodata',    $
+          'noerase','normal','save','subtitle','t3d','ticklen','zaxis',      $
+          'xcharsize','xgridstyle','xlog','xmargin','xminor','xrange',       $
+          'xstyle','xthick','xtickformat','xticklen','xtickname','xticks',   $
+          'xtickv','xtick_get','xtitle','xtype','yaxis','ycharsize',         $
+          'ygridstyle','ylog','ymargin','yminor','ynozero','yrange',         $
+          'ystyle','ythick','ytickformat','yticklen','ytickname','yticks',   $
+          'ytickv','ytick_get','ytitle','ytype','zaxis','zcharsize',         $
+          'zgridstyle','zmargin','zminor','zrange','zstyle','zthick',        $
+          'ztickformat','zticklen','ztickname','zticks','ztickv',            $
+          'ztick_get','ztitle','zvalue']
+ENDIF
+
+IF KEYWORD_SET(xyouts) THEN BEGIN
+  ;;  Use only XYOUTS.PRO keywords
+   tags = ['alignment','charsize','charthick','text_axes','width','clip',    $
+          'color','data','device','font','noclip','normal','orientation',    $
+          't3d','z']
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check for keyword exemptions
+;;----------------------------------------------------------------------------------------
+;;  Check EXCEPT_TAGS
+IF KEYWORD_SET(except_tags) THEN BEGIN
+  tags = TAG_NAMES(oldstruct)
+  ind  = array_union(tags,STRUPCASE(except_tags))
+  w    = WHERE(ind LT 0,count)
+  IF (count NE 0) THEN tags = tags[w] ELSE tags = 0
+ENDIF
+
+;;  Check TAGS
+IF (N_ELEMENTS(tags) EQ 0) THEN tags = TAG_NAMES(oldstruct)
+n              = (SIZE(tags,/DIMENSIONS))[0]
+
+;;  Check NTAGS
+IF NOT KEYWORD_SET(ntags) THEN ntags = tags
+;;----------------------------------------------------------------------------------------
+;;  Check for keyword preservations
+;;----------------------------------------------------------------------------------------
+IF (KEYWORD_SET(preserve) EQ 0) THEN BEGIN
+  ;;  Do not preserve --> Add/Replace all tag values
+  FOR i=0L, n - 1L DO BEGIN
+    str_element,oldstruct,tags[i],value,SUCCESS=ok
+    IF (ok) THEN str_element,newstruct,ntags[i],value,/ADD_REPLACE
+  ENDFOR
+  ;;  Return to user
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Add structure tags to new structure
+;;    ** Preserve non-null tag values **
+;;----------------------------------------------------------------------------------------
+;;  LBW  02/10/2015   v1.2.1
+FOR i=0L, n - 1L DO BEGIN
+  dummy = struct_value(oldstruct,tags[i],INDEX=index)
+  IF (index GE 0) THEN BEGIN
+    dummy = struct_value(newstruct,tags[i],INDEX=index2)
+    IF (index2 LT 0) THEN                                                $
+      ;;----------------------------------------------------------------------------------
+      ;;  if not duplicate --> then add tag
+      ;;----------------------------------------------------------------------------------
+      str_element,newstruct,tags[i],oldstruct.(index),/ADD_REPLACE       $
+    ELSE BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  if duplicate tag --> only replace if null
+      ;;----------------------------------------------------------------------------------
+      dummy = struct_value(newstruct,INDEX=index)
+      IF (SIZE(dummy,/TYPE) EQ 7) THEN                                   $
+        ;;--------------------------------------------------------------------------------
+        ;;  if element is a string --> replace if null
+        ;;--------------------------------------------------------------------------------
+        IF (dummy[0] EQ "") THEN                                         $
+          str_element,newstruct,tags[i],oldstruct.(index),/ADD_REPLACE   $
+      ELSE IF (TOTAL(dummy) EQ 0) THEN                                   $
+        ;;--------------------------------------------------------------------------------
+        ;;  if element numerical --> replace if null
+        ;;--------------------------------------------------------------------------------
+        str_element,newstruct,tags[i],oldstruct.(index),/ADD_REPLACE
+    ENDELSE
+  ENDIF
+ENDFOR
+;for i=0,n-1 do begin
+;   index = find_str_element(oldstruct,tags(i))
+;   if index ge 0 then begin
+;       if find_str_element(newstruct,tags(i)) lt 0 then $     ;if not duplicate
+;         str_element,/add,newstruct,tags(i),oldstruct.(index) $ ;then add tag
+;       else begin                                             ;if duplicate tag
+;         if (size(/type,newstruct.(index)) eq 7) then $ ;if element is a string,
+;           if newstruct.(index) eq "" then $           ;then replace if null
+;             str_element,/add,newstruct,tags(i),oldstruct.(index) $
+;         else if total(newstruct.(index)) eq 0 then $  ;if element numerical,
+;           str_element,/add,newstruct,tags(i),oldstruct.(index) ;replace if null
+;       endelse
+;   endif
+;endfor
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+

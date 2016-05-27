@@ -1,0 +1,286 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_calc_e2b_ratio_freq.pro
+;  PURPOSE  :   This routine calculates (∂E x ∂B) and (∂E x ∂B)/(c |∂B|^2) in
+;                 frequency-space (i.e., performs an FFT prior to calculation) and
+;                 then returns the result in both frequency- and time-space.
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               EF     :  [N,3]-Element [float/double] array of electric field [mV/m]
+;                           vectors in some input coordinate basis (ICB)
+;               BF     :  [N,3]-Element [float/double] array of magnetic field [nT]
+;                           vectors in the same ICB
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               WIDTH  :  Scalar [integer/long] defining the number of points to use in
+;                           the median filter for smoothing |∂E/(∂B c)| on output
+;                           [Default = 128 or N/8, depending]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  # of vectors must satisfy:  N ≥ 32
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  07/01/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/01/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION temp_calc_e2b_ratio_freq,ef,bf,WIDTH=width
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION is_a_number, format_2d_vec, power_of_2, mag__vec
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+c              = 2.9979245800d+08     ;;  Speed of light in vacuum [m/s]
+epo            = 8.8541878170d-12     ;;  Permittivity of free space [F/m]
+muo            = !DPI*4.00000d-07     ;;  Permeability of free space [N/A^2 or H/m]
+def_wd         = 128L                 ;;  Default smoothing width
+min_n          = 32L                  ;;  Min. # of vectors allowed
+vm_str         = ['VEC','MAG']
+fft_tags       = ['FR_FFT_BINS','EF_FFT_'+vm_str,'BF_FFT_'+vm_str,$
+                  'EXB_FFT_'+vm_str,'E2B_RAT_FFT_'+vm_str]
+tim_tags       = ['EXB_'+vm_str,'E2B_RAT_'+[vm_str,vm_str[1]+'_SM']]
+out_tags       = ['FFT','T_SERIES']
+;;  Conversion factors
+ebfac          = 1d-3*1d-9            ;;  mV --> V, nT --> T
+;;  Error messages
+noinput_mssg   = 'No input was supplied...'
+badinput_mssg  = 'EF and BF must be [numerical] arrays of vectors...'
+badinfor_mssg  = 'EF and BF must be [N,3]-Element arrays of vectors...'
+badinnum_mssg  = 'Both EF and BF must have the same number of arrays of vectors...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 2) THEN BEGIN
+  ;;  No input supplied
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Input supplied --> check format
+test           = ((is_a_number(ef,/NOMSSG) EQ 0) OR (N_ELEMENTS(ef) EQ 0)) OR $
+                 ((is_a_number(bf,/NOMSSG) EQ 0) OR (N_ELEMENTS(bf) EQ 0))
+IF (test[0]) THEN BEGIN
+  ;;  bad input
+  MESSAGE,badinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Make sure inputs are [N,3]-Element arrays
+ef2d           = format_2d_vec(ef)
+bf2d           = format_2d_vec(bf)
+test           = ((N_ELEMENTS(ef2d) LT 3) OR (N_ELEMENTS(bf2d) LT 3))
+IF (test[0]) THEN BEGIN
+  ;;  bad input format
+  MESSAGE,badinfor_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check number of elements
+n_e            = N_ELEMENTS(ef2d[*,0])         ;;  Input # of vectors
+test           = (N_ELEMENTS(ef2d) NE N_ELEMENTS(bf2d)) OR (n_e[0] LT min_n[0])
+IF (test[0]) THEN BEGIN
+  ;;  bad input format:  # of elements
+  MESSAGE,badinnum_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Convert units
+ef2d          *= 1d-3                  ;;  mV --> V
+bf2d          *= 1d-9                  ;;  nT --> T
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check WIDTH
+test           = ((is_a_number(width,/NOMSSG) EQ 0) OR (N_ELEMENTS(width) EQ 0))
+IF (test[0]) THEN wd = def_wd[0] ELSE wd = (LONG(width[0]))[0]
+;;  Make sure it's not too long
+test           = (wd[0] GT n_e[0]/10L)
+IF (test[0]) THEN wd = (wd[0] < (n_e[0]/8L)) > 3L
+;;----------------------------------------------------------------------------------------
+;;  Define some relevant parameters
+;;----------------------------------------------------------------------------------------
+ef2d0          = ef2d
+bf2d0          = bf2d
+;;  Determine where NaNs, if any, are located --> keep track for later
+test           = [[FINITE(ef2d0[*,0])],[FINITE(ef2d0[*,1])],[FINITE(ef2d0[*,2])]]
+good_ef_nan_x  = WHERE(test[*,0],gd_ef_nan_x,COMPLEMENT=bad_ef_nan_x,NCOMPLEMENT=bd_ef_nan_x)
+good_ef_nan_y  = WHERE(test[*,1],gd_ef_nan_y,COMPLEMENT=bad_ef_nan_y,NCOMPLEMENT=bd_ef_nan_y)
+good_ef_nan_z  = WHERE(test[*,2],gd_ef_nan_z,COMPLEMENT=bad_ef_nan_z,NCOMPLEMENT=bd_ef_nan_z)
+test           = [[FINITE(bf2d0[*,0])],[FINITE(bf2d0[*,1])],[FINITE(bf2d0[*,2])]]
+good_bf_nan_x  = WHERE(test[*,0],gd_bf_nan_x,COMPLEMENT=bad_bf_nan_x,NCOMPLEMENT=bd_bf_nan_x)
+good_bf_nan_y  = WHERE(test[*,1],gd_bf_nan_y,COMPLEMENT=bad_bf_nan_y,NCOMPLEMENT=bd_bf_nan_y)
+good_bf_nan_z  = WHERE(test[*,2],gd_bf_nan_z,COMPLEMENT=bad_bf_nan_z,NCOMPLEMENT=bd_bf_nan_z)
+;;  Remove/Replace NaNs [otherwise FFT will return all zeros]
+IF (bd_ef_nan_x GT 0) THEN ef2d0[bad_ef_nan_x,0] = 0d0
+IF (bd_ef_nan_y GT 0) THEN ef2d0[bad_ef_nan_y,1] = 0d0
+IF (bd_ef_nan_z GT 0) THEN ef2d0[bad_ef_nan_z,2] = 0d0
+IF (bd_bf_nan_x GT 0) THEN bf2d0[bad_bf_nan_x,0] = 0d0
+IF (bd_bf_nan_y GT 0) THEN bf2d0[bad_bf_nan_y,1] = 0d0
+IF (bd_bf_nan_z GT 0) THEN bf2d0[bad_bf_nan_z,2] = 0d0
+;;  Expand to make # of elements an even power of 2 [faster FFT results]
+e2x            = power_of_2(ef2d0[*,0])
+e2y            = power_of_2(ef2d0[*,1])
+e2z            = power_of_2(ef2d0[*,2])
+b2x            = power_of_2(bf2d0[*,0])
+b2y            = power_of_2(bf2d0[*,1])
+b2z            = power_of_2(bf2d0[*,2])
+
+e2             = [[e2x],[e2y],[e2z]]           ;;  [V/m]
+b2             = [[b2x],[b2y],[b2z]]           ;;  [T]
+;;----------------------------------------------------------------------------------------
+;;  Define Frequency bins (without sample rate multiplier) for associated FFTs
+;;----------------------------------------------------------------------------------------
+n_2            = N_ELEMENTS(e2[*,0])           ;;  Input # of vectors [after zero padding]
+n_mid          = n_2[0]/2L + 1L                ;;  Mid point in FFT
+df_n           = n_2[0] - n_mid[0]             ;;  # of elements in negative frequency range
+freln          = LINDGEN(df_n[0]) + n_mid[0]   ;;  Elements associated with negative frequencies
+fr_fft         = DINDGEN(n_2[0])               ;;  Dummy array of FFT frequencies
+n_n2           = n_mid[0] - 2L
+fr_fft[freln]  = -df_n[0] + DINDGEN(n_n2[0])
+;;  Normalize frequencies [currently unitless]
+;;    --> multiply by sample rate to get actual values
+fr_fft        /= n_2[0]
+;;----------------------------------------------------------------------------------------
+;;  Calculate the Fourier transform
+;;----------------------------------------------------------------------------------------
+e2xfft         = FFT(e2x,/DOUBLE)
+e2yfft         = FFT(e2y,/DOUBLE)
+e2zfft         = FFT(e2z,/DOUBLE)
+e2_fft         = [[e2xfft],[e2yfft],[e2zfft]]       ;;  [V/m]
+b2xfft         = FFT(b2x,/DOUBLE)
+b2yfft         = FFT(b2y,/DOUBLE)
+b2zfft         = FFT(b2z,/DOUBLE)
+b2_fft         = [[b2xfft],[b2yfft],[b2zfft]]       ;;  [T]
+;;  Define the complex conjugate of B-field
+b2_fft_cc      = CONJ(b2_fft)
+;;----------------------------------------------------------------------------------------
+;;  Calculate (∂E x ∂B)/2 [in frequency space, V T m^(-1)]
+;;    T          = kg C^(-1) s^(-1) = N A^(-1) m^(-1) = kg A^(-1) s^(-2)
+;;    V m^(-1)   = kg m s^(-2) C^(-1) = N C^(-1)      = kg A^(-1) s^(-3) m
+;;
+;;    V T m^(-1) = V^2 s m^(-3) = (N A^(-1)) (N A^(-1) m^(-1))
+;;               = N^2 A^(-2) m^(-1) = N^2 s^2 m^(-1) C^(-2)
+;;               = (V m^(-1)) (V s m^(-2)) = V^2 s m^(-2)
+;;               = kg^2 m C^(-2) s^(-3)
+;;
+;;    [µ_o]      = N A^(-2) = kg m A^(-2) s^(-2)
+;;    [∂B/µ_o]   = [kg A^(-1) s^(-2)] [kg^(-1) m^(-1) A^2 s^2] = kg^(0) s^(0) A^(1) m^(-1)
+;;               = A m^(-1) = C s^(-1) m^(-1)
+;;    --> [(∂E x ∂B)/µ_o] = [kg A^(-1) s^(-3) m] [A m^(-1)] = kg A^(0) m^(0) s^(-3)
+;;                        = kg s^(-3) = kg m^2 s^(-3) m^(-2) = J s^(-1) m^(-2)
+;;                        = W m^(-2)
+;;----------------------------------------------------------------------------------------
+;ExB_fft_x      = e2_fft[*,1]*b2_fft_cc[*,2] - e2_fft[*,2]*b2_fft_cc[*,1]
+;ExB_fft_y      = e2_fft[*,2]*b2_fft_cc[*,0] - e2_fft[*,0]*b2_fft_cc[*,2]
+;ExB_fft_z      = e2_fft[*,0]*b2_fft_cc[*,1] - e2_fft[*,1]*b2_fft_cc[*,0]
+ExB_fft_x      = (e2_fft[*,1]*b2_fft_cc[*,2] - e2_fft[*,2]*b2_fft_cc[*,1])/2d0
+ExB_fft_y      = (e2_fft[*,2]*b2_fft_cc[*,0] - e2_fft[*,0]*b2_fft_cc[*,2])/2d0
+ExB_fft_z      = (e2_fft[*,0]*b2_fft_cc[*,1] - e2_fft[*,1]*b2_fft_cc[*,0])/2d0
+E_x_B_fft      = [[ExB_fft_x],[ExB_fft_y],[ExB_fft_z]]  ;;  [(T V/m) = kg^2 m C^(-2) s^(-3)]
+;E_x_B_fft     *= ebfac[0]              ;;  mV --> V, nT --> T  [(T V/m) = kg^2 m C^(-2) s^(-3)]
+;;  Calculate |∂B| [in frequency space, T] and |∂E| [in frequency space, V/m]
+cmplx_ones     = REPLICATE(DCOMPLEX(1d0,1d0),3)
+ef_mag_fft     = FFT(mag__vec(e2),/DOUBLE) # cmplx_ones
+bf_mag_fft     = FFT(mag__vec(b2),/DOUBLE) # cmplx_ones
+;ef_mag_fft    *= 1d-3                  ;;  mV --> V
+;bf_mag_fft    *= 1d-9                  ;;  nT --> T
+;;----------------------------------------------------------------------------------------
+;;  Calculate (∂E x ∂B)/(c |∂B|^2) [in frequency space, unitless]
+;;    T^(-1)     = C s kg^(-1) = A m N^(-1)
+;;    V/m/T      = [kg m s^(-2) C^(-1)] [C s kg^(-1)]
+;;               = [m s^(-1)]
+;;----------------------------------------------------------------------------------------
+;E2B_rat_fft    = E_x_B_fft/(c[0]*bf_mag_fft^2)
+;bsquared_fft   = bf_mag_fft*CONJ(bf_mag_fft)     ;;  = |∂B|^2 [T^2]
+bsquared_fft   = DCOMPLEX(ABS(bf_mag_fft*CONJ(bf_mag_fft)))     ;;  = |∂B|^2 [T^2]
+E2B_rat_fft    = E_x_B_fft/(c[0]*bsquared_fft)
+;;  Calculate magnitudes
+E_x_B_fft_mag  = mag__vec(E_x_B_fft)
+E2B_r_fft_mag  = mag__vec(E2B_rat_fft)
+;;----------------------------------------------------------------------------------------
+;;  Convert values back to time-space
+;;----------------------------------------------------------------------------------------
+;ExB_time_x     = REAL_PART(FFT(E_x_B_fft[*,0],/DOUBLE,/INVERSE))
+;ExB_time_y     = REAL_PART(FFT(E_x_B_fft[*,1],/DOUBLE,/INVERSE))
+;ExB_time_z     = REAL_PART(FFT(E_x_B_fft[*,2],/DOUBLE,/INVERSE))
+;E2B_rat_x      = REAL_PART(FFT(E2B_rat_fft[*,0],/DOUBLE,/INVERSE))
+;E2B_rat_y      = REAL_PART(FFT(E2B_rat_fft[*,1],/DOUBLE,/INVERSE))
+;E2B_rat_z      = REAL_PART(FFT(E2B_rat_fft[*,2],/DOUBLE,/INVERSE))
+ExB_time_x     = REAL_PART(FFT(E_x_B_fft[*,0],1,/DOUBLE))
+ExB_time_y     = REAL_PART(FFT(E_x_B_fft[*,1],1,/DOUBLE))
+ExB_time_z     = REAL_PART(FFT(E_x_B_fft[*,2],1,/DOUBLE))
+ExB_time_vec0  = [[ExB_time_x],[ExB_time_y],[ExB_time_z]]
+E2B_rat_x      = REAL_PART(FFT(E2B_rat_fft[*,0],1,/DOUBLE))
+E2B_rat_y      = REAL_PART(FFT(E2B_rat_fft[*,1],1,/DOUBLE))
+E2B_rat_z      = REAL_PART(FFT(E2B_rat_fft[*,2],1,/DOUBLE))
+E2B_ratio_vec0 = [[E2B_rat_x],[E2B_rat_y],[E2B_rat_z]]
+;;----------------------------------------------------------------------------------------
+;;  Remove equivalent zero padded elements and replace zeroed-NaNs
+;;----------------------------------------------------------------------------------------
+;;  Keep only original length arrays
+ind_all        = LINDGEN(n_2[0])
+gind           = ind_all[0L:(n_e[0] - 1L)]
+ExB_time_vec   = ExB_time_vec0[gind,*]
+E2B_trat_vec   = E2B_ratio_vec0[gind,*]
+;;  Remove/Replace zeroed-NaNs with NaNs
+bds_eb_nan_str = {EX:bd_ef_nan_x,EY:bd_ef_nan_y,EZ:bd_ef_nan_z,$
+                  BX:bd_bf_nan_x,BY:bd_bf_nan_y,BZ:bd_bf_nan_z}
+bad_eb_nan_str = {EX:bad_ef_nan_x,EY:bad_ef_nan_y,EZ:bad_ef_nan_z,$
+                  BX:bad_bf_nan_x,BY:bad_bf_nan_y,BZ:bad_bf_nan_z}
+nts            = N_TAGS(bd_ebf_nan_str)
+;STOP
+FOR j=0L, nts[0] - 1L DO BEGIN
+  bd0  = bds_eb_nan_str.(j)
+  bad0 = bad_eb_nan_str.(j)
+  IF (bd0 GT 0) THEN BEGIN
+    ExB_time_vec[bad0,j]  = f
+    E2B_trat_vec[bad0,j]  = f
+  ENDIF
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Calculate magnitudes of each
+;;----------------------------------------------------------------------------------------
+ExB_time_mag   = mag__vec(ExB_time_vec,/NAN)
+E2B_trat_mag   = mag__vec(E2B_trat_vec,/NAN)
+;;  Use a median filter to smooth |∂E/(∂B c)| [unitless]
+E2B_trat_magsm = MEDIAN(E2B_trat_mag,wd[0])
+;STOP
+;;----------------------------------------------------------------------------------------
+;;  Define return structure
+;;----------------------------------------------------------------------------------------
+;;  Define FFT structure
+fft_struc      = CREATE_STRUCT(fft_tags,fr_fft,e2_fft,ef_mag_fft[*,0],b2_fft,$
+                               bf_mag_fft[*,0],E_x_B_fft,E_x_B_fft_mag,      $
+                               E2B_rat_fft,E2B_r_fft_mag)
+;;  Define time series structure
+tim_struc      = CREATE_STRUCT(tim_tags,ExB_time_vec,ExB_time_mag,E2B_trat_vec,$
+                               E2B_trat_mag,E2B_trat_magsm)
+;;  Define output structure
+out_struc      = CREATE_STRUCT(out_tags,fft_struc,tim_struc)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,out_struc
+END
+

@@ -1,0 +1,236 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   poly_winding_number2D.pro
+;  PURPOSE  :   This routine calculates the winding number for an array of points inside
+;                 or outside of a polygon.  The i-th output is as follows:
+;                   = 0  :  {PX[i],PY[i]} is outside of polygon
+;                   > 0  :  {PX[i],PY[i]} is inside of polygon
+;                   < 0  :  {PX[i],PY[i]} is inside of polygon
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               isLeft2D.pro
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               PX            :  [N]-Element [float/double] array defining the
+;                                  X-component of the test points to determine if inside
+;                                  polygon defined by vertices, VT
+;               PY            :  [N]-Element [float/double] array defining the
+;                                  Y-component of the test points to determine if inside
+;                                  polygon defined by vertices, VT
+;               VT            :  [K,2]-Element [float/double] array defining the vertices
+;                                  of an arbitrary polygon
+;                                  { Note:  VT[N-1,*] = VT[0,*] }
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               INCLUDE_EDGE  :  If set, routine will keep points that lie on the edge
+;                                  as well as those within the polygon
+;               
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               1)  http://geomalgorithms.com/a03-_inclusion.html
+;               2)  Numerical Recipes, 3rd Edition
+;
+;   CREATED:  04/22/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/22/2014   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION poly_winding_number2D,px0,py0,vt,INCLUDE_EDGE=include_edge
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;; => Dummy error messages
+bad_pxy_in_msg = 'P[X,Y] must be [N]-element arrays...'
+bad_numin_msg  = 'Incorrect number of inputs!'
+bad_vt_nd_msg  = 'VT must be a 2-dimensional array...'
+bad_vt_dm_msg  = 'VT must be an [N,2]-element array...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() NE 3)
+IF (test) THEN BEGIN
+  ;;  Must be 3 inputs supplied
+  MESSAGE,bad_numin_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,d
+ENDIF
+;;  Check P[X,Y] format
+test           = (N_ELEMENTS(px0) NE N_ELEMENTS(py0)) $
+                  OR (SIZE(px0,/N_DIMENSIONS) GT 1)   $
+                  OR (SIZE(px0,/N_DIMENSIONS) GT 1)
+IF (test) THEN BEGIN
+  ;;  P[X,Y] BOTH must have [N]-elements
+  MESSAGE,bad_pxy_in_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,d
+ENDIF ELSE BEGIN
+  ;;  Good input --> define new variables
+  px = REFORM(px0)
+  py = REFORM(py0)
+ENDELSE
+;;  Check VT format
+sznvt          = SIZE(vt,/N_DIMENSIONS)
+szdvt          = SIZE(vt,/DIMENSIONS)
+test           = (sznvt[0] NE 2)
+IF (test) THEN BEGIN
+  ;;  VT must have 2-dimensions
+  MESSAGE,bad_vt_nd_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,d
+ENDIF ELSE BEGIN
+  test = ((szdvt[0] NE 2) OR (szdvt[1] NE 2)) AND ((szdvt[0]*szdvt[1]) LT 8)
+  IF (test) THEN BEGIN
+    ;;  VT must be an [N,2]-element array
+    MESSAGE,bad_vt_dm_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN,d
+  ENDIF ELSE BEGIN
+    ;;  Good
+    test = (szdvt[1] NE 2)
+    IF (test) THEN BEGIN
+      ;;  VT = [2,N]-element array
+      vtx  = REFORM(vt[0,*])
+      vty  = REFORM(vt[1,*])
+    ENDIF ELSE BEGIN
+      ;;  VT = [N,2]-element array
+      vtx  = REFORM(vt[*,0])
+      vty  = REFORM(vt[*,1])
+    ENDELSE
+  ENDELSE
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Check that start/end vertices match
+;;----------------------------------------------------------------------------------------
+nvl            = N_ELEMENTS(vtx) - 1L
+test           = (vtx[nvl] NE vtx[0]) OR (vty[nvl] NE vty[0])
+IF (test) THEN BEGIN
+  ;;  Force VT[n-1] = VT[0]  --> start = end
+  vtx = [vtx,vtx[0]]
+  vty = [vty,vty[0]]
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+test           = KEYWORD_SET(include_edge)
+IF (test) THEN inedge = 1 ELSE inedge = 0
+;;----------------------------------------------------------------------------------------
+;;  Calculate winding number
+;;----------------------------------------------------------------------------------------
+nv             = N_ELEMENTS(vtx)
+np             = N_ELEMENTS(px)
+wn             = REPLICATE(0,np)                  ;;  initialize winding number
+;;  Loop through all edges of polygon
+FOR j=0L, nv - 2L DO BEGIN
+  k  = j + 1L
+  v1 = [vtx[j],vty[j]]
+  v2 = [vtx[k],vty[k]]
+  ;;  Check for points above/below current edge
+  good_low1y = WHERE(v1[1] LE py,gdl1y)
+  good_low2y = WHERE(v2[1] LE py,gdl2y)
+  ;;  Edge from VT[j] --> VT[j+1]
+  IF (gdl1y GT 0) THEN BEGIN
+    px1        = px[good_low1y]
+    py1        = py[good_low1y]
+    good_hig2y = WHERE(v2[1] GT py1,gdh2y)
+;  IF (v1[1] LE pp[1]) THEN BEGIN
+    IF (gdh2y GT 0) THEN BEGIN
+;    IF (v2[1] GT pp[1]) THEN BEGIN
+      ind        = good_low1y[good_hig2y]   ;;  keep track of indices relative to ALL
+      px2        = px1[good_hig2y]
+      py2        = py1[good_hig2y]
+      ;;  an upward crossing
+      test       = isLeft2D(v1,v2,px2,py2) GT 0  ;;  TRUE -->  P left of line from V1 to V2
+;      test = isLeft(v1,v2,pp) GT 0  ;;  TRUE -->  P left of line from V1 to V2
+      IF KEYWORD_SET(inedge) THEN test = isLeft2D(v1,v2,px2,py2) GE 0
+;      IF KEYWORD_SET(inedge) THEN test = isLeft(v1,v2,pp) GE 0
+      good = WHERE(test,gd)
+      IF (gd GT 0) THEN BEGIN
+        gind      = ind[good]
+        wn[gind] += 1
+      ENDIF
+;      IF (gd GT 0) THEN wn[good] += 1
+;      IF (test) THEN wn += 1
+    ENDIF
+  ENDIF ELSE BEGIN
+    ;;  start with V[j].Y > P.Y
+    IF (gdl2y GT 0) THEN BEGIN
+      ind        = good_low2y   ;;  keep track of indices relative to ALL
+      px2        = px[good_low2y]
+      py2        = py[good_low2y]
+;    IF (v2[1] LE pp[1]) THEN BEGIN
+      ;;  a downward crossing
+      test       = isLeft2D(v1,v2,px2,py2) LT 0  ;;  TRUE -->  P right of line from V1 to V2
+;      test = isLeft(v1,v2,pp) LT 0  ;;  TRUE -->  P right of line from V1 to V2
+      IF KEYWORD_SET(inedge) THEN test = isLeft2D(v1,v2,px2,py2) LE 0
+;      IF KEYWORD_SET(inedge) THEN test = isLeft(v1,v2,pp) LE 0
+      good = WHERE(test,gd)
+      IF (gd GT 0) THEN BEGIN
+        gind      = ind[good]
+        wn[gind] += 1
+      ENDIF
+;      IF (gd GT 0) THEN wn[good] -= 1
+;      IF (test) THEN wn -= 1
+    ENDIF
+  ENDELSE
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,wn
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,235 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   read_url_page_source.pro
+;  PURPOSE  :   This routine reads in the text associated with a URL.
+;
+;  CALLED BY:   
+;               convert_html_url_2_string.pro
+;
+;  CALLS:
+;               get_os_slash.pro
+;
+;  REQUIRES:    
+;               1)  curl  [bash script --> requires Unix or Linux]
+;               2)  internet connection
+;
+;  INPUT:
+;               URL    :  Scalar [string] defining a full URL to a web page that the
+;                           user wishes to return as a string of the page source
+;
+;  EXAMPLES:    
+;               url         = 'http://www.google.com'
+;               page_source = read_url_page_source(url)
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  No longer uses the Java routine, now uses the bash routine, curl
+;                                                                   [02/17/2015   v1.0.0]
+;             2)  Now read_url_page_source.pro returns an array of strings, one for
+;                   each line in each URL --> Need to account for this
+;                   [should make the wrapping routine easier to handle]
+;                                                                   [02/17/2015   v1.0.0]
+;             3)  Calling routine now prints status updates if STATUS keyword is set
+;                                                                   [02/17/2015   v1.0.0]
+;             4)  Finished writing the routine
+;                                                                   [02/18/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  In Unix or Linux, type the following:
+;                     $ man curl
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  02/16/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/18/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION read_url_page_source, url
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
+vers           = !VERSION.OS_FAMILY     ;;  e.g., 'unix'
+vern           = !VERSION.RELEASE       ;;  e.g., '7.1.1'
+;;  Define the search path separator character
+IF (vern[0] GE '5.5') THEN sepath_sep = PATH_SEP(/SEARCH_PATH)  ;;  e.g., ':' [for unix and linux]
+IF (vern[0] LT '5.5') THEN $
+  IF (vers[0] NE 'unix') THEN sepath_sep = ';' ELSE sepath_sep = ':'
+
+bb             = 0b
+sztb           = SIZE(bb,/TYPE)
+;;  Define dynamic library location
+;;    ** This is machine dependent --> Change accordingly! **
+my_dyld_lib    = slash[0]+'usr'+slash[0]+'lib'
+;;----------------------------------------------------------------------------------------
+;;  Need to make sure IDL looks for the updated version of curl, not its old one
+;;----------------------------------------------------------------------------------------
+lib_dir        = GETENV('DYLD_LIBRARY_PATH')
+IF (lib_dir[0] EQ '') THEN new_lib = my_dyld_lib[0] ELSE new_lib = my_dyld_lib[0]+sepath_sep[0]+lib_dir[0]
+SETENV,'DYLD_LIBRARY_PATH='+new_lib[0]
+;;----------------------------------------------------------------------------------------
+;;  Use SPAWN to read URL
+;;----------------------------------------------------------------------------------------
+;;  The following is critical!
+;;    1)  The string needs to be formed before calling SPAWN, otherwise SPAWN will try
+;;          to apply curl to literal 'url'
+myspawn_cmd    = 'curl -sS --retry 1 '+url[0]
+SPAWN, myspawn_cmd[0], page_as_string
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,page_as_string
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   convert_html_url_2_string.pro
+;  PURPOSE  :   This routine takes an input URL and reads the associated page source
+;                 and then returns a string containing the page source code.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               read_url_page_source.pro
+;
+;  CALLS:
+;               read_url_page_source.pro
+;
+;  REQUIRES:    
+;               1)  curl  [bash script --> requires Unix or Linux]
+;               2)  internet connection
+;
+;  INPUT:
+;               URL          :  [N]-Element [string] array defining full URLs to web
+;                                 pages that the user wishes to return as a strings
+;                                 of the page sources
+;
+;  EXAMPLES:    
+;               url         = 'http://www.google.com'
+;               convert_html_url_2_string,url,PAGE_SOURCE=page_source,STATUS=status
+;
+;  KEYWORDS:    
+;               PAGE_SOURCE  :  Set to a named variable that will contain an
+;                                 [N]-Element [string] array, where PAGE_SOURCE[i] is
+;                                 a single string of the page source associated with
+;                                 URL[i]
+;               STATUS       :  If set, routine will print out status updates
+;                                 [Default = FALSE]
+;
+;   CHANGED:  1)  No longer uses the Java routine, now uses the bash routine, curl
+;                                                                   [02/17/2015   v1.0.0]
+;             2)  Now read_url_page_source.pro returns an array of strings, one for
+;                   each line in each URL --> Need to account for this
+;                   [should make the wrapping routine easier to handle]
+;                                                                   [02/17/2015   v1.0.0]
+;             3)  Now prints status updates if STATUS keyword is set
+;                                                                   [02/17/2015   v1.0.0]
+;             4)  Finished writing the routine and moved to
+;                   ~/wind_3dp_pros/LYNN_PRO
+;                                                                   [02/18/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  The Java file, URLReader.java, comes with IDL
+;                     --> See:  http://www.exelisvis.com/docs/AccessingURLsExample.html
+;               2)  In Unix or Linux, type the following:
+;                     $ man curl
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  02/16/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/18/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO convert_html_url_2_string,url,PAGE_SOURCE=page_source,STATUS=status
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+noinpt_msg     = 'User must supply an [N]-element [string] array of URLs...'
+badfor_msg     = 'URL must be a an [N]-element string array of valid URLs...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 1) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+test           = (SIZE(url,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  MESSAGE,'0: '+badfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define relevant parameters
+;;----------------------------------------------------------------------------------------
+good           = WHERE(url NE '',gd)
+IF (gd[0] EQ 0) THEN BEGIN
+  MESSAGE,'1: '+badfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+all_urls       = url[good]
+n_url          = N_ELEMENTS(all_urls)
+;;  Get one URL to guess at size of output for the rest [use 10% buffer to be safe]
+temp           = read_url_page_source(all_urls[0])
+nl             = N_ELEMENTS(temp)
+nl             = LONG(1.1d0*nl[0])
+page_source    = STRARR(n_url,nl)
+;;----------------------------------------------------------------------------------------
+;;  Define logic variables for outputting status updates
+;;----------------------------------------------------------------------------------------
+modval         = 100000L   ;;  initialize variable
+test           = KEYWORD_SET(status) AND (N_ELEMENTS(status) NE 0)
+IF (test[0]) THEN BEGIN
+  status = 1
+  tests  = [(n_url[0] LE 10),(n_url[0] GT 10) AND (n_url[0] LE 100),$
+            (n_url[0] GT 100) AND (n_url[0] LE 1000),(n_url[0] GT 1000)]
+  good   = WHERE(tests,gd)
+  CASE good[0] OF
+    0L   : status = 0    ;;  ≤ 10 is too small to worry about timing on modern machines
+    1L   : modval = 10   ;;  Output every 10
+    2L   : modval = 100  ;;  Output every 100
+    3L   : modval = 1000 ;;  Output every 1000
+    ELSE : status = 0    ;;  Not sure how this happened and not willing to deal with it
+  ENDCASE
+ENDIF ELSE status = 0
+slen           = STRLEN(STRTRIM(STRING(modval[0],FORMAT='(I)'),2L))
+slen           = STRTRIM(STRING(slen[0],FORMAT='(I)'),2L)
+jform          = '(I'+slen[0]+'.'+slen[0]+')'  ;;  e.g., '(I2.2)'
+;;----------------------------------------------------------------------------------------
+;;  Get page source
+;;----------------------------------------------------------------------------------------
+FOR j=0L, n_url[0] - 1L DO BEGIN
+  temp               = read_url_page_source(all_urls[j])
+  nl                 = N_ELEMENTS(temp)
+  ind                = LINDGEN(nl[0])
+  page_source[j,ind] = temp
+  IF (status[0] AND ((j[0] MOD modval[0]) EQ 0)) THEN BEGIN
+    ;;  Print status updates
+    jstr = STRTRIM(STRING(j[0],FORMAT=jform[0]),2L)
+    PRINT,';;  j = '+jstr[0]
+  ENDIF
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

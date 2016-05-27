@@ -1,0 +1,213 @@
+PRO oploterrxy, x, y, xerr, yerr, NOHAT=hat, HATLENGTH=hln, ERRTHICK=eth, $
+      ERRSTYLE=est, COLOR=color, LINESTYLE=linest,  $
+      NOCLIP=noclip, NSUM=nsum, PSYM=psym, SYMSIZ=symsiz, T3D=t3d, THICK=thick;CHANNEL=chan,
+
+ On_error, 2
+ np = N_params()
+ IF (np LT 2) THEN BEGIN
+	print, "OPLOTERR must be called with at least two parameters."
+	print, "Syntax: oploterr, [x,] y, [xerr], yerr"
+	RETURN
+ ENDIF
+
+;			Interpret the keyword parameters.
+ plot_keywords, COLOR=color, LINESTYLE=linest,NOCLIP=noclip, NSUM=nsum, $
+             PSYM=psym, SYMSIZ=symsiz,T3D=t3d, THICK=thick  ;CHAN=chan,
+
+;				Error bar keywords (except for HATLENGTH; this
+;				one will be taken care of later, when it is
+;				time to deal with the error bar hats).
+
+ IF (keyword_set(hat)) THEN hat = 0 ELSE hat = 1
+ IF (n_elements(eth) EQ 0) THEN eth = thick
+ IF (n_elements(est) EQ 0) THEN est = 0
+;
+;				Other keywords.
+;
+;			If no x array has been supplied, create one.  Make
+;			sure the rest of the procedure can know which parameter
+;			is which.
+;
+ IF np EQ 2 THEN BEGIN			; Only Y and YERR passed.
+	yerr = abs(y)
+	yy = x
+	xx = indgen(n_elements(yy))
+        xerr = make_array(size=size(xx))
+
+ ENDIF ELSE IF np EQ 3 THEN BEGIN 	; X, Y, and YERR passed.
+        yerr = abs(xerr)
+        yy = y
+        xx = x
+
+ ENDIF ELSE BEGIN                        ; X, Y, XERR and YERR passed.
+	yerr = abs(yerr)
+	yy = y
+        xerr = abs(xerr)
+	xx = x
+ ENDELSE
+;
+;			Determine the number of points being plotted.  This
+;			is the size of the smallest of the three arrays
+;			passed to the procedure.  Truncate any overlong arrays.
+;
+
+ n = N_elements(xx) < N_elements(yy)
+
+ IF np GT 2 then n = n < N_elements(yerr)
+ IF np EQ 4 then n = n < N_elements(xerr)
+
+ xx = xx(0:n-1)
+ yy = yy(0:n-1)
+ yerr = yerr(0:n-1)
+ IF np EQ 4 then xerr = xerr(0:n-1)
+
+ ylo = yy - yerr
+ yhi = yy + yerr
+
+ if Np EQ 4 then begin
+     xlo = xx - xerr
+     xhi = xx + xerr
+ endif
+;
+;			Plot the positions.
+;
+ if n NE 1 then begin
+     oplot, xx, yy, COLOR=color,  LINESTYLE=linest, THICK = thick, $
+     	    NOCLIP=noclip,  NSUM=nsum, 	PSYM=psym,SYMSIZ=symsiz,T3D=t3d;CHAN=chan,
+ endif else begin
+     plots, xx, yy, COLOR=color, THICK = thick, $
+     	    NOCLIP=noclip, PSYM=psym,SYMSIZ=symsiz,T3D=t3d;CHAN=chan,
+ endelse
+;
+;	Plot the error bars.   Compute the hat length in device coordinates
+;       so that it remains fixed even when doing logarithmic plots.
+;
+    data_low = convert_coord(xx,ylo,/TO_DEVICE)
+    data_hi = convert_coord(xx,yhi,/TO_DEVICE)
+    if NP EQ 4 then begin
+       x_low = convert_coord(xlo,yy,/TO_DEVICE)
+       x_hi = convert_coord(xhi,yy,/TO_DEVICE)
+    endif
+    ycrange = !Y.CRANGE   &  xcrange = !X.CRANGE
+
+FOR i = 0, (n-1) DO BEGIN
+
+    if (!X.type EQ 0) then begin
+       if (xcrange(0) le xcrange(1)) then begin
+          if (xx(i) LT xcrange(0)) or (xx(i) GT xcrange(1)) then goto,NOPLOT
+       endif else begin
+          if (xx(i) GT xcrange(0)) or (xx(i) LT xcrange(1)) then goto,NOPLOT
+       endelse
+    endif
+    if (!Y.type EQ 0) then begin
+       if (ycrange(0) le ycrange(1)) then begin
+          if (yy(i) LT ycrange(0)) or (yy(i) GT ycrange(1)) then goto,NOPLOT
+       endif else begin
+          if (yy(i) GT ycrange(0)) or (yy(i) LT ycrange(1)) then goto,NOPLOT
+       endelse
+    endif
+    plots, [xx(i),xx(i)], [ylo(i),yhi(i)], LINESTYLE=est,THICK=eth
+;                                                         Plot X-error bars
+;
+    if np EQ 4 then plots, [xlo(i),xhi(i)],[yy(i),yy(i)],LINESTYLE=est,THICK=eth
+	IF (hat NE 0) THEN BEGIN
+		IF (N_elements(hln) EQ 0) THEN hln = !D.X_VSIZE/100.
+		exx1 = data_low(0,i) - hln/2.
+		exx2 = exx1 + hln
+		plots, [exx1,exx2], [data_low(1,i),data_low(1,i)],  $
+                      LINESTYLE=est,THICK=eth,/DEVICE
+		plots, [exx1,exx2], [data_hi(1,i),data_hi(1,i)],  $
+                       LINESTYLE=est,THICK=eth,/DEVICE
+;
+                IF np EQ 4 THEN BEGIN
+                   IF (N_elements(hln) EQ 0) THEN hln = !D.Y_VSIZE/100.
+                   eyy1 = x_low(1,i) - hln/2.
+                   eyy2 = eyy1 + hln
+                   plots, [x_low(0,i),x_low(0,i)], [eyy1,eyy2], $
+                         LINESTYLE=est,THICK=eth,/DEVICE
+                   plots, [x_hi(0,i),x_hi(0,i)], [eyy1,eyy2], $
+                         LINESTYLE=est,THICK=eth,/DEVICE
+                ENDIF
+	ENDIF
+    NOPLOT:
+ENDFOR
+;
+RETURN
+END
+
+pro plot_keywords, $
+	BACKGROUND=back, CHANNEL=chan, CHARSIZE=chsiz, $
+	CHARTHICK=chthck, COLOR=color, DATA=data, DEVICE=device, $
+	FONT=font, LINESTYLE=linestyle, NOCLIP=noclip, NODATA=nodata, $
+	NOERASE=noerase, NORMAL=normal, NSUM=nsum, PSYM=psym, $
+	SUBTITLE=subtit, SYMSIZE=symsize, T3D=t3d, THICK=thick, $
+        TICKLEN=ticklen, TITLE = title, $
+	XCHARSIZE=xchsiz, XMARGIN=xmargn, XMINOR=xminor, XRANGE=xrange, $
+        XSTYLE=xstyle, XTHICK = XTHICK, XTICKLEN=xtickln, XTICKNAME=xticknm, $
+	XTICKS=xticks, XTICKV=xtickv, XTITLE=xtitle, XTYPE=xtype, $
+	YCHARSIZE=ychsiz, YMARGIN=ymargn, YMINOR=yminor, YNOZERO = ynozero, $
+	YRANGE=yrange, YSTYLE=ystyle, YTHICK = ythick, YTICKLEN=ytickln, $
+        YTICKNAME=yticknm, YTICKS=yticks, YTICKV=ytickv, YTITLE=ytitle,  $
+        YTYPE=ytype
+
+ On_error, 2
+
+;                                      General plotting keywords
+
+ if N_elements( BACK )  EQ 0 then back = !P.background
+ if N_elements( CHAN )  EQ 0 then chan = !P.channel
+ if N_elements( CHSIZ ) EQ 0 then chsiz = !P.charsize
+ if N_elements( CHTHCK ) EQ 0 then chthck = !P.charthick
+ if N_elements( CLIP ) EQ 0 then clip = !P.clip
+ if N_elements( COLOR ) EQ 0 then color = !P.color
+ if N_elements( DATA ) EQ 0 then data = 0
+ if N_elements( DEVICE ) EQ 0 then device = 0
+ if N_elements( FONT ) EQ 0 then font = !P.font
+ if N_elements( LINESTYLE ) EQ 0 then linestyle = !P.linestyle
+ if N_elements( NOCLIP ) EQ 0 then noclip = 0
+ if N_elements( NODATA ) EQ 0 then nodata = 0
+ if N_elements( NOERASE ) EQ 0 then noerase = 0
+ if N_elements( NORMAL ) EQ 0 then normal = 0
+ if N_elements( NSUM ) EQ 0 then nsum = !P.nsum
+ if N_elements( POSITION ) EQ 0 then position = !P.position
+ if N_elements( PSYM ) EQ 0 then psym = !P.psym
+ if N_elements( SUBTIT ) EQ 0 then subtit = !P.subtitle
+ if N_elements( SYMSIZE ) EQ 0 then symsize = 1.0
+ if N_elements( T3D )  EQ 0 then t3d = 0
+ if N_elements( THICK ) EQ 0 then thick = !P.thick
+ if N_elements( TICKLEN ) EQ 0 then ticklen = !P.ticklen
+ if N_elements( TITLE ) EQ 0 then title = !P.title
+
+;				X-axis keywords.
+
+ if N_elements( XCHSIZ ) EQ 0 then xchsiz = !X.charsize
+ if N_elements( XMARGN ) EQ 0 then xmargn = !X.margin
+ if N_elements( XMINOR ) EQ 0 then xminor = !X.minor
+ if N_elements( XRANGE ) EQ 0 then xrange = !X.range
+ if N_elements( XSTYLE ) EQ 0 then xstyle = !X.style
+ if N_elements( XTHICK ) EQ 0 then xthick = !X.thick
+ if N_elements( XTICKLN ) EQ 0 then xtickln = !X.ticklen
+ if N_elements( XTICKNM ) EQ 0 then xticknm = !X.tickname
+ if N_elements( XTICKS ) EQ 0 then xticks = !X.ticks
+ if N_elements( XTICKV ) EQ 0 then xtickv = !X.tickv
+ if N_elements( XTITLE ) EQ 0 then xtitle = !X.title
+ if N_elements( XTYPE ) EQ 0 then xtype = 0
+
+;                              Y-axis keywords
+
+ if N_elements( YCHSIZ ) EQ 0 then ychsiz = !Y.charsize
+ if N_elements( YMARGN ) EQ 0 then ymargn = !Y.margin
+ if N_elements( YMINOR ) EQ 0 then yminor = !Y.minor
+ if N_elements( YNOZERO ) EQ 0 then ynozero = (!Y.STYLE and 16)
+ if N_elements( YRANGE ) EQ 0 then yrange = !Y.range
+ if N_elements( YSTYLE ) EQ 0 then ystyle = !Y.style
+ if N_elements( YTHICK ) EQ 0 then ythick = !Y.thick
+ if N_elements( YTICKLN ) EQ 0 then ytickln = !Y.ticklen
+ if N_elements( YTICKNM ) EQ 0 then yticknm = !Y.tickname
+ if N_elements( YTICKS ) EQ 0 then yticks = !Y.ticks
+ if N_elements( YTICKV ) EQ 0 then ytickv = !Y.tickv
+ if N_elements( YTITLE ) EQ 0 then ytitle = !Y.title
+ if N_elements( YTYPE ) EQ 0 then ytype = 0
+;
+ return
+ end

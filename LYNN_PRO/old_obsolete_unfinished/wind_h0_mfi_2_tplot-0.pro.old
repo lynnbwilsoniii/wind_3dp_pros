@@ -1,0 +1,300 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   wind_h0_mfi_2_tplot.pro
+;  PURPOSE  :   
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               B1HOUR    :  If set, routine loads 1 hour resolution magnetic field
+;                              data [nT] and sends results to TPLOT
+;                              [Default = FALSE]
+;               B1MIN     :  If set, routine loads 1 minute resolution magnetic field
+;                              data [nT] and sends results to TPLOT
+;                              [Default = FALSE]
+;               B3SEC     :  If set, routine loads 3 second resolution magnetic field
+;                              data [nT] and sends results to TPLOT
+;                              [Default = TRUE]
+;               SCPOSI    :  If set, routine loads the spacecraft position [Re] at every
+;                              resolution selected by the user for the magnetic fields
+;                              [Default = FALSE]
+;               SCVEL     :  If set, routine loads the spacecraft velocity [km/s] at
+;                              every resolution selected by the user for the magnetic
+;                              fields
+;                              [Default = FALSE]
+;               LOAD_GSE  :  If set, routine loads all the variables in the GSE
+;                              coordinate basis
+;                              [Default = TRUE]
+;               LOAD_GSM  :  If set, routine loads all the variables in the GSM
+;                              coordinate basis
+;                              [Default = FALSE]
+;               TDATE     :  Scalar [string] defining the date of interest of the form:
+;                              'YYYY-MM-DD' [MM=month, DD=day, YYYY=year]
+;                              [Default = prompted by get_valid_trange.pro]
+;               TRANGE    :  [2]-Element [double] array specifying the Unix time
+;                              range for which to limit the data in DATA
+;                              [Default = prompted by get_valid_trange.pro]
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  04/08/2016
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/08/2016   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO wind_h0_mfi_2_tplot,B1HOUR=b1hour,B1MIN=b1min,B3SEC=b3sec,SCPOSI=scposi,$
+                        SCVEL=scvel,LOAD_GSE=load_gse,LOAD_GSM=load_gsm,    $
+                        TDATE=tdate,TRANGE=trange
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+slash          = get_os_slash()       ;;  '/' for Unix, '\' for Windows
+;;  CDF Variable names
+epoch_names    = ['EPOCH','EPOCH1','EPOCH3']
+b_v_gse_names  = ['BGSE','B1GSE','B3GSE']
+b_v_gsm_names  = ['BGSM','B1GSM','B3GSM']
+scpos_gse_nms  = ['PGSE','P1GSE','']
+scpos_gsm_nms  = ['PGSM','P1GSM','']
+
+;;----------------------------------------------------------------------------------------
+;;  Defaults
+;;----------------------------------------------------------------------------------------
+def_b1hour     = 0b
+def__b1min     = 0b
+def__b3sec     = 1b
+def_scposi     = 0b
+def__scvel     = 0b
+def____gse     = 1b
+def____gsm     = 0b
+;;  Default CDF file location
+def_cdfloc     = '.'+slash[0]+'wind_3dp_pros'+slash[0]+'wind_data_dir'+slash[0]+$
+                 'MFI_CDF'+slash[0]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check B1HOUR
+test           = KEYWORD_SET(b1hour) AND (N_ELEMENTS(b1hour) GT 0)
+IF (test[0]) THEN mag1h_on = 1b ELSE mag1h_on = def_b1hour[0]
+;;  Check B1MIN
+test           = KEYWORD_SET(b1min) AND (N_ELEMENTS(b1min) GT 0)
+IF (test[0]) THEN mag1m_on = 1b ELSE mag1m_on = def__b1min[0]
+;;  Check B3SEC
+test           = ~KEYWORD_SET(b3sec) AND (N_ELEMENTS(b3sec) GT 0)
+IF (test[0]) THEN mag3s_on = 0b ELSE mag3s_on = def__b3sec[0]
+;;  Check SCPOSI
+test           = KEYWORD_SET(scposi) AND (N_ELEMENTS(scposi) GT 0)
+IF (test[0]) THEN scpos_on = 1b ELSE scpos_on = def_scposi[0]
+;;  Check SCVEL
+test           = KEYWORD_SET(scvel) AND (N_ELEMENTS(scvel) GT 0)
+IF (test[0]) THEN scvel_on = 1b ELSE scvel_on = def__scvel[0]
+;;  Check LOAD_GSE
+test           = ~KEYWORD_SET(load_gse) AND (N_ELEMENTS(load_gse) GT 0)
+IF (test[0]) THEN gse_on = 0b ELSE gse_on = def____gse[0]
+;;  Check LOAD_GSM
+test           = KEYWORD_SET(load_gsm) AND (N_ELEMENTS(load_gsm) GT 0)
+IF (test[0]) THEN gsm_on = 1b ELSE gsm_on = def____gsm[0]
+;;  Check TDATE and TRANGE
+test           = ((N_ELEMENTS(tdate) GT 0) AND (SIZE(tdate,/TYPE) EQ 7)) OR $
+                 ((N_ELEMENTS(trange) EQ 2) AND is_a_number(trange,/NOMSSG))
+IF (test[0]) THEN BEGIN
+  ;;  At least one is set --> use that one
+  test           = ((N_ELEMENTS(tdate) GT 0) AND (SIZE(tdate,/TYPE) EQ 7))
+  IF (test[0]) THEN time_ra = get_valid_trange(TDATE=tdate) ELSE time_ra = get_valid_trange(TRANGE=trange)
+ENDIF ELSE BEGIN
+  ;;  Prompt user and ask user for date/times
+  time_ra        = get_valid_trange(TDATE=tdate,TRANGE=trange)
+ENDELSE
+;;  Define dates and time ranges
+tra            = time_ra.UNIX_TRANGE
+tdates         = time_ra.DATE_TRANGE        ;;  'YYYY-MM-DD'  e.g., '2009-07-13'
+tdate          = tdates[0]                  ;;  Redefine TDATE on output
+;;  Convert TDATEs to format used by CDF files [e.g., 'YYYYMMDD']
+fdates         = STRMID(tdates,0L,4L)+STRMID(tdates,5L,2L)+STRMID(tdates,8L,2L)
+;;----------------------------------------------------------------------------------------
+;;  See if user wants to load anything
+;;----------------------------------------------------------------------------------------
+test           = ~mag1h_on[0] AND ~mag1m_on[0] AND ~mag3s_on[0] AND ~scpos_on[0]
+IF (test[0]) THEN BEGIN
+  errmsg = 'User shut off all CDF variables:  Exiting without loading any TPLOT variables...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+test           = ~gse_on[0] AND ~gsm_on[0]
+IF (test[0]) THEN BEGIN
+  errmsg = 'User shut off all coordinate systems:  Using default [GSE] coordinates...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  gse_on = 1b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define CDF file location
+;;----------------------------------------------------------------------------------------
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF ~KEYWORD_SET(exists) THEN BEGIN
+  cdfdir = add_os_slash(FILE_EXPAND_PATH(def_cdfloc[0]))
+ENDIF ELSE BEGIN
+  cdfdir = !wind3dp_umn.WIND_MFI_CDF_DIR
+  IF (cdfdir[0] EQ '') THEN cdfdir = add_os_slash(FILE_EXPAND_PATH(def_cdfloc[0]))
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Get CDF files within time range
+;;----------------------------------------------------------------------------------------
+date_form      = 'YYYYMMDD'
+files          = general_find_files_from_trange(cdfdir[0],date_form[0],TRANGE=tra)
+test           = (SIZE(files,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  errmsg = 'Exiting without loading any TPLOT variables...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+test           = (files[0] EQ '')
+IF (test[0]) THEN BEGIN
+  errmsg = 'Exiting without loading any TPLOT variables...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define CDF variables to load
+;;----------------------------------------------------------------------------------------
+cdf_vars       = ''
+IF (~mag1h_on[0]) THEN BEGIN
+  ;;  Shutoff CDF variables associated with 1 hour Avg. B-field data
+  epoch_names[0]    = ''
+  b_v_gse_names[0]  = ''
+  b_v_gsm_names[0]  = ''
+  scpos_gse_nms[0]  = ''
+  scpos_gsm_nms[0]  = ''
+ENDIF
+IF (~mag1m_on[0]) THEN BEGIN
+  ;;  Shutoff CDF variables associated with 1 minute Avg. B-field data
+  epoch_names[1]    = ''
+  b_v_gse_names[1]  = ''
+  b_v_gsm_names[1]  = ''
+  scpos_gse_nms[1]  = ''
+  scpos_gsm_nms[1]  = ''
+ENDIF
+IF (~mag3s_on[0]) THEN BEGIN
+  ;;  Shutoff CDF variables associated with 3 second Avg. B-field data
+  epoch_names[2]    = ''
+  b_v_gse_names[2]  = ''
+  b_v_gsm_names[2]  = ''
+  scpos_gse_nms[2]  = ''
+  scpos_gsm_nms[2]  = ''
+ENDIF
+IF (~scpos_on[0]) THEN BEGIN
+  ;;  Shutoff CDF variables associated with spacecraft positions
+  scpos_gse_nms[*]  = ''
+  scpos_gsm_nms[*]  = ''
+ENDIF
+cdf_vars       = [epoch_names,b_v_gse_names,b_v_gsm_names,scpos_gse_nms,scpos_gsm_nms]
+good_vars      = WHERE(cdf_vars NE '',gd_vars)
+IF (gd_vars[0] EQ 0) THEN BEGIN
+  errmsg = 'User wants to load no CDF variables:  Exiting without loading any TPLOT variables...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+g_cdf_vars     = STRLOWCASE(cdf_vars[good_vars])
+ng             = gd_vars[0]
+;;----------------------------------------------------------------------------------------
+;;  Load CDF variables
+;;----------------------------------------------------------------------------------------
+cdfvars        = cdf_load_vars(files,VARFORMAT='*',VARNAMES=varnames,/CONVERT_INT1_TO_INT2)
+nv             = cdfvars.NV          ;;  # of variables
+var_strucs     = cdfvars.VARS        ;;  An array of IDL structures containing the data and variable attributes
+var_names      = STRLOWCASE(var_strucs.NAME)
+FOR j=0L, ng[0] - 1L DO BEGIN
+  good0 = WHERE(var_names EQ g_cdf_vars[j],gd0)
+  IF (gd0 EQ 0) THEN CONTINUE         ;;  Move on to next iteration
+  IF (j EQ 0) THEN gind = good0[0] ELSE gind = [gind,good0[0]]
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Find CDF Epoch variables
+;;----------------------------------------------------------------------------------------
+g_var_names    = var_names[gind]
+good_epoch     = WHERE(STRPOS(STRMID(g_var_names,0,5),'epoch'),gd_epoch,COMPLEMENT=bad_epoch,NCOMPLEMENT=bd_epoch)
+IF (gd_epoch[0] EQ 0) THEN BEGIN
+  errmsg = 'User did not load any CDF Epoch times:  Exiting without loading any TPLOT variables...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Define Epoch indices and everything else
+gind_epochs    = gind[good_epoch]
+gind_else      = gind[bad_epoch]
+
+
+
+
+cdf_extra      = {FILENAME:cdfi.filename,GATT:cdfi.g_attributes,VNAME:v.name,VATT:attr}
+
+
+
+
+;;  Clean up
+HEAP_FREE,cdfvars,/PTR
+
+
+;;  CDF Variable names
+epoch_names    = ['EPOCH','EPOCH1','EPOCH3']
+b_v_gse_names  = ['BGSE','B1GSE','B3GSE']
+b_v_gsm_names  = ['BGSM','B1GSM','B3GSM']
+scpos_gse_nms  = ['PGSE','P1GSE','']
+scpos_gsm_nms  = ['PGSM','P1GSM','']
+
+
+
+
+
+
+
+
+
+
+
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

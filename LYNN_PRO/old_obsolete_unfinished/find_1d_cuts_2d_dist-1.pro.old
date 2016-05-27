@@ -1,0 +1,190 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   find_1d_cuts_2d_dist.pro
+;  PURPOSE  :   This routine calculates the cuts of a regularly gridded distribution
+;                 function, f(x,y), along two orthogonal vectors with intersection at
+;                 {X_0, Y_0}.  The vector directions are defined by the optional
+;                 keyword, ANGLE.  If this is not set, then the x-coordinate output
+;                 corresponds to a line along the horizontal axis offset by X_0 and the
+;                 y-coordinate output corresponds to a line along the vertical axis
+;                 offset by Y_0.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               find_frac_indices.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               FXY      :  [N,N]-Element array defining the regularly gridded
+;                             distribution function, f(x,y)
+;               X__IN    :  [N]-Element array of regularly gridded coordinates
+;                               corresponding to the 1st dimension in some function,
+;                               f(x,y) [e.g., x-coordinate or independent coordinate]
+;               Y__IN    :  [N]-Element array of regularly gridded coordinates
+;                               corresponding to the 2nd dimension in some function,
+;                               f(x,y) [e.g., y-coordinate or dependent coordinate]
+;
+;  EXAMPLES:    
+;               test = find_1d_cuts_2d_dist(fxy,x__in,y__in)
+;
+;  KEYWORDS:    
+;               X_0      :  Scalar defining the X-offset from zero for the center of
+;                             the X-vector cut [e.g., parallel drift velocity]
+;                             [Default = 0.0]
+;               Y_0      :  Scalar defining the Y-offset from zero for the center of
+;                             the Y-vector cut [e.g., perpendicular drift velocity]
+;                             [Default = 0.0]
+;               ANGLE    :  Scalar defining the angle [deg] from the Y-Axis by which
+;                             to rotate the [X,Y]-cuts
+;                             [Default = 0.0]
+;
+;   CHANGED:  1)  Changed location to ~/general_math directory and cleaned up
+;                                                                   [05/15/2014   v1.0.1]
+;
+;   NOTES:      
+;               1)  See also IDL's documentation of INTERPOLATE.PRO and
+;                     find_frac_indices.pro
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  07/16/2013
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/15/2014   v1.0.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION find_1d_cuts_2d_dist,fxy,x__in,y__in,X_0=x_0,Y_0=y_0,ANGLE=angle
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;; => Dummy error messages
+bad_x__in_msg  = '[X,Y]__IN both must be [N]-element arrays, N=1,2,...'
+bad_fxy_msg    = 'FXY must be an [N,N]-element array, N=1,2,...'
+bad_numin_msg  = 'Incorrect number of inputs!'
+;; => Create dummy return structure
+tag_prefx      = ['X_','Y_']
+tag_suffx      = ['1D_FXY','CUT_COORD','0','XY_COORD']
+tags           = [tag_prefx[0]+tag_suffx,tag_prefx[1]+tag_suffx]
+dumb1d         = REPLICATE(d,10L)
+dumb2d         = [[dumb1d],[dumb1d]]
+dummy          = CREATE_STRUCT(tags,dumb1d,dumb1d,d,dumb2d,dumb1d,dumb1d,d,dumb2d)
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() NE 3)
+IF (test) THEN BEGIN
+  ;;  Must be 3 inputs supplied
+  MESSAGE,bad_numin_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,dummy
+ENDIF
+test           = (N_ELEMENTS(x__in)  EQ 0) OR (N_ELEMENTS(y__in)  EQ 0) OR $
+                 (N_ELEMENTS(x__in)  NE N_ELEMENTS(y__in))
+IF (test) THEN BEGIN
+  ;;  X__IN and Y__IN must have the same number of elements
+  MESSAGE,bad_x__in_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,dummy
+ENDIF
+x_i            = REFORM(x__in)
+y_i            = REFORM(y__in)
+nvx            = N_ELEMENTS(x_i)
+nvy            = N_ELEMENTS(y_i)
+szf            = SIZE(fxy,/DIMENSIONS)
+test           = (N_ELEMENTS(fxy) EQ 0) OR (N_ELEMENTS(szf) NE 2) OR $
+                 (szf[0] NE N_ELEMENTS(x__in)) OR (szf[0] NE N_ELEMENTS(y__in))
+IF (test) THEN BEGIN
+  ;;  FXY must be an [N,N]-element array
+  MESSAGE,bad_fxy_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,dummy
+ENDIF
+fv             = REFORM(fxy)
+;;----------------------------------------------------------------------------------------
+;; => Check keywords
+;;----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(x_0)   NE 1) THEN x_o  = 0d0 ELSE x_o  = x_0[0]
+IF (N_ELEMENTS(y_0)   NE 1) THEN y_o  = 0d0 ELSE y_o  = y_0[0]
+IF (N_ELEMENTS(angle) NE 1) THEN ang  = 0d0 ELSE ang  = angle[0]
+;; Make sure offsets and angle are finite
+IF (FINITE(x_o)       NE 1) THEN x_o  = 0d0
+IF (FINITE(y_o)       NE 1) THEN y_o  = 0d0
+IF (FINITE(ang)       NE 1) THEN ang  = 0d0
+;;----------------------------------------------------------------------------------------
+;;  Define cut through f(x,y) at angle ø and offset {X_0, Y_0}
+;;----------------------------------------------------------------------------------------
+;;  Define slope and Y-intercept of cut
+slope          = TAN(ang[0]*!DPI/18d1)
+yintc          = y_o[0] - slope[0]*x_o[0]
+;;  Define new line from Y = m*X + b
+xn             = nvx[0]
+xnew           = DINDGEN(xn)*(MAX(x_i,/NAN) - MIN(x_i,/NAN))/(xn - 1L) + MIN(x_i,/NAN)
+ynew           = slope[0]*xnew + yintc[0]
+;;  Find corresponding indices of f(x,y)
+xyfind         = find_frac_indices(x_i,y_i,xnew,ynew)
+;;  Calculate values of f(x,y) along cut line
+df_e           = ALOG(fv)
+df_ran         = [MIN(df_e,/NAN),MAX(df_e,/NAN)]
+dfcut_e        = INTERPOLATE(df_e,xyfind.X_IND,xyfind.Y_IND,MISSING=d)
+dfcut_x        = EXP(dfcut_e)
+;;  Remove "bad" points due to extrapolation
+teste          = (dfcut_e GT df_ran[1]) OR (dfcut_e LT df_ran[0])
+bad            = WHERE(teste,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN dfcut_x[bad] = d
+;;  Define [X,Y] projection coordinates
+xy_proj_x      = [[xnew],[ynew]]
+;;  Define x-cut projection coordinates
+x_proj         = xnew
+;;----------------------------------------------------------------------------------------
+;;  Define cut perpendicular to last
+;;----------------------------------------------------------------------------------------
+ang_p          = ang[0] - 9d1
+;;  Define slope and Y-intercept of cut
+slope_p        = TAN(ang_p[0]*!DPI/18d1)
+yintc_p        = y_o[0] - slope_p[0]*x_o[0]
+;;  Define new line from Y = m*X + b
+xnew_p         = ynew
+ynew_p         = slope_p[0]*xnew_p + yintc_p[0]
+;;  Find corresponding indices of f(x,y)
+xyfind_p       = find_frac_indices(x_i,y_i,xnew_p,ynew_p)
+;;  Calculate values of f(x,y) along cut line
+dfcut_ep       = INTERPOLATE(df_e,xyfind_p.X_IND,xyfind_p.Y_IND,MISSING=d)
+dfcut_y        = EXP(dfcut_ep)
+;;  Remove "bad" points due to extrapolation
+teste          = (dfcut_ep GT df_ran[1]) OR (dfcut_ep LT df_ran[0])
+bad            = WHERE(teste,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN dfcut_y[bad] = d
+;;  Define [X,Y] projection coordinates
+xy_proj_y      = [[xnew_p],[ynew_p]]
+;;  Define y-cut projection coordinates
+y_proj         = ynew_p
+;;----------------------------------------------------------------------------------------
+;;  Create return structure
+;;----------------------------------------------------------------------------------------
+tag_prefx      = ['X_','Y_']
+tag_suffx      = ['1D_FXY','CUT_COORD','0','XY_COORD']
+tags           = [tag_prefx[0]+tag_suffx,tag_prefx[1]+tag_suffx]
+struct         = CREATE_STRUCT(tags,dfcut_x,x_proj,x_o,xy_proj_x,$
+                                    dfcut_y,y_proj,y_o,xy_proj_y)
+;;----------------------------------------------------------------------------------------
+;;  Return structure to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END
+
+
+
+
+
+
+
+

@@ -1,0 +1,189 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   spec3d.pro
+;  PURPOSE  :   Plots the energy spectra for each data bin in a 3DP structure.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TEMPDAT     :  A 3DP data structure from get_??.pro
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               LIMITS      :  A structure that may contain any combination of the 
+;                                following elements:
+;=========================================================================================
+;                                  ALL plot keywords such as:
+;                                  XLOG,   YLOG,   ZLOG,
+;                                  XRANGE, YRANGE, ZRANGE,
+;                                  XTITLE, YTITLE,
+;                                  TITLE, POSITION, REGION  etc. (see IDL
+;                                    documentation for a description)
+;                                  The following elements can be included in 
+;                                    LIMITS to effect DRAW_COLOR_SCALE:
+;                                      ZTICKS, ZRANGE, ZTITLE, ZPOSITION, ZOFFSET
+; **[Note: Program deals with these by itself, so just set them if necessary and let 
+;           it do the rest.  Meaning, if you know what the tick marks should be on 
+;           your color bar, define them under the ZTICK[V,NAME,S] keywords in the 
+;           structure ahead of time.]**
+;=========================================================================================
+;               UNITS       :  [String] Units for data to be plotted in
+;                                [Default = 'eflux' or energy flux]
+;               COLOR       :  Set to a named variable to return the colors shown in plot
+;               BDIR        :  Obselete
+;               PHI         :  Set to a named variable to return the azimuthal angles
+;                                used in plot
+;               THETA       :  Set to a named variable to return the poloidal angles
+;                                used in plot
+;               PITCHANGLE  :  If set, color scale defined by angles closest to
+;                                B-field direction
+;               VECTOR      :  3-Element array specifying the vector to define the color
+;                                scale
+;               SUNDIR      :  If set, program defines VECTOR as the sun direction
+;               A_COLOR     :  ??
+;               LABEL       :  If set, plot shows bin labels
+;               X[Y]DAT     :  
+;               DYDAT       :  
+;               BINS        :  N-Element array of data bins to be plotted
+;               VELOCITY    :  If set, X-axis is in units of km/s instead of eV
+;               OVERPLOT    :  If set, plots over existing plot
+;
+;   CHANGED:  1)  Davin Larson changed something...               [06/??/1995   v1.0.24]
+;             2)  Altered a few minor things                      [07/23/2007   v1.0.25]
+;             3)  Re-wrote and cleaned up                         [11/01/2010   v1.1.0]
+;             4)  Fixed typo in unit conversion call              [09/07/2011   v1.1.1]
+;
+;   NOTES:      
+;               
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  09/07/2011   v1.1.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO spec3d,tempdat,LIMITS=limits,UNITS=units,COLOR=col,BDIR=bdir,PHI=phi,THETA=theta, $
+                   PITCHANGLE=pang,VECTOR=vec,SUNDIR=sundir,A_COLOR=a_color,          $
+                   LABEL=label,XDAT=xdat,YDAT=ydat,DYDAT=dydat,BINS=bins,VELOCITY=vel,$
+                   OVERPLOT=oplot
+
+;@wind_com.pro
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+dtype = SIZE(tempdat,/TYPE)
+IF (dtype NE 8) THEN BEGIN
+  MESSAGE,'Invalid Data',/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+
+IF (tempdat.VALID EQ 0) then begin
+  MESSAGE,'Invalid Data',/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+
+a_color = ''
+str_element,limits,'A_COLOR',a_color
+
+CASE STRLOWCASE(STRMID(a_color,0,2)) OF
+  'pi' : pang   = 1
+  'su' : sundir = 1
+  'th' : theta  = 1
+  'ph' : phi    = 1
+  ELSE :
+ENDCASE
+
+data3d = conv_units(tempdat,units)
+nb     = data3d.NBINS
+;-----------------------------------------------------------------------------------------
+; => Define relevant values for plot structure
+;-----------------------------------------------------------------------------------------
+str_element,limits,'PITCHANGLE',VALUE=pang
+str_element,limits,'SUNDIR'    ,VALUE=sundir
+str_element,limits,'THETADIR'  ,VALUE=theta
+str_element,limits,'UNITS'     ,VALUE=units
+str_element,limits,'COLOR'     ,VALUE=col
+str_element,limits,'VELOCITY'  ,VALUE=vel
+str_element,limits,'BINS',            bins
+str_element,data3d,'DDATA'     ,VALUE=dydat
+; => Convert to desired units
+IF NOT KEYWORD_SET(units)  THEN gunits = 'flux' ELSE gunits = units[0]
+
+title  = ''
+title  = data3d.DATA_NAME
+title  = '('+title+')'+' '+trange_str(data3d.TIME,data3d.END_TIME)
+
+new_units = wind_3dp_units(gunits)
+gunits    = new_units.G_UNIT_NAME      ; => e.g. 'flux'
+punits    = new_units.G_UNIT_P_NAME    ; => e.g. ' (# cm!U-2!Ns!U-1!Nsr!U-1!NeV!U-1!N)'
+ytitle    = gunits[0]+punits[0]
+;ytitle = units_string(data3d.units_name)
+ydat      = data3d.DATA
+;-----------------------------------------------------------------------------------------
+; => Determine X-Axis Title, Units, and Data
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(vel) THEN BEGIN
+   xdat   = velocity(data3d.ENERGY,data3d.MASS)
+   xtitle = "Velocity'  (km/s)"
+ENDIF ELSE BEGIN
+   xdat   = data3d.ENERGY
+   xtitle = 'Energy  (eV)'
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Determine color scale
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(phi) THEN BEGIN
+   phi = REFORM(data3d.PHI[0,*])
+;   col = bytescale(phi,range=[-180.,180.])
+   col = bytescale(phi);,range=[-180.,180.])
+ENDIF 
+
+IF KEYWORD_SET(theta) THEN BEGIN
+   theta = REFORM(data3d.THETA[0,*])  ; average theta
+;   col = bytescale(theta,range=[-90.,90.])
+   col = bytescale(theta);,range=[-90.,90.])
+ENDIF 
+
+IF KEYWORD_SET(pang)   THEN str_element,data3d,'MAGF',vec
+IF KEYWORD_SET(sundir) THEN vec = [-1.,0.,0.]
+
+IF KEYWORD_SET(vec) THEN BEGIN
+   phi   = average(data3d.PHI,1,/NAN)    ; average phi
+   theta = average(data3d.THETA,1,/NAN)  ; average theta
+   xyz_to_polar,vec,THETA=bth,PHI=bph
+   p     = pangle(theta,phi,bth,bph)
+   col   = bytescale(p,RANGE=[0.,180.])   
+ENDIF 
+
+IF     KEYWORD_SET(col)   THEN shades = col
+IF     KEYWORD_SET(label) THEN labels = STRCOMPRESS(INDGEN(nb))
+IF NOT KEYWORD_SET(bins)  THEN bins   = REPLICATE(1b,nb)
+
+!P.CHARSIZE = 1.2
+; => Define MPLOT structure
+plot = {TITLE:title,XTITLE:xtitle,X:xdat,XLOG:1,YTITLE:ytitle,Y:ydat,YLOG:1,BINS:bins}
+
+str_element,plot,'DY',dydat,/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Plot data
+;-----------------------------------------------------------------------------------------
+str_element,limits,'XSTYLE',1,/ADD_REPLACE       ; => LBW 09/07/2011   v1.1.1
+str_element,limits,'YSTYLE',1,/ADD_REPLACE       ; => LBW 09/07/2011   v1.1.1
+
+mplot,DATA=plot,COLORS=shades,LIMITS=limits,LABELS=labels,OVERPLOT=oplot
+time_stamp     ; => Print date plot was created in lower right-hand corner
+
+RETURN
+END

@@ -1,0 +1,485 @@
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => From THEMIS prompt
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+;; => Put the initialization routine (comp_lynn_pros.pro) in the ~/TDAS/tdas_7_??/idl/
+;;      directory and change the file paths so they work for your personal machine
+
+;; => Compile necessary routines
+@comp_lynn_pros
+;-----------------------------------------------------------------------------------------
+; => Date/Times/Probes
+;-----------------------------------------------------------------------------------------
+tdate      = '2009-07-13'
+probe      = 'b'
+probef     = probe[0]
+gprobes    = probe[0]
+sc         = probe[0]
+tr_00      = tdate[0]+'/'+['07:50:00','10:10:00']
+time_ra    = time_range_define(TRANGE=tr_00)
+tr         = time_ra.TR_UNIX
+;;----------------------------------------------------------------------------------------
+;; Load state data (position, spin, etc.)
+;;----------------------------------------------------------------------------------------
+themis_load_fgm_esa_inst,TRANGE=tr,PROBE=sc[0],/LOAD_EESA_DF,EESA_DF_OUT=eesa_out,$
+                         /LOAD_IESA_DF,IESA_DF_OUT=iesa_out,ESA_BF_TYPE='burst'
+
+dat_i      = iesa_out.BURST  ;; [theta,phi]-angles in DSL coordinates
+dat_e      = eesa_out.BURST
+;;----------------------------------------------------------------------------------------
+;; => Save ESA DFs for later
+;;----------------------------------------------------------------------------------------
+sc         = probe[0]
+enames     = 'EESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+inames     = 'IESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+;;  **************************************
+;;  **  Change the following according  **
+;;  **************************************
+mdir       = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_esa_save/'+tdate[0]+'/')
+efile      = mdir[0]+'/'+enames[0]
+ifile      = mdir[0]+'/'+inames[0]
+
+SAVE,dat_e,FILENAME=efile[0]
+SAVE,dat_i,FILENAME=ifile[0]
+;;----------------------------------------------------------------------------------------
+;; => Restore ESA DFs
+;;----------------------------------------------------------------------------------------
+sc      = probe[0]
+enames  = 'EESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+inames  = 'IESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+
+mdir    = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_esa_save/'+tdate[0]+'/')
+efiles  = FILE_SEARCH(mdir,enames[0])
+ifiles  = FILE_SEARCH(mdir,inames[0])
+
+RESTORE,efiles[0]
+RESTORE,ifiles[0]
+;;----------------------------------------------------------------------------------------
+;; => Modify ESA DFs so they are compatible with UMN Wind/3DP Software
+;;----------------------------------------------------------------------------------------
+n_i        = N_ELEMENTS(dat_i)
+n_e        = N_ELEMENTS(dat_e)
+PRINT,';', n_i, n_e
+;        1371        1374
+
+modify_themis_esa_struc,dat_i
+modify_themis_esa_struc,dat_e
+;; add SC potential to structures
+sc         = probe[0]
+pref       = 'th'+sc[0]+'_'
+scname     = tnames(pref[0]+'pe*b_sc_pot')
+add_scpot,dat_e,scname[0]
+add_scpot,dat_i,scname[1]
+;;----------------------------------------------------------------------------------------
+;; => Rotate ESA (theta,phi)-angles DSL --> GSE
+;;----------------------------------------------------------------------------------------
+coord    = 'gse'
+sc       = probe[0]
+vel_name = pref[0]+'peib_velocity_'+coord[0]
+mag_name = pref[0]+'fgh_'+coord[0]
+;; => returned data structure will now have the following tags in the GSE basis
+;;      THETA
+;;      PHI
+;;      MAGF
+;;      VSW
+;;      VELOCITY
+dat_igse  = dat_i
+rotate_esa_thetaphi_to_gse,dat_igse,MAGF_NAME=magname,VEL_NAME=velname
+;rotate_esa_thetaphi_to_gse,dat_i,MAGF_NAME=mag_name,VEL_NAME=vel_name
+
+
+vel_name = pref[0]+'peeb_velocity_'+coord[0]
+mag_name = pref[0]+'fgh_'+coord[0]
+dat_egse  = dat_e
+rotate_esa_thetaphi_to_gse,dat_egse,MAGF_NAME=magname,VEL_NAME=velname
+;rotate_esa_thetaphi_to_gse,dat_e,MAGF_NAME=mag_name,VEL_NAME=vel_name
+
+;;----------------------------------------------------------------------------------------
+;; => Set up plot windows and defaults
+;;----------------------------------------------------------------------------------------
+;;  => Define shock parameters [from RH solutions]
+t_RH_0       = time_double(tdate[0]+'/'+['08:57:00.000','09:02:30.000'])
+t_up         = time_double(tdate[0]+'/'+['09:00:08.700','09:01:38.800'])
+t_dn         = time_double(tdate[0]+'/'+['08:57:35.000','08:59:00.000'])
+;;  Upstream Rankine-Hugoniot parameters [corrected bulk flow velocity]
+avg_magf_up  = [-2.88930d0,1.79045d0,-1.37976d0]  ;; GSE B-field vector [nT]
+avg_vswi_up  = [-328.887d0,44.1759d0,25.4417d0]   ;; GSE bulk flow vector [km/s]
+avg_dens_up  = 8.64058d0                          ;; Avg. upstream density [cm^(-3)]
+avg_Te_up    = 11.2373d0                          ;; Avg. upstream electron temperature [eV]
+avg_Ti_up    = 279.739d0  ;;  ** BAD due to gyrating ions **
+;;----------------------------------------------------------------------------------------
+;;  Ion temperature CANNOT be trusted near the bow shock due to these gyration ions
+;;    as they produce anomalously high ion temperatures
+;;    [e.g. 2 beams with roghly 1 eV temperatures separated by 350 km/s will produce an avg. temp of nearly 1 keV]
+;;----------------------------------------------------------------------------------------
+vshn_up      =    6.5830201d0
+ushn_up      = -333.46002d0
+gnorm        = [0.98744623d0,-0.053346692d0,0.0093557489d0]
+bmag_up      = NORM(avg_magf_up)
+vmag_up      = NORM(avg_vswi_up)
+b_dot_n      = my_dot_prod(gnorm,avg_magf_up,/NOM)/(bmag_up[0]*NORM(gnorm))
+theta_Bn     = ACOS(b_dot_n[0])*18d1/!DPI
+theta_Bn     = theta_Bn[0] < (18d1 - theta_Bn[0])
+nkT_up       = (avg_dens_up[0]*1d6)*(kB[0]*K_eV[0]*(avg_Te_up[0] + avg_Te_up[0]))  ;; plasma pressure [J m^(-3)]
+sound_up     = SQRT(5d0*nkT_up[0]/(3d0*(avg_dens_up[0]*1d6)*mp[0]))                ;; sound speed [m/s]
+alfven_up    = (bmag_up[0]*1d-9)/SQRT(muo[0]*(avg_dens_up[0]*1d6)*mp[0])           ;; Alfven speed [m/s]
+Vs_p_Va_2    = (sound_up[0]^2 + alfven_up[0]^2)
+b2_4ac       = Vs_p_Va_2[0]^2 + 4d0*sound_up[0]^2*alfven_up[0]^2*SIN(theta_Bn[0]*!DPI/18d1)^2
+fast_up      = SQRT((Vs_p_Va_2[0] + SQRT(b2_4ac[0]))/2d0)
+;  Mach numbers
+Ma_up        = ABS(ushn_up[0]*1d3/alfven_up[0])
+Ms_up        = ABS(ushn_up[0]*1d3/sound_up[0])
+Mf_up        = ABS(ushn_up[0]*1d3/fast_up[0])
+PRINT,';', theta_Bn[0], Ma_up[0], Ms_up[0], Mf_up[0]
+;       35.282616       12.250019       5.5669472       4.9571628
+
+;;  Downstream Rankine-Hugoniot parameters [corrected bulk flow velocity]
+avg_magf_dn  = [-3.85673d0,10.8180d0,-8.72761d0]
+avg_vswi_dn  = [-52.3194d0,30.9724d0,-13.7437d0]
+avg_dens_dn  = 47.9863d0
+avg_Te_dn    = 30.5007d0
+avg_Ti_dn    = 157.347d0
+ushn_dn      = -60.026496
+bmag_dn      = NORM(avg_magf_dn)
+vmag_dn      = NORM(avg_vswi_dn)
+nkT_dn       = (avg_dens_dn[0]*1d6)*(kB[0]*K_eV[0]*(avg_Te_dn[0] + avg_Ti_dn[0]))  ;; plasma pressure [J m^(-3)]
+sound_dn     = SQRT(5d0*nkT_dn[0]/(3d0*(avg_dens_dn[0]*1d6)*mp[0]))
+alfven_dn    = (bmag_dn[0]*1d-9)/SQRT(muo[0]*(avg_dens_dn[0]*1d6)*mp[0])           ;; Alfven speed [m/s]
+Vs_p_Va_2    = (sound_dn[0]^2 + alfven_dn[0]^2)
+b2_4ac       = Vs_p_Va_2[0]^2 + 4d0*sound_dn[0]^2*alfven_dn[0]^2*SIN(theta_Bn[0]*!DPI/18d1)^2
+fast_dn      = SQRT((Vs_p_Va_2[0] + SQRT(b2_4ac[0]))/2d0)
+;  Mach numbers
+Ma_dn        = ABS(ushn_dn[0]*1d3/alfven_dn[0])
+Ms_dn        = ABS(ushn_dn[0]*1d3/sound_dn[0])
+Mf_dn        = ABS(ushn_dn[0]*1d3/fast_dn[0])
+PRINT,';', theta_Bn[0], Ma_dn[0], Ms_dn[0], Mf_dn[0], avg_dens_dn[0]/avg_dens_up[0]
+;       35.282616       1.3215872      0.34662459      0.33202916       5.5535971
+
+;;-----------------------------------------------------
+;; => Calculate gyrospeeds of specular reflection
+;;-----------------------------------------------------
+; => calculate unit vectors
+bhat         = avg_magf_up/bmag_up[0]
+vhat         = avg_vswi_up/vmag_up[0]
+; => calculate upstream inflow velocity
+v_up         = avg_vswi_up - gnorm*vshn_up[0]
+; => Eq. 2 from Gosling et al., [1982]
+;      [specularly reflected ion velocity]
+Vref_s       = v_up - gnorm*(2d0*my_dot_prod(v_up,gnorm,/NOM))
+; => Eq. 4 and 3 from Gosling et al., [1982]
+;      [guiding center velocity of a specularly reflected ion]
+Vper_r       = v_up - bhat*my_dot_prod(v_up,bhat,/NOM)  ; => Eq. 4
+Vgc_r        = Vper_r + bhat*(my_dot_prod(Vref_s,bhat,/NOM))
+; => Eq. 6 from Gosling et al., [1982]
+;      [gyro-velocity of a specularly reflected ion]
+Vgy_r        = Vref_s - Vgc_r
+; => Eq. 7 and 9 from Gosling et al., [1982]
+;      [guiding center velocity of a specularly reflected ion perp. to shock surface]
+Vgcn_r       = my_dot_prod(Vgc_r,gnorm,/NOM)
+;      [guiding center velocity of a specularly reflected ion para. to B-field]
+Vgcb_r       = my_dot_prod(Vgc_r,bhat,/NOM)
+; => gyrospeed and guiding center speed
+Vgy_rs       = NORM(REFORM(Vgy_r))
+Vgc_rs       = NORM(REFORM(Vgc_r))
+
+PRINT,';', Vgy_rs[0], Vgc_rs[0]
+PRINT,';', Vgcn_r[0], Vgcb_r[0]
+;       380.78971       327.55811
+;       101.12483      -261.81441
+
+
+;;-----------------------------------------------------
+;; IESA
+;;-----------------------------------------------------
+i_time0 = dat_igse.TIME
+i_time1 = dat_igse.END_TIME
+tbow0   = time_double(tdate[0]+'/'+['08:56:00.000','09:10:00.000'])
+tbow1   = time_double(tdate[0]+'/'+['09:14:00.000','09:30:00.000'])
+tbow2   = time_double(tdate[0]+'/'+['09:30:00.000','09:44:00.000'])
+good_i0 = WHERE(i_time0 GE tbow0[0] AND i_time1 LE tbow0[1],gdi0)
+good_i1 = WHERE(i_time0 GE tbow1[0] AND i_time1 LE tbow1[1],gdi1)
+good_i2 = WHERE(i_time0 GE tbow2[0] AND i_time1 LE tbow2[1],gdi2)
+PRINT,';', gdi0, gdi1, gdi2
+;         281         318         279
+
+dat_i0  = dat_igse[good_i0]
+dat_i1  = dat_igse[good_i1]
+dat_i2  = dat_igse[good_i2]
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Plot individual contour plots
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+WINDOW,1,RETAIN=2,XSIZE=800,YSIZE=1100
+WINDOW,2,RETAIN=2,XSIZE=800,YSIZE=1100
+WINDOW,3,RETAIN=2,XSIZE=800,YSIZE=1100
+
+;; => setup colors
+LOADCT,39
+DEVICE,DECOMPOSED=0
+
+dat_aa  = dat_i0
+ngrid   = 30L               ;; => # of grid points to use
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'        ;; => name of extra vector
+xname   = 'B!Do!N'          ;; => name of VEC1 (see below)
+yname   = 'V!Dsw!N'         ;; => name of VEC2 (see below)
+
+vlim    = 25e2              ;; => velocity limit for contour and X-axis of cuts
+;; => Define the # of points to smooth the cuts of the DF
+ns      = 7L
+smc     = 1
+smct    = 1
+;; => Define the min/max allowable range in DF plots
+dfmax   = 1d-1
+dfmin   = 1d-15
+
+j       = 79L
+tr_ie   = tbow0
+dat_0   = dat_aa[j]
+gnorm   = gnorm
+normnm  = 'Shock Normal[0]'
+vcirc   = Vgy_rs[0]         ;; => Put a circle of constant energy at the gyrospeed
+
+WSET,0
+mode    = 'fgh'
+names   = 'th'+sc[0]+'_'+[mode[0]+['_mag','_gsm'],'efw_cal_gsm','scw_gsm_L2']
+  tplot,names,/NOM,TRANGE=tr_ie
+  time_bar,dat_i[0].TIME,VARNAME=names,COLOR=250L
+  time_bar,dat_i[0].END_TIME,VARNAME=names,COLOR= 50L
+
+;; => Define the two vectors which define the XY-plane
+vec1    = dat_0.MAGF
+vec2    = dat_0.VSW
+
+WSET,1
+WSHOW,1
+contour_3d_1plane,dat_0,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,    $
+                      YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,        $
+                      DFRA=dfra,VCIRC=vcirc[0],PLANE='xy',EX_VEC1=sunv, $
+                      EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],    $
+                      SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0],$
+                      DFMAX=dfmax[0]
+
+WSET,2
+WSHOW,2
+contour_3d_1plane,dat_0,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,    $
+                      YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,        $
+                      DFRA=dfra,VCIRC=vcirc[0],PLANE='xz',EX_VEC1=sunv, $
+                      EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],    $
+                      SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0],$
+                      DFMAX=dfmax[0]
+
+WSET,3
+WSHOW,3
+contour_3d_1plane,dat_0,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,    $
+                      YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,        $
+                      DFRA=dfra,VCIRC=vcirc[0],PLANE='yz',EX_VEC1=sunv, $
+                      EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],    $
+                      SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0],$
+                      DFMAX=dfmax[0]
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Plot using higher time resolution magnetometer data
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+WINDOW,1,RETAIN=2,XSIZE=800,YSIZE=1100
+WINDOW,2,RETAIN=2,XSIZE=800,YSIZE=1100
+WINDOW,3,RETAIN=2,XSIZE=800,YSIZE=1100
+
+
+dat_i0          = dat_igse[good_i0]
+dat_i1          = dat_igse[good_i1]
+dat_i2          = dat_igse[good_i2]
+;; Need un-rotated data structures for HTR timestamps
+dat_i00         = dat_i[good_i0]
+dat_i10         = dat_i[good_i1]
+dat_i20         = dat_i[good_i2]
+
+coord           = 'gse'
+sc              = probe[0]
+pref            = 'th'+sc[0]+'_'
+magname         = pref[0]+'fgh_'+coord[0]   ;; 'fgh' GSE TPLOT handle
+spperi          = pref[0]+'state_spinper'   ;; spacecraft spin period TPLOT handle
+
+
+gnorm_0        = [0.98744623d0,-0.053346692d0,0.0093557489d0]
+Vgy_rs         = [380.78971d0,488.58513d0]   ;; solutions from 1st and 2nd bow shock crossing
+
+ngrid          = 30L
+sunv           = [1.,0.,0.]
+sunn           = 'Sun Dir.'
+xname          = 'B!Do!N'
+yname          = 'V!Dsw!N'
+vlim           = 25e2
+ns             = 7L
+smc            = 1
+smct           = 1
+dfmax          = 1d-1
+dfmin          = 1d-15
+gnorm          = gnorm_0
+normnm         = 'Shock Normal[0]'
+vcirc          = Vgy_rs            ;; use both solutions
+dfra           = [1d-14,1d-8]
+interpo        = 0
+
+j              = 79L
+dat_0          = dat_i0[j]
+dumb0          = dat_i00[j]
+vec2           = dat_0[0].VSW
+
+WSET,1
+contour_esa_htr_1plane,dat_0,dumb0,magname[0],vec2,spperi[0],VLIM=vlim[0],NGRID=ngrid[0], $
+                       XNAME=xname[0],YNAME=yname[0],SM_CUTS=smc[0],NSMOOTH=ns[0],        $
+                       /ONE_C,VCIRC=vcirc,EX_VEC0=gnorm,EX_VN0=normnm[0],                 $
+                       EX_VEC1=sunv,EX_VN1=sunn[0],PLANE='xy',/NO_REDF,INTERP=interpo,    $
+                       SM_CONT=smct[0],DFRA=dfra,DFMIN=dfmin[0],DFMAX=dfmax[0],           $
+                       MAGF_NAME=magname[0],VEL_NAME=vname_nc[0]
+
+WSET,2
+contour_esa_htr_1plane,dat_0,dumb0,magname[0],vec2,spperi[0],VLIM=vlim[0],NGRID=ngrid[0], $
+                       XNAME=xname[0],YNAME=yname[0],SM_CUTS=smc[0],NSMOOTH=ns[0],        $
+                       /ONE_C,VCIRC=vcirc,EX_VEC0=gnorm,EX_VN0=normnm[0],                 $
+                       EX_VEC1=sunv,EX_VN1=sunn[0],PLANE='xz',/NO_REDF,INTERP=interpo,    $
+                       SM_CONT=smct[0],DFRA=dfra,DFMIN=dfmin[0],DFMAX=dfmax[0],           $
+                       MAGF_NAME=magname[0],VEL_NAME=vname_nc[0]
+
+WSET,3
+contour_esa_htr_1plane,dat_0,dumb0,magname[0],vec2,spperi[0],VLIM=vlim[0],NGRID=ngrid[0], $
+                       XNAME=xname[0],YNAME=yname[0],SM_CUTS=smc[0],NSMOOTH=ns[0],        $
+                       /ONE_C,VCIRC=vcirc,EX_VEC0=gnorm,EX_VN0=normnm[0],                 $
+                       EX_VEC1=sunv,EX_VN1=sunn[0],PLANE='yz',/NO_REDF,INTERP=interpo,    $
+                       SM_CONT=smct[0],DFRA=dfra,DFMIN=dfmin[0],DFMAX=dfmax[0],           $
+                       MAGF_NAME=magname[0],VEL_NAME=vname_nc[0]
+
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Save each individual contour plot
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/contour_df_pos_slide_plot.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/contour_df_pos_slide_plot.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/contour_df_pos_slide_wrapper.pro
+
+timename   = ['thb_fgh_mag','thb_fgh_gse']
+dat_aa     = dat_i0
+sunv       = [1.,0.,0.]
+sunn       = 'Sun Dir.'        ;; => name of extra vector
+ngrid      = 30L
+xname      = 'B!Do!N'
+yname      = 'V!Dsw!N'
+vlim       = 25e2
+ns         = 7L
+smc        = 1
+smct       = 1
+dfmax      = 1d-1
+dfmin      = 1d-15
+gnorm      = gnorm
+normnm     = 'Shock Normal[0]'
+vcirc      = Vgy_rs[0]
+;; change the following to whatever time range you desire
+tbow00     = time_double(tdate[0]+'/'+['09:00:00.000','09:06:40.000'])
+;; => Plot and save snapshots
+contour_df_pos_slide_wrapper,timename,dat_aa,VLIM=vlim[0],NGRID=ngrid[0],XNAME=xname[0], $
+                              YNAME=yname[0],VCIRC=vcirc[0],EX_VEC0=gnorm,      $
+                              EX_VN0=normnm[0],PLANE=plane,SM_CONT=smct,$
+                              DFMIN=dfmin[0],DFMAX=dfmax[0],TRANGE=tbow00, $
+                              TROUTER=21d0,SNAPSHOTS=1,TSNAMES='FGM-fgh-GSE_'
+
+
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Make a short movie
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/contour_df_pos_slide_plot.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/contour_df_pos_slide_plot.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/contour_df_pos_slide_wrapper.pro
+
+timename   = ['thb_fgh_mag','thb_fgh_gse']
+dat_aa     = dat_i0
+sunv       = [1.,0.,0.]
+sunn       = 'Sun Dir.'        ;; => name of extra vector
+ngrid      = 30L
+xname      = 'B!Do!N'
+yname      = 'V!Dsw!N'
+vlim       = 25e2
+ns         = 7L
+smc        = 1
+smct       = 1
+dfmax      = 1d-1
+dfmin      = 1d-15
+gnorm      = gnorm
+normnm     = 'Shock Normal[0]'
+vcirc      = Vgy_rs[0]
+;; change the following to whatever time range you desire
+tbow00     = time_double(tdate[0]+'/'+['09:00:00.000','09:02:00.000'])
+;; make the movie with 4 copies of each frame [EXFRAMES keyword] so that when played back
+;;   it moves slow enough to watch
+contour_df_pos_slide_wrapper,timename,dat_aa,VLIM=vlim[0],NGRID=ngrid[0],XNAME=xname[0], $
+                              YNAME=yname[0],VCIRC=vcirc[0],EX_VEC0=gnorm,               $
+                              EX_VN0=normnm[0],PLANE=plane,SM_CONT=smct,                 $
+                              DFMIN=dfmin[0],DFMAX=dfmax[0],TRANGE=tbow00,               $
+                              TROUTER=21d0,TSNAMES='FGM-fgh-GSE_',EXFRAMES=4L
+
+
+;; If your computer has ffmpeg, then use the following
+timename   = ['thb_fgh_mag','thb_fgh_gse']
+dat_aa     = dat_i0
+sunv       = [1.,0.,0.]
+sunn       = 'Sun Dir.'        ;; => name of extra vector
+ngrid      = 30L
+xname      = 'B!Do!N'
+yname      = 'V!Dsw!N'
+vlim       = 25e2
+ns         = 7L
+smc        = 1
+smct       = 1
+dfmax      = 1d-1
+dfmin      = 1d-15
+gnorm      = gnorm
+normnm     = 'Shock Normal[0]'
+vcirc      = Vgy_rs[0]
+fps        = 5L             ;; # of frames per second
+;; change the following to whatever time range you desire
+tr_aa      = time_double(tdate[0]+'/'+['09:00:00.000','09:02:00.000'])
+
+contour_df_pos_slide_wrapper,timename,dat_aa,VLIM=vlim[0],NGRID=ngrid[0],XNAME=xname[0],  $
+                              YNAME=yname[0],VCIRC=vcirc[0],EX_VEC0=gnorm,                $
+                              EX_VN0=normnm[0],EX_VEC1=sunv,EX_VN1=sunn[0],               $
+                              PLANE='xy',SM_CONT=smct,DFRA=dfra,TRANGE=tr_aa,TROUTER=21d0,$
+                              TSNAMES='FGM-fgh-GSE_',FRAMERATE=fps[0]
+
+
+
+
+
+
+
+
+
+
+

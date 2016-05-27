@@ -1,0 +1,99 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   time_double.pro
+;  PURPOSE  :   A fast, vectorized routine that returns the number of seconds since 1970.
+;
+;  CALLED BY: 
+;               time_epoch.pro
+;               time_string.pro
+;               time_struct.pro
+;               time_ticks.pro
+;
+;  CALLS:
+;               time_double.pro
+;               pb5_to_time.pro
+;               time_struct.pro
+;               time_string.pro
+;
+;  REQUIRES:    NA
+;
+;  INPUT:
+;               TIME   :  Scalar or array of one of the following types:
+;                           1)  DOUBLE     :  Unix time (s)
+;                           2)  STRING     :  YYYY-MM-DD/hh:mm:ss  (see time_string.pro)
+;                           3)  STRUCTURE  :  Format returned by time_struct.pro
+;                           4)  LONG ARRAY :  2-Dimensional PB5 time (CDF files)
+;
+;  EXAMPLES:
+;
+;  KEYWORDS:  
+;               EPOCH  :  If set, implies the input, TIME, is a double precision
+;                           Epoch time
+;               DIM    :  Set to the dimensions of the input
+;               PB5    :  If set, implies the input, TIME, is a PB5 time
+;
+;   CHANGED:  1)  Davin Larson changed something...       [07/12/2001   v1.0.9]
+;             2)  Re-wrote and cleaned up                 [06/23/2009   v1.1.0]
+;             3)  Fixed typo which seemed to only affect long (> 1 month) time
+;                   ranges                                [03/16/2010   v1.2.0]
+;
+;   CREATED:  October, 1996
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  03/16/2010   v1.2.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION time_double,time,EPOCH=epoch,DIM=dim,PB5=pb5
+
+ntyp0 = (SIZE(time,/TYPE))[0]
+CASE ntyp0 OF
+  8   : BEGIN  ; => Structure Input
+    ; => Day number of 1970-01-01 = 719162L
+    dn1970  = 1969L*365L + 1969L/4 - 1969L/100 + 1969L/400  ; => Day number of 1970-1-1
+    mdt     = [[0, 31,  59,  90, 120, 151, 181, 212, 243, 273, 304, 334, 365], $
+               [0, 31,  60,  91, 121, 152, 182, 213, 244, 274, 305, 335, 366]]
+    month   = time.MONTH - 1
+    date    = time.DATE - 1
+    dy      = FLOOR(month/12.)
+    year    = time.YEAR + dy
+    month   = month - dy*12
+   isleap   = ((year MOD 4) EQ 0) - ((year MOD 100) EQ 0) +  $
+               ((year MOD 400) EQ 0) - ((year MOD 4000) EQ 0)
+    doy     = mdt[month,isleap] + date
+    seconds = (time.HOUR*6d1 + time.MIN)*6d1 + time.SEC + time.FSEC
+    y       = year - 1
+    daynum  = (y*365L + y/4L - y/100L + y/400L - y/4000L) + doy
+    seconds = (daynum - dn1970)*36d2*24 + seconds
+    ndim0   = (SIZE(dim,/N_DIMENSIONS))[0]
+    IF (ndim0 EQ 1) THEN IF (dim[0] EQ 1) THEN seconds = [seconds]  ;!!! IDL BUG
+    RETURN,seconds
+  END
+  7   : BEGIN  ; => String Input
+    dims = SIZE(time,/DIMENSIONS)
+    RETURN,time_double(time_struct(time,/NO_CLEAN),DIM=dims)
+  END
+  5   : BEGIN  ; => Double Precision Input
+    IF KEYWORD_SET(epoch) THEN RETURN, time/1d3 - 719528d0*24d0*36d2
+    RETURN,time
+  END
+  4   : BEGIN  ; => Floating Point Input
+    RETURN,DOUBLE(time)
+  END
+  14  : BEGIN  ; => 64 Bit Long Integer Input
+    RETURN,DOUBLE(time)
+  END
+  3   : BEGIN  ; => Long Integer Input
+   IF KEYWORD_SET(pb5) THEN RETURN, pb5_to_time(time)
+    RETURN,DOUBLE(time)
+  END
+  0   : BEGIN  ; => Undefined Input
+    RETURN,time_double(time_string(time,PREC=6))
+  END
+  ELSE : BEGIN
+    MESSAGE,'Improper time input',/INFORMATIONAL
+  END
+ENDCASE
+END

@@ -1,0 +1,237 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   dat_3dp_str_names.pro
+;  PURPOSE  :   Returns the associated structure name for the input.  Enter a
+;                 string to get the "formal" name associated with a particular
+;                 detector (i.e. 'elb' -> 'Eesa Low Burst') or a structure to 
+;                 get a two or three letter string associated with structure
+;                 (i.e. dat = get_el() => result = 'el').
+;
+;  CALLED BY:
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT  :  [string,structure] associated with a known THEMIS ESA data
+;                         structure
+;                           String Inputs:
+;                             el[ , b]     :  EESA Low Electrons   [ , Burst]
+;                             eh[ , b]     :  EESA High Electrons  [ , Burst]
+;                             pl[ , b]     :  PESA Low Electrons   [ , Burst]
+;                             ph[ , b]     :  PESA High Electrons  [ , Burst]
+;                             sf[ , b, t]  :  SST Electrons        [ , Burst, Thick]
+;                             so[ , b, t]  :  SST Ions             [ , Burst, Thick]
+;                           Structure Inputs:
+;                             dat = get_???()
+;                               ???        =  el, ehb, sft, etc.
+;
+;  EXAMPLES:
+;               el   = get_el(t)
+;               temp = dat_3dp_str_names(el)
+;               PRINT,';  '+temp.LC[0]
+;               ;  Eesa Low
+;               PRINT,';  '+temp.UC[0]
+;               ;  EESA LOW
+;               PRINT,';  '+temp.SN[0]
+;               ;  el
+;
+;               temp = dat_3dp_str_names('sfb')
+;               PRINT,';  '+temp.LC[0]
+;               ;  SST Foil Burst
+;               PRINT,';  '+temp.UC[0]
+;               ;  SST FOIL BURST
+;               PRINT,';  '+temp.SN[0]
+;               ;  sfb
+;
+;  KEYWORDS:  
+;               NA
+;
+;   CHANGED:  1)  Updated 'man' page                      [11/11/2008   v1.0.3]
+;             2)  Rewrote and renamed with more comments  [07/20/2009   v2.0.0]
+;             3)  Fixed some small typos in comments      [08/05/2009   v2.0.1]
+;             4)  Fixed syntax error when sending in structures
+;                                                         [08/31/2009   v2.1.0]
+;             5)  Fixed an issue which arose when sending PAD structures
+;                                                         [09/18/2009   v2.1.1]
+;             6)  Now only returns a structure if successful
+;                                                         [03/13/2012   v2.2.0]
+;             7)  Fixed an issue which arose when DAT was not a 3DP data structure but
+;                   was similar enough to get to the middle of the routine
+;                                                         [03/14/2012   v2.2.1]
+;
+;   CREATED:  07/05/2008
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  03/14/2012   v2.2.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION dat_3dp_str_names,dat
+
+;-----------------------------------------------------------------------------------------
+; => Determine input type
+;-----------------------------------------------------------------------------------------
+dtype = SIZE(dat,/TYPE)
+CASE dtype[0] OF
+  8    : BEGIN  ; => Input is a structure
+    tags = TAG_NAMES(dat)
+    gtag = WHERE(STRUPCASE(tags) EQ 'DATA_NAME',gtg)
+    IF (gtg GT 0) THEN BEGIN
+      lown = STRLOWCASE(dat.(gtag[0]))
+    ENDIF ELSE BEGIN
+      MESSAGE,'This is not a valid 3DP data structure!',/CONT,/INFO
+      RETURN,0b
+;  LBW III  03/13/2012   v2.2.0
+;      RETURN,dat
+    ENDELSE
+    parts   = STRSPLIT(lown[0],' ',/EXTRACT)
+    t_part  = STRSPLIT(lown[0],'+',/EXTRACT)
+    npart   = N_ELEMENTS(parts)
+    n_0     = STRMID(parts[0],0,1)
+    n_1     = STRMID(parts[1],0,1)
+    IF (npart EQ 3) THEN BEGIN
+      pad_check = (STRLOWCASE(STRMID(parts[2],0,3)) EQ 'pad')
+      IF (pad_check) THEN n_2 = '' ELSE n_2 = STRMID(parts[2],0,1)
+    ENDIF ELSE BEGIN
+      n_2 = ''
+    ENDELSE
+    IF (t_part[0] EQ lown[0]) THEN n_3 = '' ELSE n_3 = 't'
+    lown = n_0+n_1+n_2+n_3
+  END
+  7    : BEGIN  ; -make sure string is of the correct form
+    chnn = STRCOMPRESS(STRLOWCASE(dat),/REMOVE_ALL)
+    lenn = STRLEN(chnn)
+    IF (lenn GT 3L) THEN BEGIN  ; => Input full instrument name
+      chn1  = STRMID(chnn,3,1)
+      chn2  = STRMID(chnn,4,1)
+      check = [STRPOS(chnn,'eesa'),STRPOS(chnn,'pesa'),STRPOS(chnn,'sst')]
+      gche  = WHERE(check NE -1,gch)
+      CASE gche[0] OF
+        0    : BEGIN   ; => Eesa string
+          n_0 = 'e'
+          n_1 = chn2
+          n_3 = ''
+        END
+        1    : BEGIN   ; => Pesa string
+          n_0 = 'p'
+          n_1 = chn2
+          n_3 = ''
+        END
+        2    : BEGIN   ; => SST string
+          n_0 = 's'
+          n_1 = chn1
+          IF (STRPOS(chnn,'thick') GE 0) THEN n_3 = 't' ELSE n_3 = ''
+        END
+        ELSE : BEGIN
+          MESSAGE,dat+' is not a valid structure name!',/CONT,/INFO
+          RETURN,0b
+;  LBW III  03/13/2012   v2.2.0
+;          RETURN,dat
+        END
+      ENDCASE
+      IF (STRPOS(chnn,'burst') GE 0) THEN n_2 = 'b' ELSE n_2 = ''
+      lown = n_0+n_1+n_2+n_3  ; => e.g. 'el' or 'sfb' etc.
+    ENDIF ELSE BEGIN
+      lown = STRLOWCASE(dat)  ; => e.g. 'el' or 'sfb' etc.
+    ENDELSE
+  END
+  ELSE : BEGIN
+    MESSAGE,'Incorrect data format entered!',/CONT,/INFO
+    RETURN,0b
+;  LBW III  03/13/2012   v2.2.0
+;    RETURN,dat
+  END
+ENDCASE
+;-----------------------------------------------------------------------------------------
+; => Define some logic to determine the proper structure name
+;-----------------------------------------------------------------------------------------
+eesa = STRPOS(lown,'e')                         ; => logic test for Eesa instrument
+pesa = STRPOS(lown,'p')                         ; => logic test for Pesa instrument
+sst  = STRPOS(lown,'s')                         ; => logic test for SST " "
+burs = STRPOS(lown,'b')                         ; => logic test for burst sample
+high = STRPOS(lown,'h')                         ; => logic test for high (ES analyzers)
+low  = STRPOS(lown,'l')                         ; => logic test for low (ES analyzers)
+thic = STRPOS(lown,'t')                         ; => logic test for thick (SST)
+fo   = [STRPOS(lown,'f'),STRPOS(lown,'o')]      ; => logic test for open or foil (SST)
+
+gf      = WHERE(fo GT 0,gg)
+species = WHERE([eesa,pesa,sst] GE 0,spec)
+hi_lo   = WHERE([low,high] GE 0,hil)
+;-----------------------------------------------------------------------------------------
+; => Determine detector type
+;-----------------------------------------------------------------------------------------
+n1 = ''    ; => Full detector name (e.g. 'Eesa')
+s1 = ''    ; => First letter of detector name (e.g. 'e')
+CASE species[0] OF
+  0    : BEGIN  ; => Eesa
+    n1   = 'Eesa'
+    suff = ''
+  END
+  1    : BEGIN  ; => Pesa
+    n1   = 'Pesa'
+    suff = ''
+  END
+  2    : BEGIN  ; => SST
+    n1   = 'SST'
+    CASE gf[0] OF
+      0    : BEGIN  ; => Foil
+        suff = ' Foil'
+      END
+      1    : BEGIN  ; => Open
+        suff = ' Open'
+      END
+      ELSE : BEGIN
+        suff = ''
+      END
+    ENDCASE
+    n1 += suff
+  END
+  ELSE : BEGIN
+    n1   = ''
+;  LBW III  03/14/2012   v2.2.1
+    suff = ''
+  END
+ENDCASE
+s1 = STRLOWCASE(STRMID(n1,0L,1L))+STRMID(STRLOWCASE(STRCOMPRESS(suff,/REMOVE_ALL)),0L,1L)
+;-----------------------------------------------------------------------------------------
+; => If ES analyzer, distinguish between high or low
+;-----------------------------------------------------------------------------------------
+n2 = ''    ; => Full name (e.g. ' High')
+s2 = ''    ; => First letter of name (e.g. 'h')
+CASE hi_lo[0] OF
+  0    : BEGIN  ; => Low
+    n2 = ' Low'
+  END
+  1    : BEGIN  ; => High
+    n2 = ' High'
+  END
+  ELSE : BEGIN  ; => Neither
+    n2 = ''
+  END
+ENDCASE
+s2 = STRLOWCASE(STRMID(STRCOMPRESS(n2,/REMOVE_ALL),0L,1L))
+;-----------------------------------------------------------------------------------------
+; => Check if a burst sample
+;-----------------------------------------------------------------------------------------
+IF (burs GT 0) THEN n3 = ' Burst' ELSE n3 = ''
+s3 = STRLOWCASE(STRMID(STRCOMPRESS(n3,/REMOVE_ALL),0L,1L))
+;-----------------------------------------------------------------------------------------
+; => Check if a thick sample (for SST)
+;-----------------------------------------------------------------------------------------
+IF (thic GT 0) THEN n4 = '+Thick' ELSE n4 = ''
+s4 = STRLOWCASE(STRMID(STRCOMPRESS(n4,/REMOVE_ALL),1L,1L))
+;-----------------------------------------------------------------------------------------
+; => Define different names and return useful structure
+;-----------------------------------------------------------------------------------------
+lowname = n1+n2+n3+n4
+shname  = s1+s2+s3+s4
+upname  = STRUPCASE(lowname)
+RETURN,{LC:lowname,UC:upname,SN:shname}
+END

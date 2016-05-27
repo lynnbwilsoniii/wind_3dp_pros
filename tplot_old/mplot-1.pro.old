@@ -1,0 +1,341 @@
+;+
+;PROCEDURE:  mplot, x, y, [,dy]
+;INPUT:
+;            x:  1 or 2 dimensional array of x values.
+;            y:  1 or 2 dimensional array of y values.
+;           dy;  error bars for y;  same dimensions as y. (optional)
+;PURPOSE:
+;    General purpose procedure used to make multi-line plots.
+;	   
+;KEYWORDS:
+;    DATA:     A structure that contains the elements 'x', 'y' ['dy'].  This 
+;       is an alternative way of inputing the data  (used by "TPLOT").
+;    LIMITS:   Structure containing any combination of the following elements:
+;          ALL PLOT/OPLOT keywords  (ie. PSYM,SYMSIZE,LINESTYLE,COLOR,etc.)
+;          ALL MPLOT keywords
+;          NSUMS:   array of NSUM keywords.
+;          LINESTYLES:  array of linestyles.
+;    LABELS:  array of text labels.
+;    LABPOS:  array of positions for LABELS.
+;    LABFLAG: integer, flag that controls label positioning.
+;             -1: labels placed in reverse order.
+;              0: No labels.
+;              1: labels spaced equally.
+;              2: labels placed according to data.
+;              3: labels placed according to LABPOS.
+;    BINS:    flag array specifying which channels to plot.
+;    OVERPLOT: If non-zero then data is plotted over last plot.
+;    NOXLAB:   if non-zero then xlabel tick marks are supressed.
+;    COLORS:   array of colors used for each curve.
+;    NOCOLOR:  do not use color when creating plot.
+;NOTES: 
+;    The values of all the keywords can also be put in the limits structure or
+;    in the data structure using the full keyword as the tag name.
+;    The structure value will overide the keyword value.
+;
+;CREATED BY:	Davin Larson
+;FILE:  mplot.pro
+;VERSION  1.43
+;LAST MODIFICATION: 03/26/2008
+;  MODIFIED BY:  Lynn B. Wilson III
+;
+;-
+pro mplot,xt,yt,dy,      $
+   OVERPLOT = overplot,$
+   OPLOT    = OPLOT,   $
+   LABELS   = labels,  $ ;(array of) label(s) for the curve(s)
+   LABPOS   = labpos,  $
+   LABFLAG  = labflag, $
+   COLORS   = colors,  $ ;(array of) color(s) for the curve(s)
+   BINS     = bins,    $
+   DATA     = data,    $
+   NOERRORBARS = noerrorbars,  $
+   ERRORTHRESH = errorthresh,  $
+   NOXLAB   = noxlab,  $ ;No xlabels are printed if set
+   NOCOLOR  = nocolor, $ ;Colors not automatically generated if set
+   LIMITS   = limits     ;structure containing miscellaneous keyword tags:values
+
+;*****************************************************************************
+IF KEYWORD_SET(data) THEN BEGIN
+  x = data.x
+  y = data.y
+  str_element,data,'dy',value=dy
+  extract_tags,stuff,data,except=['x','y','dy','v']
+  str_element,limits,'datagap',dg
+  IF KEYWORD_SET(dg) THEN makegap,dg,x,y,dy=dy
+ENDIF ELSE BEGIN
+  x = xt
+  y = yt
+ENDELSE
+;*****************************************************************************
+
+IF KEYWORD_SET(overplot) THEN OPLOT=overplot
+
+overplot = 1
+str_element,limits,'overplot',value=OPLOT
+str_element,limits,'noerrorbars',noerrorbars
+str_element,limits,'errorthresh',errorthresh
+
+
+xrange=[0.,0.]
+yrange=[0.,0.]
+charsize = !p.charsize
+
+IF charsize EQ 0 THEN charsize = 1.
+
+EXTRACT_TAGS,stuff,limits
+
+;*****************************************************************************
+str_element,stuff,'nocolor',value=nocolor
+str_element,stuff,'colors',value=colors
+str_element,stuff,'nsums',value=nsums & n_nsums = N_ELEMENTS(nsums) & nsum=1
+str_element,stuff,'linestyles',value=linestyles
+n_linestyles = N_ELEMENTS(linestyles) & linestyle=0
+str_element,stuff,'labflag',value=labflag
+str_element,stuff,'labels',value=labels
+str_element,stuff,'labpos',value=labpos
+str_element,stuff,'labsize',value=lbsize
+str_element,stuff,'bins',value=bins
+str_element,stuff,'charsize',value=charsize
+str_element,stuff,'axis',value=AXIS
+;*****************************************************************************
+;extract_tags,plotstuff,stuff,/plot
+;*****************************************************************************
+plotstuff = stuff
+EXTRACT_TAGS,oplotstuff,stuff,/oplot
+EXTRACT_TAGS,xyoutsstuff,stuff,/xyouts
+
+str_element,plotstuff,'xrange',value=xrange
+str_element,plotstuff,'xtype',value=xtype
+str_element,plotstuff,'xlog',value=xtype
+str_element,plotstuff,'yrange',value=yrange
+str_element,plotstuff,'ytype',value=ytype
+str_element,plotstuff,'ylog',value=ytype
+str_element,plotstuff,'max_value',value=max_value
+str_element,plotstuff,'min_value',value=min_value
+;*****************************************************************************
+d1 = dimen1(y)
+d2 = dimen2(y)
+ndx = ndimen(x)
+nx = N_ELEMENTS(x)
+;*****************************************************************************
+;if n_elements(bins) eq 0 then bins = replicate(1b,d2)
+;if n_elements(bins) eq 1 then if bins[0] eq 1 then bins = replicate(1b,d2)
+;*****************************************************************************
+IF ndimen(bins) EQ 1 THEN BEGIN
+   w = WHERE(bins EQ 0,count)
+   IF count NE 0 THEN y[*,w] = !values.f_nan
+ENDIF
+
+IF ndimen(bins) EQ 2 THEN BEGIN
+   w= WHERE(bins EQ 0,count)
+   IF count NE 0 THEN y[w] = !values.f_nan
+ENDIF
+
+IF xrange(0) EQ xrange(1) THEN xrange = minmax(x,positive=xtype)
+;*****************************************************************************
+turbo = 1
+IF KEYWORD_SET(turbo) AND ndx EQ 1 AND xrange[0] NE xrange[1] AND nx GT 1000 THEN BEGIN
+   mm = MINMAX(xrange)
+   w = WHERE(x GE mm[0] AND x LT mm[1],count)
+   IF count EQ 0 THEN w = N_ELEMENTS(x)/2
+   mm = MINMAX(w) + [-1,1]
+   mm = 0 > mm < (N_ELEMENTS(x)-1)
+   x = x[mm[0]:mm[1]]
+   y = y[mm[0]:mm[1],*]
+   IF KEYWORD_SET(dy) THEN dy = dy[mm[0]:mm[1],*]
+ENDIF
+;*****************************************************************************
+
+IF n_elements(errorthresh) EQ 1 AND KEYWORD_SET(dy) THEN BEGIN
+  w = WHERE(y/dy LT errorthresh,count)
+  IF count GT 0 THEN y[w] = !values.f_nan
+ENDIF
+;*****************************************************************************
+
+
+
+good = WHERE(FINITE(x),count) 
+
+IF count EQ 0 THEN BEGIN
+   MESSAGE,'No valid X data.',/info
+   RETURN
+ENDIF
+
+ind = WHERE(x(good) GE xrange(0) AND x(good) LE xrange(1),count)
+
+psym_lim = 0
+psym= -1
+str_element,stuff,'psym',value=psym
+str_element,stuff,'psym_lim',value=psym_lim
+IF count LT psym_lim THEN str_element,/add,plotstuff,'psym',psym
+IF count LT psym_lim THEN str_element,/add,oplotstuff,'psym',psym
+
+IF count eq 0 THEN ind = INDGEN(N_ELEMENTS(x)) ELSE ind = good(ind)
+
+IF yrange(0) EQ yrange(1) THEN BEGIN
+    IF ndx EQ 1 THEN BEGIN
+      yrange = MINMAX(y(ind,*),posi=ytype,MAX=max_value,MIN=min_value)
+    ENDIF ELSE BEGIN
+      yrange = MINMAX(y(ind),posi=ytype,MAX=max_value,MIN=min_value)
+    ENDELSE
+ENDIF
+
+IF KEYWORD_SET(noxlab) THEN $
+    str_element,/add,plotstuff,'xtickname',REPLICATE(' ',22)
+
+
+IF N_ELEMENTS(colors) NE 0 THEN col = get_colors(colors)  $
+;*****************************************************************************
+
+;else if d2 gt 1 then col=bytescale(pure_col=d2) $
+;*****************************************************************************
+
+ELSE IF d2 GT 1 THEN col=bytescale(FINDGEN(d2)) $
+ELSE col = !p.color
+
+IF KEYWORD_SET(nocolor) THEN IF nocolor NE 2 OR !d.name EQ 'PS' THEN $
+   col = !p.color
+
+nc = N_ELEMENTS(col)
+
+IF KEYWORD_SET(OPLOT) EQ 0 THEN $
+   box,plotstuff,xrange,yrange
+
+;*****************************************************************************
+
+;   plot,/nodata,xrange,yrange,_EXTRA = plotstuff
+;*****************************************************************************
+
+str_element,stuff,'constant',constant
+
+IF N_ELEMENTS(constant) NE 0 THEN BEGIN
+  str_element,stuff,'const_color',const_color
+  IF N_ELEMENTS(const_color) NE 0 THEN ccols = get_colors(const_color) ELSE ccols=!p.color
+  ncc = N_ELEMENTS(constant)
+  FOR i=0,ncc-1 do $
+    oplot,xrange,constant[i]*[1,1],color=ccols[i mod N_ELEMENTS(ccols)],/linestyle
+ENDIF
+;*****************************************************************************
+
+
+;*****************************************************************************
+
+labbins = REPLICATE(1,d2)
+
+IF KEYWORD_SET(labels) THEN BEGIN
+  nlab = N_ELEMENTS(labels)
+  
+  IF nlab NE d2 THEN BEGIN
+    MESSAGE,'Incorrect number of labels',/cont
+  ENDIF
+  
+  labbins = REPLICATE(1,nlab)
+  
+  IF ndimen(bins) EQ 1 THEN labbins=bins  
+  
+  yw = !y.window
+  xw = !x.window
+  
+  IF NOT KEYWORD_SET(lbsize) THEN BEGIN
+    lbsize = charsize < (yw(1)-yw(0))/(nlab+1) *!d.y_size/!d.y_ch_size
+  ENDIF ELSE BEGIN
+    lbsize = lbsize*charsize
+  ENDELSE
+  
+  IF N_ELEMENTS(labflag) EQ 0 THEN BEGIN
+     IF KEYWORD_SET(labpos) THEN labflag = 3 ELSE labflag = 2
+  ENDIF
+  
+  IF labflag EQ 1 OR labflag EQ -1 THEN $
+     nlabpos = (FINDGEN(nlab)-0.1)*(yw(1)-yw(0))/nlab + yw(0)
+  IF labflag EQ -1 THEN nlabpos = REVERSE(nlabpos)
+  
+  IF labflag EQ 3 THEN BEGIN
+     foo = CONVERT_COORD(/data,/to_norm,FINDGEN(nlab),labpos)
+     nlabpos = foo(1,*)  
+  ENDIF
+  
+  xpos = !x.window(1)-0.10
+
+ENDIF ELSE labflag=0
+;*****************************************************************************
+; check number of bins and labels
+;*****************************************************************************
+
+
+myn = N_ELEMENTS(labbins)
+
+IF (myn LT d2) THEN BEGIN
+  d2 = myn
+ENDIF ELSE BEGIN
+  IF (myn EQ d2) THEN BEGIN
+    d2 = d2
+  ENDIF ELSE BEGIN
+    d2 = d2
+  ENDELSE
+ENDELSE
+
+FOR n=0L,d2-1L DO BEGIN
+;*****************************************************************************
+;  IF bins(n) ne 0 THEN BEGIN
+;*****************************************************************************
+    IF ndx EQ 1 THEN i=0 ELSE i=n
+    
+    c = col(n MOD nc)
+    
+    IF n_nsums NE 0 THEN nsum = nsums(n MOD n_nsums)
+    IF n_linestyles NE 0 THEN linestyle = linestyles(n MOD n_linestyles)
+    
+    xt = x(*,i)
+    yt = y(*,n)
+    OPLOT,xt,yt,color=c,nsum=nsum,linest=linestyle,_EXTRA = oplotstuff
+    
+    IF KEYWORD_SET(axis) THEN BEGIN
+      FOR axisind = 0,N_ELEMENTS(axis)-1 DO axis,_extra=AXIS[axisind]
+    ENDIF
+    
+    IF NOT KEYWORD_SET(noerrorbars) AND N_ELEMENTS(dy) NE 0 THEN BEGIN
+      tempc = !p.color
+      !p.color = c
+      upper = yt+dy(*,n)
+      lower = yt-dy(*,n)
+      
+      IF KEYWORD_SET(ytype) THEN lower = lower > yrange(0)/2.
+      
+      oplot_err,xt,lower,upper
+;*****************************************************************************
+;          oploterr,xt,yt,dy(*,n),0
+;*****************************************************************************
+      !p.color = tempc
+    ENDIF
+    
+    IF KEYWORD_SET(labels) AND KEYWORD_SET(labflag) AND labbins[n] THEN BEGIN
+      ypos  = 0.
+      
+      IF KEYWORD_SET(nlabpos) THEN ypos = nlabpos(n) ELSE BEGIN
+        fooind = WHERE(FINITE(yt),count)
+        
+        IF count NE 0 THEN begin
+          foo = CONVERT_COORD(xt(fooind),yt(fooind),/data,/to_norm)
+          fooind = WHERE( foo(0,*) LE xw(1),count)
+          IF count NE 0 THEN mx = MAX(foo(0,fooind),ms,/nan)
+          IF count NE 0 THEN ypos = foo(1,fooind(ms))
+        ENDIF
+        
+      ENDELSE
+      
+      IF ypos LE yw(1) AND ypos GE yw(0) THEN $
+        XYOUTS,xpos,ypos,'  '+labels(n),color=c,/norm,charsize=lbsize
+    ENDIF
+;*****************************************************************************
+;  ENDIF
+;*****************************************************************************
+
+ENDFOR
+
+RETURN
+END
+
+
+

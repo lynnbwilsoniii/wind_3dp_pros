@@ -1,0 +1,136 @@
+f    = !VALUES.F_NAN
+d    = !VALUES.D_NAN
+
+fr0  = 9d-2
+fr1  = 35d-3
+print, fr1/(2d0*!DPI), fr0/(2d0*!DPI), (fr0 + fr1)/(2d0*!DPI), (fr0 - fr1)/(2d0*!DPI)
+;    0.0055704230     0.014323945     0.019894368    0.0087535219
+fr00 = REPLICATE(fr0/(2d0*!DPI),20000L)
+fr11 = REPLICATE(fr1/(2d0*!DPI),20000L)
+ffs  = [[fr00],[fr11],[fr00 - fr11],[fr00 + fr11]]
+sr   = 1d0/0.092009201d0
+tt   = DINDGEN(20000L)/sr + 1d0
+mm0  = 1d0*ROUND(DINDGEN(10000L)*(10d0 - 1d0)/(9999L) + 1d0)
+mm1  = 1d0*ROUND(REVERSE(DINDGEN(10000L)*(10d0 - 1d0)/(9999L) + 1d0))
+mm   = [mm0,mm1]
+; => Look at a Sawtooth Wave
+tsaw = tt
+xsaw = 2d0*(tsaw/5d1 - FLOOR(tsaw/5d1 + 5d-1))
+; => Amplitude modulation
+s0   = 5d0*(1d0 + 2d0*COS(fr0*tt))*COS(fr1*tt)
+; => Frequency modulation
+s1   = 5d0*COS(fr1*tt + mm*SIN(fr0*tt))
+; => Abrupt Change in Frequency
+s2   = [5d0*COS(fr0*tt[0L:9999L]),5d0*COS(fr1*tt[10000L:19999L])]
+; => Abrupt Change in Time
+s3   = 5d0*(tt - tt[9999L])*(sr*5d-3)*EXP(-((tt - tt[9999L])*(sr*5d-3)/(sqrt(2d0)))^2)
+; => Amplitude AND Frequency modulation
+s4   = 5d0*(1d0 + 2d0*COS(fr0*tt))*COS(fr1*tt + mm*SIN(fr0*tt))
+
+store_data,'Sawtooth-Wave',DATA={X:tsaw,Y:xsaw}
+wavelet_to_tplot,tsaw,xsaw,NEW_NAME='Sawtooth-Wave_Morlet_wavelet',MOTHER='morlet'
+;wavelet_to_tplot,tsaw,xsaw,NEW_NAME='Sawtooth-Wave_Paul_wavelet',MOTHER='paul'
+;wavelet_to_tplot,tsaw,xsaw,NEW_NAME='Sawtooth-Wave_DOG_wavelet',MOTHER='DOG'
+store_data,'Amplitude_Modulated-Wave',DATA={X:tt,Y:s0}
+wavelet_to_tplot,tt,s0,NEW_NAME='Amplitude_Modulated_Morlet_wavelet',MOTHER='morlet'
+store_data,'Frequency_Modulated-Wave',DATA={X:tt,Y:s1}
+wavelet_to_tplot,tt,s1,NEW_NAME='Frequency_Modulated_Morlet_wavelet',MOTHER='morlet'
+store_data,'Abrupt_Frequency_Change-Wave',DATA={X:tt,Y:s2}
+wavelet_to_tplot,tt,s2,NEW_NAME='Abrupt_Frequency_Change_Morlet_wavelet',MOTHER='morlet'
+store_data,'Abrupt_Time_Change-Wave',DATA={X:tt,Y:s3}
+wavelet_to_tplot,tt,s3,NEW_NAME='Abrupt_Time_Change_Morlet_wavelet',MOTHER='morlet'
+store_data,'Amplitude-Frequency_Modulated-Wave',DATA={X:tt,Y:s4}
+wavelet_to_tplot,tt,s4,NEW_NAME='Amplitude-Frequency_Modulated_Morlet_wavelet',MOTHER='morlet'
+
+store_data,'Modulation_Frequencies_for_Waves',DATA={X:tsaw,Y:ffs}
+fstr_freq = tnames('Modulation_Frequencies_for_Waves')
+options,fstr_freq[0],'YRANGE',[1e-3,2e0]
+
+
+mstr_cone = '*_Morlet_wavelet_Cone_of_Influence'
+mstr_conf = '*_Morlet_wavelet_Conf_Level_95'
+
+tp_nams = tnames(['Sawtooth-Wave','Sawtooth-Wave_*_wavelet'])
+tplot,tp_nams,TRANGE=minmax(tsaw)
+options,tnames('*_wavelet'),'YRANGE',[1e-3,2e0]
+options,tnames('Sawtooth-Wave_*_wavelet'),'ZRANGE',[1e-2,1e2]
+options,tnames('*_Morlet_wavelet'),'YRANGE',[1e-3,25e-2]
+options,tnames('Amplitude_Modulated_*_wavelet'),'ZRANGE',[1e-1,1e4]
+options,tnames('Frequency_Modulated_*_wavelet'),'ZRANGE',[1e-1,1e4]
+options,tnames('Abrupt_*_wavelet'),'ZRANGE',[1e-1,1e3]
+options,tnames('Amplitude-Frequency_Modulated_*_wavelet'),'ZRANGE',[1e-1,1e4]
+
+options,tnames('*_Cone_of_Influence'),'YRANGE',[1e-3,2e0]
+options,tnames('*_Conf_Level_95'),'YRANGE',[1e-3,2e0]
+options,tnames('*_Morlet_wavelet_Cone_of_Influence'),'YRANGE',[1e-3,25e-2]
+options,tnames('*_Morlet_wavelet_Conf_Level_95'),'YRANGE',[1e-3,25e-2]
+
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+nn0  = tnames(['Sawtooth-Wave','Sawtooth-Wave_Morlet_wavelet'])
+nn2  = tnames('Sawtooth-Wave_'+['*_wavelet_Cone_of_Influence','*_wavelet_Conf_Level_95'])
+lims = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+options,nn0[0],'TITLE','Morlet Wavelet Transform:  Sawtooth Wave'
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tsaw),LIMITS=lims
+popen,'Sawtooth-Wave_example_Morlet-wavelet_COI_Conf-Level-95',/LAND
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tsaw),LIMITS=lims
+pclose
+
+nn0  = tnames(['Amplitude_Modulated-Wave','Amplitude_Modulated_Morlet_wavelet'])
+nn2  = tnames(['Amplitude_'+mstr_cone[0],'Amplitude_'+mstr_conf[0],fstr_freq[0]])
+lims = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+options,nn0[0],'TITLE','Morlet Wavelet Transform:  Amplitude Modulated Wave'
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+popen,'Amplitude_Modulated-Wave_example_Morlet-wavelet_COI_Conf-Level-95',/LAND
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+pclose
+
+nn0  = tnames(['Frequency_Modulated-Wave','Frequency_Modulated_Morlet_wavelet'])
+nn2  = tnames(['Frequency_'+mstr_cone[0],'Frequency_'+mstr_conf[0],fstr_freq[0]])
+lims = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+options,nn0[0],'TITLE','Morlet Wavelet Transform:  Frequency Modulated Wave'
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+popen,'Frequency_Modulated-Wave_example_Morlet-wavelet_COI_Conf-Level-95',/LAND
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+pclose
+
+
+nn0  = tnames(['Abrupt_Frequency_Change-Wave','Abrupt_Frequency_Change_Morlet_wavelet'])
+nn2  = tnames(['Abrupt_Frequency_'+mstr_cone[0],'Abrupt_Frequency_'+mstr_conf[0],fstr_freq[0]])
+lims = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+options,nn0[0],'TITLE','Morlet Wavelet Transform:  Abrupt Frequency Change Wave'
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+popen,'Abrupt_Frequency_Change-Wave_example_Morlet-wavelet_COI_Conf-Level-95',/LAND
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+pclose
+
+nn0  = tnames(['Abrupt_Time_Change-Wave','Abrupt_Time_Change_Morlet_wavelet'])
+nn2  = tnames(['Abrupt_Time_'+mstr_cone[0],'Abrupt_Time_'+mstr_conf[0],fstr_freq[0]])
+lims = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+options,nn0[0],'TITLE','Morlet Wavelet Transform:  Abrupt Time Change Wave'
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+popen,'Abrupt_Time_Change-Wave_example_Morlet-wavelet_COI_Conf-Level-95',/LAND
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+pclose
+
+nn0  = tnames(['Amplitude-Frequency_Modulated-Wave','Amplitude-Frequency_Modulated_Morlet_wavelet'])
+nn2  = tnames(['Amplitude-Frequency_'+mstr_cone[0],'Amplitude-Frequency_'+mstr_conf[0],fstr_freq[0]])
+lims = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+options,nn0[0],'TITLE','Morlet Wavelet Transform:  Amplitude AND Frequency Modulated Wave'
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+popen,'Amplitude-Frequency_Modulated-Wave_example_Morlet-wavelet_COI_Conf-Level-95',/LAND
+  oplot_tplot_spec,nn0,nn2,TRANGE=minmax(tt),LIMITS=lims
+pclose
+
+
+
+
+
+
+
+

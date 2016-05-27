@@ -1,0 +1,154 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   get_general_probe_name.pro
+;  PURPOSE  :   This is a general routine that is supposed to test spacecraft designation
+;                 keywords to avoid too much repetition of error handling within
+;                 multiple routines using similar keywords.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               ALL_PROBES  :  [N]-Element [string] array defining all the possible
+;                                probe names for a given mission [e.g., for THEMIS the
+;                                possible names include 'a', 'b', 'c', 'd', and 'e']
+;
+;  EXAMPLES:    
+;               ;;  INCORRECT calling sequence
+;               all_probes     = ['a','b','c','d','e','f']
+;               def_probe      = 'h'
+;               probe          = 'k'
+;               sat            = get_general_probe_name(all_probes,PROBE=probe,DEF_PROBE=def_probe)
+;               PRINT,';;  ',sat[0]
+;               ;;  a
+;
+;               ;;  INCORRECT calling sequence
+;               all_probes     = ['a','b','c','d','e','f']
+;               def_probe      = 'd'
+;               probe          = 1
+;               sat            = get_general_probe_name(all_probes,PROBE=probe,DEF_PROBE=def_probe)
+;               PRINT,';;  ',sat[0]
+;               ;;  d
+;
+;               ;;  INCORRECT calling sequence
+;               all_probes     = ['a','b','c','d','e','f']
+;               def_probe      = 4.2
+;               probe          = 'b'
+;               sat            = get_general_probe_name(all_probes,PROBE=probe,DEF_PROBE=def_probe)
+;               PRINT,';;  ',sat[0]
+;               ;;  b
+;
+;               ;;  INCORRECT calling sequence
+;               all_probes     = LINDGEN(5)
+;               def_probe      = 'a'
+;               probe          = 'b'
+;               sat            = get_general_probe_name(all_probes,PROBE=probe,DEF_PROBE=def_probe)
+;               % GET_GENERAL_PROBE_NAME: User must supply an [N]-Element [string] array on input...
+;               PRINT,';;  ',sat[0]
+;               ;;     0
+;
+;               ;;  CORRECT calling sequence
+;               all_probes     = ['a','b','c','d','e','f']
+;               def_probe      = 'a'
+;               probe          = 'f'
+;               sat            = get_general_probe_name(all_probes,PROBE=probe,DEF_PROBE=def_probe)
+;               PRINT,';;  ',sat[0]
+;               ;;  f
+;
+;  KEYWORDS:    
+;               PROBE       :  Scalar [string] defining the probe name to test against
+;                                the list of possible names defined by ALL_PROBES
+;                                [Default = DEF_PROBE[0]]
+;               DEF_PROBE   :  Scalar [string] defining the default probe name to use
+;                                in the event that PROBE is undefined on input
+;                                [Default = ALL_PROBES[0]]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Make sure that ALL_PROBES is not only set, but that is an
+;                     [N]-element string array otherwise the routine will return
+;                     a non-string result (i.e., 0).
+;               2)  If PROBE and DEF_PROBE are incorrectly set, but ALL_PROBES is
+;                     correctly set on input, the returned result will be ALL_PROBES[0]
+;               3)  This routine is only meant to reduce error handling for multi-
+;                     spacecraft missions like STEREO, THEMIS, MMS, etc.
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  11/04/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  11/04/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION get_general_probe_name,all_probes,PROBE=probe,DEF_PROBE=def_probe
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants/defaults
+;;----------------------------------------------------------------------------------------
+;;  Error messages
+noinput_mssg   = 'User must supply an [N]-Element [string] array on input...'
+incorrf_mssg   = 'Incorrect input format:  ALL_PROBES must be an [N]-Element [string] array...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test           = (SIZE(all_probes,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Define params
+all__sat       = STRTRIM(all_probes,2)
+lowc_sat       = STRLOWCASE(all__sat)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check DEF_PROBE
+test           = (N_ELEMENTS(def_probe) LT 1)                        ;;  TRUE --> NOT Set, FALSE --> Set
+IF (test[0]) THEN def_probe = all__sat[0] ELSE def_probe = def_probe[0]
+test           = (SIZE(def_probe,/TYPE) NE 7)                        ;;  TRUE --> NOT a string, FALSE --> a string
+IF (test[0]) THEN def_probe = all__sat[0] ELSE def_probe = STRTRIM(def_probe[0],2)
+test           = (TOTAL(STRLOWCASE(def_probe[0]) EQ lowc_sat) EQ 0)  ;;  TRUE --> NOT a possible probe name, FALSE --> correctly set
+IF (test[0]) THEN def_probe = all__sat[0]
+;;  Check PROBE
+test           = (N_ELEMENTS(probe) LT 1)                            ;;  TRUE --> NOT Set, FALSE --> Set
+IF (test[0]) THEN sat = def_probe[0] ELSE sat = probe[0]
+test           = (SIZE(sat,/TYPE) NE 7)                              ;;  TRUE --> NOT a string, FALSE --> a string
+IF (test[0]) THEN sat = def_probe[0] ELSE sat = STRTRIM(sat[0],2)
+test           = (TOTAL(STRLOWCASE(sat[0]) EQ lowc_sat) EQ 0)        ;;  TRUE --> NOT a possible probe name, FALSE --> correctly set
+IF (test[0]) THEN sat = def_probe[0]
+;;----------------------------------------------------------------------------------------
+;;  Passed test --> Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,sat[0]
+END
+
+
+
+
+
+
+
+
+
+

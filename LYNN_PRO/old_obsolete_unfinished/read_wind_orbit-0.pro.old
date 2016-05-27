@@ -1,0 +1,489 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   read_wind_ascii_orbit.pro
+;  PURPOSE  :   This program reads in an ASCII file created by SPDF Data Orbit Services
+;                 and returns a data structure that contains the GSE Cartesian and
+;                 sperical coordinates, L-Shell, and invariant latitude to wrapping
+;                 program.
+;
+;  CALLED BY:   
+;               read_wind_orbit.pro
+;
+;  CALLS:
+;               format_structure.pro
+;               my_str_date.pro
+;               my_time_string.pro
+;
+;  REQUIRES:    
+;               ASCII Files created by SPDF Data Orbit Services at:
+;                   http://spdf.gsfc.nasa.gov/data_orbits.html
+;               Format of output must be:
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+;GROUP 1    Satellite   Resolution   Factor
+;            wind          720         1
+;
+;           Start Time           Stop Time 
+;           2001 327  0.00000    2001 329  0.00000
+;
+;
+; Coord/            Min/Max      Range Filter          Filter
+;Component   Output Markers    Minimum     Maximum    Mins/Maxes
+;GSE X        YES      -         -           -             -   
+;GSE Y        YES      -         -           -             -   
+;GSE Z        YES      -         -           -             -   
+;GSE Lat      YES      -         -           -             -   
+;GSE Lon      YES      -         -           -             -   
+;
+;
+;Addtnl             Min/Max      Range Filter          Filter
+;Options     Output Markers    Minimum     Maximum    Mins/Maxes
+;L_Value      YES      -         -           -             -   
+;InvarLat     YES      -         -           -             -   
+;
+;Output - File: 
+;         lines per page: 0
+; 
+;Formats and units:
+;    Day/Time format: YY/MM/DD HH:MM:SS
+;    Degrees/Hemisphere format: Decimal degrees with 2 place(s).
+;        Longitude 0 to 360, latitude -90 to 90.
+;    Distance format: Kilometers with 3 place(s).
+;
+;wind
+;       Time                           GSE (km)                         GSE                DipInvLat
+;yy/mm/dd hh:mm:ss        X               Y               Z          Lat   Long   DipL-Val   (Deg)  
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+;
+;
+;  INPUT:
+;               FILE     :  Scalar string defining the full path name to the orbit
+;                             file of interest
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  User should not call this routine
+;               2)  The ASCII files should contain the orbit information for an entire
+;                     day, but ONLY ONE DAY
+;
+;   CREATED:  05/26/2011
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/26/2011   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION read_wind_ascii_orbit,file
+
+;-----------------------------------------------------------------------------------------
+; => Define some constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+gfile      = file[0]
+;-----------------------------------------------------------------------------------------
+; => Define Header quantities
+;-----------------------------------------------------------------------------------------
+nHeader = 14L                              ; => # of lines in the header
+nl      = FILE_LINES(gfile[0]) - nHeader   ; => # of lines in the ASCII file that is data
+;-----------------------------------------------------------------------------------------
+; => Open file and read in data
+;-----------------------------------------------------------------------------------------
+;mform = '(a17,3f16.3,2f7.2,2f10.1)'
+OPENR,gunit,gfile[0],ERROR=err,/GET_LUN
+  mline = ''
+  IF (err NE 0) THEN PRINT, -2, !ERROR_STATE.MSG   ; => Prints an error message
+  ; => Read in Header
+  FOR mvcount = 0L, nHeader - 1L DO BEGIN
+    READF,gunit,mline
+      CASE mvcount OF
+        0  :  stend_t  = STRCOMPRESS(STRMID(mline,6L),/REMOVE_ALL)    ; => Start and End time strings
+        1  :  BEGIN
+          doy_start = STRMID(mline,11L,17L)  ; => ['YYYY DOY x.xxxxx'] at Start
+          doy_end   = STRMID(mline,32L)      ; => ['YYYY DOY x.xxxxx'] at End
+        END
+        2  :  
+        3  :  dateform = STRMID(mline,21L)   ; => ['YY/MM/DD HH:MM:SS'] Date/Time format
+        4  :  
+        5  :  
+        6  :  
+        7  :  
+        8  :  BEGIN ; => [e.g. '(a17,3f16.3,2f7.2,2f10.1)'] format statement of data
+          gpos     = STRPOS(STRMID(mline,8L),')')
+          dataform = STRMID(mline,8L,gpos[0]+1L)
+        END
+        9  :  
+        10 :  sat      = STRCOMPRESS(STRMID(mline,0L),/REMOVE_ALL)   ; => Satellite ['wind']
+        11 :  datlabs  = STRMID(mline,0L)    ; => Data labels
+        12 :  datnams  = STRMID(mline,0L)    ; => Data names/types
+        13 :  
+      ENDCASE
+  ENDFOR
+  mform = (STRCOMPRESS(dataform,/REMOVE_ALL))[0]  ; => Format statement of data
+  fstr  = format_structure(mform)
+  nflo  = (fstr.FLOATS)[0]
+  dats  = REPLICATE(d,nl,nflo)   ; => Data array
+  times = REPLICATE('',nl)       ; => Time array
+  utx   = ''              ; => Dummy time variable
+  tdat  = DBLARR(nflo)      ; => Dummy data variable
+  j     = 0L
+  ggg   = 1
+  WHILE(ggg) DO BEGIN
+    READF,gunit,FORMAT=mform,utx,tdat
+    dats[j,*]  = tdat
+    times[j]   = utx
+    IF (j LT nl - 1L) THEN ggg = 1 ELSE ggg = 0
+    IF (ggg) THEN j += 1L
+  ENDWHILE
+FREE_LUN,gunit
+;-----------------------------------------------------------------------------------------
+; => Convert times to unix times
+;-----------------------------------------------------------------------------------------
+tdates = ''      ; => Dates of data ['MMDDYY']
+ttimes = ''      ; => Times of data ['HH:MM:SS']
+ymdb   = ''      ; => Date/Time     ['MM-DD-YYYY'/HH:MM:SS']
+unix   = 0d0     ; => Unix times (seconds since Jan 1st, 1970)
+
+tdates = STRMID(times[*],3L,2L)+STRMID(times[*],6L,2L)+STRMID(times[*],0L,2L)
+ttimes = STRMID(times[*],9L)
+ddates = my_str_date(DATE=tdates)
+zdates = ddates.TDATE
+ymdb   = zdates+'/'+ttimes+'.0000'
+mts    = my_time_string(ymdb,STR=1,FORM=1,/NOM)
+unix   = mts.UNIX
+ymdts  = mts.DATE_TIME
+nt     = N_ELEMENTS(unix)
+;-----------------------------------------------------------------------------------------
+; => Define data variables
+;-----------------------------------------------------------------------------------------
+gse_pos = REPLICATE(f,nt,3L)  ; => GSE Positions (km)
+gsm_pos = REPLICATE(f,nt,3L)  ; => GSM Positions (km)
+gse_lat = REPLICATE(f,nt)     ; => GSE Latitude (deg)
+gse_lon = REPLICATE(f,nt)     ; => GSE Longitude (deg)
+gsm_lat = REPLICATE(f,nt)     ; => GSM Latitude (deg)
+gsm_lon = REPLICATE(f,nt)     ; => GSM Longitude (deg)
+L_value = REPLICATE(f,nt)     ; => Magnetic L-Shell Value
+inv_lat = REPLICATE(f,nt)     ; => Invariant Latitude (deg)
+
+CASE nflo[0] OF
+  7L   : BEGIN    ; => Only GSE positions and latitudes
+    L_value = REFORM(dats[*,5L])  ; => Magnetic L-Shell Value
+    inv_lat = REFORM(dats[*,6L])  ; => Invariant Latitude (deg)
+  END
+  12L  : BEGIN
+    gsm_pos = REFORM(dats[*,5:7])
+    gsm_lat = REFORM(dats[*,8])
+    gsm_lon = REFORM(dats[*,9])
+    L_value = REFORM(dats[*,10L])  ; => Magnetic L-Shell Value
+    inv_lat = REFORM(dats[*,11L])  ; => Invariant Latitude (deg)
+  END
+  ELSE : BEGIN
+    MESSAGE,'Input ASCII file has unknown format',/CONT,/INFO
+  END
+ENDCASE
+gse_pos = dats[*,0:2]                      ; => GSE Positions (km)
+gse_lat = REFORM(dats[*,3L])               ; => GSE Latitude (deg)
+gse_lon = REFORM(dats[*,4L])               ; => GSE Longitude (deg)
+radial  = SQRT(TOTAL(gse_pos^2,2L,/NAN))   ; => Radial distance from Earth (km)
+;-----------------------------------------------------------------------------------------
+; => Define data structure to return
+;-----------------------------------------------------------------------------------------
+tags    = ['UNIX','YMDB','GSE_POSITION','RADIAL_DISTANCE','GSE_LAT',$
+           'GSE_LONG','GSM_POSITION','GSM_LAT','GSM_LONG',          $
+           'LSHELL','INVAR_LAT']
+
+data    = CREATE_STRUCT(tags,unix,ymdts,gse_pos,radial,gse_lat,gse_lon,$
+                        gsm_pos,gsm_lat,gsm_lon,L_value,inv_lat)
+RETURN,data
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   read_wind_orbit.pro
+;  PURPOSE  :   This program reads in an ASCII file created by SPDF Data Orbit Services
+;                 and returns a data structure that contains the GSE Cartesian and
+;                 sperical coordinates, L-Shell, and invariant latitude.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               my_str_date.pro
+;               time_double.pro
+;               my_time_string.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               read_wind_orbit,DATE='040900',DATA=data
+;
+;  KEYWORDS:    
+;               DATE     :  [string] Scalar or array of the form:
+;                             'MMDDYY' [MM=month, DD=day, YY=year]
+;               DATA     :  Set to a named variable to be returned as a structure
+;                             containing all the useful data
+;               TRANGE   :  [Double] 2 element array specifying the range over 
+;                             which to get data structures [Unix time]
+;
+;   CHANGED:  1)  Changed read statement and added program my_format_structure.pro
+;                   to allow for different input ASCII files     [07/21/2009   v1.1.0]
+;             2)  Changed location of ASCII files and file searching algorithm
+;                                                                [09/16/2009   v1.2.0]
+;             3)  Changed program my_format_structure.pro to format_structure.pro
+;                                                                [11/12/2009   v1.3.0]
+;             4)  Fixed a typo                                   [02/09/2010   v1.4.0]
+;             5)  Added keyword:  TRANGE and now calls read_wind_ascii_orbit.pro
+;                                                                [05/26/2011   v1.5.0]
+;             6)  Fixed an issue that occurred in # of days calculation
+;                                                                [07/28/2011   v1.6.0]
+;
+;   NOTES:      
+;               1)  Initialize the IDL directories with start_umn_3dp.pro prior
+;                     to use.
+;               2)  The ASCII files should contain the orbit information for an entire
+;                     day, but ONLY ONE DAY
+;
+;   CREATED:  07/20/2009
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/28/2011   v1.6.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO read_wind_orbit,DATE=date,DATA=data,TRANGE=trange
+
+;-----------------------------------------------------------------------------------------
+; => Define some constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+ndays      = 0L             ; => Dummy variable assigned to # of days of ASCII files to load
+start_date = ''             ; => 'MM-DD-YYYY' for start date
+end_date   = ''             ; => 'MM-DD-YYYY' for end   date
+fdates     = ''             ; => 'MM-DD-YYYY' date string format for files
+sdates     = ''             ; => 'MMDDYY'     short date string format
+fdate      = ''             ; => 'MM-DD-YYYY' list of file dates for finding file names
+tdate      = ''             ; => 'YYYY-MM-DD'
+nodatamssg = 'No Wind orbit data was found'
+ndatdatems = 'No Wind orbit data was found for that date'
+pick_mssg  = 'Select all the wind orbit files of interest...'
+badtrmssg  = 'Incorrect use of TRANGE:  Time range does not overlap with data...'
+picked     = 0L             ; => logic variable telling pro whether user hand picked files
+;-----------------------------------------------------------------------------------------
+; => Determine date of interest
+;-----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(trange) THEN BEGIN
+  IF KEYWORD_SET(date) THEN BEGIN
+    mydate  = my_str_date(DATE=date)
+    ndays   = N_ELEMENTS(mydate.TDATE)
+    tdate   = mydate.TDATE
+    sdates  = mydate.S_DATE
+    fdates  = STRMID(tdate[*],5L,2L)+'-'+STRMID(tdate[*],8L,2L)+'-'+STRMID(tdate[*],0L,4L)
+  ENDIF ELSE BEGIN
+    mydate  = my_str_date(DATE=date)
+    ndays   = 1L
+    tdate   = mydate.TDATE[0]
+    sdates  = mydate.S_DATE[0]
+    fdates  = STRMID(tdate[0],5L,2L)+'-'+STRMID(tdate[0],8L,2L)+'-'+STRMID(tdate[0],0L,4L)
+  ENDELSE
+  ;---------------------------------------------------------------------------------------
+  ; => Define start and end day string
+  ;---------------------------------------------------------------------------------------
+  IF (ndays GT 1) THEN BEGIN
+    start_date = fdates[0]
+    end_date   = fdates[ndays - 1L]
+  ENDIF ELSE BEGIN
+    start_date = fdates[0]
+    end_date   = start_date
+  ENDELSE
+ENDIF ELSE BEGIN
+  tra    = time_double(trange)
+  sp     = SORT(tra)
+  tra    = tra[sp]
+  ;---------------------------------------------------------------------------------------
+  ; => Format time range
+  ;---------------------------------------------------------------------------------------
+  mts    = my_time_string(tra,UNIX=1,/NOM)
+  ymd0   = mts.DATE_TIME    ; => 'YYYY-MM-DD/HH:MM:SS.sss'
+  uni0   = mts.UNIX
+  tra    = uni0
+  fdates = STRMID(ymd0[*],5L,2L)+'-'+STRMID(ymd0[*],8L,2L)+'-'+STRMID(ymd0[*],0L,4L)
+  sdates = STRMID(ymd0[*],5L,2L)+STRMID(ymd0[*],8L,2L)+STRMID(ymd0[*],2L,2L)
+  mydate = my_str_date(DATE=sdates)
+  ; => initial guess at # of days
+  t0     = time_double(STRMID(ymd0[0],0L,10L)+'/00:00:00')
+  t1     = time_double(STRMID(ymd0[1],0L,10L)+'/00:00:01')
+  ndays  = FLOOR((t1[0] - t0[0])/864d2) + 1L    ; => LBW III 07/28/2011
+;  ndays  = FLOOR((MAX(uni0,/NAN) - MIN(uni0,/NAN))/864d2) + 1L
+  IF (ndays LE 0) THEN ndays = 1L   ; => in case less than a day is desired
+  ;---------------------------------------------------------------------------------------
+  ; => Define start and end day string
+  ;---------------------------------------------------------------------------------------
+  IF (ndays GT 1) THEN BEGIN
+    start_date = fdates[0L]
+    end_date   = fdates[1L]
+    tdate      = mydate.TDATE
+  ENDIF ELSE BEGIN
+    start_date = fdates[0]
+    end_date   = start_date
+    tdate      = mydate.TDATE[0]
+  ENDELSE
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Create list of dates
+;-----------------------------------------------------------------------------------------
+fdate  = REPLICATE('',ndays)  ; => 'MM-DD-YYYY' list of file dates for finding file names
+tstart = time_double(tdate[0]+'/00:00:00')
+FOR j=0L, ndays - 1L DO BEGIN
+  t00      = tstart[0] + 86400d0*j
+  tstr     = time_string(t00[0],PREC=0)
+  tdate0   = STRMID(tstr[0],0L,10L)
+  year0    = STRMID(tdate0[0],0L,4L)   ; => 'YYYY'
+  mon0     = STRMID(tdate0[0],5L,2L)   ; => 'MM'
+  day0     = STRMID(tdate0[0],8L,2L)   ; => 'DD'
+  fdate[j] = mon0[0]+'-'+day0[0]+'-'+year0[0]
+ENDFOR
+;-----------------------------------------------------------------------------------------
+; => Redefine date strings
+;-----------------------------------------------------------------------------------------
+fdates     = fdate
+sdates     = STRMID(fdate[*],0L,2L)+STRMID(fdate[*],3L,2L)+STRMID(fdate[*],8L,2L)
+start_date = fdate[0]
+end_date   = fdate[ndays - 1L]
+;-----------------------------------------------------------------------------------------
+; => Find orbit files
+;-----------------------------------------------------------------------------------------
+;mdir   = FILE_EXPAND_PATH('Wind_Oribit_Data/')  ; => Current working directory
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(EXISTS) THEN BEGIN
+  mdir = FILE_EXPAND_PATH('wind_3dp_pros/wind_data_dir/Wind_Orbit_Data/')
+ENDIF ELSE BEGIN
+  mdir = !wind3dp_umn.WIND_ORBIT_DIR
+  IF (mdir[0] EQ '') THEN mdir = FILE_EXPAND_PATH('wind_3dp_pros/wind_data_dir/Wind_Orbit_Data/')
+ENDELSE
+tfiles = FILE_SEARCH(mdir,'*.txt')
+;-----------------------------------------------------------------------------------------
+; => Find file of interest
+;-----------------------------------------------------------------------------------------
+IF (tfiles[0] EQ '') THEN BEGIN
+  MESSAGE,nodatamssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF ELSE BEGIN
+  gfile = STRARR(ndays)
+  FOR j=0L, ndays - 1L DO BEGIN
+    gpos  = STRPOS(tfiles[*],fdate[j])
+    good  = WHERE(gpos GE 0L,gd)
+    IF (gd GT 0L) THEN BEGIN
+      gfile[j] = tfiles[good[0]]
+    ENDIF ELSE BEGIN
+      MESSAGE,ndatdatems[0],/INFORMATIONAL,/CONTINUE
+      pfiles = DIALOG_PICKFILE(PATH=mdir,/MULTI,TITLE=pick_mssg)
+      IF (tfiles[0] EQ '') THEN BEGIN
+        MESSAGE, "Wow... I have no clue how you managed this...",/INFORMATIONAL,/CONTINUE
+        RETURN
+      ENDIF
+      gfile  = pfiles[*]
+      picked = 1
+      BREAK
+    ENDELSE
+  ENDFOR
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Redefine # of days in case user picked a different number of files
+;-----------------------------------------------------------------------------------------
+IF (picked OR ndays NE N_ELEMENTS(gfile)) THEN BEGIN
+  ndays      = N_ELEMENTS(gfile)
+  fdates     = STRMID(gfile[*],5L,10L)    ; => 'MM-DD-YYYY'
+  sdates     = STRMID(fdate[*],0L,2L)+STRMID(fdate[*],3L,2L)+STRMID(fdate[*],8L,2L)
+  start_date = fdate[0]
+  end_date   = fdate[ndays - 1L]
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Read in data files
+;-----------------------------------------------------------------------------------------
+FOR k=0L, ndays - 1L DO BEGIN
+  test = read_wind_ascii_orbit(gfile[k])
+  IF (k EQ 0) THEN BEGIN
+    unix    = test.UNIX
+    ymdb    = test.YMDB
+    gse_pos = test.GSE_POSITION
+    gsm_pos = test.GSM_POSITION
+    gse_lat = test.GSE_LAT
+    gse_lon = test.GSE_LONG
+    gsm_lat = test.GSM_LAT
+    gsm_lon = test.GSM_LONG
+    L_value = test.LSHELL
+    inv_lat = test.INVAR_LAT
+    radial  = test.RADIAL_DISTANCE
+  ENDIF ELSE BEGIN
+    unix    = [unix,test.UNIX]
+    ymdb    = [ymdb,test.YMDB]
+    gse_pos = [gse_pos,test.GSE_POSITION]
+    gsm_pos = [gsm_pos,test.GSM_POSITION]
+    gse_lat = [gse_lat,test.GSE_LAT]
+    gse_lon = [gse_lon,test.GSE_LONG]
+    gsm_lat = [gsm_lat,test.GSM_LAT]
+    gsm_lon = [gsm_lon,test.GSM_LONG]
+    L_value = [L_value,test.LSHELL]
+    inv_lat = [inv_lat,test.INVAR_LAT]
+    radial  = [radial,test.RADIAL_DISTANCE]
+  ENDELSE
+ENDFOR
+; => Sort data
+sp      = UNIQ(unix,SORT(unix))
+unix    = unix[sp]        ; => Unix times for positions
+ymdb    = ymdb[sp]        ; => 'MM-DD-YYYY'/HH:MM:SS.ssss'
+gse_pos = gse_pos[sp,*]   ; => GSE Positions (km)
+gsm_pos = gsm_pos[sp,*]   ; => GSM Positions (km)
+gse_lat = gse_lat[sp]     ; => GSE Latitude (deg)
+gse_lon = gse_lon[sp]     ; => GSE Longitude (deg)
+gsm_lat = gsm_lat[sp]     ; => GSM Latitude (deg)
+gsm_lon = gsm_lon[sp]     ; => GSM Longitude (deg)
+L_value = L_value[sp]     ; => Magnetic L-Shell Value
+inv_lat = inv_lat[sp]     ; => Invariant Latitude (deg)
+radial  = radial[sp]
+;-----------------------------------------------------------------------------------------
+; => Define only elements desired by user
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(tra) THEN BEGIN
+  good = WHERE(unix LE tra[1] AND unix GE tra[0],gd)
+  IF (gd GT 0) THEN unix    = unix[good]      ELSE unix    = [d]
+  IF (gd GT 0) THEN ymdb    = ymdb[good]      ELSE ymdb    = ['']
+  IF (gd GT 0) THEN gse_pos = gse_pos[good,*] ELSE gse_pos = REPLICATE(f,3L)
+  IF (gd GT 0) THEN gsm_pos = gsm_pos[good,*] ELSE gsm_pos = REPLICATE(f,3L)
+  IF (gd GT 0) THEN gse_lat = gse_lat[good]   ELSE gse_lat = [f]
+  IF (gd GT 0) THEN gse_lon = gse_lon[good]   ELSE gse_lon = [f]
+  IF (gd GT 0) THEN gsm_lat = gsm_lat[good]   ELSE gsm_lat = [f]
+  IF (gd GT 0) THEN gsm_lon = gsm_lon[good]   ELSE gsm_lon = [f]
+  IF (gd GT 0) THEN L_value = L_value[good]   ELSE L_value = [f]
+  IF (gd GT 0) THEN inv_lat = inv_lat[good]   ELSE inv_lat = [f]
+  IF (gd GT 0) THEN radial  = radial[good]    ELSE radial  = [f]
+  ; => Inform user of keyword failure
+  IF (gd EQ 0) THEN MESSAGE,badtrmssg[0],/INFORMATIONAL,/CONTINUE
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Define data structure to return
+;-----------------------------------------------------------------------------------------
+tags    = ['UNIX','YMDB','GSE_POSITION','RADIAL_DISTANCE','GSE_LAT',$
+           'GSE_LONG','GSM_POSITION','GSM_LAT','GSM_LONG',          $
+           'LSHELL','INVAR_LAT']
+data    = CREATE_STRUCT(tags,unix,ymdb,gse_pos,radial,gse_lat,gse_lon,$
+                        gsm_pos,gsm_lat,gsm_lon,L_value,inv_lat)
+
+RETURN
+END

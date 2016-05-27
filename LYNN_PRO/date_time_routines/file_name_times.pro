@@ -1,0 +1,159 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   file_name_times.pro
+;  PURPOSE  :   Returns strings of UT time stamps in a format that is suitable for
+;                 file saving.  For example, if you wanted to save a data plot
+;                 that showed data for 1995-01-01/10:00:00.101 UT, the program
+;                 would produce a string of the form:
+;                 '1995-01-01_1000x00.101'
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               time_string.pro
+;               time_double.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TT    :  N-Element array of UT[string] or Unix[double] times
+;
+;  EXAMPLES:    
+;               tnrt = '1998-09-24/21:40:00'
+;               PRINT, file_name_times(tnrt[0],PREC=5)
+;               { 1998-09-24_214000.00000
+;               1998-09-24/21:40:00.00000
+;                  9.0667320e+08
+;               21:40:00.00000
+;               1998-09-24
+;               }
+;
+;  KEYWORDS:    
+;               PREC    :  Scalar defining the number of decimal places to use for the
+;                            fractional seconds
+;                            [Default = 4, limit to 6 or less]
+;               FORMFN  :  Scalar integer defining the output form of the F_TIME tag
+;                            For the following SCET:  '2000-04-10/15:10:33.013'
+;                              and PREC = 3
+;                            1 = '2000-04-10_1510x33.013'  [Default]
+;                            2 = '2000-04-10_1510-33x013'
+;                            3 = '20000410_1510-33x013'
+;
+;   CHANGED:  1)  Fixed typo in FTIME calculation                [10/25/2010   v1.0.1]
+;             2)  Added keyword:  FORMFN                         [03/02/2011   v1.1.0]
+;             3)  Added extra possible output for FORMFN keyword [07/26/2011   v1.1.1]
+;             4)  No longer calls my_time_string.pro, now calls time_string.pro
+;                   and time_double.pro                          [04/10/2012   v1.2.0]
+;
+;   NOTES:      
+;               
+;
+;   CREATED:  10/13/2010
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/10/2012   v1.2.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION file_name_times,tt,PREC=prec,FORMFN=formfn
+
+;-----------------------------------------------------------------------------------------
+; => Define some constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+badin    = 'Incorrect input format for TT'
+tags     = ['F_TIME','UT_TIME','UNIX','TIME','DATE']
+
+ddate    = STRARR(10L)        ; => 'YYYY-MM-DD'
+dtime    = STRARR(10L)        ; => 'HH:MM:SS.sss[prec]'
+dunix    = DBLARR(10L)        ; => Unix time
+duttime  = STRARR(10L)        ; => 'YYYY-MM-DD/HH:MM:SS.sss[prec]'
+dftime   = STRARR(10L)        ; => 'YYYY-MM-DD_HHMMxSS.sss[prec]'
+
+dummy    = CREATE_STRUCT(tags,dftime,duttime,dunix,dtime,ddate)
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+t_time   = REFORM(tt)     ; => eliminate [1,N]-element format
+t_type   = SIZE(t_time,/TYPE)
+
+CASE t_type[0] OF
+  7L   :  BEGIN
+    ; => Input of form:  'YYYY-MM-DD/HH:MM:SS[.ssss]'
+;  LBW III  04/10/2012   v1.2.0
+;    mts = my_time_string(t_time,STR=1,FORM=1,PREC=prec,/NOMSSG)
+    ymdb = time_string(t_time,PREC=prec)
+  END
+  5L   :  BEGIN
+    ; => Input must be in Unix time
+;  LBW III  04/10/2012   v1.2.0
+;    mts = my_time_string(t_time,UNIX=1,PREC=prec,/NOMSSG)
+    ymdb = time_string(t_time,PREC=prec)
+  END
+  ELSE :  BEGIN
+    MESSAGE,badin[0],/CONTINUE,/INFORMATIONAL
+    RETURN,dummy
+  END
+ENDCASE
+;-----------------------------------------------------------------------------------------
+; => Assume everything went okay up to here
+;-----------------------------------------------------------------------------------------
+unix  = time_double(ymdb)
+;  LBW III  04/10/2012   v1.2.0
+;ymdb  = mts.DATE_TIME           ; => 'YYYY-MM-DD/HH:MM:SS.sss[prec]'
+;unix  = mts.UNIX                ; => Unix time
+time  = STRMID(ymdb[*],11L)     ; => 'HH:MM:SS.sss[prec]'
+date  = STRMID(ymdb[*],0L,10L)  ; => 'YYYY-MM-DD'
+cdate = ''                      ; => 'YYYYMMDD'
+cdate = STRMID(date[*],0L,4L)+STRMID(date[*],5L,2L)+STRMID(date[*],8L,2L)
+ftim1 = ''                      ; => 'YYYY-MM-DD_HHMMxSS.sss[prec]'
+ftim2 = ''                      ; => 'YYYY-MM-DD_HHMM-SSxsss[prec]'
+ftim3 = ''                      ; => 'YYYYMMDD_HHMM-SSxsss[prec]'
+
+ftim1 = date[*]+'_'+STRMID(time[*],0L,2L)+STRMID(time[*],3L,2L)+'x'+STRMID(time[*],6L)
+ftim2 = date[*]+'_'+STRMID(time[*],0L,2L)+STRMID(time[*],3L,2L)+'-'+$
+        STRMID(time[*],6L,2L)+'x'+STRMID(time[*],9L)
+ftim3 = cdate[*]+'_'+STRMID(time[*],0L,2L)+STRMID(time[*],3L,2L)+'-'+$
+        STRMID(time[*],6L,2L)+'x'+STRMID(time[*],9L)
+; => Check/Define output format
+IF NOT KEYWORD_SET(formfn) THEN ffn = 1 ELSE ffn = formfn[0]
+form1 = ffn[0] EQ 1
+form2 = ffn[0] EQ 2
+form3 = ffn[0] EQ 3
+check = WHERE([form1[0],form2[0],form3[0]])
+CASE check[0] OF
+  0   : BEGIN
+    ; => Form 1:  'YYYY-MM-DD_HHMMxSS.sss[prec]'
+    ftime = ftim1
+  END
+  1   : BEGIN
+    ; => Form 2:  'YYYY-MM-DD_HHMM-SSxsss[prec]'
+    ftime = ftim2
+  END
+  2    : BEGIN
+    ; => Form 3:  'YYYYMMDD_HHMM-SSxsss[prec]'
+    ftime = ftim3
+  END
+  ELSE : BEGIN   ; => Default to form 1
+    ; => Form 1:  'YYYY-MM-DD_HHMMxSS.sss[prec]'
+    ftime = ftim1
+  END
+ENDCASE
+;IF (form1 XOR form2) THEN BEGIN
+;  IF (form1) THEN ftime = ftim1 ELSE ftime = ftim2
+;ENDIF ELSE BEGIN
+;  ; => Use default
+;  ftime = ftim1
+;ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Return structure to user
+;-----------------------------------------------------------------------------------------
+dummy = CREATE_STRUCT(tags,ftime,ymdb,unix,time,date)
+
+RETURN,dummy
+END

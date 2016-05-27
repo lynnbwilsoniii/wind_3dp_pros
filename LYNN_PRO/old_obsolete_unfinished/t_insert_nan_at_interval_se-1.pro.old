@@ -1,0 +1,179 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   t_insert_nan_at_interval_se.pro
+;  PURPOSE  :   This routine inserts NaNs at the start/end of every interval in a user
+;                 specified time series defined by the input TPLOT handle.  The data
+;                 are returned to TPLOT.  This is useful to prevent IDL from connecting
+;                 lines between two given intervals of, say, burst data that are
+;                 separated by more than their duration.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;               tnames.pro
+;               get_data.pro
+;               sample_rate.pro
+;               t_interval_find.pro
+;               store_data.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TPNAME       :  Scalar or [N]-element [string or integer] array defining
+;                                 the TPLOT handle(s) the user wishes to alter
+;
+;  EXAMPLES:    
+;               ;;  1st:  Create a copy in case you do not like the result
+;               tpname = 'time_series_1d'
+;               get_data,tpname[0],DATA=temp,DLIM=dlim,LIM=lim
+;               tpname = 'copy_test'
+;               store_data,tpname[0],DATA=temp,DLIM=dlim,LIM=lim
+;               ;;  Now run routine
+;               t_insert_nan_at_interval_se,tpname
+;               ;;  Plot both and compare
+;               tplot,['time_series_1d','copy_test']
+;
+;  KEYWORDS:    
+;               ******************************************
+;               ***  keywords used by sample_rate.pro  ***
+;               ******************************************
+;               GAP_THRESH   :  Scalar defining the maximum data gap [s] allowed in
+;                                 the calculation
+;                                 [Default = 1.0]
+;
+;   CHANGED:  1)  Added keyword:  GAP_THRESH
+;                                                                   [08/15/2015   v1.1.0]
+;
+;   NOTES:      
+;               1)  See also:  store_data.pro, get_data.pro, tnames.pro
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  08/07/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/15/2015   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO t_insert_nan_at_interval_se,tpname,GAP_THRESH=gap_thresh
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION is_a_number, tnames, sample_rate, t_interval_find
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Error messages
+noinput_mssg   = 'No or incorrect input was supplied...'
+no_tpns_mssg   = 'No TPLOT handles match TPNAME input...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (N_ELEMENTS(tpname) EQ 0) OR $
+                 ((is_a_number(tpname,/NOMSSG) EQ 0) AND (SIZE(tpname,/TYPE) NE 7))
+IF (test[0]) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+tpns           = tnames(tpname)
+good           = WHERE(tpns NE '',gd)
+test           = (gd[0] EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_tpns_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define relevant variables
+;;----------------------------------------------------------------------------------------
+g_tpns         = tpns[good]
+n_tpns         = N_ELEMENTS(g_tpns)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check GAP_THRESH
+test           = (N_ELEMENTS(gap_thresh) GT 0) AND is_a_number(gap_thresh,/NOMSSG)
+IF (test[0]) THEN gap_thsh = ABS(gap_thresh[0]) ELSE gap_thsh = 1d0
+;;----------------------------------------------------------------------------------------
+;;  Insert NaNs if intervals exist
+;;----------------------------------------------------------------------------------------
+srate          = -1e0
+se_int         = [-1,-1]
+FOR k=0L, n_tpns[0] - 1L DO BEGIN
+  get_data,g_tpns[k],DATA=temp,DLIM=dlim,LIM=lim
+  test = (SIZE(temp,/TYPE) NE 8)
+  kstr = STRTRIM(STRING(k[0],FORMAT='(I)'),2L)
+  IF (test[0]) THEN PRINT,';;  Not a structure --> skipping TPNAME['+kstr[0]+']'
+  IF (test[0]) THEN CONTINUE
+  ;;  Determine sample rate [samples per second]
+  srate  = sample_rate(temp.X,GAP_THRESH=gap_thsh[0],/AVE,OUT_MED_AVG=sr_medavg)
+;  srate  = sample_rate(temp.X,GAP_THRESH=1d0,/AVE,OUT_MED_AVG=sr_medavg)
+  test   = (srate[0] LE 0) OR (FINITE(srate[0]) EQ 0) OR (N_ELEMENTS(sr_medavg) LT 2)
+  IF (test[0]) THEN PRINT,';;  Bad sample rate estimate --> skipping TPNAME['+kstr[0]+']'
+  IF (test[0]) THEN CONTINUE
+  med_sr = sr_medavg[0]                     ;;  Median sample rate [sps]
+  med_dt = 1d0/med_sr[0]                    ;;  Median sample period [s]
+  ;;  Find intervals (if present) [corresponding start/end indices]
+  se_int = t_interval_find(temp.X,GAP_THRESH=2d0*med_dt[0],/NAN)
+  test   = (se_int[0] LT 0) OR (N_ELEMENTS(se_int) LT 2)
+  IF (test[0]) THEN PRINT,';;  No subintervals found --> skipping TPNAME['+kstr[0]+']'
+  IF (test[0]) THEN CONTINUE
+  n_int  = N_ELEMENTS(se_int[*,0])          ;;  # of intervals
+  xx     = temp.X
+  yy     = temp.Y
+  szyn   = SIZE(yy,/N_DIMENSIONS)
+  szyd   = SIZE(yy,/DIMENSIONS)
+  ;;  Insert NaNs at start/end of intervals
+  FOR j=0L, n_int[0] - 1L DO BEGIN
+    se       = REFORM(se_int[j,*])
+    up_dn_xx = xx[se] + [-1d0,1d0]*med_dt[0]
+    ;;  Expand X
+    temp_xx  = [up_dn_xx[0],xx[se[0]:se[1]],up_dn_xx[1]]
+    ;;  Check dimensions of Y
+    nn       = N_ELEMENTS(temp_xx)
+    CASE szyn[0] OF
+      1 : BEGIN
+        temp_y1  = yy[se[0]:se[1]]
+        up_dn_yy = f
+      END
+      2 : BEGIN
+        temp_y1  = yy[se[0]:se[1],*]
+        up_dn_yy = REPLICATE(f,1,szyd[1])
+      END
+      3 : BEGIN
+        temp_y1  = yy[se[0]:se[1],*,*]
+        up_dn_yy = REPLICATE(f,1,szyd[1],szyd[2])
+      END
+      ELSE : STOP        ;;  >3 dimensions?
+    ENDCASE
+    ;;  Expand Y
+    temp_yy  = [up_dn_yy,temp_y1,up_dn_yy]
+    ;;  Add to new output arrays
+    IF (j EQ 0) THEN BEGIN
+      new_xx = temp_xx
+      new_yy = temp_yy
+    ENDIF ELSE BEGIN
+      new_xx = [new_xx,temp_xx]
+      new_yy = [new_yy,temp_yy]
+    ENDELSE
+  ENDFOR
+  ;;  Return data back to TPLOT
+  new_struc = {X:new_xx,Y:new_yy}
+  store_data,g_tpns[k],DATA=new_struc,DLIM=dlim,LIM=lim
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

@@ -1,0 +1,287 @@
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => From THEMIS prompt
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+
+;;----------------------------------------------------------------------------------------
+;; => Moment TPLOT handles and Y-Axis titles
+;;----------------------------------------------------------------------------------------
+tp_hand0  = ['T_avg','V_Therm','N','Velocity','Tpara','Tperp','Tanisotropy','Pressure']
+xsuff     = ''
+v_units   = ' (km/s)'
+t_units   = ' (eV)'
+p_units   = ' (eV/cm!U3!N'+')'
+d_units   = ' (#/cm!U3!N'+')'
+t_pref    = ['T!D','!N'+t_units]
+v_pref    = ['V!D','!N'+v_units]
+p_pref    = ['P!D','!N'+p_units]
+d_pref    = ['N!D','!N'+d_units]
+t_ttle    = t_pref[0]+xsuff+t_pref[1]
+vv_ttle   = v_pref[0]+xsuff+v_pref[1]
+vt_ttle   = v_pref[0]+'T'+xsuff+v_pref[1]
+den_ttle  = d_pref[0]+xsuff+d_pref[1]
+tpa_ttle  = t_pref[0]+'!9#!3'+xsuff+t_pref[1]
+tpe_ttle  = t_pref[0]+'!9x!3'+xsuff+t_pref[1]
+pre_ttle  = p_pref[0]+xsuff+p_pref[1]
+tan_ttle  = t_pref[0]+'!9x!3'+xsuff+'!N'+'/'+t_pref[0]+'!9#!3'+xsuff+'!N'
+tp_ttles  = [t_ttle,vt_ttle,den_ttle,vv_ttle,tpa_ttle,tpe_ttle,tan_ttle,pre_ttle]
+
+;;----------------------------------------------------------------------------------------
+;; => Constants
+;;----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+;; => Put the initialization routine (comp_lynn_pros.pro) in the ~/TDAS/tdas_7_??/idl/
+;;      directory and change the file paths so they work for your personal machine
+
+;; => Compile necessary routines
+@comp_lynn_pros
+;; => initialize TDAS
+thm_init
+;;----------------------------------------------------------------------------------------
+;;  Load all relevant data
+;;    **  First go through themis_esa_correct_bulk_flow_crib.txt  **
+;;----------------------------------------------------------------------------------------
+tdate     = '2009-07-13'
+tr_00     = tdate[0]+'/'+['07:50:00','10:10:00']
+date      = '071309'
+probe     = 'b'
+;;  **************************************
+;;  **  Change the following according  **
+;;  **************************************
+mdir      = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_tplot_save/')
+fpref     = 'TPLOT_save_file_FGM-ALL_EESA-IESA-Moments_Vsw-Corrected_'
+
+fname     = fpref[0]+'*.tplot'
+file      = FILE_SEARCH(mdir,fname[0])
+tplot_restore,FILENAME=file[0],VERBOSE=0
+
+!themis.VERBOSE = 0
+tplot_options,'VERBOSE',0
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+
+coord     = 'gse'
+sc        = probe[0]
+pref      = 'th'+sc[0]+'_'
+velname   = pref[0]+'peib_velocity_'+coord[0]
+magname   = pref[0]+'fgh_'+coord[0]
+tr_jj     = time_double(tdate[0]+'/'+['08:58:30','09:02:15'])
+tplot,pref[0]+'fgh_'+['mag',coord[0]],TRANGE=tr_jj
+;;----------------------------------------------------------------------------------------
+;; => Restore ESA DFs
+;;----------------------------------------------------------------------------------------
+sc      = probe[0]
+enames  = 'EESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+inames  = 'IESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+
+mdir    = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_esa_save/'+tdate[0]+'/')
+efiles  = FILE_SEARCH(mdir,enames[0])
+ifiles  = FILE_SEARCH(mdir,inames[0])
+
+RESTORE,efiles[0]
+RESTORE,ifiles[0]
+;;----------------------------------------------------------------------------------------
+;; => Modify ESA DFs so they are compatible with UMN Wind/3DP Software
+;;----------------------------------------------------------------------------------------
+n_i        = N_ELEMENTS(dat_i)
+n_e        = N_ELEMENTS(dat_e)
+PRINT,';', n_i, n_e
+;        1371        1374
+
+modify_themis_esa_struc,dat_i
+modify_themis_esa_struc,dat_e
+;; add SC potential to structures
+sc         = probe[0]
+pref       = 'th'+sc[0]+'_'
+scname     = tnames(pref[0]+'pe*b_sc_pot')
+add_scpot,dat_e,scname[0]
+add_scpot,dat_i,scname[1]
+;; => Rotate DAT structure (theta,phi)-angles DSL --> GSE
+dat_igse  = dat_i
+rotate_esa_thetaphi_to_gse,dat_igse,MAGF_NAME=magname,VEL_NAME=vname_n
+
+;; => Make sure magnetic field vectors are defined for each structure
+magn_1    = pref[0]+'fgs_'+coord[0]
+magn_2    = pref[0]+'fgh_'+coord[0]
+add_magf2,dat_igse,magn_1[0],/LEAVE_ALONE
+add_magf2,dat_igse,magn_2[0],/LEAVE_ALONE
+;;----------------------------------------------------------------------------------------
+;;  Calculate ion moments manually AFTER you determine which time periods are
+;;    "contaminated" by beams or gyrating particles.  These beams cause problems for the
+;;    particle moments, including the bulk flow velocity, ion temperature, etc.  The
+;;    second "contamination" is due to UV light.
+;;
+;;  The correction is done through the following steps:
+;;    1)  Convert into Solar Wind (SW) frame
+;;    2)  Create mask for data to remove values > V_thresh [from specular ref. estimate]
+;;    3)  Kill data within ±ø deg of sun dir below V_uv [~500 km/s in SW frame]
+;;    4)  Find remaining finite data bins to create a new mask
+;;    5)  Use new mask to keep only the desired bins when calculating ion moments
+;;----------------------------------------------------------------------------------------
+
+;; 
+;; For the example date, ion DFs have significant gyrating ion populations between:
+;;
+;;    [Start Time]    [End Time]
+;;===================================
+;;    08:59:42.362 - 09:02:40.439 UT
+;;
+;;    09:18:03.472 - 09:18:30.184 UT
+;;
+;;    09:19:23.607 - 09:19:38.447 UT
+;;
+;;    09:23:50.723 - 09:24:17.435 UT
+;;
+;;    09:24:47.114 - 09:40:30.923 UT
+;;
+
+;; => Define time ranges where ion beams are observed
+i_time0    = dat_igse.TIME
+i_time1    = dat_igse.END_TIME
+tr_bi0     = time_double(tdate[0]+'/'+['08:59:42','09:02:41'])
+tr_bi1     = time_double(tdate[0]+'/'+['09:18:03','09:18:31'])
+tr_bi2     = time_double(tdate[0]+'/'+['09:19:23','09:19:39'])
+tr_bi3     = time_double(tdate[0]+'/'+['09:23:50','09:24:18'])
+tr_bi4     = time_double(tdate[0]+'/'+['09:24:47','09:40:31'])
+
+
+;;----------------------------------------------------------------------------------------
+;; => Define overall mask
+;;----------------------------------------------------------------------------------------
+v_thresh   = 35e1   ;;  = V_thresh [estimate from specular reflection theory]
+v_uv       = 50e1   ;;  = V_uv     [estimated by plotting contours with sun dir.]
+mask_aa    = remove_uv_and_beam_ions(dat_igse,V_THRESH=v_thresh[0],V_UV=v_uv[0])
+;;----------------------------------------------------------------------------------------
+;; => Create a dummy copy of spacecraft (SC) frame structures and kill bad data
+;;----------------------------------------------------------------------------------------
+dummy      = dat_igse               ;; Dummy copy of original
+dummk      = dat_igse               ;; Dummy copy with mask applied
+data       = dummy.DATA             ;; Data [counts]
+;; => apply mask
+data      *= mask_aa
+dummk.DATA = data
+;; => Only use these structures when gyrating ions present
+bad0       = WHERE(i_time0 GE tr_bi0[0] AND i_time1 LE tr_bi0[1],bd0)
+bad1       = WHERE(i_time0 GE tr_bi1[0] AND i_time1 LE tr_bi1[1],bd1)
+bad2       = WHERE(i_time0 GE tr_bi2[0] AND i_time1 LE tr_bi2[1],bd2)
+bad3       = WHERE(i_time0 GE tr_bi3[0] AND i_time1 LE tr_bi3[1],bd3)
+bad4       = WHERE(i_time0 GE tr_bi4[0] AND i_time1 LE tr_bi4[1],bd4)
+IF (bd0 GT 0) THEN dummy[bad0] = dummk[bad0]
+IF (bd1 GT 0) THEN dummy[bad1] = dummk[bad1]
+IF (bd2 GT 0) THEN dummy[bad2] = dummk[bad2]
+IF (bd3 GT 0) THEN dummy[bad3] = dummk[bad3]
+IF (bd4 GT 0) THEN dummy[bad4] = dummk[bad4]
+;;----------------------------------------------------------------------------------------
+;; => Calculate moments ["core" only] with mask applied
+;;----------------------------------------------------------------------------------------
+sform      = moments_3du()
+str_element,sform,'END_TIME',0d0,/ADD_REPLACE
+dumb       = REPLICATE(sform[0],n_i)           ;; array of moment structures
+FOR j=0L, n_i - 1L DO BEGIN                                             $
+  del     = dummy[j]                                                  & $
+  pot     = del[0].SC_POT                                             & $
+  tmagf   = REFORM(del[0].MAGF)                                       & $
+  tmoms   = moments_3du(del,FORMAT=sform,SC_POT=pot[0],MAGDIR=tmagf)  & $
+  str_element,tmoms,'END_TIME',del[0].END_TIME,/ADD_REPLACE           & $
+  dumb[j] = tmoms[0]
+
+;; => Define relevant quantities
+p_els     = [0L,4L,8L]                 ;; => Diagonal elements of a 3x3 matrix
+avgtemp   = REFORM(dumb.AVGTEMP)       ;; => Avg. Particle Temp [eV]
+v_therm   = REFORM(dumb.VTHERMAL)      ;; => Avg. Particle Thermal Speed [km/s]
+tempvec   = TRANSPOSE(dumb.MAGT3)      ;; => "Vector" Temp [perp1,perp2,para] [eV]
+velocity  = TRANSPOSE(dumb.VELOCITY)   ;; => Velocity vectors [km/s]
+p_tensor  = TRANSPOSE(dumb.PTENS)      ;; => Pressure tensor [eV cm^(-3)]
+density   = REFORM(dumb.DENSITY)       ;; => Particle density [# cm^(-3)]
+;; => Calculate trace of pressure tensor [eV cm^(-3)]
+pressure  = TOTAL(p_tensor[*,p_els],2,/NAN)/3.
+c_moments = dumb
+;; => Calculate temperature anisotropy
+t_perp    = 5e-1*(tempvec[*,0] + tempvec[*,1])  ;; Perp. temperature [eV]
+t_para    = REFORM(tempvec[*,2])                ;; Para. temperature [eV]
+tanis     = t_perp/t_para                       ;; Anisotropy
+
+;; => Define dummy structure with data quantities
+times     = (c_moments.TIME + c_moments.END_TIME)/2d0
+dstr      = CREATE_STRUCT(tp_hands,avgtemp,v_therm,density,velocity,t_para,t_perp,$
+                          tanis,pressure)
+;; => Send to TPLOT
+tp_hands  = pref[0]+tp_hand0+'_peib_no_GIs_UV'
+scup      = STRUPCASE(sc[0])
+ysubs     = '[TH-'+scup[0]+', IESA Burst]'+'!C'+'[Corrected]'  ;; Y-Axis subtitles
+FOR j=0L, N_ELEMENTS(tp_hands) - 1L DO BEGIN                                $
+  dat_0  = dstr.(j)                                                       & $
+  store_data,tp_hands[j],DATA={X:times,Y:dat_0}                           & $
+  options,tp_hands[j],'YTITLE',tp_ttles[j],/DEF                           & $
+  options,tp_hands[j],'YSUBTITLE',ysubs[0],/DEF                           & $
+  IF (tp_hand0[j] EQ 'Velocity') THEN gcols = 1 ELSE gcols = 0            & $
+  IF (gcols) THEN options,tp_hands[j],'COLORS',[250L,150L,50L],/DEF
+
+;;----------------------------------------------------
+;;  Calculate density difference [# cm^(-3)] and ratio
+;;----------------------------------------------------
+denname   = pref[0]+'peib_density'  ;; TPLOT handle of original level 2 density
+get_data,denname[0],DATA=dens_lv2
+good      = array_where(dens_lv2.X,times,/N_UNIQ)
+good      = good[*,0]
+
+;; => Define density of only "beam" component
+ni_beam   = dens_lv2.Y[good] - c_moments.DENSITY
+;; => Define ratio of "beam"-to-total density
+ni_ratio  = ni_beam/dens_lv2.Y[good]
+bad       = WHERE(ni_beam LE 0,bd)
+IF (bd GT 0) THEN ni_beam[bad] = f
+IF (bd GT 0) THEN ni_ratio[bad] = f
+;;  Send to TPLOT
+n_denbeam = pref[0]+'peib_density_beam'
+n_denrat  = pref[0]+'peib_density_halo2core'
+struct1   = {X:times,Y:ni_beam}
+struct2   = {X:times,Y:ni_ratio}
+store_data,n_denbeam[0],DATA=struct1
+store_data,n_denrat[0],DATA=struct2
+options,n_denbeam[0],'YTITLE','N!Di,beam!N [cm!U-3!N'+']',/DEF
+options,n_denrat[0],'YTITLE','N!Di,beam!N'+'/N!Di!N',/DEF
+options,n_denrat[0],'YLOG',1,/DEF
+options,n_denrat[0],'YRANGE',[1e-4,1e0],/DEF
+
+;;  Set my default plot options for all TPLOT handles
+nnw       = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

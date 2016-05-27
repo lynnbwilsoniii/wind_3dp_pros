@@ -1,0 +1,193 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   fft_movie.pro
+;  PURPOSE  :   Outputs a MPEG movie (.mov), of a sliding FFT of a timeseries data.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               fft_movie_plot.pro
+;
+;  REQUIRES:    
+;               1)  ffmpeg for Unix
+;               2)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TIME        :  N-Element array of times [seconds]
+;               TIMESERIES  :  N-Element array of data [units]
+;               FFTLENGTH   :  Scalar number of points of timeseries data to be used in 
+;                                each FFT
+;               FFTSTEP     :  Scalar number of points to shift FFT window
+;                                [Default = 0.05*FFTLENGTH]
+;
+;  EXAMPLES:    
+;               ==================================================================
+;               ; => Look at a Sawtooth Wave
+;               ==================================================================
+;               sr         = 1d0/0.092009201d0          ; => Sample rate (Hz)
+;               tt         = DINDGEN(2L^14)/sr + 1d0    ; => Times (s)
+;               tsaw       = tt
+;               xsaw       = 2d0*(tsaw/5d1 - FLOOR(tsaw/5d1 + 5d-1))
+;               fftlength  = 1024L
+;               fftstep    = 4L
+;               frange     = [1e-3,2e0]                 ; => Frequency Range (Hz)
+;               fft_movie,tsaw,xsaw,fftlength,fftstep,/SCREEN,FRANGE=frange,/READ_WIN
+;
+;  KEYWORDS:    
+;               MOVIENAME   :  Scalar string defining the name of the movie created
+;                                by the program
+;               SCREEN      :  If set, program plots snapshots to X-Window display,
+;                                otherwise movies are generated from PNG captures 
+;                                of Z buffer plots
+;               FULLSERIES  :  If set, program creates plots of full time series
+;                                range instead of zoomed-in plots of time ranges
+;               [XY]SIZE    :  Scalar values defining the size of the output windows
+;                                Defaults:  
+;                                          [800 x 600]     : if plotting to screen
+;                                          [10.2" x 6.99"] : if plotting to PS files
+;               FFT_ARRAY   :  Set to a named variable to return the windowed FFT
+;               NO_INTERP   :  If set, data is not interpolated to save time when
+;                                creating a movie
+;               EX_FREQS    :  Structure with a TPLOT format containing:
+;                          { X:([N]-Unix Times),Y:([N,M]-Element array of frequencies) }
+;                                to overplot on the FFT power spectra
+;                                [e.g. the cyclotron frequency]
+;                                [IF N = 1, then use the same value for all windows]
+;               EX_LABS     :  M-Element string array of labels for the frequency
+;                                inputs given by the EX_FREQS keyword
+;               FRANGE      :  2-Element float array defining the freq. range
+;                                to use when plotting the power spec (Hz)
+;                                [min, max]
+;               PRANGE      :  2-Element float array defining the power spectrum
+;                                Y-Axis range to use [min, max]
+;               WSTRUCT     :  Set to a plot structure with relevant info for waveform
+;                                plot [Used by PLOT.PRO with _EXTRA keyword]
+;               FSTRUCT     :  Set to a plot structure with relevant info for power
+;                                spectrum plot [Used by PLOT.PRO with _EXTRA keyword]
+;               READ_WIN    :  If set, program uses windowing for FFT calculation
+;               FORCE_N     :  Set to a scalar (best if power of 2) to force the program
+;                                my_power_of_2.pro return an array with this desired
+;                                number of elements [e.g.  FORCE_N = 2L^12]
+;               SNAPSHOTS   :  If set, routine creates a directory and plots the
+;                                snapshots of the plots
+;               QUALITY     :  Scalar value from 0-100 defining the MPEG and JPEG quality
+;                                [see WRITE_JPEG.PRO and MPEG_OPEN.PRO documentation]
+;                                {Default = 25; higher values -> slower but better images}
+;
+;   CHANGED:  1)  Updated man page and fixed power spectrum units and
+;                   and added keywords:  READ_WIN and FORCE_N
+;                   now calls fft_movie_plot.pro                    [06/15/2011   v1.1.0]
+;             2)  No longer relies upon ImageMagick and
+;                   added keywords:  SNAPSHOTS and QUALITY          [09/26/2011   v2.0.0]
+;
+;   NOTES:      
+;               1)  If you use EX_FREQS, make sure the times in the X structure tag
+;                     overlap with the input TIME
+;**Obsolete**   2)  Need to have ImageMagick with ffmpeg prior to running this routine
+;
+;  REFERENCES:  
+;               1)  Harris, F.J. (1978), "On the Use of Windows for Harmonic Analysis
+;                      with the Discrete Fourier Transform," Proc. IEEE Vol. 66,
+;                      No. 1, pp. 51-83
+;               2)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;
+;   CREATED:  05/23/2011
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/26/2011   v2.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO fft_movie,time,timeseries,fftlength,fftstep,MOVIENAME=moviename,       $
+              SCREEN=screen,FULLSERIES=fullseries,XSIZE=xsize,YSIZE=ysize, $
+              FFT_ARRAY=fft_array,NO_INTERP=no_interp,EX_FREQS=ex_freqs,   $
+              EX_LABS=ex_labs,FRANGE=frange,PRANGE=prange,                 $
+              WSTRUCT=wstruct,FSTRUCT=fstruct,READ_WIN=read_win,           $
+              FORCE_N=force_n,SNAPSHOTS=snapshots,QUALITY=quality
+
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables
+;-----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+start_time     = SYSTIME(1)
+;-----------------------------------------------------------------------------------------
+; => Set up the window or Z buffer
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(fullseries) THEN fulls = 1 ELSE fulls = 0
+IF KEYWORD_SET(fulls) THEN BEGIN
+  IF ~KEYWORD_SET(xsize) THEN xsize = 800
+  IF ~KEYWORD_SET(ysize) THEN ysize = 600
+ENDIF ELSE BEGIN
+  IF ~KEYWORD_SET(xsize) THEN xsize = 900
+  IF ~KEYWORD_SET(ysize) THEN ysize = 450
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => set up a randomly named image directory
+;-----------------------------------------------------------------------------------------
+IF ~KEYWORD_SET(moviename) THEN BEGIN
+  imgdir = 'wave_'+STRCOMPRESS(STRING(RANDOMU(SYSTIME(1),/LONG)),/REMOVE_ALL)
+ENDIF ELSE BEGIN
+  imgdir = STRCOMPRESS(moviename,/REMOVE_ALL)
+ENDELSE
+; => Create dummy directory for images
+IF KEYWORD_SET(snapshots) THEN BEGIN
+  SPAWN,'mkdir '+imgdir[0]
+  PRINT,''
+  PRINT,'Directory Created:  '+imgdir[0]
+  PRINT,''
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => figure out what to call the movie
+;-----------------------------------------------------------------------------------------
+IF ~KEYWORD_SET(moviename) THEN BEGIN
+  mname = ''
+  PRINT,'Movie filename not set on input (set with moviename="example" keyword.)'
+  PRINT,'Please enter the base filename.' 
+;  READ,mname,PROMPT='(.mov extension will be added): '
+  READ,mname,PROMPT='(.mpeg extension will be added): '
+ENDIF ELSE mname = moviename
+;mname = mname[0]+'.mov'
+mname = mname[0]+'.mpeg'
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+times         = REFORM(time)
+data          = REFORM(timeseries)
+npoints       = N_ELEMENTS(data)
+np            = N_ELEMENTS(time)
+IF (np NE npoints) THEN BEGIN
+  errmssg = 'Each input component must have the same number of data points...'
+  MESSAGE,errmssg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Plot FFT power spectrum
+;-----------------------------------------------------------------------------------------
+wlen          = fftlength[0]
+wshift        = fftstep[0]
+fft_movie_plot,times,data,wlen,wshift,MOVIENAME=mname,SCREEN=screen,              $
+               FULLSERIES=fulls,XSIZE=xsize,YSIZE=ysize,FFT_ARRAY=fft_array,      $
+               NO_INTERP=no_interp,EX_FREQS=ex_freqs,EX_LABS=ex_labs,             $
+               FRANGE=frange,PRANGE=prange,WSTRUCT=wstruct,FSTRUCT=fstruct,       $
+               READ_WIN=read_win,FORCE_N=force_n,IMAGE_DIR=imgdir,$
+               SNAPSHOTS=snapshots,QUALITY=quality
+;-----------------------------------------------------------------------------------------
+; => Print out execution time
+;-----------------------------------------------------------------------------------------
+end_time       = SYSTIME(1)
+execution_time = end_time - start_time
+PRINT,''
+PRINT,'EXECUTION TIME: '+STRCOMPRESS(STRING(execution_time),/REMOVE_ALL)+' sec'
+PRINT,''
+IF (execution_time GT 60.) THEN PRINT,'                      ( '+        $
+  STRCOMPRESS(STRING(LONG(execution_time)/60),/REMOVE_ALL)+' min '+      $
+  STRCOMPRESS(STRING(LONG(execution_time) MOD 60),/REMOVE_ALL)+' sec )'
+
+RETURN
+END

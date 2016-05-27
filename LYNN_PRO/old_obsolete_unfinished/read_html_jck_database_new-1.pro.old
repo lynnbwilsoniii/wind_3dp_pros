@@ -1,0 +1,355 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   read_html_jck_database_new.pro
+;  PURPOSE  :   Copy and paste the source code to the webpages of the data base created
+;                 by Justin C. Kasper at http://www.cfa.harvard.edu/shocks/wi_data/ and
+;                 keep them as ASCII files labeled as:
+;                     source_MM-DD-YYYY_SSSSS.5_FF.html
+;                     {where:  SSSSS = seconds of day, MM = month, DD = day, YYYY = year}
+;                 The program iteratively reads in the ASCII files and retrieves the 
+;                 relevant information from them.  The returned data is a structure
+;                 containing all the relevant data quantities from the method used by
+;                 J.C. Kasper and M.L. Stevens.
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               get_os_slash.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;               2)  HTML files created by user the directory:
+;                     ~/wind_data_dir/JCK_Data-Base/JCK_html_files/
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               test = read_html_jck_database_new()
+;
+;  KEYWORDS:    
+;               
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [02/16/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  Definitions
+;                     SCF   :  Spacecraft frame of reference
+;                     SHF   :  Shock rest frame of reference
+;                     n     :  Shock normal unit vector [GSE basis]
+;                     Vsh   :  Shock velocity in SCF [km/s]
+;                     Vshn  :  Shock normal speed in SCF [km/s]
+;                                [ = |Vsh . n| ]
+;                     Ushn  :  Shock normal speed in SHF [km/s]
+;                                [ = (Vsw . n) - (Vsh . n) ]
+;                     Vs    :  Phase speed of MHD slow mode [km/s]
+;                     Vi    :  Phase speed of MHD intermediate mode [km/s]
+;                     Vf    :  Phase speed of MHD fast mode [km/s]
+;                     Q_j   :  Avg. of quantity Q in region j, where
+;                                j = 1 (upstream), 2 (downstream)
+;                     
+;               2)  Methods Used by J.C. Kasper:
+;                     MC    :  Magnetic Coplanarity    (Viñas and Scudder, [1986])
+;                     VC    :  Velocity Coplanarity    (Viñas and Scudder, [1986])
+;                     MX1   :  Mixed Mode Normal 1     (Russell et. al., [1983])
+;                     MX2   :  Mixed Mode Normal 2     (Russell et. al., [1983])
+;                     MX3   :  Mixed Mode Normal 3     (Russell et. al., [1983])
+;                     RH08  :  Rankine-Hugoniot 8 Eqs  (Viñas and Scudder, [1986])
+;                     RH09  :  Rankine-Hugoniot 8 Eqs  (Viñas and Scudder, [1986])
+;                     RH10  :  Rankine-Hugoniot 10 Eqs (Viñas and Scudder, [1986])
+;               3)  Definition of Parameters on website
+;                     Nj                  :  j-th component of n [GSE basis]
+;                     Theta               :  Spherical poloidal angle of n [GSE basis]
+;                     Phi                 :  Spherical azimuthal angle of n [GSE basis]
+;                     Shock Speed         :  Vshn [km/s]
+;                     Compression Ratio   :  N_2/N_1, where N_j = <N> in region j
+;                     Shock Normal Angle  :  Angle between n and upstream <B> [degrees]
+;                     dV                  :  Ushn [km/s]
+;                     Slow                :  Vs [km/s]
+;                     Intermediate        :  Vi [km/s]
+;                     Fast                :  Vf [km/s]
+;                     Slow Mach           :  Ms = |Ushn,j|/<Vs,j>
+;                     Fast Mach           :  Mf = |Ushn,j|/<Vf,j>
+;
+;  REFERENCES:  
+;               1)  Viñas, A.F. and J.D. Scudder (1986), "Fast and Optimal Solution to
+;                      the 'Rankine-Hugoniot Problem'," J. Geophys. Res. 91, pp. 39-58.
+;               2)  A. Szabo (1994), "An improved solution to the 'Rankine-Hugoniot'
+;                      problem," J. Geophys. Res. 99, pp. 14,737-14,746.
+;               3)  Koval, A. and A. Szabo (2008), "Modified 'Rankine-Hugoniot' shock
+;                      fitting technique:  Simultaneous solution for shock normal and
+;                      speed," J. Geophys. Res. 113, pp. A10110.
+;               4)  Russell, C.T., J.T. Gosling, R.D. Zwickl, and E.J. Smith (1983),
+;                      "Multiple spacecraft observations of interplanetary shocks:  ISEE
+;                      Three-Dimensional Plasma Measurements," J. Geophys. Res. 88,
+;                      pp. 9941-9947.
+;
+;   CREATED:  02/16/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/16/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION read_html_jck_database_new
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+s256           = STRARR(256)
+slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
+;;  Define base URL Wind related shock results
+def_cfa_url    = 'https://www.cfa.harvard.edu/shocks/wi_data/'
+www_pos        = STRPOS(def_cfa_url[0],'www')
+slash_1st      = STRPOS(STRMID(def_cfa_url[0],www_pos[0]),'/')
+;;  Define default CfA Wind shock database server
+def_server     = STRMID(def_cfa_url,www_pos[0],slash_1st[0])
+;;  Define default format of CfA Wind shock database URL's for each shock
+;;    e.g., 'https://www.cfa.harvard.edu/shocks/wi_data/00000/wi_00000.html'
+def_cfaurl_for = def_cfa_url[0]+'00000/wi_00000.html'
+;;  As of Feb. 16, 2015 there are available shocks from 00000 - 00662
+;;    --> Define a list of possible URLs
+def_cfa_wsh_n  = 663L
+def_cfa_wsh_i  = STRING(LINDGEN(def_cfa_wsh_n[0]),FORMAT='(I5.5)')
+def_cfa_suffxs = def_cfa_wsh_i+'/wi_'+def_cfa_wsh_i+'.html'             ;;  e.g., '00000/wi_00000.html'
+def_all_cfa_ws = def_cfa_url[0]+def_cfa_suffxs                          ;;  e.g., 'https://www.cfa.harvard.edu/shocks/wi_data/00000/wi_00000.html'
+;;  Define URL suffixes
+def_all_url_sf = STRMID(def_all_cfa_ws,slash_1st[0]+www_pos[0])         ;;  e.g., '/shocks/wi_data/00000/wi_00000.html'
+;;  Define PRINTF method
+pf_method      = 'GET'
+;;  Define user and protocol
+;protocolstr    = KEYWORD_SET(http10) ? "HTTP/1.0" : " HTTP/1.1"
+protocolstr    = KEYWORD_SET(http10) ? "HTTPS/1.0" : " HTTPS/1.1"
+useragentstr   = "IDL "+!VERSION.RELEASE+' on '+!VERSION.OS+'/'+!VERSION.ARCH
+;;  Define location of locally saved HTML files
+def_path       = '.'+slash[0]+'wind_3dp_pros'+slash[0]+'wind_data_dir'+slash[0]
+def_path       = def_path[0]+'JCK_Data-Base'+slash[0]+'JCK_html_files'+slash[0]
+def_files      = '*.html'
+;;----------------------------------------------------------------------------------------
+;;  Create a URL reader
+;;----------------------------------------------------------------------------------------
+oJURLReader    = OBJ_NEW('IDLjavaObject$URLReader', 'URLReader')
+;;  Read the URL data into our Java-side buffer.
+nBytes         = oJURLReader -> ReadURL(sURLName)
+;;  Pull the data into IDL  [byte array]
+page_as_bytes  = oJURLReader -> GetData()
+;;  Remove Java object
+OBJ_DESTROY, oJURLReader
+;;  Convert to strings
+page_as_string = STRING(page_as_bytes)
+
+
+def_port       = 80                  ;;  Guess which port is okay
+def_ctimeout   = 15.                 ;;  Wait 10 seconds for connection before timing out
+def_rtimeout   = 15.                 ;;  Wait  5 seconds for data before timing out
+SOCKET,gunit,def_server[0],def_port,/GET_LUN,CONNECT_TIMEOUT=def_ctimeout,ERROR=err_msg,$
+             READ_TIMEOUT=def_rtimeout
+IF (err_msg NE 0) THEN BEGIN
+  ;;  Something is wrong
+  IF (N_ELEMENTS(gunit) GT 0) THEN FREE_LUN, gunit
+  MESSAGE,!ERROR_STATE.MSG,/INFORMATIONAL,/CONTINUE
+  MESSAGE,'Unable to read HTTP server...',/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;  Set protocol
+PRINTF,gunit,pf_method[0]+' '+def_all_url_sf[0]+protocolstr[0]
+;;  These lines are the same for either with or without proxy.
+;;    in HTTP 1.1 we MUST include the Host: line to allow requests
+;;    from co-hosted virtual servers to operate properly.
+PRINTF,gunit, "Host: "+def_server[0]
+PRINTF,gunit, 'User-Agent: '+useragentstr[0]
+;;  HTTP 1.1 clients must either support persistent connections, or indicate
+;;    they do not by stating Connection: close
+;PRINTF,gunit, "Connection: close"
+;; Blank line required to terminate HTTP request.
+PRINTF,gunit, ''
+;;----------------------------------------------------------------------------------------
+;;  Read the header
+;;----------------------------------------------------------------------------------------
+header         = s256
+data           = s256
+image          = 0
+imageheader    = ''
+linesread      = 0L
+text           = 'xxx'
+ON_IOERROR, done
+WHILE (text NE '') DO BEGIN
+  ;;  Read in line-by-line
+  READF,gunit,text
+  header[linesread] = text
+  linesread        += 1L
+  IF ((linesread MOD 256) EQ 0) THEN header = [header,s256]
+;  STOP
+ENDWHILE
+DONE: ON_IOERROR, NULL
+STOP
+IF (linesread EQ 0) THEN BEGIN
+  ;;  Nothing was read in
+  MESSAGE,'Unable to read HTTP server...',/CONTINUE,/INFORMATIONAL
+  FREE_LUN,gunit
+  RETURN,{HEADER:'',TEXT:'',IMAGEHEADER:ImageHeader,IMAGE:Image}
+ENDIF
+;;  Redefine good header values
+header         = header[0L:(linesread[0] - 1L)]
+;;----------------------------------------------------------------------------------------
+;;  Check the header format
+;;----------------------------------------------------------------------------------------
+h_srch_strs    = ['CONTENT-TYPE:','CONTENT-LENGTH:']
+h_src_stlen    = STRLEN(h_srch_strs)
+h_class        = 'text'
+h_type         = 'simple'               ; in case no information found...
+def            = STRUPCASE(STRMID(header,0,h_src_stlen[0]))
+good           = WHERE(def EQ h_srch_strs[0],gd)
+IF (gd GT 0) THEN BEGIN
+  two_lens     = [h_src_stlen[0] + 1L,STRLEN(header[good[0]]) - 1L]
+  classandtype = STRMID(header[good[0]],two_lens[0],two_lens[1])
+  temp         = STRSPLIT(classandtype,'/',/EXTRACT)
+  h_class      = temp[0]
+  IF (N_ELEMENTS(temp) GT 1) THEN h_type = temp[1]
+ENDIF
+def            = STRUPCASE(STRMID(header,0,h_src_stlen[1]))
+good           = WHERE(def EQ h_srch_strs[1],gd)
+IF (gd GT 0) THEN BEGIN
+  two_lens     = [h_src_stlen[1],STRLEN(header[good[0]]) - 1L]
+  h_length     = LONG(STRMID(header[good[0]],two_lens[0],two_lens[0]))
+;  length       = LONG(STRMID(header[good[0]],h_src_stlen[1],STRLEN(header[good[0]]) - 1L))
+;  Length = long(strmid(Header[g[0]], 15, strlen(Header[g[0]])-1))
+ENDIF
+STOP
+;;----------------------------------------------------------------------------------------
+;;  Read in file
+;;----------------------------------------------------------------------------------------
+linesread      = 0L
+text           = ''        ;;  initialize text fields
+CASE h_class OF
+  'text' : BEGIN
+    ;;  Read in as a text file
+    WHILE (EOF(gunit) EQ 0) DO BEGIN
+      READF,gunit,text
+      data[linesread]  = text
+      linesread       += 1L
+      IF ((linesread MOD 256) EQ 0) THEN data = [data,s256]
+    ENDWHILE
+    IF (linesread EQ 0) THEN BEGIN
+      MESSAGE,'ERROR - no lines of text read',/CONTINUE,/INFORMATIONAL
+    ENDIF
+    ;;  Remove excess if necessary
+    data = data[0L:((linesread[0] - 1L) > 0L)]
+;          WHILE  eof(unit) EQ 0 do begin
+;              readf, unit, text
+;              Data[LinesRead] = text
+;              LinesRead = LinesRead+1
+;              IF LinesRead MOD 256 EQ 0 THEN $
+;                Data=[Data, StrArr(256)]
+;          ENDWHILE 
+;          if LinesRead EQ 0 then if ~keyword_set(SILENT) then $
+;            message,'ERROR - no lines of text read',/CON
+;          Data = Data[0:(LinesRead-1) > 0 ]
+  END
+  ELSE   : BEGIN
+    ;;  Should not get here --> debug
+    STOP
+  END
+ENDCASE
+;;  Check result
+IF (linesread EQ 0) THEN data = ''
+;;  Close socket
+FREE_LUN,gunit
+
+STOP
+;;----------------------------------------------------------------------------------------
+;;  Setup file paths to HTML files
+;;----------------------------------------------------------------------------------------
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(EXISTS) THEN BEGIN
+  mdir  = FILE_EXPAND_PATH(def_path[0])
+ENDIF ELSE BEGIN
+  mdir  = !wind3dp_umn.ASCII_FILE_DIR
+  IF (mdir[0] EQ '') THEN BEGIN
+    mdir = FILE_EXPAND_PATH(def_path[0])
+  ENDIF ELSE BEGIN
+    mdir = mdir[0]+'JCK_html_files'+slash[0]
+  ENDELSE
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Check for files
+;;----------------------------------------------------------------------------------------
+files          = FILE_SEARCH(mdir[0],def_files[0])
+nf             = N_ELEMENTS(files)
+IF (nf[0] LT 2) THEN RETURN,0
+;;----------------------------------------------------------------------------------------
+;;  Define some dummy variables
+;;----------------------------------------------------------------------------------------
+a_odate        = REPLICATE('',nf)      ;;  Dates of events ['MM/DD/YYYY']
+a_atime        = REPLICATE(f,nf)       ;;  Time of shock arrival (seconds of day)
+a_dtime        = REPLICATE(f,nf)       ;;  Uncertainty
+a_stype        = REPLICATE('',nf)      ;;  Type of shock (e.g. FF = fast forward, FR = fast reverse, etc.)
+a_gselc        = REPLICATE(f,nf,3)     ;;  Wind GSE Positions (Re) at time of shock arrival
+a_methd        = REPLICATE('',nf)      ;;  Type of analysis used (e.g. RH08)
+a_pdely        = REPLICATE(f,nf)       ;;  Propagation Delay to Earth (min)
+a_dpdly        = REPLICATE(f,nf)       ;;  Uncertainty
+a_vsw          = REPLICATE(f,nf,3,2)   ;;  Solar Wind Velocity [GSE] [km/s] [up,down]
+a_dvsw         = REPLICATE(f,nf,3,2)   ;;  Uncertainty
+a_magf         = REPLICATE(f,nf,3,2)   ;;  Avg. Magnetic Field [GSE] [nT] [up,down]
+a_dmagf        = REPLICATE(f,nf,3,2)   ;;  Uncertainty
+a_idens        = REPLICATE(f,nf,2)     ;;  Ion density [cm^(-3)] [up,down]
+a_ddens        = REPLICATE(f,nf,2)     ;;  Uncertainty
+a_pbeta        = REPLICATE(f,nf,2)     ;;  Plasma Beta [up,down]
+a_dbeta        = REPLICATE(f,nf,2)     ;;  Uncertainty
+a_cspd         = REPLICATE(f,nf,2)     ;;  Sound Speed [km/s] [up,down]
+a_dcspd        = REPLICATE(f,nf,2)     ;;  Uncertainty
+a_vapd         = REPLICATE(f,nf,2)     ;;  Alfven Speed [km/s] [up,down]
+a_dvapd        = REPLICATE(f,nf,2)     ;;  Uncertainty
+
+a_nnorm        = REPLICATE(f,nf,3)     ;;  Shock normal vector [GSE]
+a_dnorm        = REPLICATE(f,nf,3)     ;;  Uncertainty
+a_nangs        = REPLICATE(f,nf,2)     ;;  Spherical Coord. Angles (theta and phi)
+a_dangs        = REPLICATE(f,nf,2)     ;;  Uncertainty
+a_thebn        = REPLICATE(f,nf)       ;;  Shock Normal Angle (deg)
+a_dthet        = REPLICATE(f,nf)       ;;  Uncertainty
+a_vshck        = REPLICATE(f,nf)       ;;  Shock Speed parallel to normal vector [km/s]
+a_dvshk        = REPLICATE(f,nf)       ;;  Uncertainty
+a_compr        = REPLICATE(f,nf)       ;;  Compression Ratio
+a_dcomp        = REPLICATE(f,nf)       ;;  Uncertainty
+a_un_sh        = REPLICATE(f,nf,2)     ;;  Flow Speed (//-Normal) in Shock frame [km/s] [up,down]
+a_dn_sh        = REPLICATE(f,nf,2)     ;;  Uncertainty
+a_cs_sl        = REPLICATE(f,nf,2)     ;;  Slow Mode speed [km/s] [up,down]
+a_dc_sl        = REPLICATE(f,nf,2)     ;;  Uncertainty
+a_cs_in        = REPLICATE(f,nf,2)     ;;  Intermediate (Alfven) speed [km/s] [up,down]
+a_dc_in        = REPLICATE(f,nf,2)     ;;  Uncertainty
+a_cs_fa        = REPLICATE(f,nf,2)     ;;  Fast Mode speed [km/s] [up,down]
+a_dc_fa        = REPLICATE(f,nf,2)     ;;  Uncertainty
+a_Ma_sl        = REPLICATE(f,nf,2)     ;;  Slow Mode Mach Number [up,down]
+a_dM_sl        = REPLICATE(f,nf,2)     ;;  Uncertainty
+a_Ma_fa        = REPLICATE(f,nf,2)     ;;  Fast Mode Mach Number [up,down]
+a_dM_fa        = REPLICATE(f,nf,2)     ;;  Uncertainty
+
+;;  Find observation data
+;;    - values preceeded by '<td>' in HTML tables
+odate_test_s   = 'Observation time'                         ;;  Find observation date [16 chars search string, 1 line]
+fdoy__test_s   = 'Fractional day of year'                   ;;  Find Frac. DOY [22 chars search string, +1 line, 1 #]
+atime_test_s   = 'Arrival time of shock [seconds of day]'   ;;  Find shock arrival time SOD [38 chars search string, +1 line, 2 #'s, &plusmn; separator]
+shtyp_test_s   = 'Shock type'                               ;;  Find shock designation [10 chars search string, +1 line, 1 string, 2 char long]
+eleda_test_s   = 'Electron data availability'               ;;  Find logic test for electron data [26 chars search string, +1 line, 1 #]
+scxgsetest_s   = 'X GSE location of spacecraft [Re]'        ;;  Find X-GSE SC position [Re] [33 chars search string, +1 line, 1 #]
+scygsetest_s   = 'Y GSE location of spacecraft [Re]'        ;;  Find Y-GSE SC position [Re] [33 chars search string, +1 line, 1 #]
+sczgsetest_s   = 'Z GSE location of spacecraft [Re]'        ;;  Find Z-GSE SC position [Re] [33 chars search string, +1 line, 1 #]
+nuppt_test_s   = 'Upstream plasma points'                   ;;  Find # of upstream plasma points used [22 chars search string, +1 line, 1 #]
+nufpt_test_s   = 'Upstream field points'                    ;;  Find # of upstream field points used [21 chars search string, +1 line, 1 #]
+ndppt_test_s   = 'Downstream plasma points'                 ;;  Find # of downstream plasma points used [22 chars search string, +1 line, 1 #]
+ndfpt_test_s   = 'Downstream field points'                  ;;  Find # of downstream field points used [21 chars search string, +1 line, 1 #]
+
+
+
+
+
+
+
+
+END

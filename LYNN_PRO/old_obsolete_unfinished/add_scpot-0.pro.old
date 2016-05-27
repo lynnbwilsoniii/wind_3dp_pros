@@ -1,0 +1,136 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   add_scpot.pro
+;  PURPOSE  :   Adds the spacecraft potential (eV) to an array of 3DP data structures
+;                 obtained from get_??.pro (e.g. ?? = el, eh, sf, phb, etc.)
+;                 with the tag name SC_POT.
+;
+;  CALLED BY:   NA
+;
+;  CALLS:
+;               get_data.pro
+;               interp.pro   By:  Davin Larson
+;
+;  REQUIRES:    Proton/Ion moments must be loaded first with associated TPLOT variables
+;                 or data structure to use to estimate the spacecraft potential
+;
+;
+;  INPUT:
+;               DAT    :  An array of 3DP data structures
+;               SOURCE :  A string or 3DP data structure specifying the data to use for
+;                           spacecraft potential estimates
+;                           [TPLOT Structure Format:  {X:(N-Unix Times),Y:[N]-Scalars}]
+;
+;  EXAMPLES:
+;               elb = my_3dp_str_call_2('elb',TRANGE=tr)
+;               de  = elb.DATA
+;               add_scpot,de,'sc_pot'  ; -If 'sc_pot' is a TPLOT variable
+;
+;  KEYWORDS:    NA
+;
+;   CHANGED:  1)  Rewrote entire program to resemble add_magf2.pro
+;                   for increased speed                        [11/06/2008   v2.0.0]
+;             2)  Changed function INTERPOL.PRO to interp.pro  [11/07/2008   v2.0.1]
+;             3)  Updated man page                             [06/17/2009   v2.0.2]
+;             4)  Rewrote to optimize a few parts and clean up some cludgy parts
+;                                                              [06/22/2009   v2.1.0]
+;             5)  Changed a little syntax                      [07/13/2009   v2.1.1]
+;             6)  Fixed a syntax error                         [07/13/2009   v2.1.2]
+;             7)  Changed a little syntax                      [08/28/2009   v2.1.3]
+;             8)  Added error handling to check if DAT is a data structure and
+;                   added NO_EXTRAP option to interp.pro call
+;                                                              [12/15/2011   v2.1.4]
+;
+;   ADAPTED FROM: add_magf.pro and add_vsw.pro  BY: Davin Larson
+;   CREATED:  04/27/2008
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  12/15/2011   v2.1.4
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO add_scpot,dat,source
+
+;*****************************************************************************************
+ex_start = SYSTIME(1)
+;*****************************************************************************************
+;-----------------------------------------------------------------------------------------
+; => Check input parameters
+;-----------------------------------------------------------------------------------------
+IF (SIZE(dat[0],/TYPE) NE 8L) THEN BEGIN
+  errmsg = 'Input DAT must be a data structure!'
+  MESSAGE,errmsg[0],/CONTINUE,/INFORMATIONAL
+  RETURN
+ENDIF
+
+IF (SIZE(source,/TYPE) EQ 8L) THEN BEGIN
+  scpot = source
+ENDIF
+IF (SIZE(source,/TYPE) EQ 7L) THEN BEGIN
+  get_data,source,DATA=scpot,INDEX=h
+  IF (h EQ 0) THEN BEGIN
+    cnt = 0
+    RETURN
+  ENDIF
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Define time ranges
+;-----------------------------------------------------------------------------------------
+n       = N_ELEMENTS(dat)
+delt    = MIN(dat.END_TIME - dat.TIME,/NAN)   ; => Minimum length of data structure event
+myavt   = (dat.TIME + dat.END_TIME)/2d0
+tra     = [MIN(dat.TIME,/NAN)-delt,MAX(dat.END_TIME,/NAN)+delt]
+
+gpot = WHERE(scpot.X LE tra[1] AND scpot.X GE tra[0],gpt)
+IF (gpt GT 0) THEN BEGIN
+  scp = interp(scpot.Y,scpot.X,myavt,/NO_EXTRAP)
+ENDIF ELSE BEGIN
+  MESSAGE,'Data times are outside of SC Potential times... check input!',/CONTINUE,/INFORMATIONAL
+  scp        = REPLICATE(!VALUES.F_NAN,n)
+  dat.SC_POT = scp
+  RETURN
+ENDELSE
+sc  = REFORM(scp)
+ssz = SIZE(sc,/N_DIMENSIONS)
+;-----------------------------------------------------------------------------------------
+; => Define finite data
+;-----------------------------------------------------------------------------------------
+IF (ssz[0] LE 1) THEN BEGIN
+  gscp = WHERE(FINITE(sc),gsc,COMPLEMENT=bscp)
+  IF (gsc GT 1L) THEN BEGIN
+    mymag = FLOAT(sc)
+  ENDIF ELSE BEGIN
+    IF (gsc EQ 1L) THEN BEGIN
+      mymag = FLOAT(sc)
+    ENDIF ELSE BEGIN
+      MESSAGE,'There are no finite SC potentials for this time!',/CONTINUE,/INFORMATIONAL
+      dat[0].SC_POT = !VALUES.F_NAN
+      RETURN
+    ENDELSE
+  ENDELSE
+ENDIF ELSE BEGIN
+  IF (gsc*1.0 GT 0.8*n) THEN BEGIN
+    IF (gsc EQ n) THEN BEGIN
+      mymag  = FLOAT(sc)
+    ENDIF ELSE BEGIN
+      mymag  = FLOAT(sc)
+      a      = REFORM(sc[gscp])
+      mymag  = interp(a,myavt[gscp],myavt,/NO_EXTRAP)
+    ENDELSE
+  ENDIF ELSE BEGIN
+    mymag       = FLOAT(sc)
+    mymag[bscp] = !VALUES.F_NAN
+  ENDELSE
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Add SC Potential data to structure
+;-----------------------------------------------------------------------------------------
+dat.SC_POT = mymag
+;*****************************************************************************************
+ex_time = SYSTIME(1) - ex_start
+MESSAGE,STRING(ex_time)+' seconds execution time.',/CONTINUE,/INFORMATIONAL
+;*****************************************************************************************
+RETURN
+END

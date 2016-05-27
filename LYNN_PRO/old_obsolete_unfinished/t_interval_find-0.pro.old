@@ -1,0 +1,140 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   t_interval_find.pro
+;  PURPOSE  :   Finds the start/end elements of the data gaps in a timeseries that
+;                 contains data gaps or is composed of discontinuously sampled data
+;                 [e.g. THEMIS EFI or SCM in Wave Burst mode].
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               sample_rate.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TIME        :  [N]-Element array of time stamps [s] associated with
+;                                a time series with data gaps or is discontinuously
+;                                sampled
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               GAP_THRESH  :  Scalar defining the maximum data gap [s] allowed in
+;                                the calculation
+;                                [Default = 4/Sr, Sr = sample rate (sampls/s)]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  The output is a [K,2]-element array of [start,end] elements
+;                     corresponding to the regions of uniformly sampled data
+;
+;   CREATED:  07/16/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/16/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION t_interval_find,time,GAP_THRESH=gap_thresh
+
+;;----------------------------------------------------------------------------------------
+;; => Define dummy variables
+;;----------------------------------------------------------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN RETURN,-1
+
+tt       = REFORM(time)
+nt       = N_ELEMENTS(tt)
+IF (nt LE 3) THEN RETURN,-1
+;; => Define the total time between the first and last data point
+trange   = MAX(tt,/NAN) - MIN(tt,/NAN)
+; => Define shifted difference
+lower    = LINDGEN(nt - 1L)
+upper    = lower + 1L
+sh_diff  = [d,(tt[upper] - tt[lower])]
+;;----------------------------------------------------------------------------------------
+;; => Estimate the sample rate and gap threshold
+;;----------------------------------------------------------------------------------------
+srate    = DOUBLE(ROUND(sample_rate(tt,/AVERAGE)))
+IF NOT KEYWORD_SET(gap_thresh) THEN BEGIN
+  mx_gap = 4d0/srate[0]
+ENDIF ELSE BEGIN
+  mx_gap = gap_thresh[0]
+  ;; check if finite
+  test   = (FINITE(mx_gap[0]) EQ 0)
+  IF (test) THEN BEGIN
+    ;; use default
+    mx_gap = 4d0/srate[0]
+  ENDIF
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;; => Find where time-shifts exceed gap threshold
+;;----------------------------------------------------------------------------------------
+bad      = WHERE(sh_diff GT mx_gap[0],bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0 AND bd LT nt) THEN BEGIN
+  sh_diff[bad] = d
+ENDIF ELSE BEGIN
+  IF (bd EQ nt) THEN RETURN,-1
+ENDELSE
+sh_diff[nt - 1L] = d
+;;----------------------------------------------------------------------------------------
+;; => Define elements of interest
+;;----------------------------------------------------------------------------------------
+gind     = REPLICATE(-1,nt)
+bad      = WHERE(FINITE(sh_diff),bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (gd GT 0) THEN BEGIN
+  test = (gd MOD 2L) NE 0
+  IF (test) THEN BEGIN
+    ;; # of positive values is an odd number
+    IF (gd GT 1) THEN BEGIN
+      ;;  Do not use last element
+      gind[good[0L:(gd - 1L)]] = 1
+    ENDIF ELSE BEGIN
+      ;;  Only 1 element => Use first and last
+      gind[[0L,nt - 1L]] = 1
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;; # of positive values is an even number
+    gind[good] = 1
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;;  Use first and last element
+  RETURN,[0L,nt - 1L]
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;; => Separate start/end elements
+;;----------------------------------------------------------------------------------------
+test     = gind GT 0
+good     = WHERE(test,gd)
+IF (gd GT 0) THEN BEGIN
+  sel = LONARR(gd/2L)  ;; array of start elements
+  eel = LONARR(gd/2L)  ;; array of end   elements
+  i   = 0L
+  k   = 0L
+  FOR j=0L, gd - 1L, 2L DO BEGIN
+    i       = j + 1L
+    sel[k]  = good[j]
+    eel[k]  = good[i]
+    k++
+  ENDFOR
+ENDIF ELSE BEGIN
+  ;; Not sure how this happened
+  RETURN,-1
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;; => Return start/end elements to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,[[sel],[eel]]
+END

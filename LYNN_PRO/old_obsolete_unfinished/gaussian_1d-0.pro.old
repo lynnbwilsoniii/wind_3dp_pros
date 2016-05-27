@@ -1,0 +1,100 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   gaussian_1d.pro
+;  PURPOSE  :   Creates a one-dimensional Gaussian distribution from input parameters.
+;                 The model function is defined as:
+;                                               (X - Xo)^2
+;                                            - ------------
+;                                 Ao              2 ∆^2
+;                   f(x) = --------------- e
+;                           [2π∆^2]^(1/2)
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               X        :  [N]-Element array of independent variable values
+;               PARAM    :  [3]-Element array containing the following quantities:
+;                             PARAM[0] = Normalization amplitude [Ao]
+;                             PARAM[1] = X-offset [Xo]
+;                             PARAM[2] = Standard Deviation [∆]
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               TOT_AMP  :  If set, routine assumes that PARAM[0] corresponds to the
+;                             total peak Gaussian amplitude, i.e., = Ao/[2π∆^2]^(1/2)
+;                             => routine determines Ao and re-calls itself
+;                             [Default = FALSE]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;   CREATED:  01/21/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  01/21/2014   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION gaussian_1d,x,param,TOT_AMP=tot_amp
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 2) THEN BEGIN
+  ;;  no input???
+  RETURN,0
+ENDIF
+
+np             = N_ELEMENTS(param)
+IF (np NE 3) THEN BEGIN
+  ;;  bad input???
+  RETURN,0
+ENDIF
+
+test           = (N_ELEMENTS(tot_amp) NE 0) AND KEYWORD_SET(tot_amp)
+IF (test) THEN BEGIN
+  ;;  User only knows fo {= Ao/[2π∆^2]^(1/2)}, so calculate Ao and re-call
+  fo    = param[0]
+  var   = param[2]^2
+  Ao    = fo[0]*SQRT(2d0*!DPI*var[0])
+  param = [Ao[0],param[1:2]]
+  RETURN,gaussian_1d(x,param)
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Calculate distribution
+;;----------------------------------------------------------------------------------------
+;;  Define variance, = ∆^2
+var            = param[2]^2
+;;  Define amplitude, = Ao/[2π∆^2]^(1/2)
+amp            = param[0]/SQRT(2d0*!DPI*var[0])
+;;  Define exponent
+expn           = (x - param[1])^2      ;;  numerator of exponent, = (X - Xo)^2
+expd           = 2d0*var[0]            ;;  denominator of exponent, = 2 ∆^2
+expo           = -1d0*expn/expd[0]
+;;  Define Gaussian
+df             = amp[0]*EXP(expo)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,df
+END
+

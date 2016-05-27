@@ -1,0 +1,317 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   wind_3dp_save_file_get.pro
+;  PURPOSE  :   Restores and returns IDL save files to user and user can return only
+;                 data within a specified time range if memory is an issue.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               my_str_date.pro
+;               directory_path_check.pro
+;               array_where.pro
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               DATE    :  [string] 'MMDDYY' [MM=month, DD=day, YY=year]
+;               EESA    :  Set to a named variable to return a structure with all
+;                            EESA structures relevant to date of interest
+;               PESA    :  Set to a named variable to return a structure with all
+;                            EESA structures relevant to date of interest
+;               SSTF    :  Set to a named variable to return a structure with all
+;                            SST Foil structures relevant to date of interest
+;               SSTO    :  Set to a named variable to return a structure with all
+;                            SST Open structures relevant to date of interest
+;               TRANGE  :  [Double] 2 element array specifying the time range for
+;                            the data you wish to return [Unix time]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;   CREATED:  03/25/2011
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  03/25/2011   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION wind_3dp_save_file_get,DATE=date,EESA=eesa,PESA=pesa,$
+                                SSTF=sf,SSTO=so,TRANGE=trange
+
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables
+;-----------------------------------------------------------------------------------------
+vers        = !VERSION.OS_FAMILY
+IF (vers NE 'unix') THEN slash = '\' ELSE slash = '/'
+
+
+baddir_mssg       = ' is not a valid directory!'
+nopros_mssg       = 'There are no files with *.sav extension in '   ; => add directory onto end
+pick_mssg         = 'Move to the desired directory and then click open or okay'
+default_extension = slash[0]+'wind_3dp_pros'+slash[0]+'wind_data_dir'+$
+                    slash[0]+'Wind_3DP_DATA'+slash[0]+'IDL_Save_Files'+slash[0]
+default_location  = default_extension
+
+etags             = ['EL','ELB','EH','EHB']
+ptags             = ['PL','PLB','PH','PHB']
+stags             = ['SF','SO']
+;-----------------------------------------------------------------------------------------
+; => Check date
+;-----------------------------------------------------------------------------------------
+mydate   = my_str_date(DATE=date)
+dir_date = mydate.S_DATE[0]  ; => ['MMDDYY']
+mdate    = mydate.DATE[0]    ; => ['YYYYMMDD']
+tdate    = mydate.TDATE[0]   ; => 'YYYY-MM-DD'
+;-----------------------------------------------------------------------------------------
+; => Find Wind/3DP IDL Save File Directory
+;-----------------------------------------------------------------------------------------
+default_location += dir_date[0]+slash[0]
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN BEGIN
+  mdir  = FILE_EXPAND_PATH('')+default_location
+ENDIF ELSE BEGIN
+  mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+dir_date[0]+slash[0]
+ENDELSE
+IF (mdir EQ '') THEN mdir = default_location
+; => test out directory
+test      = directory_path_check(BASE_DIR=mdir[0],/GET_NEW)
+mdir      = test[0]
+dirlen    = STRLEN(mdir[0])  ; => use to get only file names
+
+dir_path  = FILE_DIRNAME(mdir,/MARK_DIRECTORY)
+; => Get ONLY the name of the directory with no path or extensions
+dir_name  = STRMID(mdir[0],STRLEN(dir_path[0])-1L)
+;dir_name  = STRMID(dir_name[0],0L,STRLEN(dir_name[0])-1L)  ; => Remove the trailing slash
+;-----------------------------------------------------------------------------------------
+; => Find files
+;-----------------------------------------------------------------------------------------
+mfiles    = FILE_SEARCH(mdir,'*.sav')
+;-----------------------------------------------------------------------------------------
+; => Test files
+;-----------------------------------------------------------------------------------------
+good      = WHERE(mfiles NE '',gd)
+IF (gd GT 0) THEN BEGIN
+  mfiles  = mfiles[good]
+ENDIF ELSE BEGIN
+  MESSAGE,nopros_mssg[0]+'~'+dir_name[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDELSE
+nfiles    = gd
+;-----------------------------------------------------------------------------------------
+; => Determine the types of save files available
+;-----------------------------------------------------------------------------------------
+file_only = STRMID(mfiles[*],dirlen[0])  ; => Only file names
+f_len     = STRLEN(file_only)
+
+tdate_f   = STREGEX(file_only[*],'[0-9]+-[0-9]+-[0-9]+',/EXTRACT,/FOLD_CASE)
+
+
+g_eesa    = STRPOS(STRLOWCASE(file_only[*]),'eesa') GE 0
+g_pesa    = STRPOS(STRLOWCASE(file_only[*]),'pesa') GE 0
+g_sst0    = STRPOS(STRLOWCASE(file_only[*]),'sst')  GE 0
+g_sstf    = STRPOS(STRLOWCASE(file_only[*]),'foil') GE 0
+g_ssto    = STRPOS(STRLOWCASE(file_only[*]),'open') GE 0
+good_e    = WHERE(g_eesa,gde)
+good_p    = WHERE(g_pesa,gdp)
+good_s    = WHERE(g_sst0,gds)
+; => Check for overlaps in EESA and PESA
+IF (gde GT 0 AND gdp GT 0) THEN BEGIN
+  bad     = array_where(good_e,good_p,/N_UNIQ,NCOMP1=ncomp1,NCOMP2=ncomp2)
+  IF (ncomp1[0] GE 0) THEN good_e = good_e[ncomp1] ELSE good_e = -1
+  IF (ncomp2[0] GE 0) THEN good_p = good_p[ncomp2] ELSE good_p = -1
+  test    = WHERE(good_e GE 0,gde)
+  test    = WHERE(good_p GE 0,gdp)
+ENDIF
+
+; => Check if SST data is available
+IF (gds GT 0) THEN BEGIN
+  tsf     = (g_sst0) AND (g_sstf)
+  tso     = (g_sst0) AND (g_ssto)
+  good_sf = WHERE(tsf,gdsf)
+  good_so = WHERE(tso,gdso)
+  ; => Check for overlaps in SST
+  IF (gdsf GT 0 AND gdso GT 0) THEN BEGIN
+    good_s  = [good_sf,good_so]
+    unq     = UNIQ(good_s,SORT(good_s))
+    good_s  = good_s[unq]
+    gds     = N_ELEMENTS(good_s)
+    good_s0 = -1
+    gds0    = 0
+;    good = array_where(good_sf,good_so,/N_UNIQ,NCOMP1=ncomp1,NCOMP2=ncomp2)
+;    IF (good[0]   GE 0) THEN good_s0 = good_sf[good[*,0]] ELSE good_s0 = -1
+;    IF (ncomp1[0] GE 0) THEN good_sf = good_sf[ncomp1]    ELSE good_sf = -1
+;    IF (ncomp2[0] GE 0) THEN good_so = good_so[ncomp2]    ELSE good_so = -1
+;    test    = WHERE(good_s0 GE 0,gds0)
+;    test    = WHERE(good_sf GE 0,gdsf)
+;    test    = WHERE(good_so GE 0,gdso)
+  ENDIF ELSE BEGIN
+    good_s0 = -1
+    gds0    = 0
+  ENDELSE
+ENDIF ELSE BEGIN
+  good_sf = -1
+  good_so = -1
+  good_s0 = -1
+  gdsf    = 0
+  gdso    = 0
+  gds0    = 0
+ENDELSE
+; => Check for overlaps in SST
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Restore files desired by user
+;-----------------------------------------------------------------------------------------
+ael  = 0 & aelb = 0 & apl  = 0 & aplb = 0
+aeh  = 0 & aehb = 0 & aph  = 0 & aphb = 0
+asf  = 0 & aso  = 0
+
+ael0 = 0 & aelb0 = 0 & apl0 = 0 & aplb0 = 0
+aeh0 = 0 & aehb0 = 0 & aph0 = 0 & aphb0 = 0
+asf0 = 0 & aso0  = 0
+;-----------------------------------------------------------------------------------------
+; => Load EESA
+;-----------------------------------------------------------------------------------------
+IF (gde GT 0 AND KEYWORD_SET(eesa)) THEN BEGIN
+  FOR j=0L, gde - 1L DO BEGIN
+    gfile = mfiles[good_e[j]]
+    RESTORE,gfile[0]
+    nel   = (N_ELEMENTS(ael)  GT 0) AND (SIZE(ael[0], /TYPE) EQ 8)
+    nelb  = (N_ELEMENTS(aelb) GT 0) AND (SIZE(aelb[0],/TYPE) EQ 8)
+    neh   = (N_ELEMENTS(aeh)  GT 0) AND (SIZE(aeh[0], /TYPE) EQ 8)
+    nehb  = (N_ELEMENTS(aehb) GT 0) AND (SIZE(aelb[0],/TYPE) EQ 8)
+    IF (j EQ 0) THEN BEGIN
+      IF (nel ) THEN ael0  = ael
+      IF (nelb) THEN aelb0 = aelb
+      IF (neh ) THEN aeh0  = aeh
+      IF (nehb) THEN aehb0 = aehb
+    ENDIF ELSE BEGIN
+      IF (nel  AND SIZE(ael0[0], /TYPE) EQ 8)   THEN ael0  = [ ael, ael0] ELSE $
+        IF (nel  AND SIZE(ael0[0], /TYPE) NE 8) THEN ael0  = ael
+      IF (nelb AND SIZE(aelb0[0],/TYPE) EQ 8)   THEN aelb0 = [aelb,aelb0] ELSE $
+        IF (nelb AND SIZE(aelb0[0],/TYPE) NE 8) THEN aelb0 = aelb
+      IF (neh  AND SIZE(aeh0[0], /TYPE) EQ 8)   THEN aeh0  = [ aeh, aeh0] ELSE $
+        IF (neh  AND SIZE(aeh0[0], /TYPE) NE 8) THEN aeh0  = aeh
+      IF (nehb AND SIZE(aehb0[0],/TYPE) EQ 8)   THEN aehb0 = [aehb,aehb0] ELSE $
+        IF (nehb AND SIZE(aehb0[0],/TYPE) NE 8) THEN aehb0 = aehb
+    ENDELSE
+    ael  = 0
+    aelb = 0
+    aeh  = 0
+    aehb = 0
+  ENDFOR
+ENDIF ELSE BEGIN
+  ael0  = 0
+  aelb0 = 0
+  aeh0  = 0
+  aehb0 = 0
+ENDELSE
+eesa = CREATE_STRUCT(etags,ael0,aelb0,aeh0,aehb0)
+;-----------------------------------------------------------------------------------------
+; => Load PESA
+;-----------------------------------------------------------------------------------------
+IF (gdp GT 0 AND KEYWORD_SET(pesa)) THEN BEGIN
+  FOR j=0L, gdp - 1L DO BEGIN
+    gfile = mfiles[good_p[j]]
+    RESTORE,gfile[0]
+    npl   = (N_ELEMENTS(apl)  GT 0) AND (SIZE(apl[0], /TYPE) EQ 8)
+    nplb  = (N_ELEMENTS(aplb) GT 0) AND (SIZE(aplb[0],/TYPE) EQ 8)
+    nph   = (N_ELEMENTS(aph)  GT 0) AND (SIZE(aph[0], /TYPE) EQ 8)
+    nphb  = (N_ELEMENTS(aphb) GT 0) AND (SIZE(aphb[0],/TYPE) EQ 8)
+    IF (j EQ 0) THEN BEGIN
+      IF (npl ) THEN apl0  = apl
+      IF (nplb) THEN aplb0 = aplb
+      IF (nph ) THEN aph0  = aph
+      IF (nphb) THEN aphb0 = aphb
+    ENDIF ELSE BEGIN
+      IF (npl  AND SIZE(apl0[0], /TYPE) EQ 8)   THEN apl0  = [ apl, apl0] ELSE $
+        IF (npl  AND SIZE(apl0[0], /TYPE) NE 8) THEN apl0  = apl
+      IF (nplb AND SIZE(aplb0[0],/TYPE) EQ 8)   THEN aplb0 = [aplb,aplb0] ELSE $
+        IF (nplb AND SIZE(aplb0[0],/TYPE) NE 8) THEN aplb0 = aplb
+      IF (nph  AND SIZE(aph0[0], /TYPE) EQ 8)   THEN aph0  = [ aph, aph0] ELSE $
+        IF (nph  AND SIZE(aph0[0], /TYPE) NE 8) THEN aph0  = aph
+      IF (nphb AND SIZE(aphb0[0],/TYPE) EQ 8)   THEN aphb0 = [aphb,aphb0] ELSE $
+        IF (nphb AND SIZE(aphb0[0],/TYPE) NE 8) THEN aphb0 = aphb
+    ENDELSE
+    apl  = 0
+    aplb = 0
+    aph  = 0
+    aphb = 0
+  ENDFOR
+ENDIF ELSE BEGIN
+  apl0  = 0
+  aplb0 = 0
+  aph0  = 0
+  aphb0 = 0
+ENDELSE
+pesa = CREATE_STRUCT(ptags,apl0,aplb0,aph0,aphb0)
+;-----------------------------------------------------------------------------------------
+; => Load SST
+;-----------------------------------------------------------------------------------------
+IF ((gds GT 0) AND (KEYWORD_SET(sf) OR KEYWORD_SET(so))) THEN BEGIN
+  FOR j=0L, gdS - 1L DO BEGIN
+    gfile = mfiles[good_s[j]]
+    RESTORE,gfile[0]
+    nsf   = (N_ELEMENTS(asf)  GT 0) AND (SIZE(asf[0], /TYPE) EQ 8)
+    nso   = (N_ELEMENTS(aso)  GT 0) AND (SIZE(aso[0], /TYPE) EQ 8)
+    IF (j EQ 0) THEN BEGIN
+      IF (nsf ) THEN asf0  = asf
+      IF (nso ) THEN aso0  = aso
+    ENDIF ELSE BEGIN
+      IF (nsf  AND SIZE(asf0[0], /TYPE) EQ 8)   THEN asf0  = [ asf, asf0] ELSE $
+        IF (nsf  AND SIZE(asf0[0], /TYPE) NE 8) THEN asf0  = asf
+      IF (nso  AND SIZE(aso0[0], /TYPE) EQ 8)   THEN aso0  = [ aso, aso0] ELSE $
+        IF (nso  AND SIZE(aso0[0], /TYPE) NE 8) THEN aso0  = aso
+    ENDELSE
+    asf  = 0
+    aso  = 0
+  ENDFOR
+ENDIF ELSE BEGIN
+  asf0  = 0
+  aso0  = 0
+ENDELSE
+sf = CREATE_STRUCT(stags[0],asf0)
+so = CREATE_STRUCT(stags[1],aso0)
+
+RETURN,1
+END
+
+
+
+
+
+; => Assume file name has a date in it of the form 'YYYY-MM-DD'
+;spltfn    = STRARR(1000,nfiles)
+;FOR j=0L, nfiles - 1L DO BEGIN
+;  dumb = STRMID(file_only[j],0L,f_len[j]-4L)  ; => cut off .sav
+;  temp = STRSPLIT(dumb,'[a-z]+(_3|-|_)[a-z]+',/FOLD_CASE,/REGEX,LENGTH=len)
+;  nn   = N_ELEMENTS(temp) - 1L
+;  tem0 = STRMID(dumb,0,temp[nn])  ; => cut off trailing character string
+;  temp = STRSPLIT(tem0,'[a-z]+(_3|-|_)[a-z]+',/FOLD_CASE,/REGEX,LENGTH=len)
+;  nn   = N_ELEMENTS(temp) - 1L
+;  tem1 = STRMID(tem0,0,temp[nn]+len[nn])  ; => cut off trailing character string
+;  temp = STRSPLIT(tem1,'[a-z]+(_3|-|_)[a-z]+',/FOLD_CASE,/REGEX,LENGTH=len)
+;  nn   = N_ELEMENTS(temp) - 1L
+;  tem2 = STRMID(tem1,temp[1])             ; => cut off leading character string
+;  test = STRMATCH(tem2,'[a-z]',/FOLD_CASE) EQ 0
+;  IF (test) THEN BEGIN
+;    temp = STRSPLIT(tem2,'_[0-9]+-[0-9]{2}-[0-9]{2}_',/FOLD_CASE,/REGEX,LENGTH=len)
+;    timp = STRSPLIT(tem2,'_[0-9]+-[0-9]{2}-[0-9]{2}_',/FOLD_CASE,/REGEX,/EXTRACT)
+;  ENDIF
+;  temp = STRSPLIT(dumb,'[0-9]+-[0-9]+-[0-9]+_[0-9]+',LENGTH=len,/FOLD_CASE,/REGEX)
+;ENDFOR

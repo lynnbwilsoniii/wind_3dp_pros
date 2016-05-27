@@ -1,0 +1,1948 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   beam_fit_prompts.pro
+;  PURPOSE  :   This routine produces several prompts and return parameters for
+;                 higher level calling routines that interactively ask for user input.
+;
+;  CALLED BY:   
+;               beam_fit_options.pro
+;               beam_fit_keywords_init.pro
+;
+;  CALLS:
+;               beam_fit_keyword_com.pro
+;               beam_fit_params_com.pro
+;               beam_fit_set_defaults.pro
+;               test_wind_vs_themis_esa_struct.pro
+;               energy_to_vel.pro
+;               str_element.pro
+;               beam_fit_gen_prompt.pro
+;               beam_fit___get_common.pro
+;               delete_variable.pro
+;               beam_fit_prompts.pro
+;               format_vector_string.pro
+;               transform_vframe_3d.pro
+;               fix_vbulk_ions.pro
+;               region_cursor_select.pro
+;               beam_fit_cursor_select.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT        :  Scalar data structure containing a particle velocity
+;                               distribution function (DF) from either the Wind/3DP
+;                               instrument [use get_??.pro, ?? = e.g. phb] or from
+;                               the THEMIS ESA instruments.  Regardless, the structure
+;                               must satisfy the criteria needed to produce a contour
+;                               plot showing the phase (velocity) space density of the
+;                               DF.  The structure must also have the following two tags
+;                               with finite [3]-element vectors:  VSW and MAGF.
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               ***  INPUT --> Command to Change  ***
+;               N_VLIM     :  If set, routine prompts user to define a new value for
+;                               the maximum speed [km/s]
+;               N_NGRID    :  If set, routine prompts user to define a new value for
+;                               the # of contour levels to use
+;                               [Default = 30L]
+;               N_DFRA     :  If set, routine prompts user to define a new value for
+;                               the DF range for both the contour levels and cut
+;                               plots Y-Axis
+;                               [Default = {DFMIN,DFMAX}]
+;               N_DFMIN    :  If set, routine prompts user to define a new value for
+;                               the minimum allowable phase (velocity) space density
+;                               [Default = 1d-18]
+;               N_DFMAX    :  If set, routine prompts user to define a new value for
+;                               the maximum allowable phase (velocity) space density
+;                               [Default = 1d-2]
+;               N_VSW      :  If set, routine prompts user to define a new value for
+;                               the bulk flow velocity [km/s]
+;               N_VCMAX    :  If set, routine prompts user to determine the value of
+;                               maximum "core" velocity [km/s] in the "core" rest frame,
+;                               using the cursor or input
+;               CH_VCMAX   :  If set, routine prompts user to define a new value for
+;                               VCMAX and tells calling routine to jump back a step,
+;                               re-plot circle [Window 1], create new mask, and re-plot
+;                               "halo" only [Window 2]
+;               N_V_B      :  If set, routine prompts user to define a new value for
+;                               the velocity components of the "beam" at the peak
+;                               phase (velocity) space density
+;               N_PLANE    :  If set, routine prompts user to define a new value for
+;                               the plane of projection to plot with corresponding
+;                               cuts [Let V1 = MAGF, V2 = VSW]
+;                                 'xy'  :  horizontal axis parallel to V1 and normal
+;                                            vector to plane defined by (V1 x V2)
+;                                            [default]
+;                                 'xz'  :  horizontal axis parallel to (V1 x V2) and
+;                                            vertical axis parallel to V1
+;                                 'yz'  :  horizontal axis defined by (V1 x V2) x V1
+;                                            and vertical axis (V1 x V2)
+;                               [Default = 'xy']
+;               N_FILL     :  If set, routine prompts user to define a new value for
+;                               the lowest possible values used to replace zeros and/or
+;                               NaNs
+;                               [Default = 1d-20]
+;               N_PERC_PK  :  If set, routine prompts user to define a new value for
+;                               the percentage of A_b to use in the fit analysis
+;                               [Default = 0.01 (or 1%)]
+;               N_NSMOOTH  :  If set, routine prompts user to define a new value for
+;                               the # of points over which to smooth the DF contours
+;                               and cuts
+;                               [Default = 3]
+;               N_SM_CONT  :  If set, routine prompts user to change whether to smooth
+;                               the contours or not
+;                               [Default:  Smoothed to the minimum # of points]
+;               N_SM_CUTS  :  If set, routine prompts user to change whether to smooth
+;                               the cut plots or not
+;                               [Default:  FALSE]
+;               N_VB_REG   :  If set, routine prompts user to define the region that
+;                               will encompass the beam which will be fit to later
+;               N_VBMAX    :  If set, routine prompts user to determine the value of
+;                               maximum "beam" velocity [km/s], using the cursor or
+;                               input
+;               ***  INPUT --> System  ***
+;               WINDN      :  Scalar [long] defining the index of the window to use when
+;                               selecting the region of interest
+;                               [Default = !D.WINDOW]
+;               PLOT_STR   :  Scalar [structure] that defines the scaling factors for the
+;                               contour plot shown in window WINDN to be used by
+;                               region_cursor_select.pro
+;
+;  KEYWORDS:    
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               READ_OUT   :  Set to a named variable to return a string containing the
+;                               last command line input.  This is used by the overhead
+;                               routine to determine whether user left the program by
+;                               quitting or if the program finished
+;               VALUE_OUT  :  Set to a named variable to return the new value for the
+;                               changed variable associated with the N_* keyword.  This
+;                               is useful for routines that do not call the common
+;                               blocks associated with the relevant parameter being
+;                               changed.
+;
+;  COMMON BLOCK VARIABLES:
+;
+;               VLIM       :  Scalar [float/double] defining the maximum speed [km/s]
+;                               to plot for both the contour and cuts
+;                               [Default = Vel. defined by maximum energy bin value]
+;               NGRID      :  Scalar [long] defining the # of contour levels to use on
+;                               output
+;                               [Default = 30L]
+;               NSMOOTH    :  Scalar [long] defining the # of points over which to
+;                               smooth the DF contours and cuts
+;                               [Default = 3]
+;               SM_CUTS    :  If set, program plots the smoothed (by NSMOOTH points)
+;                               cuts of the DF
+;                               [Default:  FALSE]
+;               SM_CONT    :  If set, program plots the smoothed (by NSMOOTH points)
+;                               contours of DF
+;                               [Default:  Smoothed to the minimum # of points]
+;               DFRA       :  [2]-Element array [float/double] defining the DF range
+;                               [cm^(-3) km^(-3) s^(3)] that defines the minimum and
+;                               maximum value for both the contour levels and the
+;                               Y-Axis of the cuts plot
+;                               [Default = {DFMIN,DFMAX}]
+;               DFMIN      :  Scalar [float/double] defining the minimum allowable phase
+;                               (velocity) space density to plot, which is useful for
+;                               ion distributions with large angular gaps in data
+;                               [i.e. prevents lower bound from falling below DFMIN]
+;                               [Default = 1d-18]
+;               DFMAX      :  Scalar [float/double] defining the maximum allowable phase
+;                               (velocity) space density to plot, which is useful for
+;                               distributions with data spikes
+;                               [i.e. prevents upper bound from exceeding DFMAX]
+;                               [Default = 1d-2]
+;               PLANE      :  Scalar [string] defining the plane projection to plot with
+;                               corresponding cuts [Let V1 = MAGF, V2 = VSW]
+;                                 'xy'  :  horizontal axis parallel to V1 and normal
+;                                            vector to plane defined by (V1 x V2)
+;                                            [default]
+;                                 'xz'  :  horizontal axis parallel to (V1 x V2) and
+;                                            vertical axis parallel to V1
+;                                 'yz'  :  horizontal axis defined by (V1 x V2) x V1
+;                                            and vertical axis (V1 x V2)
+;                               [Default = 'xy']
+;               ANGLE      :  Scalar [float/double] defining the angle [deg] from the
+;                               Y-Axis by which to rotate the [X,Y]-cuts
+;                               [Default = 0.0]
+;               FILL       :  Scalar [float/double] defining the lowest possible values
+;                               to consider and the value to use for replacing zeros
+;                               and NaNs when fitting to beam peak
+;                               [Default = 1d-20]
+;               PERC_PK    :  Scalar [float/double] defining the percentage of the peak
+;                               beam amplitude, A_b [cm^(-3) km^(-3) s^(3)], to use in
+;                               the fit analysis
+;                               [Default = 0.01 (or 1%)]
+;               SAVE_DIR   :  Scalar [string] defining the directory where the plots
+;                               will be stored
+;                               [Default = FILE_EXPAND_PATH('')]
+;               FILE_PREF  :  [N]-Element array [string] defining the prefix associated
+;                               with each PostScript plot on output
+;                               [Default = 'DF_00j', j = index # of DAT]
+;               FILE_MIDF  :  Scalar [string] defining the plane of projection and number
+;                               grids used for contour plot levels
+;                               [Default = 'V1xV2xV1_vs_V1_30Grids_']
+;               VSW        :  [3]-Element vector [float] defining the bulk flow velocity
+;                               [km/s] of the distribution
+;               VCMAX      :  Scalar [float/double] defining the maximum "core"
+;                               velocity [km/s] to use for masking routine
+;                               [V_THRESH keyword in remove_uv_and_beam_ions.pro]
+;               V_BX       :  Scalar [float/double] defining the X-component
+;                               (parallel) of the "beam" velocity [km/s] at the peak
+;                               phase (velocity) space density of the "beam"
+;               V_BY       :  Scalar [float/double] defining the Y-component
+;                               (perpendicular) of the "beam" velocity [km/s] at the
+;                               peak phase (velocity) space density of the "beam"
+;               VB_REG     :  [4]-Element array [float/double] defining the rectangular
+;                               coordinates [X0,Y0,X1,Y1] for the region that
+;                               outlines where the beam exists
+;               VBMAX      :  Scalar [float/double] defining the maximum "beam"
+;                               velocity [km/s] to use for masking routine
+;                               [V_THRESH keyword in find_beam_peak_and_mask.pro]
+;
+;   CHANGED:  1)  Continued to write routine                       [08/29/2012   v1.0.0]
+;             2)  Continued to write routine                       [08/31/2012   v1.0.0]
+;             3)  Changed how the routine handles range of data to plot for the contour
+;                   and cut plots
+;                                                                  [09/01/2012   v1.1.0]
+;             4)  Fixed typo in cursor selection results
+;                                                                  [09/04/2012   v1.1.1]
+;             5)  Changed cursor routine for beam and bulk velocity determination
+;                                                                  [09/07/2012   v1.2.0]
+;             6)  Added cursor option for bulk velocity determination
+;                   (didn't quite finish this on 09/07/2012)
+;                                                                  [09/08/2012   v1.3.0]
+;             7)  Changed general prompt for commands              [09/11/2012   v1.3.1]
+;             8)  Fixed an issue with N_VSW option                 [09/17/2012   v1.3.2]
+;             9)  Now prints out current value of DFRA at prompt
+;                                                                  [10/09/2012   v1.3.3]
+;            10)  Fixed a bug when using cursor to change VSW
+;                                                                  [10/11/2012   v1.3.4]
+;
+;   NOTES:      
+;               1)  For more information about many of the keywords, see
+;                     contour_beam_plot.pro or contour_3d_1plane.pro, etc.
+;               2)  User should NOT call this routine
+;               3)  DF = particle velocity distribution function
+;               4)  phase (velocity) space density = [cm^(-3) km^(-3) s^(3)]
+;               5)  A_b = peak beam phase (velocity) space density [or amplitude]
+;               6)  *** Routine can only handle ONE N_* keyword set at a time ***
+;
+;   ADAPTED FROM:  prompts_for_beam_fit_pros.pro and beam_fit_keywords_init
+;   CREATED:  08/28/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/11/2012   v1.3.4
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO beam_fit_prompts,dat,                                                      $
+               N_VLIM=n_vlim,N_NGRID=n_ngrid,N_DFRA=n_dfra,N_DFMIN=n_dfmin,    $  ;; ***  INPUT --> Command to Change  ***
+               N_DFMAX=n_dfmax,N_VSW=n_vsw,N_VCMAX=n_vcmax,CH_VCMAX=ch_vcmax,  $
+               N_V_B=n_v_b,N_PLANE=n_plane,N_FILL=n_fill,N_PERC_PK=n_perc_pk,  $
+               N_NSMOOTH=n_nsmooth,N_SM_CONT=n_sm_cont,N_SM_CUTS=n_sm_cuts,    $
+               N_VB_REG=n_vb_reg,N_VBMAX=n_vbmax,                              $
+               WINDN=windn,PLOT_STR=plot_str,                                  $  ;; ***  INPUT --> System  ***
+               READ_OUT=read_out,VALUE_OUT=value_out                              ;; ***  OUTPUT  ***
+
+;;----------------------------------------------------------------------------------------
+;; => Load Common Block
+;;----------------------------------------------------------------------------------------
+@beam_fit_keyword_com.pro
+@beam_fit_params_com.pro
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+c              = 2.99792458d8      ;;  Speed of light in vacuum (m/s)
+ckm            = c[0]*1d-3         ;;  [km/s]
+;; => Make sure default common blocks have been set up
+test           = (N_ELEMENTS(def_fill)  EQ 0) OR (N_ELEMENTS(def_perc)  EQ 0) OR $
+                 (N_ELEMENTS(def_dfmin) EQ 0) OR (N_ELEMENTS(def_dfmax) EQ 0) OR $
+                 (N_ELEMENTS(def_ngrid) EQ 0) OR (N_ELEMENTS(def_nsmth) EQ 0) OR $
+                 (N_ELEMENTS(def_plane) EQ 0)
+IF (test) THEN BEGIN
+  ;; Load defaults
+  beam_fit_set_defaults
+ENDIF
+
+;; => Define some dummy outputs
+value_out      = 0
+read_out       = ''
+in_str         = ''
+
+def_win        = !D.WINDOW    ;; default window #
+step_back      = 0            ;; logic used by calling routine
+;; => Define parts of file names
+xyzvecf        = ['V1','V1xV2xV1','V1xV2']
+xy_suff        = xyzvecf[1]+'_vs_'+xyzvecf[0]+'_'
+xz_suff        = xyzvecf[0]+'_vs_'+xyzvecf[2]+'_'
+yz_suff        = xyzvecf[2]+'_vs_'+xyzvecf[1]+'_'
+;; => Dummy error messages
+notstr_msg     = 'DAT must be an IDL structure...'
+notvdf_msg     = 'DAT must be an ion velocity distribution IDL structure...'
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(dat)  EQ 0) OR (N_PARAMS() NE 1)
+IF (test) THEN BEGIN
+  MESSAGE,notstr_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+
+str            = dat[0]
+test0          = test_wind_vs_themis_esa_struct(str,/NOM)
+test           = (test0.(0) + test0.(1)) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Define some constants from DAT
+;;----------------------------------------------------------------------------------------
+;; Define min/max energy(velocity magnitude) ranges
+eners          = dat[0].ENERGY        ;; Energy bin values [eV]
+mass           = dat[0].MASS          ;; particle mass [eV c^(-2), with c in km/s]
+;; convert energy [eV] to velocity magnitude [km/s]
+vmag           = energy_to_vel(eners,mass[0])
+vmag_max       = MAX(vmag,/NAN)
+vmag_med       = MEDIAN(vmag)
+vmag_min       = MIN(vmag,/NAN)
+vmag_12_max    = 12d-2*vmag_max[0]    ;; 12% of |V|_max
+vmag_15_max    = 15d-2*vmag_max[0]    ;; 15% of |V|_max
+vmag_75_max    = 75d-2*vmag_max[0]    ;; 75% of |V|_max
+;; Define string outputs associated with the minimum, median, and maximum values
+vmin_str       = STRTRIM(STRING(vmag_min[0],FORMAT='(f25.2)'),2L)
+vmed_str       = STRTRIM(STRING(vmag_med[0],FORMAT='(f25.2)'),2L)
+vmax_str       = STRTRIM(STRING(vmag_max[0],FORMAT='(f25.2)'),2L)
+vmax_12_str    = STRTRIM(STRING(vmag_12_max[0],FORMAT='(f25.2)'),2L)
+vmax_15_str    = STRTRIM(STRING(vmag_15_max[0],FORMAT='(f25.2)'),2L)
+vmax_75_str    = STRTRIM(STRING(vmag_75_max[0],FORMAT='(f25.2)'),2L)
+;; Define min/max energy(velocity magnitude) ranges
+energy         = dat[*].ENERGY                    ;; energy bin values [eV]
+good           = WHERE(energy GT 0 AND FINITE(energy),gd)
+IF (gd EQ 0) THEN RETURN
+erange         = [MIN(energy[good],/NAN),MAX(energy[good],/NAN)]
+mass           = dat[0].MASS
+vrange         = energy_to_vel(erange,mass[0])
+def_vlim       = MAX(vrange,/NAN)                 ;; default value for VLIM
+def_vmin       = MIN(vrange,/NAN)
+defvminstr     = STRTRIM(STRING(def_vmin,FORMAT='(f25.2)'),2L)
+;;----------------------------------------------------------------------------------------
+;; => Check ***  INPUT --> System  *** keywords
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(windn) EQ 1)
+IF (test) THEN BEGIN
+  IF (windn[0] LT 0 OR def_win[0] LT 0) THEN BEGIN
+    ;; Plot device set to 'PS'
+    ;;   => inform user and leave
+    mssg = "The window number was set to < 0 or the plot device is set to 'PS'..."
+    PRINT, ''
+    MESSAGE,mssg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF ELSE BEGIN
+    ;; One of the two is > 0
+    IF (windn[0] LT 0) THEN win = def_win[0] ELSE win = windn[0]
+  ENDELSE
+ENDIF ELSE BEGIN
+  IF (def_win[0] LT 0) THEN BEGIN
+    ;; Plot device set to 'PS'
+    mssg = "The current plot device is set to 'PS'..."
+    PRINT, ''
+    MESSAGE,mssg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF ELSE BEGIN
+    ;; Use current window
+    win = def_win[0]
+  ENDELSE
+ENDELSE
+;; Check format and existence of PLOT_STR keyword
+test_plt0      = (N_ELEMENTS(plot_str) EQ 1) AND (SIZE(plot_str,/TYPE) EQ 8)
+IF (test) THEN BEGIN
+  needtags = STRLOWCASE(['XSCALE','YSCALE','XFACT','YFACT'])
+  tags     = STRLOWCASE(TAG_NAMES(plot_str))
+  ntags    = N_TAGS(plot_str)
+  IF (ntags GE 2) THEN BEGIN
+    ;; good format so far
+    testx    = TOTAL(tags EQ needtags[0]) EQ 1
+    testy    = TOTAL(tags EQ needtags[1]) EQ 1
+    testfx   = TOTAL(tags EQ needtags[2]) EQ 0
+    testfy   = TOTAL(tags EQ needtags[3]) EQ 0
+    test     = testx AND testy
+    IF (test) THEN BEGIN
+      ;; good format
+      test_plt = 1
+      ;; add XY-scale factors to plot structure
+      IF (testfx) THEN str_element,plot_str,'XFACT',0d0,/ADD_REPLACE
+      IF (testfy) THEN str_element,plot_str,'YFACT',0d0,/ADD_REPLACE
+    ENDIF ELSE BEGIN
+      ;; bad format => use command line only
+      test_plt = 0
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;; bad format => use command line only
+    test_plt = 0
+  ENDELSE
+ENDIF ELSE BEGIN
+  test_plt = 0
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;; => Determine what user wants to change
+;;----------------------------------------------------------------------------------------
+gnames         = ['vlim','ngrid','dfra','dfmin','dfmax','vsw','vcmax','v_b', $
+                  'plane','fill','perc_pk','nsmooth','sm_cont','sm_cuts','vb_reg',$
+                  'vbmax']
+check          = [KEYWORD_SET(n_vlim),KEYWORD_SET(n_ngrid),KEYWORD_SET(n_dfra),        $
+                  KEYWORD_SET(n_dfmin),KEYWORD_SET(n_dfmax),KEYWORD_SET(n_vsw),        $
+                  KEYWORD_SET(n_vcmax),KEYWORD_SET(ch_vcmax),KEYWORD_SET(n_v_b),       $
+                  KEYWORD_SET(n_plane),KEYWORD_SET(n_fill),KEYWORD_SET(n_perc_pk),     $
+                  KEYWORD_SET(n_nsmooth),KEYWORD_SET(n_sm_cont),KEYWORD_SET(n_sm_cuts),$
+                  KEYWORD_SET(n_vb_reg),KEYWORD_SET(n_vbmax)]
+good           = WHERE(check,gd)
+CASE good[0] OF
+  0    :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  VLIM
+    ;;------------------------------------------------------------------------------------
+    in_str         = "VLIM"
+    IF KEYWORD_SET(vlim) THEN BEGIN
+      def_val_str    = STRTRIM(STRING(vlim,FORMAT='(f25.2)'),2L)
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+" km/s]? (y/n):  "
+      temp           = vlim[0]
+    ENDIF ELSE BEGIN
+      def_val_str    = STRTRIM(STRING(def_vlim,FORMAT='(f25.2)'),2L)
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+" km/s]? (y/n):  "
+      temp           = def_vlim[0]
+    ENDELSE
+    ;; Define procedural information
+    pro_out        = ["You can enter a new value for VLIM (format = XXXX.xxx).",$
+                      "[Type 'q' to quit at any time]"]
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Prompt for new VLIM
+    ;;-------------------------------------------
+    value_out      = 0.    ;; output value for prompt
+    IF (read_out EQ 'n') THEN BEGIN
+      str_out        = "Enter a value > "+defvminstr[0]+" [km/s] and < c [~300,000 km/s]:  "
+      true           = (value_out[0] LT vmag_med[0])
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5))
+        true           = (value_out LT def_vmin) OR (value_out GE ckm[0])
+      ENDWHILE
+      ;; => Define VLIM
+      vlim           = value_out[0]
+    ENDIF ELSE BEGIN
+      vlim           = temp[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = vlim[0]
+  END
+  1    :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0L    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  NGRID
+    ;;------------------------------------------------------------------------------------
+    in_str         = "NGRID"
+    IF KEYWORD_SET(ngrid) THEN BEGIN
+      def_val_str    = STRTRIM(STRING(ngrid,FORMAT='(I2.2)'),2L)
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+"]? (y/n):  "
+      temp           = ngrid[0]
+    ENDIF ELSE BEGIN
+      def_val_str    = STRTRIM(STRING(def_ngrid,FORMAT='(I2.2)'),2L)
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+"]? (y/n):  "
+      temp           = def_ngrid[0]
+    ENDELSE
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Prompt for new NGRID
+    ;;-------------------------------------------
+    ;; => Set/Reset outputs
+    value_out      = 0L    ;; output value for prompt
+    IF (read_out EQ 'n') THEN BEGIN
+      str_out        = "Enter a value [consistent with: 15 < n < 80]:  "
+      true           = (value_out LE 15L) OR (value_out GE 80L)
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=3))
+        true           = (value_out LE 15L) OR (value_out GE 80L)
+      ENDWHILE
+      ;; => Define NGRID
+      ngrid          = value_out[0]
+    ENDIF ELSE BEGIN
+      ngrid          = temp[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Need to define/change FILE_MIDF
+    ;;-------------------------------------------
+    def_val_str    = STRING(ngrid[0],FORMAT='(I2.2)')+'Grids_'
+    IF KEYWORD_SET(plane) THEN BEGIN
+      CASE plane[0] OF
+        'xy'  :  file_midf = xy_suff[0]+def_val_str[0]
+        'xz'  :  file_midf = xz_suff[0]+def_val_str[0]
+        'yz'  :  file_midf = yz_suff[0]+def_val_str[0]
+      ENDCASE
+    ENDIF ELSE BEGIN
+      file_midf = xy_suff[0]+def_val_str[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = ngrid[0]
+  END
+  2    :  BEGIN
+    ;; => Set/Reset outputs
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  DFRA
+    ;;------------------------------------------------------------------------------------
+    in_str         = "DFRA"
+    IF (N_ELEMENTS(dfra) EQ 2) THEN BEGIN
+      def_val_low    = STRTRIM(STRING(dfra[0],FORMAT='(E25.3)'),2L)
+      def_val_hig    = STRTRIM(STRING(dfra[1],FORMAT='(E25.3)'),2L)
+      def_val_str    = def_val_low[0]+' - '+def_val_hig[0]
+      ;; Define prompt outputs
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " = "+def_val_str[0]+" [cm^(-3) km^(-3) s^(3)]? (y/n):  "
+      temp           = dfra
+    ENDIF ELSE BEGIN
+      del            = dat[0]
+      transform_vframe_3d,del,/EASY_TRAN
+      test           = FINITE(del[0].DATA) AND (del[0].DATA GT 0)
+      good           = WHERE(test,gd)
+      IF (gd GT 0) THEN BEGIN
+        df_range       = [MIN(del[0].DATA[good]),MAX(del[0].DATA[good],/NAN)]
+      ENDIF ELSE BEGIN
+        df_range       = [def_dfmin[0],def_dfmax[0]]
+      ENDELSE
+      def_val_low    = STRTRIM(STRING(df_range[0],FORMAT='(E25.3)'),2L)
+      def_val_hig    = STRTRIM(STRING(df_range[1],FORMAT='(E25.3)'),2L)
+      def_val_str    = def_val_low[0]+' - '+def_val_hig[0]
+      ;; Define prompt outputs
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " = "+def_val_str[0]+" [cm^(-3) km^(-3) s^(3)]? (y/n):  "
+      temp           = df_range
+    ENDELSE
+    ;; Define string outputs for procedural information
+    pro_out        = ["     You will now be asked whether you wish to enter a plotting",   $
+                      "range for the phase (velocity) space density plots.  The input",    $
+                      "format should be (format = x.xxxESee), where x is any integer",     $
+                      '0-9, E = e in IDL [= x 10^(See)], S = sign of exponent, and',       $
+                      "ee = exponent values.  This is different from the inputs for",      $
+                      "DFMIN and DFMAX, which correspond to the keywords MIN_VALUE and",   $
+                      "MAX_VALUE, respectively, used by PLOT.PRO.","",                     $
+                      "An example input would be:  1.05e-12"                               ]
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  DFRA --> DFMIN and DFMAX too
+    ;;------------------------------------------------------------------------------------
+    ;;-------------------------------------------
+    ;; => Prompt for new Min. Range
+    ;;-------------------------------------------
+    ;; => Set/Reset outputs
+    value_out      = 0.    ;; output value for prompt
+    IF (read_out EQ 'n') THEN BEGIN
+      str_out        = "Enter a new value for Min. DF plot range (format = x.xxxESee):  "
+      true           = (value_out[0] LE 0) OR (FINITE(value_out[0]) EQ 0)
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5))
+        true           = (value_out[0] LE 0) OR (FINITE(value_out[0]) EQ 0)
+      ENDWHILE
+      ;; => Define Min. Range
+      ymin           = value_out[0]
+    ENDIF ELSE BEGIN
+      ymin           = beam_fit___get_common('def_dfmin',DEFINED=defined)
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Prompt for new Max. Range
+    ;;-------------------------------------------
+    ;; => Set/Reset outputs
+    value_out      = 0.    ;; output value for prompt
+    IF (read_out EQ 'n') THEN BEGIN
+      str_out        = "Enter a new value for Max. DF plot range (format = x.xxxESee):  "
+      true           = (value_out[0] LE 0) OR (FINITE(value_out[0]) EQ 0)
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5))
+        true           = (value_out[0] LE 0) OR (FINITE(value_out[0]) EQ 0)
+      ENDWHILE
+      ;; => Define Min. Range
+      ymax           = value_out[0]
+    ENDIF ELSE BEGIN
+      ymax           = beam_fit___get_common('def_dfmax',DEFINED=defined)
+    ENDELSE
+    ;; => Initialize DFRA [if necessary]
+    IF (N_ELEMENTS(dfra) NE 2)  THEN dfra = DBLARR(2)
+    ;; => Define DFRA
+    dfra           = [ymin[0],ymax[0]]
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = dfra
+  END
+  3    :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  DFMIN
+    ;;------------------------------------------------------------------------------------
+    in_str         = "DFMIN"
+    IF KEYWORD_SET(dfmin) THEN BEGIN
+      def_val_str    = STRTRIM(STRING(dfmin[0],FORMAT='(E25.3)'),2L)
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " = "+def_val_str[0]+" [cm^(-3) km^(-3) s^(3)]? (y/n):  "
+      temp           = dfmin[0]
+    ENDIF ELSE BEGIN
+      def_val_str    = STRTRIM(STRING(def_dfmin[0],FORMAT='(E25.3)'),2L)
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " = "+def_val_str[0]+" [cm^(-3) km^(-3) s^(3)]? (y/n):  "
+      temp           = def_dfmin[0]
+    ENDELSE
+    ;; Define string outputs for procedural information
+    pro_out        = ["     You will now be asked whether you wish to enter a default",    $
+                      "value for the lower and upper bound to be used in the phase",       $
+                      "(velocity) space density plots.  The input format should be",       $
+                      "(format = x.xxxESee), where x is any integer 0-9, E = e in IDL",    $
+                      "[= x 10^(See)], S = sign of exponent, and ee = exponent values.",   $
+                      "",                                                                  $
+                      "An example input would be:  1.05e-12"                               ]
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Prompt for new DFMIN
+    ;;-------------------------------------------
+    ;; => Set/Reset outputs
+    value_out      = 0.    ;; output value for prompt
+    IF (read_out EQ 'n') THEN BEGIN
+      str_out        = "Enter a new value for DFMIN (format = x.xxxESee):  "
+      true           = (value_out[0] LE 0) OR (FINITE(value_out[0]) EQ 0)
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5))
+        true           = (value_out[0] LE 0) OR (FINITE(value_out[0]) EQ 0)
+      ENDWHILE
+      ;; => Define DFMIN
+      dfmin          = value_out[0]
+    ENDIF ELSE BEGIN
+      dfmin          = temp[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = dfmin[0]
+  END
+  4    :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  DFMAX
+    ;;------------------------------------------------------------------------------------
+    in_str         = "DFMAX"
+    IF KEYWORD_SET(dfmax) THEN BEGIN
+      def_val_str    = STRTRIM(STRING(dfmax[0],FORMAT='(E25.3)'),2L)
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " = "+def_val_str[0]+" [cm^(-3) km^(-3) s^(3)]? (y/n):  "
+      temp           = dfmax[0]
+    ENDIF ELSE BEGIN
+      def_val_str    = STRTRIM(STRING(def_dfmax[0],FORMAT='(E25.3)'),2L)
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " = "+def_val_str[0]+" [cm^(-3) km^(-3) s^(3)]? (y/n):  "
+      temp           = def_dfmax[0]
+    ENDELSE
+    ;; Define string outputs for procedural information
+    pro_out        = ["     You will now be asked whether you wish to enter a default",    $
+                      "value for the lower and upper bound to be used in the phase",       $
+                      "(velocity) space density plots.  The input format should be",       $
+                      "(format = x.xxxESee), where x is any integer 0-9, E = e in IDL",    $
+                      "[= x 10^(See)], S = sign of exponent, and ee = exponent values.",   $
+                      "",                                                                  $
+                      "An example input would be:  1.05e-12"                               ]
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Prompt for new DFMAX
+    ;;-------------------------------------------
+    ;; => Set/Reset outputs
+    value_out      = 0.    ;; output value for prompt
+    IF (read_out EQ 'n') THEN BEGIN
+      str_out        = "Enter a new value for DFMAX (format = x.xxxESee):  "
+      true           = (value_out[0] LE 0) OR (FINITE(value_out[0]) EQ 0)
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5))
+        true           = (value_out[0] LE 0) OR (FINITE(value_out[0]) EQ 0)
+      ENDWHILE
+      ;; => Define DFMAX
+      dfmax          = value_out[0]
+    ENDIF ELSE BEGIN
+      dfmax          = temp[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = dfmax[0]
+  END
+  5    :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  VSW
+    ;;------------------------------------------------------------------------------------
+    in_str         = "VSW"
+    IF KEYWORD_SET(vsw) THEN BEGIN
+      t_vsw          = vsw
+      str_pre        = "Do you wish to keep the current value of "+in_str[0]
+    ENDIF ELSE BEGIN
+      t_vsw          = dat[0].VSW
+      str_pre        = "Do you wish to use the default value of "+in_str[0]
+    ENDELSE
+    test           = (N_ELEMENTS(t_vsw) NE 3) OR (TOTAL(FINITE(t_vsw)) NE 3)
+    IF (N_ELEMENTS(t_vsw) NE 3) THEN BEGIN
+      ;;  Remove VSW variable
+      delete_variable,vsw
+      ;;  Re-Call beam_fit_prompts.pro with N_VSW set
+      beam_fit_prompts,dat,/N_VSW,WINDN=win,PLOT_STR=plot_str,READ_OUT=read_out,$
+                           VALUE_OUT=value_out
+      RETURN
+    ENDIF ELSE BEGIN
+      ;; VSW correctly set
+      ;;   => Convert to string
+      def_val_str    = (format_vector_string(t_vsw,PRECISION=3))[0]+" km/s"
+      str_out        = str_pre[0]+" = "+def_val_str[0]+" [km/s]? (y/n):  "
+      pro_out        = ["     You can let the routine [fix_vbulk_ions.pro] to try and",$
+                        "estimate a new VSW, leave it alone, enter a new estimate on", $
+                        "the command line, or use the cursor.  The end result will be",$
+                        "used for a new bulk flow velocity frame transformation and",  $
+                        "the data will be re-plotted.","",                             $
+                        "[Type 'q' to quit at any time]"]
+      ;; => Set/Reset outputs
+      read_out       = ''    ;; output value of decision
+      WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+        read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+        IF (read_out EQ 'debug') THEN STOP
+      ENDWHILE
+      ;; => Check if user wishes to quit
+      IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+      ;; => Set/Reset outputs
+      value_out      = 0.    ;; output value for prompt
+      IF (read_out EQ 'n') THEN BEGIN
+        ;;--------------------------------------------------------------------------------
+        ;; => Does the user want to let fix_vbulk_ions.pro find VSW or enter guess on
+        ;;      command line?
+        ;;--------------------------------------------------------------------------------
+        ;; => Set/Reset outputs
+        read_out       = ''    ;; output value of decision
+        str_out        = "Do you want to enter a new estimate for "+in_str[0]+" by command line (y/n)?  "
+        WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+          read_out       = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=7)
+          IF (read_out EQ 'debug') THEN STOP
+        ENDWHILE
+        ;; => Check if user wishes to quit
+        IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+        ;; Determine response
+        IF (read_out EQ 'n') THEN BEGIN
+          ;;------------------------------------------------------------------------------
+          ;; => User wants to either use cursor or fix_vbulk_ions.pro
+          ;;------------------------------------------------------------------------------
+          ;; Define string outputs for initial procedural information
+          pro_out_yp     = ["     You can define the value of "+in_str[0]+" using either the command line",$
+                            "input (format = XXXX.xxx) or your mouse cursor."]
+          pro_out_np     = ["     You can define the value of "+in_str[0]+" using the command line input",$
+                            "(format = XXXX.xxx) when prompted below."]
+          ;; Determine whether user can even use the cursor
+          ;;   [i.e. is there a window display present]
+          IF (test_plt) THEN pro_out = pro_out_yp ELSE pro_out = pro_out_np
+          ;; Define string outputs for cursor usage
+          cur_out        = ["     Select a point on the contour plot at the center of the",    $
+                            "'core' peak region of the DF.  The routine will ask you if",      $
+                            "you like your estimate and if not, allow you to try again.",      $
+                            "The routine will then use the two values to estimate velocity",   $
+                            "components of the bulk flow frame.  This will then be converted", $
+                            "to GSE coordinates to be used as the 'core' bulk velocity in the",$
+                            "spacecraft frame of reference.  Note that you should try to get", $
+                            "as close as possible to the center of the 'core' peak for the",   $
+                            "best results."]
+          ;; Define prompt string [if cursor allowed]
+          str_out        = "Do you want to estimate "+in_str[0]+" with the cursor (y/n)?  "
+          ;; => Set/Reset outputs
+          read_out       = ''    ;; output value of decision
+          ;;-------------------------------------------
+          ;; => Check if user can use the cursor
+          ;;-------------------------------------------
+          IF (test_plt) THEN BEGIN
+            ;; User has option to use cursor input
+            WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+              read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+              IF (read_out EQ 'debug') THEN STOP
+            ENDWHILE
+            ;; => Check if user wishes to quit
+            IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+            ;; => Check if user wishes to use the cursor
+            IF (read_out EQ 'y') THEN use_cursor = 1 ELSE use_cursor = 0
+          ENDIF ELSE BEGIN
+            ;; User cannot use cursor input
+            info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+            use_cursor     = 0
+          ENDELSE
+          ;;-------------------------------------------
+          ;; => Prompt for new VSW
+          ;;-------------------------------------------
+          ;;==============================================================================
+          JUMP_COMMAND_VSW:
+          ;;==============================================================================
+          ;; => Set/Reset outputs
+          read_out       = ''    ;; output value of decision
+          IF (use_cursor) THEN BEGIN
+            ;;----------------------------------------------------------------------------
+            ;; => Use cursor to estimate new VSW
+            ;;----------------------------------------------------------------------------
+            ;; => Inform user of procedure
+            info_out       = beam_fit_gen_prompt(WINDN=win,PRO_OUT=cur_out,FORM_OUT=7)
+            ;; => Define plot scaling information
+            xscale         = plot_str.XSCALE
+            yscale         = plot_str.YSCALE
+            xfact          = plot_str.XFACT
+            yfact          = plot_str.YFACT
+            ;; => Find VSW
+            pk_struc       = beam_fit_cursor_select(XSCALE=xscale,YSCALE=yscale,WINDN=win[0],$
+                                                    XFACT=xfact[0],YFACT=yfact[0])
+            IF (SIZE(pk_struc,/TYPE) NE 8) THEN BEGIN
+              ;; bad return => Use command line input
+              use_cursor = 0
+              GOTO,JUMP_COMMAND_VBEAM
+            ENDIF
+            ;; => Define an estimate for VSW
+            vswx           = pk_struc.XY_DATA[0]
+            vswy           = pk_struc.XY_DATA[1]
+            ;;  Define center of core in plane of projection
+            IF (plane[0] EQ 'xz') THEN gels = [2L,0L]            ELSE gels = [0L,1L]
+            v_oc           = DBLARR(3)
+            v_oc[gels[0]]  = vswx[0]
+            v_oc[gels[1]]  = vswy[0]
+            ;;----------------------------------------------------------------------------
+            ;; => Convert new VSW back into GSE and SC Frame
+            ;;----------------------------------------------------------------------------
+            dat_copy       = dat[0]
+            vec1           = REFORM(dat_copy[0].MAGF)    ;; magnetic field vector [nT]
+;            v_sw_orig      = REFORM(dat_copy[0].VSW)     ;; bulk flow velocity [km/s]
+            v_sw_orig      = t_vsw                       ;; bulk flow velocity [km/s]
+            ;; => Transform into SW frame
+            transform_vframe_3d,dat_copy,/EASY_TRAN
+            ;; => Rotate into FAWs
+            rotate_3dp_structure,dat_copy,vec1,v_sw_orig,VLIM=vlim
+            ;;  Define rotation matrix
+            IF (plane[0] EQ 'yz') THEN rmat = dat_copy.ROT_MAT_Z ELSE rmat = dat_copy.ROT_MAT
+            ;;  Define inverse
+            inv_rmat       = LA_INVERT(rmat,/DOUBLE,STATUS=status)
+            IF (status NE 0) THEN BEGIN
+              ;; no inverse could be found => BAD input
+              bad_mssg = 'DAT must have finite non-zero vectors defined for tags VSW and MAGF!'
+              MESSAGE,bad_mssg,/INFORMATIONAL,/CONTINUE
+              RETURN
+            ENDIF
+            ;; => Rotate back into GSE coordinates in current bulk flow frame
+            v_orc          = REFORM(inv_rmat ## v_oc)
+            ;; => Translate back into SC Frame
+            vsw_new        = v_orc + v_sw_orig
+          ENDIF ELSE BEGIN
+            ;;----------------------------------------------------------------------------
+            ;; => Use routine to estimate new VSW
+            ;;----------------------------------------------------------------------------
+            pro_out        = ["     You have chosen to let the routine to try and estimate a new VSW.",$
+                              "The program fix_vbulk_ions.pro will estimate a new bulk flow",$
+                              "velocity.  Then you will be prompted to check whether you agree",$
+                              "with this result.","","[Type 'q' to quit at any time]"]
+            ;; Output procedural information
+            info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+            ;;  Change VSW
+            dumb           = dat[0]
+            ;; Convert into current bulk flow frame
+            transform_vframe_3d,dumb,/EASY_TRAN
+            ;; Calculate new bulk flow velocity
+            fixed_vbulk    = fix_vbulk_ions(dumb)
+            vsw_new        = fixed_vbulk.VSW_NEW  ;; new estimate [km/s]
+          ENDELSE
+        ENDIF ELSE BEGIN
+          ;;------------------------------------------------------------------------------
+          ;; => Use command line to estimate new VSW
+          ;;------------------------------------------------------------------------------
+          pro_out        = ["     You have chosen to enter a new estimate for VSW on the",$
+                            "command line.  You will be prompted to enter each component",$
+                            "separately.  Remember to include the sign if the component", $
+                            "is < 0.  Make sure to keep the values within the velocity",  $
+                            "limits [i.e. < "+vmax_75_str[0]+" km/s] of the input data.", $
+                            "Then you will be prompted to check whether you agree",$
+                            "with this result.","","[Type 'q' to quit at any time]"]
+          ;; Output procedural information
+          info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+          ;; => Set/Reset outputs
+          value_out      = 0.    ;; output value for prompt
+          str_out        = "Enter a value for VSW_X [km/s] (format = XXXX.xxx):  "
+          true           = 1
+          WHILE (true) DO BEGIN
+            value_out      = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5)
+            true           = (ABS(value_out[0]) GT 0.75*vmag_max[0])
+          ENDWHILE
+          ;; => Define VSW_X
+          vsw_x          = value_out[0]
+          ;; => Set/Reset outputs
+          value_out      = 0.    ;; output value for prompt
+          str_out        = "Enter a value for VSW_Y [km/s] (format = XXXX.xxx):  "
+          true           = 1
+          WHILE (true) DO BEGIN
+            value_out      = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5)
+            true           = (ABS(value_out[0]) GT 0.75*vmag_max[0])
+          ENDWHILE
+          ;; => Define VSW_Y
+          vsw_y          = value_out[0]
+          ;; => Set/Reset outputs
+          value_out      = 0.    ;; output value for prompt
+          str_out        = "Enter a value for VSW_Z [km/s] (format = XXXX.xxx):  "
+          true           = 1
+          WHILE (true) DO BEGIN
+            value_out      = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5)
+            true           = (ABS(value_out[0]) GT 0.75*vmag_max[0])
+          ENDWHILE
+          ;; => Define VSW_Z
+          vsw_z          = value_out[0]
+          ;; => Define new VSW
+          vsw_new        = [vsw_x[0],vsw_y[0],vsw_z[0]]
+        ENDELSE
+        ;;--------------------------------------------------------------------------------
+        ;;  Check if user likes this new value
+        ;;--------------------------------------------------------------------------------
+        ;;   => Convert to string
+        new_val_str    = (format_vector_string(vsw_new,PRECISION=3))[0]+" km/s"
+        pro_out        = ["The current bulk flow velocity is "+def_val_str[0]+".",$
+                          "","The new bulk flow velocity is "+new_val_str[0]+".",$
+                          "","[Type 'q' to quit at any time]"]
+        str_out        = "Do you wish to use this new value of "+in_str[0]+" (y/n):  "
+        ;; => Set/Reset outputs
+        read_out       = ''    ;; output value of decision
+        WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+          read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+          IF (read_out EQ 'debug') THEN STOP
+        ENDWHILE
+        ;; => Check if user wishes to quit
+        IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+        ;; => Check if user wishes to use new value
+        IF (read_out EQ 'y') THEN BEGIN
+          ;;  Use new VSW
+          vsw             = vsw_new
+        ENDIF ELSE BEGIN
+          str_out        = "Do you wish to try to estimate "+in_str[0]+" again (y/n)?  "
+          ;; => Set/Reset outputs
+          read_out       = ''    ;; output value of decision
+          WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+            read_out       = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=7)
+            IF (read_out EQ 'debug') THEN STOP
+          ENDWHILE
+          ;; => Check if user wishes to quit
+          IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+          IF (read_out EQ 'y') THEN BEGIN
+            ;;  Yes => Try again
+            beam_fit_prompts,dat,/N_VSW,WINDN=windn,PLOT_STR=plot_str,READ_OUT=read_out
+            RETURN
+          ENDIF ELSE BEGIN
+            ;;  No  => Use original VSW
+            vsw             = dat[0].VSW
+          ENDELSE
+        ENDELSE
+      ENDIF ELSE BEGIN
+        ;;  Keep VSW
+        vsw = t_vsw
+      ENDELSE
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = vsw
+  END
+  6    :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  VCMAX
+    ;;------------------------------------------------------------------------------------
+    in_str         = "VCMAX"
+    IF KEYWORD_SET(vcmax) THEN BEGIN
+      def_val_str    = STRTRIM(STRING(vcmax,FORMAT='(f25.2)'),2L)
+      str_out        = "Do you wish to change the current value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+" km/s]? (y/n):  "
+      ;; Define string outputs for initial procedural information
+      pro_out        = ["The variable "+in_str[0]+" is already defined.  You will be",$
+                        "asked whether you wish to change this value or not.  If not,",$
+                        "the routine will simply return, otherwise it will ask you to",$
+                        "change the value either using the mouse cursor or command line",$
+                        "input.","","[Type 'q' to quit at any time]"]
+      ;; => Set/Reset outputs
+      read_out       = ''    ;; output value of decision
+      WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+        read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+        IF (read_out EQ 'debug') THEN STOP
+      ENDWHILE
+      ;; Leave unless user wishes to change the current setting
+      IF (read_out NE 'y') THEN GOTO,JUMP_RETURN
+    ENDIF
+    ;; Define string outputs for initial procedural information
+    pro_out_yp     = ["     You can define the value of "+in_str[0]+" using either the command line",$
+                      "input (format = XXXX.xxx) or your mouse cursor."]
+    pro_out_np     = ["     You can define the value of "+in_str[0]+" using the command line input",$
+                      "(format = XXXX.xxx) when prompted below."]
+    ;; Define string outputs for cursor usage
+    cur_out        = ["     Select a point on the contour plot at the lower-left-hand",$
+                      "corner of a rectangle that would encompass the entire 'core'",  $
+                      "region of the DF.  Then select a point at the upper-right-hand",$
+                      "corner of the same imaginary rectangular area.  The routine",   $
+                      "will then use the two values to estimate a speed that will",    $
+                      "be used to create a circular region, centered at the origin",   $
+                      "in the bulk flow frame, defining the entire 'core.'  Once",     $
+                      "defined, the region inside the circle will be removed leaving", $
+                      "only the 'halo' component of the DF."]
+    ;; Determine whether user can even use the cursor
+    ;;   [i.e. is there a window display present]
+    IF (test_plt) THEN pro_out = pro_out_yp ELSE pro_out = pro_out_np
+    ;; Define prompt string
+    str_out        = "Do you wish to use the cursor to estimate "+in_str[0]+" (y/n):  "
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    ;;-------------------------------------------
+    ;; => Check if user can use the cursor
+    ;;-------------------------------------------
+    IF (test_plt) THEN BEGIN
+      ;; User has option to use cursor input
+      WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+        read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+        IF (read_out EQ 'debug') THEN STOP
+      ENDWHILE
+      ;; => Check if user wishes to quit
+      IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+      ;; => Check if user wishes to use the cursor
+      IF (read_out EQ 'y') THEN use_cursor = 1 ELSE use_cursor = 0
+    ENDIF ELSE BEGIN
+      ;; User cannot use cursor input
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+      use_cursor     = 0
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Prompt for new VCMAX
+    ;;-------------------------------------------
+    ;;====================================================================================
+    JUMP_COMMAND_VCMAX:
+    ;;====================================================================================
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0d0
+    IF (use_cursor) THEN BEGIN
+      ;;-------------------------------------------
+      ;; Trying with cursor input
+      ;;-------------------------------------------
+      ;; => Inform user of procedure
+      info_out       = beam_fit_gen_prompt(WINDN=win,PRO_OUT=cur_out,FORM_OUT=7)
+      ;; => Define plot scaling information
+      xscale         = plot_str.XSCALE
+      yscale         = plot_str.YSCALE
+      xfact          = plot_str.XFACT
+      yfact          = plot_str.YFACT
+      ;; => Find VCMAX
+      region         = region_cursor_select(XSCALE=xscale,YSCALE=yscale,WINDN=win[0],$
+                                            XFACT=xfact[0],YFACT=yfact[0])
+      IF (SIZE(region,/TYPE) NE 8) THEN BEGIN
+        ;; bad return => Use command line input
+        use_cursor = 0
+        GOTO,JUMP_COMMAND_VBEAM
+      ENDIF
+      ;; => Convert values into an estimate for VCMAX
+      vx_cra         = region.X_DATA
+      vy_cra         = region.Y_DATA
+      vxcmag         = TOTAL(vx_cra^2,/NAN)
+      vycmag         = TOTAL(vy_cra^2,/NAN)
+      vrcmag         = SQRT(vxcmag + vycmag)
+      ;; Check to see if <X>- and <Y>-values are close to each other
+      ;;   [i.e. are they within 25% of eachother]
+      ratio          = (vxcmag[0]/vycmag[0] GT 0.75) AND (vxcmag[0]/vycmag[0] lT 1.25)
+      ;;    If  |ratio - 1.0| < 0.25
+      ;;       A)  TRUE   :  Use Avg. between two components
+      ;;       B)  FALSE  :  Use larger of two components
+      vcmax          = (SQRT([(vxcmag[0] > vycmag[0]),MEAN([vxcmag[0],vycmag[0]],/NAN)]))[ratio]
+      def_val_str    = STRTRIM(STRING(vcmax[0],FORMAT='(f25.2)'),2L)
+      pro_out        = ["Your estimate for "+in_str[0]+" is:  "+def_val_str[0]+" km/s"]
+      ;; => Inform user of results
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+      ;;
+      ;;  Let calling routine determine if results are okay after plotting
+      ;;
+    ENDIF ELSE BEGIN
+      ;;-------------------------------------------
+      ;; User cannot use cursor => input
+      ;;-------------------------------------------
+      pro_out        = ["Enter a value for "+in_str[0]+" that is larger than "+vmin_str[0]+" km/s",$
+                        "and less than 75% of "+vmax_str[0]+" (or "+vmax_75_str[0]+") km/s."]
+      str_out        = "Enter a value for "+in_str[0]+" [km/s] for the mask (format = XXXX.xxx):  "
+      ;; => Set/Reset outputs
+      value_out      = 0.    ;; output value of decision
+      true = 1
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_str,FORM_OUT=5))
+        true           = (value_out[0] LT vmag_min[0]) OR (value_out[0] GT 0.75*vmag_max[0])
+      ENDWHILE
+      vcmax          = value_out[0]
+      def_val_str    = STRTRIM(STRING(vcmax[0],FORMAT='(f25.2)'),2L)
+      pro_out        = ["Your estimate for "+in_str[0]+" is:  "+def_val_str[0]+" km/s"]
+      ;; => Inform user of results
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+      ;;
+      ;;  Let calling routine determine if results are okay after plotting
+      ;;
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = vcmax[0]
+  END
+  7    :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  CH_VCMAX
+    ;;------------------------------------------------------------------------------------
+    ;; Call beam_fit_prompts.pro with N_VCMAX set
+    beam_fit_prompts,dat,/N_VCMAX,WINDN=windn,PLOT_STR=plot_str,READ_OUT=read_out
+    RETURN
+  END
+  8    :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  {V_BX, V_BY}
+    ;;------------------------------------------------------------------------------------
+    in_str         = "{V_BX, V_BY}"
+    IF KEYWORD_SET(v_bx) THEN BEGIN
+      def_valx_str   = STRTRIM(STRING(v_bx[0],FORMAT='(E25.3)'),2L)
+      tempx          = v_bx[0]
+    ENDIF ELSE BEGIN
+      def_valx_str   = STRTRIM(STRING(0d0,FORMAT='(E25.3)'),2L)
+      tempx          = 0d0
+    ENDELSE
+    IF KEYWORD_SET(v_by) THEN BEGIN
+      def_valy_str   = STRTRIM(STRING(v_by[0],FORMAT='(E25.3)'),2L)
+      tempy          = v_by[0]
+    ENDIF ELSE BEGIN
+      def_valy_str   = STRTRIM(STRING(0d0,FORMAT='(E25.3)'),2L)
+      tempy          = 0d0
+    ENDELSE
+    ;; Define string outputs for initial procedural information
+    pro_out_yp     = ["     You can define the values of "+in_str[0]+" using either the",$
+                      "command line input (format = XXXX.xxx) or your mouse cursor."]
+    pro_out_np     = ["     You can define the values of "+in_str[0]+" using the command",$
+                      "line input (format = XXXX.xxx) when prompted below."]
+    IF (test_plt) THEN pro_out = pro_out_yp ELSE pro_out = pro_out_np
+    ;; Define string outputs for cursor usage
+    cur_out        = ["     Select a point on the contour plot at the center of the",    $
+                      "'beam' peak region of the DF.  The routine will ask you if",      $
+                      "you like your estimate and if not, allow you to try again.",      $
+                      "The routine will then use the two values to estimate velocity",   $
+                      "components in the bulk flow frame.  This will then be converted", $
+                      "to GSE coordinates to be used as the 'beam' velocity in the",     $
+                      "spacecraft frame of reference.  Note that you should try to get", $
+                      "as close as possible to the center of the 'beam' peak for the",   $
+                      "best results."]
+    ;; Define prompt string
+    str_out        = "Do you wish to use the cursor to estimate "+in_str[0]+" (y/n):  "
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    ;;-------------------------------------------
+    ;; => Check if user can use the cursor
+    ;;-------------------------------------------
+    IF (test_plt) THEN BEGIN
+      ;; User has option to use cursor input
+      WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+        read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+        IF (read_out EQ 'debug') THEN STOP
+      ENDWHILE
+      ;; => Check if user wishes to quit
+      IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+      ;; => Check if user wishes to use the cursor
+      IF (read_out EQ 'y') THEN use_cursor = 1 ELSE use_cursor = 0
+    ENDIF ELSE BEGIN
+      ;; User cannot use cursor input
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+      use_cursor     = 0
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Prompt for new {V_BX, V_BY}
+    ;;-------------------------------------------
+    ;;====================================================================================
+    JUMP_COMMAND_VBEAM:
+    ;;====================================================================================
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0d0
+    IF (use_cursor) THEN BEGIN
+      ;;-------------------------------------------
+      ;; Trying with cursor input
+      ;;-------------------------------------------
+      ;; => Inform user of procedure
+      info_out       = beam_fit_gen_prompt(WINDN=win,PRO_OUT=cur_out,FORM_OUT=7)
+      ;; => Define plot scaling information
+      xscale         = plot_str.XSCALE
+      yscale         = plot_str.YSCALE
+      xfact          = plot_str.XFACT
+      yfact          = plot_str.YFACT
+      ;; => Find {V_BX, V_BY}
+      pk_struc       = beam_fit_cursor_select(XSCALE=xscale,YSCALE=yscale,WINDN=win[0],$
+                                              XFACT=xfact[0],YFACT=yfact[0])
+      IF (SIZE(pk_struc,/TYPE) NE 8) THEN BEGIN
+        ;; bad return => Use command line input
+        use_cursor = 0
+        GOTO,JUMP_COMMAND_VBEAM
+      ENDIF
+      ;; => Define an estimate for {V_BX, V_BY}
+      v_bx           = pk_struc.XY_DATA[0]
+      v_by           = pk_struc.XY_DATA[1]
+    ENDIF ELSE BEGIN
+      ;;-------------------------------------------
+      ;; User cannot use cursor input
+      ;;-------------------------------------------
+      pro_out        = ["     Enter a value for V_BX and V_BY [km/s] that is as close to the",$
+                        "center of the 'beam' peak as possible.  The values must be",$
+                        "< "+vmax_75_str[0]+" km/s for the fitting routines to work."]
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+      str_out        = "Enter a value for V_BX [km/s] (format = XXXX.xxx):  "
+      true           = 1
+      WHILE (true) DO BEGIN
+        value_out      = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5)
+        true           = (ABS(value_out[0]) GT 0.75*vmag_max[0])
+      ENDWHILE
+      ;; => Define V_BX
+      v_bx           = value_out[0]
+      ;; Reset outputs
+      value_out      = 0.    ;; output value for prompt
+      str_out        = "Enter a value for V_BY [km/s] (format = XXXX.xxx):  "
+      true           = 1
+      WHILE (true) DO BEGIN
+        value_out      = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5)
+        true      = (ABS(value_out[0]) GT 0.75*vmag_max[0])
+      ENDWHILE
+      ;; => Define V_BY
+      v_by           = value_out[0]
+    ENDELSE
+    ;; => Print out values
+    v_b_x_str      = STRTRIM(STRING(v_bx[0],FORMAT='(f25.2)'),2L)
+    v_b_y_str      = STRTRIM(STRING(v_by[0],FORMAT='(f25.2)'),2L)
+    pro_out        = ["Your estimate for V_BX is:  "+v_b_x_str[0]+" km/s","",$
+                      "Your estimate for V_BY is:  "+v_b_y_str[0]+" km/s"]
+    info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = [v_bx[0],v_by[0]]
+  END
+  9    :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  PLANE
+    ;;------------------------------------------------------------------------------------
+    in_str         = "PLANE"
+    ;; Define string outputs for procedural information
+    pro_out        = ["     You will now be asked which plane you wish to enter project",    $
+                      "the particle velocity distribution functions (DFs) onto.  If we",     $
+                      "assume we have two input vectors, V1 and V2, then the options are:",  $
+                      "  'xy'  :  horizontal axis parallel to V1 and plane normal to vector",$
+                      "             defined by (V1 x V2) [DEFAULT]",                         $
+                      "  'xz'  :  horizontal axis parallel to (V1 x V2) and vertical axis",  $
+                      "             parallel to V1",                                         $
+                      "  'yz'  :  horizontal axis defined by (V1 x V2) x V1 and vertical",   $
+                      "             axis parallel to (V1 x V2)"                              ]
+    str_out        = "Enter 'xy', 'xz', or 'yz' for the desired plane of projection:  "
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0d0
+    test           = (read_out NE 'xy') AND (read_out NE 'xz') AND $
+                     (read_out NE 'yz') AND (read_out NE 'q')
+    WHILE (test) DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      test           = (read_out NE 'xy') AND (read_out NE 'xz') AND $
+                       (read_out NE 'yz') AND (read_out NE 'q')
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Need to define/change FILE_MIDF
+    ;;-------------------------------------------
+    plane          = read_out[0]
+    IF KEYWORD_SET(ngrid) THEN BEGIN
+      def_val_str    = STRING(ngrid[0],FORMAT='(I2.2)')+'Grids_'
+    ENDIF ELSE BEGIN
+      def_val_str    = STRING(def_ngrid[0],FORMAT='(I2.2)')+'Grids_'
+    ENDELSE
+    CASE plane[0] OF
+      'xy'  :  file_midf = xy_suff[0]+def_val_str[0]
+      'xz'  :  file_midf = xz_suff[0]+def_val_str[0]
+      'yz'  :  file_midf = yz_suff[0]+def_val_str[0]
+    ENDCASE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = ['xy','xz','yz','zz'] EQ plane[0]
+  END
+  10   :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  FILL
+    ;;------------------------------------------------------------------------------------
+    in_str         = "FILL"
+    unit_suff      = "[cm^(-3) km^(-3) s^(3)]"
+    IF KEYWORD_SET(fill) THEN BEGIN
+      def_val_str    = STRTRIM(STRING(fill,FORMAT='(E15.2)'),2L)
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " = "+def_val_str[0]+" "+unit_suff[0]+"? (y/n):  "
+      temp           = fill[0]
+    ENDIF ELSE BEGIN
+      def_val_str    = STRTRIM(STRING(def_fill,FORMAT='(E15.2)'),2L)
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " = "+def_val_str[0]+" "+unit_suff[0]+"? (y/n):  "
+      temp           = def_fill[0]
+    ENDELSE
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Prompt for new FILL
+    ;;-------------------------------------------
+    IF KEYWORD_SET(dfmin) THEN df_low = dfmin[0] ELSE df_low = def_dfmin[0]
+    dfminstr = STRTRIM(STRING(df_low,FORMAT='(E15.2)'),2L)
+    ;; => Set/Reset outputs
+    value_out      = 0d0    ;; output value for prompt
+    IF (read_out EQ 'n') THEN BEGIN
+      str_out        = "Enter a value > 10^(-32) and < DFMIN [= "+dfminstr[0]+"]:  "
+      true           = 1
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5))
+        true           = (value_out LE 1d-32) OR (value_out GE df_low)
+      ENDWHILE
+      ;; => Define FILL
+      fill           = value_out[0]
+    ENDIF ELSE BEGIN
+      fill           = temp[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = fill[0]
+  END
+  11   :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  PERC_PK
+    ;;------------------------------------------------------------------------------------
+    in_str         = "PERC_PK"
+    unit_suff      = "%"
+    IF KEYWORD_SET(perc_pk) THEN BEGIN
+      def_val_str    = STRTRIM(STRING(perc_pk*1d2,FORMAT='(f15.2)'),2L)
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " = "+def_val_str[0]+unit_suff[0]+"? (y/n):  "
+      temp           = perc_pk[0]
+    ENDIF ELSE BEGIN
+      def_val_str    = STRTRIM(STRING(def_perc*1d2,FORMAT='(f15.2)'),2L)
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " = "+def_val_str[0]+unit_suff[0]+"? (y/n):  "
+      temp           = def_perc[0]
+    ENDELSE
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Prompt for new PERC_PK
+    ;;-------------------------------------------
+    ;; => Set/Reset outputs
+    value_out      = 0.    ;; output value of decision
+    IF (read_out EQ 'n') THEN BEGIN
+      str_out        = "Enter a value > 0.001 and < 0.90:  "
+      true           = 1
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5))
+        true           = (value_out LE 1d-3) OR (value_out GE 0.90)
+      ENDWHILE
+      ;; => Define PERC_PK
+      perc_pk        = value_out[0]
+    ENDIF ELSE BEGIN
+      perc_pk        = temp[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = perc_pk[0]
+  END
+  12   :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0L    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  NSMOOTH
+    ;;------------------------------------------------------------------------------------
+    in_str         = "NSMOOTH"
+    IF KEYWORD_SET(nsmooth) THEN BEGIN
+      def_val_str    = STRTRIM(STRING(nsmooth,FORMAT='(I2.2)'),2L)
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+"]? (y/n):  "
+      temp           = nsmooth[0]
+    ENDIF ELSE BEGIN
+      def_val_str    = STRTRIM(STRING(def_nsmth,FORMAT='(I2.2)'),2L)
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+"]? (y/n):  "
+      temp           = def_nsmth[0]
+    ENDELSE
+    ;; Define string outputs for procedural information
+    pro_out        = ["     You will now be asked if you wish to smooth the contour and",    $
+                      "cuts of the particle velocity distribution functions (DFs).  I",      $
+                      "recommend smoothing the cuts but not the contours any more than the", $
+                      "minimum amount designated by SMOOTH.  The SM_CUTS keyword determines",$
+                      "if the routines smooth the cuts and the SM_CONT keyword determines",  $
+                      "if the routines smooth the contours.  The NSMOOTH defines the number",$
+                      "of points to use in SMOOTH [Width parameter in routine] for each."    ]
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Prompt for new NSMOOTH
+    ;;-------------------------------------------
+    ;; => Set/Reset outputs
+    value_out      = 0L    ;; output value for prompt
+    ;; Define prompt string
+    str_out        = "Enter an integer > 2 and < 10:  "
+    IF (read_out EQ 'n') THEN BEGIN
+      true           = (value_out LE 2) OR (value_out GE 10)
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=3))
+        true           = (value_out LE 2) OR (value_out GE 10)
+      ENDWHILE
+      ;; => Define NSMOOTH
+      nsmooth        = value_out[0]
+    ENDIF ELSE BEGIN
+      nsmooth        = temp[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = nsmooth[0]
+  END
+  13   :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0L    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  SM_CONT
+    ;;------------------------------------------------------------------------------------
+    in_str         = "SM_CONT"
+    IF KEYWORD_SET(sm_cont) THEN BEGIN
+      def_val_str    = (["FALSE","TRUE"])[sm_cont[0]]
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+"]? (y/n):  "
+      temp           = sm_cont[0]
+    ENDIF ELSE BEGIN
+      def_val_str    = (["FALSE","TRUE"])[0]
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+"]? (y/n):  "
+      temp           = 0
+    ENDELSE
+    ;; Define string outputs for procedural information
+    pro_out        = ["     You will now be asked if you wish to smooth the contour and",    $
+                      "cuts of the particle velocity distribution functions (DFs).  I",      $
+                      "recommend smoothing the cuts but not the contours any more than the", $
+                      "minimum amount designated by SMOOTH.  The SM_CUTS keyword determines",$
+                      "if the routines smooth the cuts and the SM_CONT keyword determines",  $
+                      "if the routines smooth the contours.  The NSMOOTH defines the number",$
+                      "of points to use in SMOOTH [Width parameter in routine] for each."    ]
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Prompt for new SM_CONT
+    ;;-------------------------------------------
+    ;; Define prompt string
+    str_out        = "Do you wish to smooth the contours of the DFs (y/n):  "
+    IF (read_out EQ 'n') THEN BEGIN
+      ;; => Set/Reset outputs
+      read_out       = ''    ;; output value of decision
+      WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+        read_out       = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=7)
+        IF (read_out EQ 'debug') THEN STOP
+      ENDWHILE
+      IF (read_out EQ 'y') THEN sm_cont = 1 ELSE sm_cont = 0
+    ENDIF ELSE BEGIN
+      sm_cont        = temp[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = sm_cont[0]
+  END
+  14   :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0L    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  SM_CUTS
+    ;;------------------------------------------------------------------------------------
+    in_str         = "SM_CUTS"
+    IF KEYWORD_SET(sm_cuts) THEN BEGIN
+      def_val_str    = (["FALSE","TRUE"])[sm_cuts[0]]
+      str_out        = "Do you wish to keep the current value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+"]? (y/n):  "
+      temp           = sm_cuts[0]
+    ENDIF ELSE BEGIN
+      def_val_str    = (["FALSE","TRUE"])[0]
+      str_out        = "Do you wish to use the default value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+"]? (y/n):  "
+      temp           = 0
+    ENDELSE
+    ;; Define string outputs for procedural information
+    pro_out        = ["     You will now be asked if you wish to smooth the contour and",    $
+                      "cuts of the particle velocity distribution functions (DFs).  I",      $
+                      "recommend smoothing the cuts but not the contours any more than the", $
+                      "minimum amount designated by SMOOTH.  The SM_CUTS keyword determines",$
+                      "if the routines smooth the cuts and the SM_CONT keyword determines",  $
+                      "if the routines smooth the contours.  The NSMOOTH defines the number",$
+                      "of points to use in SMOOTH [Width parameter in routine] for each."    ]
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+      read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;; => Check if user wishes to quit
+    IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+    ;;-------------------------------------------
+    ;; => Prompt for new SM_CUTS
+    ;;-------------------------------------------
+    ;; Define prompt string
+    str_out        = "Do you wish to smooth the cuts of the DFs (y/n):  "
+    IF (read_out EQ 'n') THEN BEGIN
+      ;; => Set/Reset outputs
+      read_out       = ''    ;; output value of decision
+      WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+        read_out       = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=7)
+        IF (read_out EQ 'debug') THEN STOP
+      ENDWHILE
+      IF (read_out EQ 'y') THEN sm_cuts = 1 ELSE sm_cuts = 0
+    ENDIF ELSE BEGIN
+      sm_cuts        = temp[0]
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = sm_cuts[0]
+  END
+  15   :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  VB_REG
+    ;;------------------------------------------------------------------------------------
+    in_str         = "VB_REG"
+    ;; Define string outputs for initial procedural information
+    pro_out        = ["     You can define the rectangular region using either the",$
+                      "command line input (format = XXXX.xxx) or your mouse cursor."]
+    
+    ;; Define string outputs for cursor usage
+    cur_out        = ["     Select a point on the contour plot at the lower-left-hand",$
+                      "corner of a rectangle that would encompass the entire 'beam'",$
+                      "region of the DF.  Then select a point at the upper-right-hand",$
+                      "corner to complete the imaginary rectangular area.  The routine",$
+                      "will then use these values to create a new mask to isolate the",$
+                      "'beam' in the bulk flow frame.",$
+                      "     Note that you should try to get as much of the 'beam'",$
+                      "without including any side lobes or extra gyrating ions."]
+    ;; check if VB_REG is defined so we can keep track of old values
+    IF (N_ELEMENTS(vb_reg) EQ 4) THEN BEGIN
+      vb_reg_x0      = vb_reg[0]
+      vb_reg_x1      = vb_reg[2]
+      vb_reg_y0      = vb_reg[1]
+      vb_reg_y1      = vb_reg[3]
+    ENDIF ELSE BEGIN
+      vb_reg_x0      = 0d0
+      vb_reg_x1      = 0d0
+      vb_reg_y0      = 0d0
+      vb_reg_y1      = 0d0
+    ENDELSE
+    ;;------------------------------------------------------------------------------------
+    ;; => Inform user of procedure
+    ;;------------------------------------------------------------------------------------
+    info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+    ;;------------------------------------------------------------------------------------
+    ;; => Check if user can use the cursor
+    ;;------------------------------------------------------------------------------------
+    IF (test_plt) THEN BEGIN
+      str_out        = "Do you wish to use the cursor to define the rectangular region (y/n):  "
+      pro_out        = ["[Type 'q' to quit at any time]"]
+      WHILE (read_out NE 'y' AND read_out NE 'n' AND read_out NE 'q') DO BEGIN
+        read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      ENDWHILE
+      ;; => Check if user wishes to quit
+      IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+      ;; => Check if user wishes to use the cursor
+      IF (read_out EQ 'y') THEN use_cursor = 1 ELSE use_cursor = 0
+    ENDIF ELSE BEGIN
+      ;; Use command line input
+      use_cursor = 0
+    ENDELSE
+    ;; Reset outputs
+    read_out       = ''    ;; output value of decision
+    IF (use_cursor) THEN BEGIN
+      ;; Use cursor
+      ;;----------------------------------------------------------------------------------
+      ;; => Inform user of procedure
+      ;;----------------------------------------------------------------------------------
+      info_out       = beam_fit_gen_prompt(PRO_OUT=cur_out,FORM_OUT=7)
+      ;; => Define plot scaling information
+      xscale         = plot_str.XSCALE
+      yscale         = plot_str.YSCALE
+      xfact          = plot_str.XFACT
+      yfact          = plot_str.YFACT
+      ;;----------------------------------------------------------------------------------
+      ;; => Find VB_REG
+      ;;----------------------------------------------------------------------------------
+      region         = region_cursor_select(XSCALE=xscale,YSCALE=yscale,WINDN=win[0],$
+                                            XFACT=xfact[0],YFACT=yfact[0])
+      IF (SIZE(region,/TYPE) NE 8) THEN BEGIN
+        ;; bad return => Use command line input
+        use_cursor = 0
+        GOTO,JUMP_COMMAND_VBEAM
+      ENDIF
+      ;;----------------------------------------------------------------------------------
+      ;; => Define [X0,Y0,X1,Y1]
+      ;;----------------------------------------------------------------------------------
+      vb_reg_x0      = region.X_DATA[0]
+      vb_reg_x1      = region.X_DATA[1]
+      vb_reg_y0      = region.Y_DATA[0]
+      vb_reg_y1      = region.Y_DATA[1]
+      rectangle      = [vb_reg_x0[0],vb_reg_y0[0],vb_reg_x1[0],vb_reg_y1[0]]
+      rectangle_str  = STRTRIM(STRING(rectangle,FORMAT='(f25.2)'),2L)
+      rec_str_out    = STRING(rectangle_str,FORMAT='("[",a,", ",a,", ",a,", ",a,"]")')
+      pro_out        = ["Your estimate [X0,Y0,X1,Y1] is:  "+rec_str_out[0]+" km/s"]
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+    ENDIF ELSE BEGIN
+      ;;------------------------------------------------------------------------------------
+      ;; Use command line input
+      ;;------------------------------------------------------------------------------------
+      pro_out        = ["     Enter the values for the corners of the rectangular region encompassing",$
+                        "the entire 'beam'."]
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+      ;; Define defaults
+      suff_out       = ['0','1']+', km/s] (format = XXXX.xxx):  '
+      xy_strout      = ["X","Y"]
+      pref_out       = "Enter the "+xy_strout+"-value for the "
+      midf_out       = ["lower-left-hand  ","upper-right-hand "]+"corner ["
+      ;; Define prompt string
+      str_out        = pref_out[0]+midf_out[0]+xy_strout[0]+suff_out[0]
+      true           = 1
+      WHILE (true) DO BEGIN
+        value_out      = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5)
+        true      = (ABS(value_out[0]) GT 0.75*vmag_max[0])
+      ENDWHILE
+      ;; => Define X0
+      vb_reg_x0      = value_out[0]
+      ;; Reset outputs
+      true           = 1
+      ;; Define prompt string
+      str_out        = pref_out[1]+midf_out[0]+xy_strout[1]+suff_out[0]
+      WHILE (true) DO BEGIN
+        value_out      = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5)
+        true      = (ABS(value_out[0]) GT 0.75*vmag_max[0])
+      ENDWHILE
+      ;; => Define Y0
+      vb_reg_y0      = value_out[0]
+      ;; Reset outputs
+      true           = 1
+      ;; Define prompt string
+      str_out        = pref_out[0]+midf_out[1]+xy_strout[0]+suff_out[1]
+      WHILE (true) DO BEGIN
+        value_out      = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5)
+        true      = (ABS(value_out[0]) GT 0.75*vmag_max[0])
+      ENDWHILE
+      ;; => Define X1
+      vb_reg_x1      = value_out[0]
+      ;; Reset outputs
+      true           = 1
+      ;; Define prompt string
+      str_out        = pref_out[1]+midf_out[1]+xy_strout[1]+suff_out[1]
+      WHILE (true) DO BEGIN
+        value_out      = beam_fit_gen_prompt(STR_OUT=str_out,FORM_OUT=5)
+        true      = (ABS(value_out[0]) GT 0.75*vmag_max[0])
+      ENDWHILE
+      ;; => Define Y1
+      vb_reg_y1      = value_out[0]
+      ;;----------------------------------------------------------------------------------
+      ;; => Define [X0,Y0,X1,Y1]
+      ;;----------------------------------------------------------------------------------
+      rectangle      = [vb_reg_x0[0],vb_reg_y0[0],vb_reg_x1[0],vb_reg_y1[0]]
+    ENDELSE
+    ;; => Define VB_REG
+    vb_reg         = rectangle
+    ;;--------------------------------------------------------------------------------------
+    ;; => Define output
+    ;;--------------------------------------------------------------------------------------
+    value_out      = vb_reg
+  END
+  16   :  BEGIN
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+    ;;------------------------------------------------------------------------------------
+    ;; => Change/Initialize keyword:  VBMAX
+    ;;------------------------------------------------------------------------------------
+    in_str         = "VBMAX"
+    IF KEYWORD_SET(vbmax) THEN BEGIN
+      def_val_str    = STRTRIM(STRING(vbmax,FORMAT='(f25.2)'),2L)
+      str_out        = "Do you wish to change the current value of "+in_str[0]+$
+                       " [= "+def_val_str[0]+" km/s]? (y/n):  "
+      ;; Define string outputs for initial procedural information
+      pro_out        = ["The variable "+in_str[0]+" is already defined.  You will be",$
+                        "asked whether you wish to change this value or not.  If not,",$
+                        "the routine will simply return, otherwise it will ask you to",$
+                        "change the value either using the mouse cursor or command line",$
+                        "input.","","[Type 'q' to quit at any time]"]
+      ;; => Set/Reset outputs
+      read_out       = ''    ;; output value of decision
+      WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+        read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+        IF (read_out EQ 'debug') THEN STOP
+      ENDWHILE
+      ;; Leave unless user wishes to change the current setting
+      IF (read_out NE 'y') THEN GOTO,JUMP_RETURN
+    ENDIF
+    ;; Define string outputs for initial procedural information
+    pro_out_yp     = ["     You can define the value of "+in_str[0]+" using either the command line",$
+                      "input (format = XXXX.xxx) or your mouse cursor."]
+    pro_out_np     = ["     You can define the value of "+in_str[0]+" using the command line input",$
+                      "(format = XXXX.xxx) when prompted below."]
+    ;; Define string outputs for cursor usage
+    cur_out        = ["     Select a point on the contour plot at the lower-left-hand",$
+                      "corner of a rectangle that would encompass the entire 'beam'",  $
+                      "region of the DF.  Then select a point at the upper-right-hand",$
+                      "corner of the same imaginary rectangular area.  The routine",   $
+                      "will then use the two values to estimate a speed that will",    $
+                      "be used to create a circular region, centered on the 'beam'",   $
+                      "in the 'core' bulk flow frame.  If the user likes the result",  $
+                      "the routine will isolate the beam using a mask to remove",$
+                      "all points outside of the circle.  Then it will prompt the user",$
+                      "to see if they like results.  If they do, the routine will",$
+                      "transform the remaining data into the 'beam' frame.","",$
+                      "Note:  The remaining contours of the end result will be outside",$
+                      "the circle projected onto the contour plot due to rotation,",$
+                      "translation, and averaging technique used by the beam masking",$
+                      "routine."]
+    ;; Determine whether user can even use the cursor
+    ;;   [i.e. is there a window display present]
+    IF (test_plt) THEN pro_out = pro_out_yp ELSE pro_out = pro_out_np
+    ;; Define prompt string
+    str_out        = "To use the cursor to estimate "+in_str[0]+" type 'c', otherwise type 'r':  "
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    ;;-------------------------------------------
+    ;; => Check if user can use the cursor
+    ;;-------------------------------------------
+    IF (test_plt) THEN BEGIN
+      ;; User has option to use cursor input
+      WHILE (read_out NE 'c' AND read_out NE 'r' AND read_out NE 'q') DO BEGIN
+        read_out       = beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+        IF (read_out EQ 'debug') THEN STOP
+      ENDWHILE
+      ;; => Check if user wishes to quit
+      IF (read_out EQ 'q') THEN GOTO,JUMP_RETURN
+      ;; => Check if user wishes to use the cursor
+      IF (read_out EQ 'c') THEN use_cursor = 1 ELSE use_cursor = 0
+    ENDIF ELSE BEGIN
+      ;; User cannot use cursor input
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+      use_cursor     = 0
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Prompt for new VBMAX
+    ;;-------------------------------------------
+    ;;====================================================================================
+    JUMP_COMMAND_VBMAX:
+    ;;====================================================================================
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0d0
+    IF (use_cursor) THEN BEGIN
+      ;;-------------------------------------------
+      ;; Trying with cursor input
+      ;;-------------------------------------------
+      ;; => Inform user of procedure
+      info_out       = beam_fit_gen_prompt(WINDN=win,PRO_OUT=cur_out,FORM_OUT=7)
+      ;; => Define plot scaling information
+      xscale         = plot_str.XSCALE
+      yscale         = plot_str.YSCALE
+      xfact          = plot_str.XFACT
+      yfact          = plot_str.YFACT
+      ;; => Find VBMAX
+      region         = region_cursor_select(XSCALE=xscale,YSCALE=yscale,WINDN=win[0],$
+                                            XFACT=xfact[0],YFACT=yfact[0])
+      IF (SIZE(region,/TYPE) NE 8) THEN BEGIN
+        ;; bad return => Use command line input
+        use_cursor = 0
+        GOTO,JUMP_COMMAND_VBEAM
+      ENDIF
+      ;; => Convert values into an estimate for VBMAX
+      vx_cra         = region.X_DATA
+      vy_cra         = region.Y_DATA
+      vxcmag         = TOTAL(vx_cra^2,/NAN)
+      vycmag         = TOTAL(vy_cra^2,/NAN)
+      vrcmag         = SQRT(vxcmag + vycmag)
+      ;; Check to see if <X>- and <Y>-values are close to each other
+      ;;   [i.e. are they within 25% of eachother]
+      ratio          = (vxcmag[0]/vycmag[0] GT 0.75) AND (vxcmag[0]/vycmag[0] lT 1.25)
+      ;;    If  |ratio - 1.0| < 0.25
+      ;;       A)  TRUE   :  Use Avg. between two components
+      ;;       B)  FALSE  :  Use larger of two components
+      vbmax          = (SQRT([(vxcmag[0] > vycmag[0]),MEAN([vxcmag[0],vycmag[0]],/NAN)]))[ratio]
+      def_val_str    = STRTRIM(STRING(vbmax[0],FORMAT='(f25.2)'),2L)
+      pro_out        = ["Your estimate for "+in_str[0]+" is:  "+def_val_str[0]+" km/s"]
+      ;; => Inform user of results
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+      ;;
+      ;;  Let calling routine determine if results are okay after plotting
+      ;;
+    ENDIF ELSE BEGIN
+      ;;-------------------------------------------
+      ;; User cannot use cursor => input
+      ;;-------------------------------------------
+      pro_out        = ["Enter a value for "+in_str[0]+" that is larger than "+         $
+                        vmax_12_str[0]+" km/s","and less than 75% of "+vmax_str[0]+     $
+                        " (or "+vmax_75_str[0]+") km/s.","","",                         $
+                        "Note:  The remaining contours of the end result will be",      $
+                        "outside the circle projected onto the contour plot due to",    $
+                        "rotation, translation, and averaging technique used by the",   $
+                        "beam masking routine.  However, I recommend choosing a value", $
+                        "that is slightly larger than the beam for more points to use", $
+                        "in the fitting routine."]
+      str_out        = "Enter a value for "+in_str[0]+$
+                       " [km/s] that will encompass the entire 'beam' "+$
+                       "(format = XXXX.xxx):  "
+      ;; => Set/Reset outputs
+      value_out      = 0.    ;; output value of decision
+      true = 1
+      WHILE (true) DO BEGIN
+        value_out      = ABS(beam_fit_gen_prompt(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=5))
+        true           = (value_out[0] LT vmag_12_max[0]) OR (value_out[0] GT 0.75*vmag_max[0])
+        IF (value_out[0] LT vmag_12_max[0])   THEN badout = 'Please enter a larger value'
+        IF (value_out[0] GT 0.75*vmag_max[0]) THEN badout = 'Please enter a smaller value'
+        IF (true) THEN PRINT,badout[0]
+      ENDWHILE
+      vbmax          = value_out[0]
+      def_val_str    = STRTRIM(STRING(vbmax[0],FORMAT='(f25.2)'),2L)
+      pro_out        = ["Your estimate for "+in_str[0]+" is:  "+def_val_str[0]+" km/s"]
+      ;; => Inform user of results
+      info_out       = beam_fit_gen_prompt(PRO_OUT=pro_out,FORM_OUT=7)
+      ;;
+      ;;  Let calling routine determine if results are okay after plotting
+      ;;
+    ENDELSE
+    ;;-------------------------------------------
+    ;; => Define output
+    ;;-------------------------------------------
+    value_out      = vbmax[0]
+  END
+  ELSE  :  BEGIN
+    ;; => Obsolete Keyword or incorrect input
+    ;; => Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    value_out      = 0.    ;; output value for prompt
+  END
+ENDCASE
+;;========================================================================================
+JUMP_RETURN:
+;;========================================================================================
+
+;;----------------------------------------------------------------------------------------
+;; => Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+

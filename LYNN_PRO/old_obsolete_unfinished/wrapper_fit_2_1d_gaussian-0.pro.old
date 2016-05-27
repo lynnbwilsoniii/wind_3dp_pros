@@ -1,0 +1,478 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   init_fit_1dgauss_param.pro
+;  PURPOSE  :   This routines initializes the PARINFO input for mpfitfun.pro if the
+;                 user did not specify on input.
+;
+;  CALLED BY:   
+;               wrapper_fit_2_1d_gaussian.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               FX         :  [N]-Element array of dependent variable values or
+;                               F(X)
+;               PARAM      :  [6]-Element array containing the following initialization
+;                               quantities for the model (see above):
+;                                 PARAM[0] = Normalization amplitude [Ao]
+;                                 PARAM[1] = X-offset [Xo]
+;                                 PARAM[2] = Standard Deviation [∆]
+;                                 PARAM[3] = *** Not Used Here ***
+;                                 PARAM[4] = *** Not Used Here ***
+;                                 PARAM[5] = *** Not Used Here ***
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***       DIRECT  INPUTS       ***
+;               **********************************
+;               TIE_FO     :  If set, routine will tie ∆ and Ao together through the
+;                               following relation:
+;                                 Ao = Fo * [2π∆^2]^(1/2)
+;                               [Default:  TRUE]
+;               XO_RANGE   :  [2]-Element array defining the [Min,Max] values to allow
+;                               MPFITFUN.PRO to use for PARAM[1] or Xo
+;               DX_RANGE   :  [2]-Element array defining the [Min,Max] values to allow
+;                               MPFITFUN.PRO to use for PARAM[2] or ∆
+;               FO_VAL     :  Scalar [double/float] defining the value of Fo to force as
+;                               a fixed value in the fit evaluation.  This is useful if
+;                               the value of Fo can be found more easily than Ao.
+;                               [Default:  MAX(ABS(FX),/NAN)]
+;               TOT_AMP    :  If set, routine assumes that PARAM[0] corresponds to the
+;                               total peak Gaussian amplitude, i.e., = Ao/[2π∆^2]^(1/2)
+;                               => routine determines Ao and re-calls itself
+;                               [Default = FALSE]
+;               **********************************
+;               ***  INPUTS FOR MPFITFUN.PRO   ***
+;               **********************************
+;               ERROR      :  [N]-Element array of standard errors for the Gaussian
+;                               values, F(X) <--> "measured" 1-sigma uncertainties
+;                               [Default = 1% of F(X)]
+;               PARINFO    :  [3]-Element array [structure] where the i-th contains
+;                               the following tags and definitions:
+;                                 VALUE    =  Scalar value defined by PARAM[i]
+;                                 FIXED    =  TRUE   -->  parameter constrained
+;                                                         (i.e., no variation allowed)
+;                                             FALSE  -->  parameter unconstrained
+;                                 LIMITED  =  [2]-Element defining the lower/upper
+;                                             bound on PARAM[i]
+;                                 LIMITS   =  [2]-Element defining the if the lower/upper
+;                                             bound defined by LIMITED is imposed(TRUE)
+;                                             otherwise LIMITS has no effect
+;                                 TIED     =  Scalar [string] that should not be changed
+;                                             by user
+;               WEIGHTS    :  [N]-Element array of weights to be used in calculating the
+;                               chi-squared value.  Example inputs include:
+;                                 1/ERROR^2  -->  Normal weighting
+;                                                   (i.e., ERROR is measurement error)
+;                                 1/ERROR    -->  Poisson weighting
+;                                                   (i.e., counting statistics)
+;                                 1          -->  Unweighted
+;                               [Default:  1/ERROR^2]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  01/22/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  01/22/2014   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION init_fit_1dgauss_param,fx,param,TIE_FO=tie_fo,XO_RANGE=xo_range,   $
+                          DX_RANGE=dx_range,FO_VAL=fo_val,TOT_AMP=tot_amp,  $
+                          ERROR=error,PARINFO=parinfo,WEIGHTS=weights
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+tags           = ['FO','ERROR','WEIGHTS','PARINFO']
+dumb           = {VALUE:0d0,FIXED:0b,LIMITED:[0b,0b],LIMITS:[0d0,0d0],TIED:''}
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() NE 2)
+IF (test) THEN BEGIN
+  RETURN,0
+ENDIF
+;;  Define values related to required input
+ff             = REFORM(fx)
+nf             = N_ELEMENTS(ff)
+np             = N_ELEMENTS(param)
+;;  Define a default/dummy PARINFO structure
+def_pinfo      = REPLICATE(dumb[0],np)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords  (DIRECT  INPUTS)
+;;----------------------------------------------------------------------------------------
+;;  Check TIE_FO
+test           = (N_ELEMENTS(tie_fo) EQ 0) OR ~KEYWORD_SET(tie_fo)
+IF (test) THEN tied_fo = 0 ELSE tied_fo = 1
+;;  Check XO_RANGE
+test           = (N_ELEMENTS(xo_range) EQ 2)
+IF (test) THEN BEGIN
+  xo_r   = 1
+  xo_ran = REFORM(xo_range)
+ENDIF ELSE BEGIN
+  xo_r   = 0
+  xo_ran = REPLICATE(d,2)
+ENDELSE
+;;  Check DX_RANGE
+test           = (N_ELEMENTS(dx_range) EQ 2)
+IF (test) THEN BEGIN
+  dx_r   = 1
+  dx_ran = REFORM(dx_range)
+ENDIF ELSE BEGIN
+  dx_r   = 0
+  dx_ran = REPLICATE(d,2)
+ENDELSE
+;;  Check FO_VAL
+test           = (N_ELEMENTS(fo_val) EQ 0)
+IF (test) THEN BEGIN
+  fo     = MAX(ABS(ff),/NAN)
+  fo_set = 0
+ENDIF ELSE BEGIN
+  fo     = fo_val[0]
+  fo_set = 1
+ENDELSE
+;;  Check TOT_AMP
+test           = (N_ELEMENTS(tot_amp) NE 0) AND KEYWORD_SET(tot_amp)
+IF (test) THEN BEGIN
+  ;;  User knows Fo
+  IF (fo_set) THEN fmax = fo[0] ELSE fmax = param[0]
+  var   = param[2]^2
+  Ao    = fo[0]*SQRT(2d0*!DPI*var[0])
+  ;;  Redefine PARAM
+  param[0] = Ao[0]
+ENDIF
+;;  Define TIED string for PARAM[0]
+fostr          = STRTRIM(STRING(fo[0],FORMAT='(g15.5)'),2L)
+IF (tied_fo) THEN tstr = fostr[0]+'*SQRT(2d0*!DPI*P[2]^2)' ELSE tstr = ''
+
+;;----------------------------------------------------------------------------------------
+;;  Check keywords  (INPUTS FOR MPFITFUN.PRO)
+;;----------------------------------------------------------------------------------------
+;;  Check ERROR
+test           = (N_ELEMENTS(error) EQ 0) OR ~KEYWORD_SET(error)
+IF (test) THEN BEGIN
+  ;;  No errors supplied => use 1% of F(X) as default
+  yerr = 1d-2*ff
+ENDIF ELSE BEGIN
+  yerr = REFORM(error)
+  ;;  Check format of input
+  test = (N_ELEMENTS(yerr) NE nf)
+  IF (test) THEN yerr = 1d-2*ff
+ENDELSE
+;;  Check WEIGHTS
+test           = (N_ELEMENTS(weights) EQ 0) OR ~KEYWORD_SET(weights)
+IF (test) THEN BEGIN
+  ;;  No weighting supplied => Normal weighting
+  ywts = 1d0/yerr^2
+ENDIF ELSE BEGIN
+  ywts = REFORM(weights)
+  ;;  Check format of input
+  test = (N_ELEMENTS(ywts) NE nf)
+  IF (test) THEN ywts = 1d0/yerr^2
+ENDELSE
+;;  Check PARINFO
+szpi           = SIZE(parinfo,/TYPE)
+test           = (N_ELEMENTS(parinfo) EQ 0) OR ~KEYWORD_SET(parinfo) OR $
+                 (szpi[0] NE 8L)
+IF (test) THEN BEGIN
+  ;;  No PARINFO structure supplied => Use default
+  pinfo = def_pinfo
+ENDIF ELSE BEGIN
+  pinfo = parinfo
+  ;;  Check format of input
+  test = TOTAL(SIZE(pinfo) NE SIZE(def_pinfo)) EQ 0
+  IF (test) THEN BEGIN
+    ;;  Incorrect format => use default
+    pinfo = def_pinfo
+  ENDIF
+ENDELSE
+;;  Initialize PARINFO values
+pinfo.VALUE    = param
+;;  Alter PARINFO values if desired
+pinfo[0].TIED  = tstr[0]
+IF (xo_r) THEN BEGIN
+  pinfo[1].LIMITED[*] = 1b
+  pinfo[1].LIMITS[*]  = xo_ran
+ENDIF
+IF (dx_r) THEN BEGIN
+  pinfo[2].LIMITED[*] = 1b
+  pinfo[2].LIMITS[*]  = dx_ran
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define return structure
+;;----------------------------------------------------------------------------------------
+tags           = ['FO','ERROR','WEIGHTS','PARINFO']
+struct         = CREATE_STRUCT(tags,fo,yerr,ywts,pinfo)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   wrapper_fit_2_1d_gaussian.pro
+;  PURPOSE  :   This is a wrapping routine for mpfitfun.pro and gaussian_1d.pro.  The
+;                 routine takes an input distribution, F(X), and a set of initial
+;                 parameter guesses, PARAM, then performs a Levenberg-Marquardt
+;                 least-squares fit to the model function, FUNC.
+;
+;                 The default model function (see gaussian_1d.pro) is defined as:
+;
+;                                               (X - Xo)^2
+;                                            - ------------
+;                                 Ao              2 ∆^2
+;                   F(X) = --------------- e
+;                           [2π∆^2]^(1/2)
+;
+;                 where the Gaussian amplitude is defined as Fo = Ao * [2π∆^2]^(-1/2)
+;                 and the Full Width at Half Maximum (FWHM) is defined as:
+;                   FWHM^2 = ∆^2 * (8 ln|2|).
+;
+;                 A physical example would be a one-dimensional Maxwellian where:
+;                   X      -->  V      [i.e., velocity]
+;                   Xo     -->  Vo     [i.e., drift speed]
+;                   2 ∆^2  -->  Vth^2  [i.e., thermal speed = most probable speed]
+;                   Ao     -->  No     [i.e., particle number density]
+;
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               init_fit_1dgauss_param.pro
+;               mpfitfun.pro
+;               gaussian_1d.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               XX         :  [N]-Element array of independent variable values or
+;                               abscissa for F [e.g., X_j in F(X_j)]
+;               FX         :  [N]-Element array of dependent variable values or
+;                               F(X)
+;               PARAM      :  [6]-Element array containing the following initialization
+;                               quantities for the model (see above):
+;                                 PARAM[0] = Normalization amplitude [Ao]
+;                                 PARAM[1] = X-offset [Xo]
+;                                 PARAM[2] = Standard Deviation [∆]
+;                                 PARAM[3] = *** Not Used Here ***
+;                                 PARAM[4] = *** Not Used Here ***
+;                                 PARAM[5] = *** Not Used Here ***
+;               FUNC       :  Scalar string defining the function to use for creating
+;                               model distributions
+;                               [Default = 'gaussian_1d']
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***       DIRECT  INPUTS       ***
+;               **********************************
+;               FILL       :  Scalar [float/double] defining the lowest possible values
+;                               to consider and the value to use for replacing zeros
+;                               and NaNs
+;                               [Default = 0.00000001% of Fo]
+;               TIE_FO     :  If set, routine will tie ∆ and Ao together through the
+;                               following relation:
+;                                 Ao = Fo * [2π∆^2]^(1/2)
+;                               [Default:  TRUE]
+;               XO_RANGE   :  [2]-Element array defining the [Min,Max] values to allow
+;                               MPFITFUN.PRO to use for PARAM[1] or Xo
+;               DX_RANGE   :  [2]-Element array defining the [Min,Max] values to allow
+;                               MPFITFUN.PRO to use for PARAM[2] or ∆
+;               FO_VAL     :  Scalar [double/float] defining the value of Fo to force as
+;                               a fixed value in the fit evaluation.  This is useful if
+;                               the value of Fo can be found more easily than Ao.
+;                               [Default:  MAX(ABS(FX),/NAN)]
+;               QUIET      :  If set, routine will not print out each set of parameter
+;                               solutions for the model distribution functions
+;                               [Note:  Not the keyword used by MPFITFUN.PRO]
+;               TOT_AMP    :  If set, routine assumes that PARAM[0] corresponds to the
+;                               total peak Gaussian amplitude, i.e., = Ao/[2π∆^2]^(1/2)
+;                               => routine determines Ao and re-calls itself
+;                               [Default = FALSE]
+;               **********************************
+;               ***  INPUTS FOR MPFITFUN.PRO   ***
+;               **********************************
+;               ERROR      :  [N]-Element array of standard errors for the Gaussian
+;                               values, F(X) <--> "measured" 1-sigma uncertainties
+;                               [Default = 1% of F(X)]
+;               PARINFO    :  [3]-Element array [structure] where the i-th contains
+;                               the following tags and definitions:
+;                                 VALUE    =  Scalar value defined by PARAM[i]
+;                                 FIXED    =  TRUE   -->  parameter constrained
+;                                                         (i.e., no variation allowed)
+;                                             FALSE  -->  parameter unconstrained
+;                                 LIMITED  =  [2]-Element defining the lower/upper
+;                                             bound on PARAM[i]
+;                                 LIMITS   =  [2]-Element defining the if the lower/upper
+;                                             bound defined by LIMITED is imposed(TRUE)
+;                                             otherwise LIMITS has no effect
+;                                 TIED     =  Scalar [string] that should not be changed
+;                                             by user
+;               WEIGHTS    :  [N]-Element array of weights to be used in calculating the
+;                               chi-squared value.  Example inputs include:
+;                                 1/ERROR^2  -->  Normal weighting
+;                                                   (i.e., ERROR is measurement error)
+;                                 1/ERROR    -->  Poisson weighting
+;                                                   (i.e., counting statistics)
+;                                 1          -->  Unweighted
+;                               [Default:  1/ERROR^2]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Be careful which parameters you constrain...
+;               2)  See also:  MPFITFUN.PRO and MPFIT.PRO
+;               3)  Set the FO_VAL keyword if you only know the absolute peak value,
+;                     Fo = Ao * [2π∆^2]^(-1/2), of the distribution defined by FX
+;                       -->  Can be very useful when dealing with real data
+;               4)  If you use a different FUNC that has a different number of elements
+;                     in PARAM, you will need to alter this routine!
+;               5)  The DIRECT INPUTS keywords will override the MPFITFUN.PRO keywords
+;                     if set correctly.
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  01/22/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  01/22/2014   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION wrapper_fit_2_1d_gaussian,xx,fx,param,func,                                    $
+                          FILL=fill,TIE_FO=tie_fo,XO_RANGE=xo_range,DX_RANGE=dx_range,  $
+                          FO_VAL=fo_val,QUIET=quiet,TOT_AMP=tot_amp,                    $
+                          ERROR=error,PARINFO=parinfo,WEIGHTS=weights
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+tags           = ['MODEL_PARAMS','MODEL_DF','STATUS','CHISQ','DOF','SIGMA','NITER','PARINFO']
+;;  Error messages
+noinput_mssg   = 'Incorrect number of inputs were supplied...'
+badinform_mssg = 'Incorrect input formats were supplied...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() NE 4)
+IF (test) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+szd_xx         = SIZE(xx,/DIMENSIONS)
+szd_fx         = SIZE(fx,/DIMENSIONS)
+szd_pa         = SIZE(param,/DIMENSIONS)
+szt_fu         = SIZE(func,/TYPE)
+test           = (szd_xx[0] NE szd_fx[0]) OR (szd_pa[0] LT 3L) OR (szt_fu[0] NE 7L)
+IF (test) THEN BEGIN
+  MESSAGE,badinform_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;  Define values related to required input
+x              = REFORM(xx)
+y              = REFORM(fx)
+nf             = N_ELEMENTS(ff)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(fill) EQ 0) OR ~KEYWORD_SET(fill)
+IF (test) THEN miss = 1d-10*MAX(ABS(y),/NAN) ELSE miss = fill[0]
+
+;;  Remove NaNs and values ≤ 0
+test           = (y LE 0) OR (FINITE(y) EQ 0)
+bad            = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN BEGIN
+  y[bad] = miss[0]
+ENDIF
+
+test           = (N_ELEMENTS(func) EQ 0) OR ~KEYWORD_SET(func) OR (szt_fu[0] NE 7L)
+IF (test) THEN func = 'gaussian_1d'
+;;----------------------------------------------------------------------------------------
+;;  Initialize PARINFO structure
+;;----------------------------------------------------------------------------------------
+struct         = init_fit_1dgauss_param(y,param,TIE_FO=tie_fo,XO_RANGE=xo_range,         $
+                                        DX_RANGE=dx_range,FO_VAL=fo_val,TOT_AMP=tot_amp, $
+                                        ERROR=error,PARINFO=parinfo,WEIGHTS=weights)
+test           = (SIZE(struct,/TYPE) NE 8L)
+IF (test) THEN BEGIN
+  bad_mssg = 'Could not initialize PARINFO structure and/or ERROR and WEIGHTS...'
+  MESSAGE,bad_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+yerr           = struct.ERROR
+weights        = struct.WEIGHTS
+paraminfo      = struct.PARINFO
+;;----------------------------------------------------------------------------------------
+;;  Find fit
+;;----------------------------------------------------------------------------------------
+dffit       = mpfitfun(func[0],x,y,yerr,param,PARINFO=paraminfo,PERROR=f_sigma,    $
+                         BESTNORM=chisq,DOF=dof,STATUS=f_stat,NITER=iter,          $
+                         YFIT=df_best_fit,/QUIET,WEIGHTS=weights,                  $
+                         FTOL=1d-14,GTOL=1d-14,ERRMSG=errmsg,/NAN)
+;;  Check if fit worked
+IF (f_stat[0] EQ 0) THEN BEGIN
+  ;;  failed to converge
+  PRINT,''
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+
+IF (SIZE(f_sigma,/TYPE) EQ 0) THEN f_sigma = REPLICATE(d,np)
+IF ~KEYWORD_SET(quiet) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Print results
+  ;;--------------------------------------------------------------------------------------
+  PRINT,''
+  PRINT,'Ao  =  ',dffit[0],'   +/- ',ABS(f_sigma[0])
+  PRINT,'Xo  =  ',dffit[1],'   +/- ',ABS(f_sigma[1])
+  PRINT,'∆   =  ',dffit[2],'   +/- ',ABS(f_sigma[2])
+  
+  PRINT,''
+  PRINT,'Model Fit Status                    = ',f_stat[0]
+  PRINT,'Number of Iterations                = ',iter[0]
+  PRINT,'Degrees of Freedom                  = ',dof[0]
+  PRINT,'Chi-Squared                         = ',chisq[0]
+  PRINT,'Reduced Chi-Squared                 = ',chisq[0]/dof[0]
+  PRINT,''
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define return structure
+;;----------------------------------------------------------------------------------------
+tags           = ['MODEL_PARAMS','MODEL_DF','STATUS','CHISQ','DOF','SIGMA','NITER','PARINFO']
+struct         = CREATE_STRUCT(tags,dffit,df_best_fit,f_stat,chisq,dof,f_sigma,iter,paraminfo)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END

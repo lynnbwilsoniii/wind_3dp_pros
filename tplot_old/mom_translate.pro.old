@@ -1,0 +1,92 @@
+function mom_translate, m, vel
+;translate to the center of momentum frame
+;Davin Larson
+
+mxm = m.maxmoment
+
+mom = m
+
+if mom.n le 0 then return,mom
+
+if mxm le 0 then goto,skipahead
+
+v = mom.nv/mom.n
+
+; rank 1
+mom.nv = 0   ; mom.nv -  mom.n * v
+if mxm le 1 then goto,skipahead
+
+; rank 2
+mt = mom.nvv[mom.map_r2]
+pt = mt - mom.n*(v # v)
+mom.nvv = pt[mom.map_v2]
+if mxm le 2 then goto,skipahead
+
+; rank 3
+nvvv = mom.nvvv[mom.map_r3]
+up0 = reform( reform(pt,9) # v,3,3,3)
+up1 = transpose(up0,[1,2,0])
+up2 = transpose(up0,[2,0,1])
+nuuu = mom.n * reform( reform(v#v,9) # v,3,3,3)
+qt = nvvv - (up0 + up1 + up2 + nuuu)
+mom.nvvv = qt[mom.map_v3]
+if mxm le 3 then goto,skipahead
+
+; rank 4
+Rf = mom.nvvvv[mom.map_r4]
+vv   = reform(v#v,9)
+uq0 = reform( reform(qt,27) # v,3,3,3,3)
+uq1 = transpose(uq0,[1,2,3,0])
+uq2 = transpose(uq0,[2,3,0,1])
+uq3 = transpose(uq0,[3,0,1,2])
+uup0 = reform( vv # reform(pt,9) , 3,3,3,3)
+uup1 = transpose(uup0,[0,2,1,3])
+uup2 = transpose(uup0,[0,3,1,2])
+uup3 = transpose(uup0,[1,2,0,3])
+uup4 = transpose(uup0,[1,3,0,2])
+uup5 = transpose(uup0,[2,3,0,1])
+nuuuu = mom.n * reform( vv # vv , 3,3,3,3)
+r = Rf - (uq0+uq1+uq2+uq3 + uup0+uup1+uup2+uup3+uup4+uup5 + nuuuu)
+mom.nvvvv = r[mom.map_v4]
+
+skipahead:
+
+if keyword_set(vel) then begin   ; translate from center of mom to another frame
+  v = vel-v
+  
+  mom.nv = mom.n * v
+  if mxm le 1 then return,mom
+  
+  mt = pt + mom.n*(v # v)
+  mom.nvv = mt[mom.map_v2] 
+  if mxm le 2 then return,mom
+ 
+  vv   = reform(v#v,9)
+  up0 = reform( reform(pt,9) # v,3,3,3)
+  up1 = transpose(up0,[1,2,0])
+  up2 = transpose(up0,[2,0,1])
+  nuuu = mom.n * reform( vv # v,3,3,3)
+  hft = qt + (up0 + up1 + up2 + nuuu)
+  mom.nvvv = hft[mom.map_v3]
+  if mxm le 3 then return,mom
+  
+  uq0 = reform( reform(qt,27) # v,3,3,3,3)
+  uq1 = transpose(uq0,[1,2,3,0])
+  uq2 = transpose(uq0,[2,3,0,1])
+  uq3 = transpose(uq0,[3,0,1,2])
+  uup0 = reform( vv # reform(pt,9) , 3,3,3,3)
+  uup1 = transpose(uup0,[0,2,1,3])
+  uup2 = transpose(uup0,[0,3,1,2])
+  uup3 = transpose(uup0,[1,2,0,3])
+  uup4 = transpose(uup0,[1,3,0,2])
+  uup5 = transpose(uup0,[2,3,0,1])
+  nuuuu = mom.n * reform( vv # vv , 3,3,3,3)
+  Rf = r + (uq0+uq1+uq2+uq3 + uup0+uup1+uup2+uup3+uup4+uup5 + nuuuu)
+  mom.nvvvv = Rf[mom.map_v4]
+
+endif
+  
+return,mom
+end
+
+

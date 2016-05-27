@@ -1,0 +1,119 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   beam_fit_set_defaults.pro
+;  PURPOSE  :   This routine initializes the default common block variables used by
+;                 the beam fitting routine package.
+;
+;  CALLED BY:   
+;               beam_fit_keywords_init.pro
+;
+;  CALLS:
+;               beam_fit_params_com.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;  COMMON BLOCK VARIABLES:
+;
+;               *******************************
+;               ***  DEFAULT --> Variables  ***
+;               *******************************
+;               DEF_FILL   :  Scalar [float/double] defining the default value for the
+;                               FILL common block variable
+;                               [Default = 1d-20]
+;               DEF_PERC   :  Scalar [float/double] defining the default value for the
+;                               PERC_PK common block variable
+;                               [Default = 0.01 (or 1%)]
+;               DEF_DFMIN  :  Scalar [float/double] defining the default value for the
+;                               DFMIN common block variable
+;                               [Default = 1d-18]
+;               DEF_DFMAX  :  Scalar [float/double] defining the default value for the
+;                               DFMAX common block variable
+;                               [Default = 1d-2]
+;               DEF_NGRID  :  Scalar [long] defining the default value for the
+;                               NGRID common block variable
+;                               [Default = 30L]
+;               DEF_NSMTH  :  Scalar [long] defining the default value for the
+;                               NSMOOTH common block variable
+;                               [Default = 3]
+;               DEF_PLANE  :  Scalar [string] defining the default value for the
+;                               PLANE common block variable
+;                               [Default = 'xy']
+;               DEF_SDIR   :  Scalar [string] defining the default value for the
+;                               SAVE_DIR common block variable
+;                               [Default = FILE_EXPAND_PATH('')]
+;               DEF_PREF   :  [N]-Element array [string] defining the default value for
+;                               the FILE_PREF common block variable
+;                               [Default = 'DF_00j', j = index # of DAT]
+;               DEF_MIDF   :  Scalar [string] defining the default value for the
+;                               FILE_MIDF common block variable
+;                               [Default = 'V1xV2xV1_vs_V1_30Grids_']
+;
+;   CHANGED:  1)  Continued to write routine                       [08/29/2012   v1.0.0]
+;             2)  Continued to write routine                       [08/30/2012   v1.0.0]
+;
+;   NOTES:      
+;               1)  See also:  beam_fit_keyword_com.pro, beam_fit_params_com.pro,
+;                              beam_fit_unset_common.pro, beam_fit___get_common.pro,
+;                              beam_fit___set_common.pro
+;
+;   CREATED:  08/28/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/30/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO beam_fit_set_defaults
+
+;;----------------------------------------------------------------------------------------
+;; => Load Common Block
+;;----------------------------------------------------------------------------------------
+@beam_fit_params_com.pro
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+
+xyzvecf        = ['V1','V1xV2xV1','V1xV2']
+xy_suff        = xyzvecf[1]+'_vs_'+xyzvecf[0]+'_'
+;;----------------------------------------------------------------------------------------
+;; => Define defaults
+;;----------------------------------------------------------------------------------------
+def_fill       = 1d-20
+def_perc       = 1d-2
+def_dfmin      = 1d-18
+def_dfmax      = 1d-2
+def_ngrid      = 30L
+def_nsmth      = 3L
+def_plane      = 'xy'
+;; => Define working directory
+osvers         = !VERSION.OS_FAMILY
+IF (osvers NE 'unix') THEN slash = '\' ELSE slash = '/'
+def_sdir       = FILE_EXPAND_PATH('')+slash[0]
+;; => Create dumb array of indices [assume user did not load more than 2000 structures]
+ndat           = 2000L
+inds           = LINDGEN(ndat)
+ind_ra         = STRING(FORMAT='(I4.4)',inds)
+;; => Define default values for prefix and mid-section of file names
+def_pref       = 'DF_'+ind_ra+'_'
+def_midf       = xy_suff[0]+STRING(def_ngrid[0],FORMAT='(I4.4)')+'Grids_'
+;;----------------------------------------------------------------------------------------
+;; => Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+

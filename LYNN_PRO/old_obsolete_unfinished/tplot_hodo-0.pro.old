@@ -1,0 +1,161 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   tplot_hodo.pro
+;  PURPOSE  :   This routine plots a set of TPLOT variables and then plots hodograms of
+;                 those (or potentially different) TPLOT variables in a separate window
+;                 such that the user can dynamically jump from time-range to time-
+;                 range and look at the differences in the hodograms.
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               ***  Optional Input [if TPLOT has already plotted data]  ***
+;               TP_NAMES     :  [N]-Element [string or integer] array of TPLOT handles
+;                                 defining the variables for which the user wishes to
+;                                 plot in the normal TPLOT window (generally defaults
+;                                 to IDL window number zero)
+;
+;  EXAMPLES:    
+;               tplot_hodo,tp_names,TP_HODO_NMS=tp_hodo_nms,PLANE=plane,_EXTRA=ex_str
+;
+;  KEYWORDS:    
+;               TP_HODO_NMS  :  [K]-Element [string or integer] array of TPLOT handles
+;                                 defining the variables for which the user wishes to
+;                                 produce hodograms
+;               PLANE        :  Scalar [string] defining the plane of projection to show
+;                                 in the hodograms (i.e., defines the two components to
+;                                 plot versus each other).  The allowed inputs are:
+;                                   'yx'  :  plots Y vs. X
+;                                   'xz'  :  plots X vs. Z
+;                                   'zy'  :  plots Z vs. Y
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  hodogram = plot of two vector components versus each other
+;               2)  See also:  tplot.pro
+;               3)  .compile $HOME/Desktop/temp_idl/tplot_hodo.pro
+;                   tplot_hodo,tp_names,TP_HODO_NMS=tp_hodo_nms,PLANE=plane,_EXTRA=ex_str
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  09/27/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/27/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO tplot_hodo,tp_names,TP_HODO_NMS=tp_hodo_nms,PLANE=plane,_EXTRA=ex_str
+
+;;----------------------------------------------------------------------------------------
+;;  Define some defaults
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+def_planes     = ['yx','xz','zy']
+
+no_tplot       = 'User must first load some data into TPLOT before calling this routine!'
+no_plot        = 'You must first plot something in TPLOT!'
+;;----------------------------------------------------------------------------------------
+;;  1st:  Check to see if TPLOT has been started
+;;----------------------------------------------------------------------------------------
+test           = ((tnames())[0] EQ '')
+IF (test[0]) THEN BEGIN
+  MESSAGE,'0: '+no_tplot[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Load TPLOT common block
+;;----------------------------------------------------------------------------------------
+;;;  not sure if I need this extra check
+;@tplot_com.pro
+;;;  Check to see if TPLOT has been started
+;str_element,tplot_vars, 'OPTIONS',opts
+;str_element,tplot_vars,'SETTINGS',sets
+;test           = (SIZE(opts,/TYPE) NE 8) OR (SIZE(sets,/TYPE) NE 8)
+test           = ((tnames(/TPLOT))[0] EQ '')
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_plot[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Get current time range
+;;----------------------------------------------------------------------------------------
+;;  1st make sure TPLOT time options are set correctly
+set_tplot_times
+;;  2nd get time
+trange         = t_get_current_trange()
+test           = (is_a_number(trange,/NOMSSG) EQ 0) OR (N_ELEMENTS(trange) NE 2)
+IF (test[0]) THEN BEGIN
+  test = (TOTAL(FINITE(trange),/NAN) LT 2)
+  IF (test[0]) THEN BEGIN
+    ;;  bad --> no TPLOT data loaded?
+    MESSAGE,'2: '+no_tplot[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check TP_HODO_NMS
+test           = (N_ELEMENTS(plane) EQ 0) OR (SIZE(plane,/TYPE) NE 7)
+IF (test[0]) THEN tphodonms = tnames(/TPLOT)  ;;  use currently plotted TPLOT names
+;;  Check PLANE
+test           = (N_ELEMENTS(plane) EQ 0) OR (SIZE(plane,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  ;;  Use default of Y vs. X
+  proj = def_planes[0]
+ENDIF ELSE BEGIN
+  test = (TOTAL(STRLOWCASE(plane[0]) EQ def_planes) LT 1)
+  IF (test[0]) THEN proj = def_planes[0] ELSE proj = STRLOWCASE(plane[0])
+ENDELSE
+;;  Check _EXTRA
+str_element,   ex_str,     'LIMITS',    limits
+
+
+
+;;----------------------------------------------------------------------------------------
+;;  Plot data
+;;----------------------------------------------------------------------------------------
+;;  Plot normal TPLOT data
+WSET,0
+WSHOW,0
+tplot,tpnms,TRANGE=trange
+;;----------------------------------------------------------------------------------------
+;;  Open window and plot
+;;----------------------------------------------------------------------------------------
+scu            = STRUPCASE(sat[0])
+DEVICE,GET_SCREEN_SIZE=s_size
+wsz            = s_size*7d-1
+win_ttl        = 'Hodogram Plots ['+wttle[0]+']'
+win_str        = {RETAIN:2,XSIZE:wsz[0],YSIZE:wsz[1],TITLE:win_ttl[0],XPOS:10,YPOS:10}
+WINDOW,1,_EXTRA=win_str
+;;----------------------------------------------------------------------------------------
+;;  Plot hodograms [need routine that plots hodograms for given TPLOT handles]
+;;----------------------------------------------------------------------------------------
+WSET,1
+WSHOW,1
+t_hodo_plot,tpnms,_EXTRA=ex_str    ;;  Still need to write this...
+
+
+;;  To do list
+;;    - write a generalized routine to plot hodograms [perhaps update hodo_plot.pro?]
+;;    - write the wrapping routine, t_hodo_plot.pro
+
+
+
+END

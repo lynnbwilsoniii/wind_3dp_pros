@@ -1,0 +1,132 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   t_interval_find.pro
+;  PURPOSE  :   Finds the start/end elements of the data gaps in a timeseries that
+;                 contains data gaps or is composed of discontinuously sampled data
+;                 [e.g. THEMIS EFI or SCM in Wave Burst mode].
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               sample_rate.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TIME        :  [N]-Element array of time stamps [s] associated with
+;                                a time series with data gaps or is discontinuously
+;                                sampled
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               GAP_THRESH  :  Scalar defining the maximum data gap [s] allowed in
+;                                the calculation
+;                                [Default = 4/Sr, Sr = sample rate (sampls/s)]
+;
+;   CHANGED:  1)  Continued writing routine                        [07/17/2012   v1.0.0]
+;                   Fixed an issue with element definitions
+;
+;   NOTES:      
+;               1)  The output is a [K,2]-element array of [start,end] elements
+;                     corresponding to the regions of uniformly sampled data
+;
+;   CREATED:  07/16/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/16/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION t_interval_find,time,GAP_THRESH=gap_thresh
+
+;;----------------------------------------------------------------------------------------
+;; => Define dummy variables
+;;----------------------------------------------------------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN RETURN,-1
+
+tt       = REFORM(time)
+nt       = N_ELEMENTS(tt)
+IF (nt LE 3) THEN RETURN,-1
+;; => Define the total time between the first and last data point
+trange   = MAX(tt,/NAN) - MIN(tt,/NAN)
+;; => Define shifted difference, ∆t [s]
+lower    = LINDGEN(nt - 1L)
+upper    = lower + 1L
+sh_diff  = [0d0,(tt[upper] - tt[lower])]
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;;  Note:
+;;          t[k]   =   kth element of timestamps
+;;                {= [N]-element array}
+;;         ∆t_ij   =   t[j] - t[i]
+;;                {= [N]-element array of time differences between adjacent elements}
+;;         ∂t      =   sample period
+;;          S[k]   =   kth element of start elements
+;;          E[k]   =   kth element of end   elements
+;;
+;;         ∆t[k]  ==   kth element of ∆t { <---> ∆t_ij }
+;;            k   -->  upper[j]
+;;
+;;         1)  ∆t[0] = NaN
+;;         2)   (S[0] = 0L) & (E[{last element}] = N - 1L)
+;;         3)  IF (∆t_ij > a * ∂t) => (S[k] = j) & (E[k] = i)
+;;               {a = some factor > 1}
+;;
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+s0       = 0L       ;; 1st element of start element array
+ee       = nt - 1L  ;; Last element of end element array
+
+e_els    = [-1,upper]
+s_els    = [lower,-1]
+;;----------------------------------------------------------------------------------------
+;; => Estimate the sample rate and gap threshold
+;;----------------------------------------------------------------------------------------
+srate    = DOUBLE(ROUND(sample_rate(tt,/AVERAGE)))
+IF NOT KEYWORD_SET(gap_thresh) THEN BEGIN
+  mx_gap = 4d0/srate[0]
+ENDIF ELSE BEGIN
+  mx_gap = gap_thresh[0]
+  ;; check if finite
+  test   = (FINITE(mx_gap[0]) EQ 0)
+  IF (test) THEN BEGIN
+    ;; use default
+    mx_gap = 4d0/srate[0]
+  ENDIF
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;; => Find where time-shifts exceed gap threshold
+;;----------------------------------------------------------------------------------------
+bad      = WHERE(sh_diff GT mx_gap[0],bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0 AND bd LT nt) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  found data gaps
+  ;;--------------------------------------------------------------------------------------
+  ;; => Define START elements
+  gel_sta = s_els[bad]
+  gel_sta = [s0[0],gel_sta]  ;; add first element
+  ;; => Define END elements
+  gel_end = e_els[bad] - 1L
+  gel_end = [gel_end,ee[0]]  ;; add last element
+ENDIF ELSE BEGIN
+  IF (bd EQ nt) THEN RETURN,-1
+  ;; => Define START elements
+  gel_sta = [s0[0]]
+  ;; => Define END elements
+  gel_end = [ee[0]]
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;; => Return start/end elements to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,[[gel_sta],[gel_end]]
+END

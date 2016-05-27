@@ -1,0 +1,454 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_find_wave_freq_peak.pro
+;  PURPOSE  :   This routine attempts to find the frequency range associated with the
+;                 peak in a power spectrum from a waveform capture.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               sample_rate.pro
+;               fft_power_calc.pro
+;               find_intersect_2_curves.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TIME    :  [N]-Element [double] array of time [s] abscissa points for
+;                            each field vector component in FIELD
+;               FIELD   :  [N]-Element [float/double] array of data points defining the
+;                            vector field component for each timestamp in TIME
+;
+;  EXAMPLES:    
+;               ;;  Find spectral peak frequency range between 1 Hz and 10 kHz
+;               fran_peak = temp_find_wave_freq_peak(time,field,FREQRA=[1d0,1d4])
+;
+;  KEYWORDS:    
+;               FREQRA  :  [2]-Element [float/double] array defining the range of
+;                            frequencies [Hz] to use when searching for the peak of the
+;                            power spectrum
+;                            [Default = [0,(Sample Rate)/2] ]
+;               FPKMIN  :  Scalar [float/double] defining the minimum allowable
+;                            frequency [Hz] for the spectral peak (useful for spectrums
+;                            with enhanced power at lower frequencies that are not part
+;                            of the peak of interest)
+;                            [Default = FREQRA[0] ]
+;               FPKMAX  :  Scalar [float/double] defining the maximum allowable
+;                            frequency [Hz] for the spectral peak (useful for spectrums
+;                            with enhanced power at higher frequencies that are not part
+;                            of the peak of interest)
+;                            [Default = FREQRA[0] ]
+;               ALPHA   :  Scalar [float/double] defining the fraction of the spectral
+;                            peak to use when defining the frequency range of the peak.
+;                            The routine will limit the values to between 5% and 99%.
+;                            [Default = 50% ]
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [01/25/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [01/26/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  The routine requires that N ≥ 64, which would correspond to only
+;                     32 frequencies in the resulting FFT
+;
+;  REFERENCES:  
+;               1)  Harris, F.J. "On the Use of Windows for Harmonic Analysis with the
+;                      Discrete Fourier Transform," Proc. IEEE Vol. 66, No. 1,
+;                      pp. 51-83, (1978).
+;
+;   CREATED:  01/25/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  01/26/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION temp_find_wave_freq_peak,time,field,FREQRA=freqra,FPKMIN=fpkmin,FPKMAX=fpkmax,$
+                                  ALPHA=alpha
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION sample_rate, fft_power_calc, partition_data
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+min_n          = 64L                         ;;  Minimum # of elements for TIME and FIELD
+min_n_str      = STRTRIM(STRING(min_n[0],FORMAT='(I)'),2L)
+fftwin         = 2L                          ;;  Logic used for Hanning window in fft_power_calc.pro
+sm_wd          = 32L                         ;;  Default smoothing window width for SMOOTH.PRO
+;;  Define dummy array of zeros
+ndumb          = 1000L
+yy1            = REPLICATE(0d0,ndumb[0])
+;;  Define allowed number types
+isnum          = [1,2,3,4,5,6,12,13,14,15]
+;;  Dummy error messages
+noinpt_msg     = 'User must supply dependent and independent data arrays'
+badndm_msg     = 'Incorrect input format:  TIME and FIELD must be 1D arrays'
+badnel_msg     = 'Incorrect input format:  TIME and FIELD must have the same # of elements'
+badtyp_msg     = 'Incorrect input format:  TIME and FIELD must be numeric type arrays'
+badinn_msg     = 'Incorrect input format:  TIME and FIELD must have at least '+min_n_str[0]+' elements'
+badtim_msg     = 'TIME input must contain at least N finite and unique values'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 2) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check input formats
+sztn0          = SIZE(time,/N_DIMENSIONS)
+szfn0          = SIZE(field,/N_DIMENSIONS)
+;;  Check that both inputs have only one dimension
+test           = (sztn0[0] NE 1) OR (szfn0[0] NE 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badndm_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check that both inputs have matching # of elements
+sztd0          = SIZE(time,/DIMENSIONS)
+szfd0          = SIZE(field,/DIMENSIONS)
+test           = (sztd0[0] NE szfd0[0])
+IF (test[0]) THEN BEGIN
+  MESSAGE,badnel_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check that both inputs are numeric
+sztt0          = SIZE(time,/TYPE)
+szft0          = SIZE(field,/TYPE)
+test           = (TOTAL(sztt0[0] EQ isnum) EQ 0) OR (TOTAL(szft0[0] EQ isnum) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badtyp_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check that N ≥ MIN_N
+test           = (sztd0[0] LE min_n[0]) OR ((TOTAL(FINITE(time),/NAN) LE min_n[0]) OR $
+                 (TOTAL(FINITE(field),/NAN) LE min_n[0]))
+IF (test[0]) THEN BEGIN
+  MESSAGE,badinn_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check that TIME has at least MIN_N finite and unique values
+unq            = UNIQ(time,SORT(time))
+n_unq          = N_ELEMENTS(unq)
+test           = (n_unq[0] LE min_n[0])
+IF (test[0]) THEN BEGIN
+  MESSAGE,badtim_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define relevant parameters
+;;----------------------------------------------------------------------------------------
+nt             = sztd0[0]                 ;;  N = # of elements in each array
+sp             = SORT(REFORM(time))       ;;  Make sure times in ascending order
+tts            = (REFORM(time))[sp]       ;;  [N]-Element array of timestamps [s]
+vec            = (REFORM(field))[sp]      ;;  [N]-Element array of vector component values [units]
+;;  Determine sample rate [samples per second = sps]
+dts            = ABS(SHIFT(tts,-1L) - tts)
+dt_thrsh       = MEAN(dts[10L:20L],/NAN)  ;;  Avg. ∆t for TIME --> use as threshold for sample rate calculation
+srate_str      = sample_rate(tts,GAP_THRESH=dt_thrsh[0],OUT_MED_AVG=medavg)
+test           = (N_ELEMENTS(srate_str) EQ 1) OR (TOTAL(FINITE(medavg)) NE 2)
+IF (test[0]) THEN BEGIN
+  test           = (srate_str[0] EQ 0) OR (FINITE(srate_str[0]) EQ 0)
+  IF (test[0]) THEN BEGIN
+    ;;  No finite or good values in TIME
+    MESSAGE,badtim_msg+': 2',/INFORMATIONAL,/CONTINUE
+    RETURN,0b
+  ENDIF
+ENDIF
+;;  Check that the median and average sample rates are within 10% of each other
+;;    TRUE  --> use average
+;;    FALSE --> use median
+ratio          = ABS(1d0 - medavg[1]/medavg[0])
+test           = (ratio[0] LE 1d-1)
+srate          = medavg[test[0]]          ;;  Sample rate [sps]
+fnyquist       = srate[0]/2d0             ;;  Nyquist frequency [Hz]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check FREQRA
+test           = (N_ELEMENTS(freqra) NE 2)
+IF (test[0]) THEN BEGIN
+  ;;  FREQRA not set correctly --> use default
+  fran           = [0d0,fnyquist[0]]
+ENDIF ELSE BEGIN
+  ;;  FREQRA has 2 elements --> check format
+  test           = (TOTAL(SIZE(freqra,/TYPE) EQ isnum) EQ 0) OR (freqra[1] EQ freqra[0])
+  IF (test[0]) THEN BEGIN
+    ;;  FREQRA not numeric or (FREQRA[1] = FREQRA[0]) --> use default
+    fran           = [0d0,fnyquist[0]]
+  ENDIF ELSE BEGIN
+    ;;  FREQRA is numeric --> use FREQRA
+    fran           = (freqra)[SORT(freqra)]
+  ENDELSE
+ENDELSE
+;;  Check FPKMIN
+fr_pk          = fran     ;;  Set initially to FRAN
+test           = (N_ELEMENTS(fpkmin) EQ 1) AND (TOTAL(SIZE(fpkmin,/TYPE) EQ isnum) EQ 1)
+IF (test[0]) THEN fr_pk[0] = fpkmin[0] > 0
+;;  Check FPKMAX
+test           = (N_ELEMENTS(fpkmax) EQ 1) AND (TOTAL(SIZE(fpkmax,/TYPE) EQ isnum) EQ 1)
+IF (test[0]) THEN fr_pk[1] = fpkmax[0] > (fr_pk[0])
+;;  Make sure FR_PK has unique elements
+test           = (fr_pk[1] EQ fr_pk[0])
+IF (test[0]) THEN fr_pk *= [8d-1,12d-1]  ;;  Expand by 20%
+;;  Check ALPHA
+test           = (N_ELEMENTS(alpha) EQ 1) AND (TOTAL(SIZE(alpha,/TYPE) EQ isnum) EQ 1)
+IF (test[0]) THEN frac_pkpc = (alpha[0] < 99d-2) > 5d-2 ELSE frac_pkpc = 5d-1
+;;----------------------------------------------------------------------------------------
+;;  Calculate power spectrum [use Hanning window]
+;;----------------------------------------------------------------------------------------
+powspec_str    = fft_power_calc(tts,vec,/READ_WIN,IWINDW=fftwin[0])
+fft_freqs      = powspec_str.FREQ         ;;  Frequencies [Hz] associated with power spectrum
+fft_power      = powspec_str.POWER_A      ;;  Power spectral density [units^2 Hz^(-1)]
+nf             = N_ELEMENTS(fft_freqs)    ;;  # of frequency bins in FFT
+;;  Redefine FRAN if FRAN[0] = 0
+IF (fran[0] EQ 0) THEN fran[0] = fft_freqs[1]
+IF (nf LT 160L) THEN wd = 4L ELSE wd = (nf[0]/sm_wd[0]) < 64L
+;;  Smooth the power spectrum
+sm_pow         = SMOOTH(fft_power,wd,/NAN)
+;;  Define range of positive definite frequencies [Hz]
+fmnmx          = [MIN(fft_freqs[1:*],/NAN),MAX(fft_freqs[1:*],/NAN)]
+;;----------------------------------------------------------------------------------------
+;;  Find envelope around power spectrum (i.e., high/low values for each frequency bin range)
+;;----------------------------------------------------------------------------------------
+;;    Note:  return value has [NN, MM, LL]-Elements where
+;;             NN = # of elements in LENGTH
+;;             MM = # of divisions
+;;             LL = 2 => 0 = X, 1 = Y
+nlen           = 4L  ;;  --> LENGTH
+nshft          = 4L  ;;  --> Shift
+evelope_x      = partition_data(fft_freqs,nlen[0],nshft[0],YY=fft_power)
+n_envel        = N_ELEMENTS(evelope_x[0,*,0])
+env_xx         = REPLICATE(d,n_envel[0])
+env_yy         = REPLICATE(d,n_envel[0],2L)
+FOR i=0L, n_envel[0] - 1L DO BEGIN
+  tempx = REFORM(evelope_x[*,i,0])
+  tempy = REFORM(evelope_x[*,i,1])
+  env_xx[i]   = MEAN(tempx,/NAN)    ;;  Avg. frequency [Hz] of binned range
+  env_yy[i,0] = MIN(tempy,/NAN)     ;;  Lower bound on PSD [units^2 Hz^(-1)] in binned range
+  env_yy[i,1] = MAX(tempy,/NAN)     ;;  Upper bound on PSD [units^2 Hz^(-1)] in binned range
+ENDFOR
+;;  Smooth envelope
+env_yy_sm      = env_yy
+env_yy_sm[*,0] = SMOOTH(env_yy[*,0],3L,/NAN)
+env_yy_sm[*,1] = SMOOTH(env_yy[*,1],3L,/NAN)
+;;  Find good envelope frequencies [Hz]
+good_env       = WHERE(env_xx GT fran[0] AND env_xx LE fran[1],gd_env)       ;;  frequencies between FRAN
+IF (gd_env GT 0) THEN good_env = LINDGEN(n_envel)                            ;;  Use all elements if bad FRAN definition
+;;  Find maximum of PSD from envelope
+good_env_pk    = WHERE(env_xx GT fr_pk[0] AND env_xx LE fr_pk[1],gd_env_pk)  ;;  frequencies in allowable range for spectral peak
+IF (gd_env_pk GT 0) THEN BEGIN
+  max_env_pow        = MAX(env_yy_sm[good_env_pk,1],ind_env_mxpow0,/NAN)
+  ind_env_mxpow      = good_env_pk[ind_env_mxpow0[0]]
+ENDIF ELSE BEGIN
+  ;;  Bad frequency range definition --> use all powers
+  max_env_pow        = MAX(env_yy_sm[*,1],ind_env_mxpow,/NAN)
+ENDELSE
+;;  Frequency [Hz] at PSD envelope peak
+f_at_env_mxpow = env_xx[ind_env_mxpow[0]]
+;;  Define dummy array of frequencies
+xx1            = DINDGEN(ndumb[0])*(fmnmx[1] - fmnmx[0])/(ndumb[0] - 1L) + fmnmx[0]
+;;  Define fraction of PSD envelope peak [units^2 Hz^(-1)] to consider when finding frequency range
+frac_env_pk    = frac_pkpc[0]*max_env_pow[0]
+yy1b_env       = REPLICATE(frac_env_pk[0],ndumb[0])
+;;  Find where P(f) = å P_pk in frequency range
+xx2            = env_xx[good_env]
+yy2            = env_yy_sm[good_env,1]
+find_intersect_2_curves,xx1,yy1b_env,xx2,yy2,XY=xy_int_frac_env_pk
+;;  Use Max(dP/df) and Min(dP/df) as well to aid in location of frequency peak
+dPdf_env_l     = DERIV(env_xx*1d-3,env_yy_sm[*,0])
+dPdf_env_h     = DERIV(env_xx*1d-3,env_yy_sm[*,1])
+dPdf_env_l_sm  = SMOOTH(dPdf_env_l,3L,/NAN)
+dPdf_env_h_sm  = SMOOTH(dPdf_env_h,3L,/NAN)
+min_dpdf_env_l = MIN(dPdf_env_l_sm,indmn_env_l,/NAN)
+max_dpdf_env_l = MAX(dPdf_env_l_sm,indmx_env_l,/NAN)
+min_dpdf_env_h = MIN(dPdf_env_h_sm,indmn_env_h,/NAN)
+max_dpdf_env_h = MAX(dPdf_env_h_sm,indmx_env_h,/NAN)
+indx_env_l     = ([indmn_env_l[0],indmx_env_l[0]])[SORT([indmn_env_l[0],indmx_env_l[0]])]
+indx_env_h     = ([indmn_env_h[0],indmx_env_h[0]])[SORT([indmn_env_h[0],indmx_env_h[0]])]
+indx_env       = [MIN([indx_env_l,indx_env_h],/NAN),MAX([indx_env_l,indx_env_h],/NAN)]
+good_fra_env   = env_xx[indx_env]
+;;  Find where dP/df = å (dP/df)_pk in frequency range
+yy1_env_l_mn   = REPLICATE(frac_pkpc[0]*min_dpdf_env_l[0],ndumb[0])
+yy1_env_l_mx   = REPLICATE(frac_pkpc[0]*max_dpdf_env_l[0],ndumb[0])
+yy1_env_h_mn   = REPLICATE(frac_pkpc[0]*min_dpdf_env_h[0],ndumb[0])
+yy1_env_h_mx   = REPLICATE(frac_pkpc[0]*max_dpdf_env_h[0],ndumb[0])
+xx2            = env_xx
+yy2            = dPdf_env_l_sm
+find_intersect_2_curves,xx1,yy1_env_l_mn,xx2,yy2,XY=xyint_frac_env_l_mn
+find_intersect_2_curves,xx1,yy1_env_l_mx,xx2,yy2,XY=xyint_frac_env_l_mx
+yy2            = dPdf_env_h_sm
+find_intersect_2_curves,xx1,yy1_env_h_mn,xx2,yy2,XY=xyint_frac_env_h_mn
+find_intersect_2_curves,xx1,yy1_env_h_mx,xx2,yy2,XY=xyint_frac_env_h_mx
+;;  Should only be 2 intercepts for each
+temp_frq_l_mn  = REFORM(xyint_frac_env_l_mn[0,*])
+temp_frq_l_mx  = REFORM(xyint_frac_env_l_mx[0,*])
+temp_frq_h_mn  = REFORM(xyint_frac_env_h_mn[0,*])
+temp_frq_h_mx  = REFORM(xyint_frac_env_h_mx[0,*])
+temp_fra_l     = [MIN([temp_frq_l_mn,temp_frq_l_mx],/NAN),MAX([temp_frq_l_mn,temp_frq_l_mx],/NAN)]
+temp_fra_h     = [MIN([temp_frq_h_mn,temp_frq_h_mx],/NAN),MAX([temp_frq_h_mn,temp_frq_h_mx],/NAN)]
+;;  Limit to within range defined by FRAN
+temp_fra_l[0]  = temp_fra_l[0] > (fr_pk[0] > fran[0])
+temp_fra_l[1]  = temp_fra_l[1] < (fr_pk[1] < fran[1])
+temp_fra_h[0]  = temp_fra_h[0] > (fr_pk[0] > fran[0])
+temp_fra_h[1]  = temp_fra_h[1] < (fr_pk[1] < fran[1])
+good_fra_env   = [MIN([temp_fra_l,temp_fra_h],/NAN),MAX([temp_fra_l,temp_fra_h],/NAN)]
+
+;;----------------------------------------------------------------------------------------
+;;  Find spectral peak and associated frequency range
+;;----------------------------------------------------------------------------------------
+;;  Define dP/df and smooth again
+dPdf           = DERIV(fft_freqs,sm_pow)
+dPdf_sm        = SMOOTH(dPdf,wd,/NAN)
+;;  Find maximum of power
+good           = WHERE(fft_freqs GT fran[0] AND fft_freqs LE fran[1],gd)       ;;  frequencies between FRAN
+IF (gd GT 0) THEN good = LINDGEN(nf)  ;;  Use all elements if bad FRAN definition
+good_pk        = WHERE(fft_freqs GT fr_pk[0] AND fft_freqs LE fr_pk[1],gd_pk)  ;;  frequencies in allowable range for spectral peak
+IF (gd_pk GT 0) THEN BEGIN
+  max_pow        = MAX(sm_pow[good_pk],ind_mxpow0,/NAN)
+  ind_mxpow      = good_pk[ind_mxpow0[0]]
+ENDIF ELSE BEGIN
+  ;;  Bad frequency range definition --> use all powers
+  max_pow        = MAX(sm_pow,ind_mxpow,/NAN)
+ENDELSE
+;;  Frequency [Hz] at spectral peak power
+f_at_mxpow     = fft_freqs[ind_mxpow[0]]
+;;  Define fraction of peak [units^2 Hz^(-1)] to consider when finding frequency range
+frac_pk        = frac_pkpc[0]*max_pow[0]
+yy1b           = REPLICATE(frac_pk[0],ndumb[0])
+;;  Find where P(f) = å P_pk in frequency range
+xx2            = fft_freqs[good]
+yy2            = sm_pow[good]
+find_intersect_2_curves,xx1,yy1b,xx2,yy2,XY=xy_int_frac_pk
+;;  Find where (dP/df = 0) in frequency range
+xx2            = fft_freqs[good]
+yy2            = dPdf_sm[good]
+find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_intx
+;;  Define zero crossing frequencies
+zerox          = [REFORM(xy_intx[0,*]),f_at_mxpow[0]]
+unq            = UNIQ(zerox,SORT(zerox))       ;;  Find only unique frequencies
+zerox          = zerox[unq]
+;;  Sort
+sp             = SORT(zerox)
+zerox          = zerox[sp]
+nzx            = LONG(TOTAL(FINITE(zerox)))
+;;  Find indices of Max. positive and negative values of dP/df
+min_dpdf_0     = MIN(dPdf_sm[good],indmn,/NAN)
+max_dpdf_0     = MAX(dPdf_sm[good],indmx,/NAN)
+indx           = ([indmn[0],indmx[0]])[SORT([indmn[0],indmx[0]])]
+gind_fra       = good[indx]
+STOP
+
+IF (nzx[0] EQ 0) THEN RETURN,0b
+;;----------------------------------------------------------------------------------------
+;;  1)  Use range of zero crossings to define new frequency range
+;;----------------------------------------------------------------------------------------
+IF (nzx[0] LT 3L) THEN BEGIN
+  ;;  Not enough values --> find nearest neighbors
+  IF (nzx[0] LT 2L) THEN BEGIN
+    ;;  Only one value --> find 3 adjacent frequencies
+    zind = VALUE_LOCATE(fft_freqs,f_at_mxpow[0])
+    test = (zind[0] LE 0) OR (zind[0] GE (nf[0] - 1L))
+    IF (test) THEN BEGIN
+      ;;  At least one end point
+      IF (zind[0] LE 0) THEN g_zind = [0L,2L] ELSE g_zind = (nf[0] - 1L) + [-2L,0L]
+    ENDIF ELSE BEGIN
+      ;;  Neither end point
+      g_zind         = zind[0] + [-1L,1L]
+    ENDELSE
+    fran_0         = [fft_freqs[g_zind[0]],fft_freqs[g_zind[1]]]
+  ENDIF ELSE BEGIN
+    ;;  Two values were found
+    zind  = VALUE_LOCATE(fft_freqs,zerox)
+    tests = [TOTAL(zind LE 0),TOTAL(zind GE (nf[0] - 1L))]
+    test  = (TOTAL(tests) GT 0)
+    IF (test) THEN BEGIN
+      ;;  At least one end point
+      IF (tests[0] GT 0) THEN g_zind = [0L,2L] ELSE g_zind = (nf[0] - 1L) + [-2L,0L]
+    ENDIF ELSE BEGIN
+      ;;  No end points --> move towards center of frequency range
+      fravg  = MEAN(fran)
+      diff   = ABS(zerox - fravg[0])
+      mndf   = MIN(diff,lmndf,/NAN)
+      IF (lmndf[0] EQ 0) THEN zind[0] -= 1 ELSE zind[1] += 1
+      g_zind = zind
+    ENDELSE
+    fran_0         = [fft_freqs[g_zind[0]],fft_freqs[g_zind[1]]]
+  ENDELSE
+ENDIF ELSE BEGIN
+  fran_0         = [MIN(zerox,/NAN),MAX(zerox,/NAN)]
+ENDELSE
+good_0         = WHERE(fft_freqs GT fran_0[0] AND fft_freqs LE fran_0[1],gd_0)  ;;  frequencies within zero crossing range
+;;----------------------------------------------------------------------------------------
+;;  2)  Find indices of Max. positive and negative values in new range
+;;----------------------------------------------------------------------------------------
+min_dpdf_0     = MIN(dPdf_sm[good_0],indmn,/NAN)
+max_dpdf_0     = MAX(dPdf_sm[good_0],indmx,/NAN)
+indx           = ([indmn[0],indmx[0]])[SORT([indmn[0],indmx[0]])]
+gind_fra       = good_0[indx]
+;;  Make sure encloses peak
+test           = (gind_fra[0] LT ind_mxpow[0]) AND (gind_fra[1] GT ind_mxpow[0])
+i_posi         = [(TOTAL(gind_fra GE ind_mxpow[0]) EQ 2),test[0],$
+                  (TOTAL(gind_fra LE ind_mxpow[0]) EQ 2)]
+IF (test EQ 0) THEN BEGIN
+  good_ipos = WHERE(i_posi,gdipos)
+  CASE good_ipos[0] OF
+    0L   : BEGIN
+      ;;  Both are > index of peak
+      ;;    --> Shift lower bound
+      gind_fra[0] = (ind_mxpow[0] - 1L) > 0L
+      If (gind_fra[1] - gind_fra[0] EQ 1) THEN gind_fra[1] += 1L
+    END
+    1L   :  ;;  Peak is between indices
+    2L   : BEGIN
+      ;;  Both are < index of peak
+      ;;    --> Shift upper bound
+      gind_fra[1] = (ind_mxpow[0] + 1L) < (nf[0] - 1L)
+      If (gind_fra[1] - gind_fra[0] EQ 1) THEN gind_fra[0] -= 1L
+    END
+    ELSE : BEGIN
+      ;;  Try centering on main peak
+      gind_fra = ind_mxpow[0] + [-1L,1L]*2L
+      If (gind_fra[0] LT 0) THEN gind_fra += ABS(gind_fra[0])
+      If (gind_fra[1] GT (nf[0] - 1L)) THEN gind_fra -= ABS((nf[0] - 1L) - gind_fra[1])
+    END
+  ENDCASE
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  3)  Find innermost zero crossings enclosing those local maxima
+;;----------------------------------------------------------------------------------------
+test_lowz      = ((fft_freqs[gind_fra[0]] - zerox) GE 0)
+test_higz      = ((fft_freqs[gind_fra[1]] - zerox) LE 0)
+low_zero       = WHERE(test_lowz,lowz)
+hig_zero       = WHERE(test_higz,higz)
+;;----------------------------------------------------------------------------------------
+;;  4)  Define the frequency range of the power spectral peak
+;;----------------------------------------------------------------------------------------
+test           = (lowz EQ 0) OR (higz EQ 0)
+IF (test) THEN BEGIN
+  ;;  Just use the range enclosing power peak
+  fran_pk_f      = fft_freqs[gind_fra]
+ENDIF ELSE BEGIN
+  ;;  Try zoomed-in range
+  fran_pk_f      = [MAX(zerox[low_zero],/NAN),MIN(zerox[hig_zero],/NAN)]
+  ;;  Check to see if it encloses max
+  test           = (fran_pk_f[0] GE f_at_mxpow[0]) OR (fran_pk_f[1] LE f_at_mxpow[0])
+  IF (test) THEN BEGIN
+    ;;  peak not enclosed --> enlarge range
+    test           = (fran_pk_f[0] GE f_at_mxpow[0])
+    fnew           = (1d0 + [-1d0,1d0]*1d-1)*f_at_mxpow[0]
+    IF (test) THEN fran_pk_f[0] = fnew[0] ELSE fran_pk_f[1] = fnew[1]
+  ENDIF
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,fran_pk_f
+END

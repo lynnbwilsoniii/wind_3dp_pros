@@ -1,0 +1,265 @@
+;+
+;PROCEDURE:  store_data,name,DATA=data,LIMITS=limits,DLIMITS=dlimits,
+;		NEWNAME=newname,DELETE=delete
+;PURPOSE:  
+;   Store time series structures in static memory for later retrieval
+;   by the tplot routine.  Three structures can be associated with the 
+;   string 'name':  a data structure (DATA) that typically contains the x and
+;   y data. A default limits structure (DLIMITS) and a user limits structure
+;   (LIMITS) that will typically contain user defined limits and options
+;   (typically plot and oplot keywords).  The data structure and the default
+;   limits structure will be
+;   over written each time a new data set is loaded.  The limit structure
+;   is not over-written.
+;INPUT:
+;   name:   string name to be associated with the data structure and/or
+;     the limits structure.  Also, can enter tplot index as name.
+;     The name should not contain spaces or the characters '*' and '?'
+;KEYWORDS:
+;    DATA:  variable that contains the data structure.
+;    LIMITS; variable that contains the limit structure.
+;    DLIMITS; variable that contains the default limits structure.
+;    NEWNAME: new tplot handle.  Use to rename tplot names.
+;    DELETE: array of tplot handles or indices to delete from common block.
+;    MIN: if set, data values less than this value will be made NaN.
+;    MAX: if set, data values greater than this value will be made NaN.
+;    NOSTRSW: if set, do not transpose multidimensional data arrays in
+;	      structures.  The default is to transpose.
+;
+;SEE ALSO:    "GET_DATA", "TPLOT_NAMES",  "TPLOT", "OPTIONS"
+;
+;CREATED BY:	Davin Larson
+;MODIFIED BY:   Peter Schroeder
+;VERSION: 	@(#)store_data.pro	1.44 02/04/17
+;-
+pro store_data,name, $
+   data = data, $
+   limits= limits, $
+   dlimits = dlimits, $
+   newname = newname, $
+   min=min, max=max, $
+   delete = delete, $
+   verbose = verbose, $
+   nostrsw = nostrsw
+
+common storeptrs,ptrlist,ptrnums
+@tplot_com.pro
+str_element,tplot_vars,'options.verbose',verbose
+if not keyword_set(ptrlist) then ptrlist = [ptr_new()]
+if not keyword_set(ptrnums) then ptrnums = [0]
+
+if keyword_set(delete) then begin
+   if n_elements(name) ne 0 then delete = name
+   for i = 0, n_elements(delete)-1 do begin
+	dt = data_type(delete(i))
+	if dt eq 7 then begin
+		index = find_handle(delete(i))
+		name = delete(i)
+	endif else if (dt ge 1) and (dt le 3) then begin
+		index = delete(i)
+		name = data_quants(index).name
+		gtind = where(delete gt index,count)
+		if count ne 0 then delete(gtind) = delete(gtind) - 1
+	endif else begin
+		print,'Invalid handle name or index to delete'
+		return
+	endelse
+	if index eq 0 then print,delete(i),' not a valid handle name' else begin
+	      	dq = data_quants(index)
+	      	names = str_sep(dq.name,'.')
+;  		if n_elements(names) ge 2 then report,'Trying to delete '+dq.name
+      		if data_type(*dq.dh) eq 8 then begin
+        		dqtags = tag_names_r(*dq.dh)
+        		for j=0,n_elements(dqtags)-1 do begin
+   		     		str_element,*dq.dh,dqtags(j),foo
+   		     		pindx = where(ptrlist eq foo)
+   		     		pnindx = where(ptrlist ne foo)
+   		     		pindx = pindx[0]
+   		     		if ptrnums(pindx) eq 1 then begin
+   		     			ptr_free,foo
+   		     			ptrnums = ptrnums(pnindx)
+   		     			ptrlist = ptrlist(pnindx)
+   		     		endif else ptrnums(pindx) = ptrnums(pindx) - 1
+      	 		endfor
+        	endif
+      		ptr_free,dq.dh,dq.dl,dq.lh
+ 	       	ind = where(data_quants.name ne name,count)
+       		if count ne 0 then data_quants = data_quants(ind)
+       	endelse
+   endfor
+   return
+endif
+
+dt = size(name,/type)
+if size(name,/n_dimen) ne 0 then begin
+   message,/info,'Input name must be scaler!'
+   return
+endif
+
+if dt eq 7 then begin
+  if total( array_union(byte(name),byte(' *?[]\'))  ge 0) then begin
+       message,/info,'Invalid name: "'+name+'"; Name may not contain spaces, or the characters: "* ? [ ] \"'
+       return
+  endif
+  if n_elements(data_quants) eq 0 then index = 0 else $
+ 	index = find_handle(name)
+endif else if (dt ge 1) and (dt le 3) then begin
+		index = name
+		name = data_quants(index).name
+	endif else if not keyword_set(delete) then begin
+			print,'Invalid handle name or index'
+			return
+	endif
+
+dq = {tplot_quant}
+   
+if n_elements(data_quants) eq 0 then data_quants = [dq]
+
+
+if index eq 0 then begin        ; new variable
+  orig_name = name+'x'
+  dq.name = strmid(orig_name,0,strlen(name))
+;  if keyword_set(verbose) then print,'Creating new tplot variable: ',dq.name
+  verb = 'Creating'
+  dq.lh = ptr_new(0)
+  dq.dl = ptr_new(0)
+  dq.dh = ptr_new(0)
+  data_quants = [data_quants,dq]
+  index = n_elements(data_quants) - 1
+  dq.create_time = systime(1)
+endif else begin
+  dq = data_quants(index)
+;  if keyword_set(verbose) then print,'Replacing tplot variable: ',dq.name
+  verb = 'Altering'
+endelse
+
+
+if keyword_set(min) then begin
+   bad = where(data.y lt min,c)
+   if c ne 0 then data.y(bad) = !values.f_nan
+endif
+
+if keyword_set(max) then begin
+   bad = where(data.y gt max,c)
+   if c ne 0 then data.y(bad) = !values.f_nan
+endif
+
+
+; set values:
+if n_elements(newname) ne 0 then begin
+   	if total( array_union(byte(newname),byte(' *?[]\'))  ge 0) then begin
+		message,/info,'Invalid name: "'+name+'"; Name may not contain spaces, or the characters: "* ? [ ] \"'
+		return
+	endif
+	nindex = where(data_quants.name eq newname, count)
+	if count gt 0 then begin
+		print,'New name must not already be in use!
+		return
+	endif else dq.name = newname
+endif
+if n_elements(limits) ne 0 then *dq.lh = limits
+if n_elements(dlimits) ne 0 then *dq.dl = dlimits
+if n_elements(data) ne 0 then if data_type(data) eq 8 then begin
+  	dq.create_time = systime(1)
+        if keyword_set(verbose) then print,verb+' tplot variable: ',dq.name
+	mytags = tag_names_r(data)
+	myptrstr = 0
+	for i = 0, n_elements(mytags) - 1 do begin
+		str_element,data,mytags(i),foo
+		if data_type(foo) ne 10 then begin
+			oldp = ptr_new()
+			str_element,*dq.dh,mytags(i),oldp
+			if ptr_valid(oldp) then begin
+				oindx = where(ptrlist eq oldp)
+				onindx = where(ptrlist ne oldp,oncnt)
+				oindx = oindx[0]
+				if ptrnums(oindx) eq 1 then begin
+					if oncnt ne 0 then begin
+						ptrlist = ptrlist(onindx)
+						ptrnums = ptrnums(onindx)
+					endif
+					ptr_free,oldp
+				endif else ptrnums(oindx) = ptrnums(oindx)-1
+			endif
+			ptofoo = ptr_new(foo)
+			str_element,myptrstr,mytags(i),ptofoo,/add_replace
+			ptrlist = [ptrlist,ptofoo]
+			ptrnums = [ptrnums,1]
+		endif else begin
+			oldp = ptr_new()
+			str_element,*dq.dh,mytags(i),oldp
+			if ptr_valid(oldp) then begin
+				oindx = where(ptrlist eq oldp)
+				onindx = where(ptrlist ne oldp,oncnt)
+				oindx = oindx[0]
+				if ptrnums(oindx) eq 1 then begin
+					if oncnt ne 0 then begin
+						ptrlist = ptrlist(onindx)
+						ptrnums = ptrnums(onindx)
+					endif
+					ptr_free,oldp
+				endif else ptrnums(oindx) = ptrnums(oindx)-1
+			endif
+			str_element,myptrstr,mytags(i),foo,/add_replace
+			pindx = where(ptrlist eq foo,cnt99)
+			if cnt99 ne 0 then begin
+				ptrnums(pindx) = ptrnums(pindx) + 1
+			endif else begin
+				ptrlist = [ptrlist,foo]
+				ptrnums = [ptrnums,1]
+			endelse
+		endelse
+	endfor
+	*dq.dh = myptrstr
+endif else *dq.dh = data
+;if n_elements(data) ne 0 then if data_type(data) eq 10 then $
+;	dq.dh = data else *dq.dh = data
+
+extract_tags,dstr,data
+extract_tags,dstr,dlimits
+extract_tags,dstr,limits
+
+
+str_element,dstr,'x',value=x
+str_element,dstr,'y',value=y
+if data_type(x) eq 10 then x=*x
+if data_type(y) eq 10 then y=*y
+if n_elements(x) ne 0 and n_elements(y) ne 0 then begin
+	dq.dtype = 1
+	dq.trange = minmax(x)
+endif
+str_element,dstr,'time',value=time
+if data_type(time) eq 10 then time=*time
+if n_elements(time) ne 0 then begin
+	dq.dtype = 2
+;	report
+	dq.trange = minmax(time)
+        dqtags = tag_names_r(*dq.dh)
+	data_quants(index) = dq
+        for i=0,n_elements(dqtags)-1 do if dqtags(i) ne 'TIME' then begin
+   	     	subname = dq.name+'.'+dqtags(i)
+   	     	str_element,*dq.dh,dqtags(i),foo
+   	     	if ndimen(*foo) ne 1 then $
+   	     		if dimen((*foo)[0]) ne n_elements(time) then $
+   	     		  if keyword_set(nostrsw) eq 0 then $
+   	     		    *foo = transpose(*foo)
+     		store_data,subname,data={x: (*dq.dh).time, y:foo}, $
+     			dlimits=*dq.dl, limits=*dq.lh
+      	endif
+endif
+
+if n_elements(data) ne 0 then if data_type(data) eq 7 then $
+	dq.dtype = 3
+
+data_quants(index) = dq
+
+;pos = strpos(name,'.')
+;if (pos gt 0) then begin
+;	names = strarr(2)
+;        names(0) = strmid(name,0,pos)
+;        names(1) = strmid(name,pos+1,100)
+;	superind = find_handle(names(0))
+;	dq.trange = data_quants(superind).trange
+;endif
+
+end

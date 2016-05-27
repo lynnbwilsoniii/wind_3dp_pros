@@ -1,0 +1,149 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   trange_clip_data.pro
+;  PURPOSE  :   This routine finds the data points within a user defined time range from
+;                 an input TPLOT structure and returns a TPLOT structure containing only
+;                 the points constrained by TRANGE.  If an error occurs or the input
+;                 format is incorrect, then the routine will return a scalar zero.  Thus,
+;                 one can test for a successful completion based upon the type output
+;                 matching an IDL structure.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               tplot_struct_format_test.pro
+;               is_a_number.pro
+;               get_valid_trange.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA           :  Scalar [structure] defining a valid TPLOT structure
+;                                   the the user wishes to clip (in time) in order to
+;                                   examine only data between the limits defined by the
+;                                   TRANGE keyword
+;
+;  EXAMPLES:    
+;               test = trange_clip_data(data,TRANGE=trange,PRECISION=prec)
+;
+;  KEYWORDS:    
+;               TRANGE         :  [2]-Element [double] array specifying the Unix time
+;                                   range for which to limit the data in DATA
+;                                   [Default = prompted by get_valid_trange.pro]
+;               PRECISION      :  Scalar [long] defining precision of the string output:
+;                                   = -5  :  Year only
+;                                   = -4  :  Year, month
+;                                   = -3  :  Year, month, date
+;                                   = -2  :  Year, month, date, hour
+;                                   = -1  :  Year, month, date, hour, minute
+;                                   = 0   :  Year, month, date, hour, minute, sec
+;                                   = >0  :  fractional seconds
+;                                   [Default = 0]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  See also:  get_valid_trange.pro
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  10/05/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/05/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION trange_clip_data,data,TRANGE=trange,PRECISION=prec
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION tplot_struct_format_test, is_a_number, get_valid_trange
+;;----------------------------------------------------------------------------------------
+;;  Define some defaults
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply an IDL TPLOT structure...'
+baddfor_msg    = 'Incorrect input format:  DATA must be an IDL TPLOT structure'
+baddinp_msg    = 'Incorrect input:  DATA must be a valid TPLOT structure with numeric times and data'
+bad_tra_msg    = 'Could not define proper time range... Exiting without computation...'
+nod_tra_msg    = 'No data within user specified time range... Exiting without computation...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (SIZE(data,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check if TPLOT structure
+test           = (tplot_struct_format_test(data) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,baddfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Define parameters
+time           = data.X            ;;  [N]-Element array of Unix times
+dats           = data.Y            ;;  [N [,M , L]]-Element array of data
+;;  Make sure data format is okay
+szdt           = SIZE(time,/DIMENSIONS)
+szdd           = SIZE(dats,/DIMENSIONS)
+sznd           = SIZE(dats,/N_DIMENSIONS)
+test           = (szdt[0] NE szdd[0]) OR (is_a_number(time,/NOMSSG) EQ 0) OR $
+                 (is_a_number(dats,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,baddinp_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check TRANGE
+tra_struc      = get_valid_trange(TRANGE=trange,PRECISION=prec)
+tra_unix       = tra_struc.UNIX_TRANGE
+test           = (TOTAL(FINITE(tra_unix)) LT 2)
+IF (test[0]) THEN BEGIN
+  MESSAGE,bad_tra_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Redefine TRANGE
+trange         = tra_unix
+;;----------------------------------------------------------------------------------------
+;;  Determine which elements are within TRANGE
+;;----------------------------------------------------------------------------------------
+sp             = SORT(time)
+tt             = time[sp]
+test           = (tt LE trange[1]) AND (tt GE trange[0])
+good           = WHERE(test,gd)
+IF (gd EQ 0) THEN BEGIN
+  MESSAGE,nod_tra_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Data found --> define output
+xx             = tt[good]
+sp2            = sp[good]
+CASE sznd[0] OF
+  1    :  yy = dats[sp2]          ;;  [N]-Element array
+  2    :  yy = dats[sp2,*]        ;;  [N,M]-Element array
+  3    :  yy = dats[sp2,*,*]      ;;  [N,M,L]-Element array
+  ELSE : STOP  ;;  What did you do?  --> debug
+ENDCASE
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+struc          = {X:xx,Y:yy}
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END

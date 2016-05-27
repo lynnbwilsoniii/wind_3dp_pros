@@ -1,0 +1,269 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   log10_tickmarks.pro
+;  PURPOSE  :   Produces an array of powers of 10 from an input array of data to be used
+;                 as tick marks for plotting on a logarithmic scale.  Occasionally, when
+;                 a dataset spans several orders of magnitude, IDL will default to using
+;                 powers of ten that skip values (e.g., from 10^2 to 10^4).  This routine
+;                 returns a structure that contains the appropriate tick mark values,
+;                 string names, and [X,Y,Z]TICKS value to be used in all the built-in
+;                 IDL plotting routines.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               calc_log_scale_yrange.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA     :  [N]-Element [integer/long/float/double] array of values for
+;                             which the user wishes to determine appropriate tick mark
+;                             values to show on a logarithmic scale
+;
+;  EXAMPLES:    
+;               ;;------------------------------------------------------
+;               ;;  Try numerous examples and then print the results
+;               ;;------------------------------------------------------
+;               ;;  Define dummy data arrays
+;               n              = 20L
+;               xra            = [0.35d0,0.85d0]      ;;  Test Case A
+;               x_a            = DINDGEN(n)*(xra[1] - xra[0])/(n - 1) + xra[0]
+;               xra            = [0.35d0,1.20d0]      ;;  Test Case B i)
+;               x_b10          = DINDGEN(n)*(xra[1] - xra[0])/(n - 1) + xra[0]
+;               xra            = [0.75d0,1.20d0]      ;;  Test Case B i)
+;               x_b11          = DINDGEN(n)*(xra[1] - xra[0])/(n - 1) + xra[0]
+;               xra            = [1d-4,1.10d1]        ;;  Test Case B i)
+;               x_b12          = DINDGEN(n)*(xra[1] - xra[0])/(n - 1) + xra[0]
+;               xra            = [0.95d0,1.05d0]      ;;  Test Case B ii)
+;               x_b20          = DINDGEN(n)*(xra[1] - xra[0])/(n - 1) + xra[0]
+;               xra            = [0.25d0,1.85d0]      ;;  Test Case B ii)
+;               x_b21          = DINDGEN(n)*(xra[1] - xra[0])/(n - 1) + xra[0]
+;               xra            = [0.15d0,1.95d0]      ;;  Test Case B ii)
+;               x_b22          = DINDGEN(n)*(xra[1] - xra[0])/(n - 1) + xra[0]
+;               xra            = [0.35d0,35d2]        ;;  Test Case C
+;               x_c            = DINDGEN(n)*(xra[1] - xra[0])/(n - 1) + xra[0]
+;               xra            = [0.05d0,1.20d0]      ;;  Test Case D
+;               x_d            = DINDGEN(n)*(xra[1] - xra[0])/(n - 1) + xra[0]
+;               ;;  Estimate new Y-Tick Values
+;               xtick_a        = log10_tickmarks(x_a)
+;               xtick_b10      = log10_tickmarks(x_b10,RANGE=[1d-1,2d0])
+;               xtick_b11      = log10_tickmarks(x_b11)
+;               xtick_b12      = log10_tickmarks(x_b12)
+;               xtick_b20      = log10_tickmarks(x_b20)
+;               xtick_b21      = log10_tickmarks(x_b21)
+;               xtick_b22      = log10_tickmarks(x_b22)
+;               xtick_c        = log10_tickmarks(x_c)
+;               xtick_d        = log10_tickmarks(x_d)
+;               ;;  Print results
+;               FOR j=0L, 8L DO BEGIN                                                             $
+;                 IF (j EQ 0) THEN out = [MIN(xtick_a.TICKV,/NAN),MAX(xtick_a.TICKV,/NAN)]      & $
+;                 IF (j EQ 1) THEN out = [MIN(xtick_b10.TICKV,/NAN),MAX(xtick_b10.TICKV,/NAN)]  & $
+;                 IF (j EQ 2) THEN out = [MIN(xtick_b11.TICKV,/NAN),MAX(xtick_b11.TICKV,/NAN)]  & $
+;                 IF (j EQ 3) THEN out = [MIN(xtick_b12.TICKV,/NAN),MAX(xtick_b12.TICKV,/NAN)]  & $
+;                 IF (j EQ 4) THEN out = [MIN(xtick_b20.TICKV,/NAN),MAX(xtick_b20.TICKV,/NAN)]  & $
+;                 IF (j EQ 5) THEN out = [MIN(xtick_b21.TICKV,/NAN),MAX(xtick_b21.TICKV,/NAN)]  & $
+;                 IF (j EQ 6) THEN out = [MIN(xtick_b22.TICKV,/NAN),MAX(xtick_b22.TICKV,/NAN)]  & $
+;                 IF (j EQ 7) THEN out = [MIN(xtick_c.TICKV,/NAN),MAX(xtick_c.TICKV,/NAN)]      & $
+;                 IF (j EQ 8) THEN out = [MIN(xtick_d.TICKV,/NAN),MAX(xtick_d.TICKV,/NAN)]      & $
+;                 PRINT,out,FORMAT='(";; ",2e15.4)'
+;               ;;      1.0000e-01     1.0000e+00
+;               ;;      1.0000e-01     1.0000e+01
+;               ;;      1.0000e-01     1.0000e+01
+;               ;;      1.0000e-05     1.0000e+02
+;               ;;      1.0000e-01     1.0000e+01
+;               ;;      1.0000e-01     1.0000e+01
+;               ;;      1.0000e-01     1.0000e+01
+;               ;;      1.0000e-01     1.0000e+04
+;               ;;      1.0000e-02     1.0000e+01
+;
+;  KEYWORDS:    
+;               RANGE    :  [2]-Element [integer/long/float/double] array defining the
+;                             range of values to use when defining the appropriate
+;                             tick marks
+;                             [Default = calc_log_scale_yrange(data)]
+;               MIN_VAL  :  Scalar [integer/long/float/double] defining the minimum
+;                             value to consider before determining the data range.
+;                             If set, then all values < MIN_VAL will be ignored.  This
+;                             keyword is ignored if RANGE keyword is set properly.
+;                             [Default = MIN(data,/NAN)]
+;               MAX_VAL  :  Scalar [integer/long/float/double] defining the maximum
+;                             value to consider before determining the data range.
+;                             If set, then all values > MAX_VAL will be ignored.  This
+;                             keyword is ignored if RANGE keyword is set properly.
+;                             [Default = MAX(data,/NAN)]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  See also:  calc_log_scale_yrange.pro
+;               F)  Future plans:
+;                     a)  incorporate COMPLEX inputs
+;                     b)  positive and negative ranges
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  05/15/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/15/2014   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION log10_tickmarks,data,RANGE=range,MIN_VAL=min_val,MAX_VAL=max_val
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+FORWARD_FUNCTION calc_log_scale_yrange
+
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Numeric [Reals] Type Codes
+num_typec_R    = [1,2,3,4,5,12,13,14,15]
+;;  Numeric [Complex] Type Codes
+num_typec_C    = [6,9]
+;;  All Numeric Type Codes
+num_typec_A    = [num_typec_R,num_typec_C]
+;;  Error messages
+noinput_mssg   = 'Incorrect input was supplied... See Man. page for details.'
+no_fin_dat_msg = 'No finite data input...'
+bad_x_num_msg  = 'X must be an [N]-element array of numeric values...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1)
+IF (test[0]) THEN BEGIN
+  ;;  no input???
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;  Check for finite data
+test           = (TOTAL(FINITE(data)) LE 1) OR (MIN(data,/NAN) EQ MAX(data,/NAN))
+IF (test[0]) THEN BEGIN
+  ;;  bad input???
+  MESSAGE,no_fin_dat_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;  Make sure DATA is numeric
+test           = (TOTAL(SIZE(data,/TYPE) EQ num_typec_A) EQ 0)
+IF (test[0]) THEN BEGIN
+  ;;  bad input format???
+  MESSAGE,bad_x_num_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define parameters
+;;----------------------------------------------------------------------------------------
+x              = REFORM(data)
+;;  Define a default range
+def_ran        = [MIN(x,/NAN),MAX(x,/NAN)]
+IF (def_ran[0] LT 0) THEN def_ran[0] *= 1.05 ELSE def_ran[0] *= 0.95
+IF (def_ran[1] GT 0) THEN def_ran[1] *= 1.05 ELSE def_ran[1] *= 0.95
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+allowed_ran  = REPLICATE(d,2)        ;;  Allowed range for DATA
+;;  Check MIN_VAL
+test           = (N_ELEMENTS(min_val) EQ 0) OR (TOTAL(SIZE(min_val,/TYPE) EQ num_typec_A) EQ 0)
+IF (test[0]) THEN BEGIN
+  ;;  MIN_VAL not set or set incorrectly
+  mn0 = MIN(x,/NAN)
+ENDIF ELSE BEGIN
+  mn0 = min_val[0]
+ENDELSE
+;;  Check if < 0  --> lower by increasing magnitude
+IF (mn0[0] LT 0) THEN mn0[0] *= 1.05 ELSE mn0[0] *= 0.95
+;;  Check MAX_VAL
+test           = (N_ELEMENTS(max_val) EQ 0) OR (TOTAL(SIZE(max_val,/TYPE) EQ num_typec_A) EQ 0)
+IF (test[0]) THEN BEGIN
+  ;;  MAX_VAL not set or set incorrectly
+  mx0 = MAX(x,/NAN)
+ENDIF ELSE BEGIN
+  mx0 = max_val[0]
+ENDELSE
+;;  Check if > 0  --> raise by increasing magnitude
+IF (mx0[0] GT 0) THEN mx0 *= 1.05 ELSE mx0 *= 0.95
+allowed_ran  = [mn0[0],mx0[0]]
+;;  Check RANGE
+test           = (N_ELEMENTS(range) NE 2) OR (TOTAL(SIZE(range,/TYPE) EQ num_typec_A) EQ 0)
+IF (test[0]) THEN BEGIN
+  ;;  RANGE not set or set incorrectly
+  test = (x LT allowed_ran[0]) OR (x GT allowed_ran[1])
+  bad  = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+  IF (gd EQ 0) THEN BEGIN
+    ;;  bad use of MIN_VAL and MAX_VAL  --> No data within allowed range
+    allowed_ran = def_ran
+    test        = (x LT allowed_ran[0]) OR (x GT allowed_ran[1])
+    bad         = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+    IF (gd EQ 0) THEN BEGIN
+      ;;  somthing is wrong
+      PRINT,'what happened?'
+      STOP
+    ENDIF
+  ENDIF
+  ;;  use only data in allowed range
+  IF (gd GT 0) THEN x2 = x[good] ELSE STOP  ;; something is wrong again
+  ;;  estimate range
+  dra  = calc_log_scale_yrange(x2)
+  IF (N_ELEMENTS(dra) NE 2) THEN BEGIN
+    ;;  routine returned a zero --> bad input?
+    dra = allowed_ran
+  ENDIF ELSE BEGIN
+    IF (dra[0] EQ dra[1]) THEN dra = allowed_ran
+  ENDELSE
+ENDIF ELSE BEGIN
+  IF (range[0] EQ range[1]) THEN dra = allowed_ran ELSE dra = REFORM(range[SORT(range)])
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define ticks
+;;----------------------------------------------------------------------------------------
+log10_ra       = ALOG10(dra)
+ltick_ra       = [FLOOR(log10_ra[0]),CEIL(log10_ra[1])]
+nlt            = ltick_ra[1] - ltick_ra[0] + 1L
+pow            = LINDGEN(nlt[0]) + ltick_ra[0]          ;;  N in 10^N
+str_pow        = STRTRIM(STRING(pow,FORMAT='(I)'),2L)
+tick_vals      = 1d1^(DOUBLE(pow))       ;;  Values for [X,Y,Z]TICKV
+tick_names     = '10!U'+str_pow+'!N'     ;;  Values for [X,Y,Z]TICKNAME
+tick_nums      = nlt[0] - 1L             ;;  Values for [X,Y,Z]TICKS
+;;----------------------------------------------------------------------------------------
+;;  Create return structure
+;;----------------------------------------------------------------------------------------
+tags           = ['TICKV','TICKNAME','TICKS','POWERS']
+struc          = CREATE_STRUCT(tags,tick_vals,tick_names,tick_nums,pow)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

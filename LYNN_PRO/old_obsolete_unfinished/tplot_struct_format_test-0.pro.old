@@ -1,0 +1,99 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   tplot_struct_format_test.pro
+;  PURPOSE  :   Tests an IDL structure to determine if it has the necessary structure 
+;                 tags etc. to be compatible with TPLOT.
+;
+;  CALLED BY:   
+;               vector_mv_plot.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               STRUCT  :  An IDL structure
+;
+;  EXAMPLES:    
+;               ; => Example of BAD structure
+;               struct = {A:lindgen(20),B:dindgen(10)}
+;               test   = tplot_struct_format_test(struct)
+;               print, test
+;                    0
+;               ; => Example of a GOOD structure
+;               struct = {X:dindgen(20),Y:findgen(20)}
+;               test   = tplot_struct_format_test(struct)
+;               print, test
+;                    1
+;               ; => Example of a vector structure
+;               struct = {X:dindgen(20),Y:findgen(20,3)}
+;               test   = tplot_struct_format_test(struct,/YVECT)
+;               print, test
+;                    1
+;
+;  KEYWORDS:    
+;               YNDIM   :  Scalar defining the number of dimensions desired in the
+;                            struct.Y array, if present
+;               YVECT   :  If set, program determines if struct.Y is an 
+;                            [N,3]-Element array
+;
+;   CHANGED:  1)  Added error handling in case user entered a null variable
+;                                                                 [10/19/2010   v1.1.0]
+;
+;   NOTES:      
+;               
+;
+;   CREATED:  09/23/2010
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/19/2010   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION tplot_struct_format_test,struct,YNDIM=yndim,YVECT=yvect
+
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables
+;-----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+notstr_mssg    = 'Must be an IDL structure...'
+badstr_mssg    = 'Not an appropriate TPLOT structure...'
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+IF N_PARAMS() EQ 0 THEN RETURN,0b
+str = struct[0]   ; => in case it is an array of structures of the same format
+IF (SIZE(str,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Examine input
+;-----------------------------------------------------------------------------------------
+tags   = STRLOWCASE(TAG_NAMES(str))
+ntags  = N_TAGS(str)
+testx  = WHERE(tags EQ 'x',gdx)
+testy  = WHERE(tags EQ 'y',gdy)
+good   = (gdx EQ 1) AND (gdy EQ 1)  ; => 1 = Good TPLOT structure, 0 = fail
+; => Make sure it is TPLOT appropriate before checking keywords
+IF NOT good THEN RETURN,0b
+
+IF KEYWORD_SET(yndim) THEN BEGIN
+  y_dim = SIZE(str.Y,/N_DIMENSIONS)
+  ytest = y_dim[0] EQ yndim[0]
+  IF (ytest) THEN good = ytest ELSE good = 0b
+ENDIF
+
+IF KEYWORD_SET(yvect) THEN BEGIN
+  y_dim = SIZE(str.Y,/DIMENSIONS)
+  gdim  = WHERE(y_dim EQ 3L,gd)
+  IF (gd GT 0) THEN good = 1b ELSE good = 0b
+ENDIF
+
+RETURN,good
+END

@@ -1,0 +1,277 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   write_shocks_jck_database_new.pro
+;  PURPOSE  :   This routine creates an IDL save file containing all the results from
+;                 the Harvard CfA Wind shock database for fast forward (FF) shocks.
+;                 The save file is stored in the same place as the ASCII file created
+;                 by the older version of this routine, write_shocks_jck_database.pro.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;               2)  HTML files created by using
+;                       create_html_from_cfa_winddb_urls.pro
+;                     in the directory:
+;                       ~/wind_3dp_pros/wind_data_dir/JCK_Data-Base/JCK_html_files/
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               .compile /Users/lbwilson/Desktop/temp_idl/write_shocks_jck_database_new.pro
+;               write_shocks_jck_database_new
+;
+;  KEYWORDS:    
+;               DIRECT       :  Scalar [string] defining the directory location
+;                                 of the HTML ASCII files one is interested in
+;                [Default = '~/wind_3dp_pros/wind_data_dir/JCK_Data-Base/JCK_html_files/']
+;               STATUS       :  If set, routine will print out status updates
+;                                 [Default = FALSE]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Definitions
+;                     SCF   :  Spacecraft frame of reference
+;                     SHF   :  Shock rest frame of reference
+;                     n     :  Shock normal unit vector [GSE basis]
+;                     Vsh   :  Shock velocity in SCF [km/s]
+;                     Vshn  :  Shock normal speed in SCF [km/s]
+;                                [ = |Vsh . n| ]
+;                     Ushn  :  Shock normal speed in SHF [km/s]
+;                                [ = (Vsw . n) - (Vsh . n) ]
+;                     Vs    :  Phase speed of MHD slow mode [km/s]
+;                     Vi    :  Phase speed of MHD intermediate mode [km/s]
+;                     Vf    :  Phase speed of MHD fast mode [km/s]
+;                     Q_j   :  Avg. of quantity Q in region j, where
+;                                j = 1 (upstream), 2 (downstream)
+;                     
+;               2)  Methods Used by J.C. Kasper:
+;                     MC    :  Magnetic Coplanarity    (Viñas and Scudder, [1986])
+;                     VC    :  Velocity Coplanarity    (Viñas and Scudder, [1986])
+;                     MX1   :  Mixed Mode Normal 1     (Russell et. al., [1983])
+;                     MX2   :  Mixed Mode Normal 2     (Russell et. al., [1983])
+;                     MX3   :  Mixed Mode Normal 3     (Russell et. al., [1983])
+;                     RH08  :  Rankine-Hugoniot 8 Eqs  (Viñas and Scudder, [1986])
+;                     RH09  :  Rankine-Hugoniot 8 Eqs  (Viñas and Scudder, [1986])
+;                     RH10  :  Rankine-Hugoniot 10 Eqs (Viñas and Scudder, [1986])
+;               3)  Definition of Parameters on website
+;                     Nj                  :  j-th component of n [GSE basis]
+;                     Theta               :  Spherical poloidal angle of n [GSE basis]
+;                     Phi                 :  Spherical azimuthal angle of n [GSE basis]
+;                     Shock Speed         :  Vshn [km/s]
+;                     Compression Ratio   :  N_2/N_1, where N_j = <N> in region j
+;                     Shock Normal Angle  :  Angle between n and upstream <B> [degrees]
+;                     dV                  :  Ushn [km/s]
+;                     Slow                :  Vs [km/s]
+;                     Intermediate        :  Vi [km/s]
+;                     Fast                :  Vf [km/s]
+;                     Slow Mach           :  Ms = |Ushn,j|/<Vs,j>
+;                     Fast Mach           :  Mf = |Ushn,j|/<Vf,j>
+;
+;    Algorithm for finding relevant information
+;  ==============================================
+;      Let the following definitions hold:
+;        SEARCH_STRING  :  string used by STRPOS as test
+;        STNO_STRING    :  normal starting string = '<td>'
+;        ENNO_STRING    :  normal ending   string = '</td>'
+;        STSP_STRING    :  special starting string = '<td style="vertical-align: top;">'
+;        ENSP_STRING    :  special ending   string = '<br>'
+;
+;      0)  find line of file with SEARCH_STRING for date
+;          --> Define date by reading entire line after SEARCH_STRING and using STRSPLIT
+;      1)  find line of file with SEARCH_STRING for section/table heading
+;          a)  "General Information" table
+;              i.  For all SEARCH_STRING's EXCEPT 'Method selected'
+;                    --> start/end strings = STNO_STRING/ENNO_STRING
+;                    --> 1st line          = value
+;             ii.  For 'Method selected'
+;                    --> start/end strings = STSP_STRING/ENSP_STRING
+;                    --> 1st line          = blank
+;                    --> 2nd line          = value
+;            iii.  Only arrival time has associated uncertainties
+;          b)  "Asymptotic plasma parameters" table
+;              i.  For V[x,y,z], W[i,e], Ni, and B[x,y,z]
+;                    --> start/end strings = STNO_STRING/ENNO_STRING
+;                    --> 1st line          = upstream
+;                    --> 2nd line          = downstream
+;             ii.  For Plasma Beta, Sound Speed, and Alfven Speed
+;                    --> start/end strings = STSP_STRING/ENSP_STRING
+;                    --> 1st line          = blank
+;                    --> 2nd line          = upstream
+;                    --> 3rd line          = blank
+;                    --> 4th line          = downstream
+;            iii.  All have associated uncertainties
+;          c)  "Best values of shock front normal for each method" table
+;              i.  For all SEARCH_STRING's
+;                    --> start/end strings = STNO_STRING/ENNO_STRING
+;                    --> 1st line          = Nx value
+;                    --> 2nd line          = Ny value
+;                    --> 3rd line          = Nz value
+;                    --> 4th line          = Theta value
+;                    --> 5th line          = Phi value
+;             ii.  Only Average, Median, and Deviation SEARCH_STRING's have no uncertainties
+;          d)  "Key shock parameters" table
+;              i.  For all SEARCH_STRING's
+;                    --> start/end strings = STNO_STRING/ENNO_STRING
+;                    --> 1st line          = ThetaBn value
+;                    --> 2nd line          = Shock Speed value
+;                    --> 3rd line          = Compression value
+;             ii.  Only Average, Median, and Deviation SEARCH_STRING's have no uncertainties
+;          e)  "Upstream wave speeds and mach numbers" table
+;              i.  For all SEARCH_STRING's
+;                    --> start/end strings = STNO_STRING/ENNO_STRING
+;                    --> 1st line          = dV value
+;                    --> 2nd line          = Slow value
+;                    --> 3rd line          = Intermediate value
+;                    --> 4th line          = Fast value
+;                    --> 5th line          = Slow Mach value
+;                    --> 6th line          = Fast Mach value
+;             ii.  Only Average, Median, and Deviation SEARCH_STRING's have no uncertainties
+;          f)  "Downstream wave speeds and mach numbers" table
+;              i.  Same as upstream table
+;             ii.  Only Average, Median, and Deviation SEARCH_STRING's have no uncertainties
+;
+;  REFERENCES:  
+;               1)  Viñas, A.F. and J.D. Scudder (1986), "Fast and Optimal Solution to
+;                      the 'Rankine-Hugoniot Problem'," J. Geophys. Res. 91, pp. 39-58.
+;               2)  A. Szabo (1994), "An improved solution to the 'Rankine-Hugoniot'
+;                      problem," J. Geophys. Res. 99, pp. 14,737-14,746.
+;               3)  Koval, A. and A. Szabo (2008), "Modified 'Rankine-Hugoniot' shock
+;                      fitting technique:  Simultaneous solution for shock normal and
+;                      speed," J. Geophys. Res. 113, pp. A10110.
+;               4)  Russell, C.T., J.T. Gosling, R.D. Zwickl, and E.J. Smith (1983),
+;                      "Multiple spacecraft observations of interplanetary shocks:  ISEE
+;                      Three-Dimensional Plasma Measurements," J. Geophys. Res. 88,
+;                      pp. 9941-9947.
+;
+;   CREATED:  02/18/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/18/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO write_shocks_jck_database_new,DIRECT=direct,STATUS=status
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
+;;  Define output IDL save file name
+file           = 'All_JCKaspers_Shock_Parameters.sav'
+;;----------------------------------------------------------------------------------------
+;;  Define default search paths and file names
+;;----------------------------------------------------------------------------------------
+;;  Define location of locally saved HTML files
+def_cfa_path   = '.'+slash[0]+'wind_3dp_pros'+slash[0]+'wind_data_dir'+slash[0]+ $
+                     'JCK_Data-Base'+slash[0]
+def_path       = def_cfa_path[0]+'JCK_html_files'+slash[0]
+;;  Define location of where to put output IDL save file
+def_idlsave_pt = def_cfa_path[0]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Setup file paths to HTML files
+;;  Check DIRECT
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+test           = ~KEYWORD_SET(exists) AND (SIZE(direct,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  mdir  = FILE_EXPAND_PATH(def_path[0])
+ENDIF ELSE BEGIN
+  test  = (SIZE(direct,/TYPE) NE 7)
+  IF (test[0]) THEN BEGIN
+    ;;  !wind3dp_umn system variable has been created
+    mdir  = !wind3dp_umn.ASCII_FILE_DIR
+    IF (mdir[0] EQ '') THEN BEGIN
+      mdir = FILE_EXPAND_PATH(def_path[0])
+    ENDIF ELSE BEGIN
+      mdir = mdir[0]+'JCK_html_files'+slash[0]
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;;  DIRECT keyword was set
+    ;;    --> check it
+    test = FILE_TEST(direct[0],/DIRECTORY)
+    IF (test[0]) THEN BEGIN
+      ;;  DIRECT is a directory
+      mdir  = EXPAND_PATH(direct[0])
+    ENDIF ELSE BEGIN
+      ;;  DIRECT is NOT a directory
+      ;;    --> use default
+      mdir  = FILE_EXPAND_PATH(def_path[0])
+    ENDELSE
+  ENDELSE
+ENDELSE
+html_path      = mdir[0]
+idlsave_path   = FILE_DIRNAME(html_path,/MARK_DIRECTORY)
+fname          = idlsave_path[0]+file[0]
+
+;;  Check STATUS
+test           = KEYWORD_SET(status) AND (N_ELEMENTS(status) NE 0)
+IF (test[0]) THEN verbose = 1 ELSE verbose = 0
+;;----------------------------------------------------------------------------------------
+;;  Read in results
+;;----------------------------------------------------------------------------------------
+cfa_db_wind    = read_html_jck_database_new(DIRECT=html_path)
+IF (SIZE(cfa_db_wind,/TYPE) NE 8) THEN STOP ;;  Something's wrong --> debug
+;;----------------------------------------------------------------------------------------
+;;  Create IDL save file
+;;----------------------------------------------------------------------------------------
+
+;;  Define some description variables of the output structure format and contents
+struc_form     = ['1)  If parameter has an uncertainty, then it will be a structure with the tags:',
+                  '      Y   :  Array of values',
+                  '      DY  :  Array of uncertainties',
+                  '2)  If table has associated statistics, then they will be found in an additional',
+                  '      structure defined by the tag, STATS, that contains the same tags as the',
+                  '      outer structure but each tag is now a structure with the tags:',
+                  '      AVG  :  Array of averages (over methods) of TAG[i] values',
+                  '      MED  :  Array of medians (over methods) of TAG[i] values',
+                  '      STD  :  Array of Std. Dev. (over methods) of TAG[i] values']
+top_lev_tags   = ['GEN_INFO','ASY_INFO','BVN_INFO','KEY_INFO','UPS_INFO','DNS_INFO']
+
+
+
+
+;;  Define structure for "General Information" table
+tags           = ['TDATES','FRAC_DOY','ARRT_SOD','ARRT_UNIX','SH_TYPE','E_DATA_YN',$
+                  'SCPOS_GSE','N_UP_P_PTS','N_UP_F_PTS','N_DN_P_PTS','N_DN_F_PTS', $
+                  'RH_METHOD']
+;;  Define structure for "Asymptotic plasma parameters" table
+tags           = ['VBULK_GSE','VTH_ION','VTH_ELE','DENS_ION','MAGF_GSE','PLASMA_BETA',$
+                  'SOUND_SPEED','ALFVEN_SPEED']
+;;  Define structure for "Best values of shock front normal for each method" table
+tag0           = ['SH_N_GSE','SH_N_THE','SH_N_PHI']
+tags           = [tag0,'STATS']
+;;  Define structure for "Key shock parameters" table
+tag0           = ['THETA_BN','VSHN_UP','NIDN_NIUP']
+tags           = [tag0,'STATS']
+;;  Define structure for "Upstream wave speeds and mach numbers" table
+tag0           = ['USHN','V_SLOW','V_INTM','V_FAST','M_SLOW','M_FAST']
+tags           = [tag0,'STATS']
+;;  Define structure for "Downstream wave speeds and mach numbers" table
+tag0           = ['USHN','V_SLOW','V_INTM','V_FAST','M_SLOW','M_FAST']
+tags           = [tag0,'STATS']
+
+
+
+
+SAVE,cfa_db_wind,FILENAME=fname[0],VERBOSE=verbose
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+
+

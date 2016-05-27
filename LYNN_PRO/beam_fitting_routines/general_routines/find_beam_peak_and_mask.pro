@@ -1,0 +1,282 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   find_beam_peak_and_mask.pro
+;  PURPOSE  :   This routine returns a mask that attempts to isolate a beam peak
+;                 after the core components have been removed from the particle
+;                 velocity distribution function.
+;
+;  CALLED BY:   
+;               beam_fit_1df_plot_fit.pro
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               transform_vframe_3d.pro
+;               rotate_3dp_structure.pro
+;               fix_vbulk_ions.pro
+;               energy_to_vel.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT_ORIG   :  Scalar structure associated with a known THEMIS ESA Burst
+;                               data structure [see get_th?_peib.pro, ? = a-f]
+;                               or a Wind/3DP PESA High Burst data structure
+;                               [see get_phb.pro] that has all the original information
+;                               and has not been manipulated beyond using the routines
+;                               modify_themis_esa_struc.pro and
+;                               rotate_esa_thetaphi_to_gse.pro
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               PLANE      :  Scalar [string] defining the plane projection to plot with
+;                               corresponding cuts [Let V1 = MAGF, V2 = VSW]
+;                                 'xy'  :  horizontal axis parallel to V1 and normal
+;                                            vector to plane defined by (V1 x V2)
+;                                            [default]
+;                                 'xz'  :  horizontal axis parallel to (V1 x V2) and
+;                                            vertical axis parallel to V1
+;                                 'yz'  :  horizontal axis defined by (V1 x V2) x V1
+;                                            and vertical axis (V1 x V2)
+;               V_THRESH   :  Scalar defining the smallest velocity [km/s] that will
+;                               encompass the entire "beam" component of the distribution
+;                               defined in the bulk flow rest frame
+;                               [Default = 500 km/s]
+;               V_0X       :  Scalar [float/double] defining the center of the circle
+;                               with radius V_THRESH along the Horizontal-Axis in the
+;                               contour plot
+;                               [Default = see notes]
+;               V_0Y       :  Scalar [float/double] defining the center of the circle
+;                               with radius V_THRESH along the Vertical-Axis in the
+;                               contour plot
+;                               [Default = see notes]
+;               NSMOOTH    :  Scalar defining the # of points over which to smooth the
+;                               ion velocity distribution prior to finding a central
+;                               maximum => set to 0 for no smoothing
+;                               [Default = 3]
+;
+;   CHANGED:  1)  Completely rewrote routine                       [08/23/2012   v2.0.0]
+;             2)  Fixed a bug that occurred if V_0X or V_0Y = 0    [09/01/2012   v2.0.1]
+;             3)  Cleaned up and fixed issue with index assignment for 'xz' plane
+;                                                                  [09/08/2012   v2.0.2]
+;
+;   NOTES:      
+;               1)  MUST use my version of conv_units.pro as it allows for arrays of
+;                     data structures
+;               2)  If DAT are from THEMIS IESA, then this routine assumes that they
+;                     have already been modified prior to calling by:
+;                     modify_themis_esa_struc.pro
+;                     rotate_esa_thetaphi_to_gse.pro
+;                         => GSE coordinates
+;               3)  The procedure involved here is similar to the correction used on
+;                     the core of the DF with beam ions present
+;               4)  See Also:  fix_vbulk_ions.pro and remove_uv_and_beam_ions.pro
+;               5)  If V_0[X,Y] not set, then program uses fix_vbulk_ions.pro to
+;                     determine these values
+;               6)  Frame Abbreviations:
+;                     SC   :  Spacecraft [e.g. GSE coordinates]
+;                     SW   :  Bulk Flow Frame [of Core]
+;                     BF   :  Beam Frame
+;                     FAC  :  Field-Aligned Coordinate [SC Frame]
+;                     FAW  :  Field-Aligned Coordinate [SW Frame]
+;
+;   CREATED:  08/21/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/08/2012   v2.0.2
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION find_beam_peak_and_mask,dat_orig,PLANE=plane,V_THRESH=v_thresh,V_0X=v_0x,$
+                                      V_0Y=v_0y,NSMOOTH=nsmooth,V_B_GSE=v_b_gse
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;; => Dummy error messages
+notstr_msg     = 'Must be an IDL structure...'
+notvdf_msg     = 'Must be an ion velocity distribution IDL structure...'
+;;----------------------------------------------------------------------------------------
+;; => Check input structure format
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN RETURN,0b
+str            = dat_orig[0]   ;; => in case it is an array of structures of the same format
+IF (SIZE(str,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test0          = test_wind_vs_themis_esa_struct(str,/NOM)
+test           = (test0.(0) + test0.(1)) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;; => Define dummy data structure to avoid changing input
+dat            = dat_orig[0]
+;;----------------------------------------------------------------------------------------
+;; => Check keywords
+;;----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(plane)    THEN projxy = 'xy'       ELSE projxy   = STRLOWCASE(plane[0])
+test           = ((projxy[0] EQ 'xy') OR (projxy[0] EQ 'xz') OR (projxy[0] EQ 'yz')) EQ 0
+IF (test)                    THEN projxy = 'xy'
+IF NOT KEYWORD_SET(nsmooth)  THEN ns     = 3          ELSE ns       = LONG(nsmooth)
+;;  Check for XY-Offsets
+IF (N_ELEMENTS(v_0x)  NE 1)  THEN vox    = 0d0        ELSE vox      = v_0x[0]
+IF (N_ELEMENTS(v_0y)  NE 1)  THEN voy    = 0d0        ELSE voy      = v_0y[0]
+;;  Check for velocity circle radius
+IF ~KEYWORD_SET(v_thresh)    THEN v_rad  = 50e1       ELSE v_rad    = v_thresh[0]
+;;  Define elements that correspond to plane of projection
+IF (projxy[0] EQ 'xz')       THEN gels   = [2L,0L,1L] ELSE gels     = [0L,1L,2L]
+
+;;----------------------------------------------------------------------------------------
+;; => Get rotation matrix information
+;;----------------------------------------------------------------------------------------
+dat_copy       = dat_orig[0]
+vec1           = REFORM(dat_copy[0].MAGF)    ;; magnetic field vector [nT]
+v_sw_orig      = REFORM(dat_copy[0].VSW)     ;; bulk flow velocity [km/s]
+;; => Transform into SW frame
+transform_vframe_3d,dat_copy,/EASY_TRAN
+;; => Rotate into FAWs
+rotate_3dp_structure,dat_copy,vec1,v_sw_orig,VLIM=vlim
+;;  Define rotation matrix
+IF (projxy[0] EQ 'yz') THEN rmat = dat_copy.ROT_MAT_Z ELSE rmat = dat_copy.ROT_MAT
+;IF (projxy[0] EQ 'xz') THEN rmat = dat_copy.ROT_MAT_Z ELSE rmat = dat_copy.ROT_MAT
+;;  Define inverse
+inv_rmat       = LA_INVERT(rmat,/DOUBLE,STATUS=status)
+IF (status NE 0) THEN BEGIN
+  ;; no inverse could be found => BAD input
+  bad_mssg = 'DAT must have finite non-zero vectors defined for tags VSW and MAGF!'
+  MESSAGE,bad_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Find "beam" velocity offset if necessary
+;;----------------------------------------------------------------------------------------
+;test           = ~KEYWORD_SET(v_0x) OR ~KEYWORD_SET(v_0y)
+test           = (N_ELEMENTS(v_0x) NE 1) OR (N_ELEMENTS(v_0y) NE 1)
+IF (test) THEN BEGIN
+  dat_tr         = dat[0]
+  ;; => Convert into the SW frame
+  transform_vframe_3d,dat_tr,/EASY_TRAN
+  vb_str         = fix_vbulk_ions(dat_tr,NSMOOTH=ns[0])
+  vb_off_sw      = vb_str.VSW_NEW
+  ;; => Rotate into FAWs
+  vb_off_faw     = REFORM(rmat ## vb_off_sw)
+  ;; => Define offsets
+  vox            = vb_off_faw[gels[0]]
+  voy            = vb_off_faw[gels[1]]
+ENDIF
+;;  Define center of beam in plane of projection
+;v_ob           = [vox[0],voy[0],0d0]
+v_ob           = DBLARR(3)
+v_ob[gels[0]]  = vox[0]
+v_ob[gels[1]]  = voy[0]
+;;----------------------------------------------------------------------------------------
+;; => Define DAT structure parameters
+;;----------------------------------------------------------------------------------------
+n_e            = dat.NENERGY             ;; => # of energy bins [ = E]
+n_a            = dat.NBINS               ;; => # of angle bins  [ = A]
+kk             = n_e*n_a
+energy         = dat.ENERGY              ;; => Energy bin values [eV]
+df_dat         = dat.DATA                ;; => Data values [data.UNITS_NAME]
+phi            = dat.PHI                 ;; => Azimuthal angle (from sun direction) [deg]
+theta          = dat.THETA               ;; => Poloidal angle (from ecliptic plane) [deg]
+;; => Reform 2D arrays into 1D
+;;      K = E * A
+phi_1d         = REFORM(phi,kk)
+the_1d         = REFORM(theta,kk)
+dat_1d         = REFORM(df_dat,kk)
+ener_1d        = REFORM(energy,kk)
+;; => Convert [Energies,Angles]  -->  Velocities
+;; => Magnitude of velocities from energy (km/s)
+nvmag          = energy_to_vel(ener_1d,dat[0].MASS[0])
+coth           = COS(the_1d*!DPI/18d1)
+sith           = SIN(the_1d*!DPI/18d1)
+coph           = COS(phi_1d*!DPI/18d1)
+siph           = SIN(phi_1d*!DPI/18d1)
+;; => Define directions
+swfv           = DBLARR(kk,3L)              ;;  [K,3]-Element array
+swfv[*,0]      = nvmag*coth*coph            ;; => Define X-Velocity per energy per data bin
+swfv[*,1]      = nvmag*coth*siph            ;; => Define Y-Velocity per energy per data bin
+swfv[*,2]      = nvmag*sith                 ;; => Define Z-Velocity per energy per data bin
+;;----------------------------------------------------------------------------------------
+;; => Create circle with radius V_THRESH centered at {V_0X, V_0Y}
+;;
+;;    Procedure
+;;      1)  calculate velocities of spherical shell with radius Vbmax at {V_BX, V_BY}
+;;      2)  apply inverse rotation matrix to return to GSE coordinates in bulk flow frame
+;;      3)  add VSW to get the "beam sphere" velocities in GSE coordinates
+;;----------------------------------------------------------------------------------------
+phi__s         = DINDGEN(kk)*2d0*!DPI/(kk - 1L)
+thetas         = DINDGEN(kk)*!DPI/(1d0*(kk - 1L))
+;; => Create unit vectors in each Cartesian direction
+tempx          = (COS(phi__s) # SIN(thetas))
+tempy          = (SIN(phi__s) # SIN(thetas))
+tempz          = (COS(thetas) # REPLICATE(1d0,kk))
+;; => Normalize and reduce dimensions
+testx          = TOTAL(tempx,2,/NAN)/TOTAL(FINITE(tempx),2,/NAN)
+testy          = TOTAL(tempy,2,/NAN)/TOTAL(FINITE(tempy),2,/NAN)
+testz          = TOTAL(tempz,2,/NAN)/TOTAL(FINITE(tempz),2,/NAN)
+testx          = testx/MAX(testx,/NAN)
+testy          = testy/MAX(testy,/NAN)
+testz          = testz/MAX(testz,/NAN)
+;; clean up memory
+tempx          = 0
+tempy          = 0
+tempz          = 0
+;; => Calculate velocity components of sphere relative to center
+v_rkx          = v_rad[0]*testx
+v_rky          = v_rad[0]*testy
+v_rkz          = v_rad[0]*testz
+;; => Calculate velocity components of sphere relative to origin [FAW Frame, Step 1]
+;v_ork          = [[v_rkx + v_ob[gels[0]]],[v_rky + v_ob[gels[1]]],[v_rkz + v_ob[gels[2]]]]
+v_ork          = [ [v_rkx + v_ob[0]], [v_rky + v_ob[1]], [v_rkz + v_ob[2]] ]
+;; => Rotate into SW Frame [Step 2]
+;;     sphere  -->  oblate spheroid
+v_ort          = REFORM(inv_rmat ## v_ork)
+;; => Translate back into SC Frame [Step 3]
+v_or_gse       = DBLARR(kk,3L)
+FOR k=0L, 2L DO v_or_gse[*,k]  = v_ort[*,k] + v_sw_orig[k]
+;;----------------------------------------------------------------------------------------
+;; => Find center of oblate spheroid region in SC Frame
+;;----------------------------------------------------------------------------------------
+v_or_cen       = [MEAN(v_or_gse[*,0],/NAN,/DOUBLE),MEAN(v_or_gse[*,1],/NAN,/DOUBLE),$
+                  MEAN(v_or_gse[*,2],/NAN,/DOUBLE)]
+;;----------------------------------------------------------------------------------------
+;; => Translate into frame moving with velocity defined by the center
+;;----------------------------------------------------------------------------------------
+v_or_gsec      = DBLARR(kk,3L)
+swfv_cen       = DBLARR(kk,3L)
+FOR k=0L, 2L DO BEGIN
+  v_or_gsec[*,k]  = v_or_gse[*,k] - v_or_cen[k]
+  swfv_cen[*,k]   = swfv[*,k]     - v_or_cen[k]
+ENDFOR
+;; => Define magnitudes
+vmag_gsec      = SQRT(TOTAL(v_or_gsec^2,2L,/NAN))
+swmag_cen      = SQRT(TOTAL(swfv_cen^2,2L,/NAN))
+;;----------------------------------------------------------------------------------------
+;; => Find elements within oblate spheroid region in SC Frame
+;;----------------------------------------------------------------------------------------
+test           = (swmag_cen LE vmag_gsec)
+good           = WHERE(test,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+;;----------------------------------------------------------------------------------------
+;; => Create Mask
+;;----------------------------------------------------------------------------------------
+mask           = REPLICATE(0e0,n_e,n_a)
+IF (gd GT 0) THEN mask[good] = 1e0
+
+;; => Define GSE beam center in SC Frame
+v_b_gse        = v_or_cen
+;;----------------------------------------------------------------------------------------
+;; => Return mask to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,mask
+END
+

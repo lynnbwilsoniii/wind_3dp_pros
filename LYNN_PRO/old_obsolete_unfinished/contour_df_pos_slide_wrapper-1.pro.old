@@ -1,0 +1,728 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   contour_df_pos_slide_wrapper.pro
+;  PURPOSE  :   This is a wrapping routine for contour_df_pos_slide_plot.pro.  The user
+;                 can interactively plot 3 DFs to an X-Window or create a series of
+;                 PS files or create an MPEG movie.  The user specifies 2 TPLOT handles
+;                 that they wish to plot below 3 particle distributions with vertical
+;                 red/blue lines indicating where the corresponding start/end times for
+;                 each DF are.  In snapshot mode, the routine creates PS files of the
+;                 same images used to create the frames for the MPEG movie.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               tnames.pro
+;               get_data.pro
+;               str_element.pro
+;               time_range_define.pro
+;               contour_df_pos_slide_wrapper.pro
+;               test_wind_vs_themis_esa_struct.pro
+;               dat_3dp_str_names.pro
+;               pesa_high_bad_bins.pro
+;               convert_ph_units.pro
+;               conv_units.pro
+;               dat_themis_esa_str_names.pro
+;               modify_themis_esa_struc.pro
+;               file_name_times.pro
+;               time_string.pro
+;               contour_df_pos_slide_plot.pro
+;               popen.pro
+;               pclose.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TIMENAME    :  [2]-Element array of TPLOT handles to plot below the
+;                                3 DFs shown on top
+;               DAT         :  [M]-Element array of particle distributions from either
+;                                Wind/3DP or THEMIS ESA
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               VLIM        :  Limit for x-y velocity axes over which to plot data
+;                                [Default = max vel. from energy bin values]
+;               NGRID       :  # of isotropic velocity grids to use to triangulate the
+;                                data [Default = 30L]
+;               XNAME       :  Scalar string defining the name of vector associated
+;                                with the VECTOR1 input
+;                                [Default = 'X']
+;               YNAME       :  Scalar string defining the name of vector associated with
+;                                the VECTOR2 input
+;                                [Default = 'Y']
+;               DFRA        :  [2]-Element array specifying a DF range (s^3/km^3/cm^3)
+;                                for the cuts of the contour plot
+;                                [Default = defined by range of data]
+;               VCIRC       :  Scalar or array defining the value(s) to plot as a
+;                                circle(s) of constant speed [km/s] on the contour
+;                                plot [e.g. gyrospeed of specularly reflected ion]
+;               EX_VEC0     :  3-Element unit vector for a quantity like heat flux or
+;                                a wave vector, etc.
+;               EX_VN0      :  A string name associated with EX_VEC0
+;                                [Default = 'Vec 1']
+;               EX_VEC1     :  3-Element unit vector for another quantity like the sun
+;                                direction or shock normal vector vector, etc.
+;               EX_VN1      :  A string name associated with EX_VEC1
+;                                [Default = 'Vec 2']
+;               NOKILL_PH   :  If set, program will not call pesa_high_bad_bins.pro for
+;                                PESA High structures to remove "bad" data bins
+;                                [Default = 0]
+;               PLANE       :  Scalar string defining the plane projection to plot with
+;                                corresponding cuts [Let V1 = VECTOR1, V2 = VECTOR2]
+;                                  'xy'  :  horizontal axis parallel to V1 and normal
+;                                             vector to plane defined by (V1 x V2)
+;                                             [default]
+;                                  'xz'  :  horizontal axis parallel to (V1 x V2) and
+;                                             vertical axis parallel to V1
+;                                  'yz'  :  horizontal axis defined by (V1 x V2) x V1
+;                                             and vertical axis (V1 x V2)
+;               NO_TRANS    :  If set, routine will not transform data into SW frame
+;                                [Default = 0 (i.e. DAT transformed into SW frame)]
+;               INTERP      :  If set, data is interpolated to original energy estimates
+;                                after transforming into new reference frame
+;               SM_CONT     :  If set, program plots the smoothed contours of DF
+;                                [Note:  Smoothed to the minimum # of points]
+;               DFMIN       :  Scalar defining the minimum allowable phase space density
+;                                to plot, which is useful for ion distributions with
+;                                large angular gaps in data
+;                                [prevents lower bound from falling below DFMIN]
+;               DFMAX       :  Scalar defining the maximum allowable phase space density
+;                                to plot, which is useful for distributions with data
+;                                spikes
+;                                [prevents upper bound from exceeding DFMAX]
+;               TRANGE      :  [2]-Element array specifying the outer range of the
+;                                timeseries to plot [Unix time]
+;               TROUTER     :  Scalar defining the amount of time [s] on either side of
+;                                the 3 DFs shown in the center of the plot
+;                                [Default = 21.0 (also minimum allowed)]
+;               LIVE        :  If set, routine will wait for user input to move from one
+;                                plot to the next [Default = 0]
+;               CUTS        :  If set, routine plots cuts of DF instead of contours
+;                                [Default = 0]
+;                                [** Not included yet **]
+;               SNAPSHOTS   :  If set, routine creates a directory and plots the
+;                                snapshots of the plots
+;               QUALITY     :  Scalar value from 0-100 defining the MPEG and JPEG quality
+;                                [Default = 70]
+;                                [see WRITE_JPEG.PRO and MPEG_OPEN.PRO documentation]
+;               TSNAMES     :  Scalar string specifying the file prefix to be used for
+;                                the two timeseries' associated with TIMENAME
+;               EXFRAMES    :  Scalar value defining the number of times to copy any
+;                                given frame in a MPEG to slow down the playback
+;                                [Default = 0]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  The value specified by TRANGE should identify the total time range
+;                     of data to plot, with each plot will be a subinterval of TRANGE.
+;               2)  If SNAPSHOTS is not set and LIVE is not set, then routine creates a
+;                     MPEG movie of output
+;               3)  The use of this routine is similar to that of contour_3d_1plane.pro
+;               4)  See also:  contour_df_pos_slide_plot.pro
+;
+;   CREATED:  04/02/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/02/2012   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO contour_df_pos_slide_wrapper,timename,dat,VLIM=vlim,NGRID=ngrid,XNAME=xname,      $
+                              YNAME=yname,DFRA=dfra,VCIRC=vcirc,EX_VEC0=ex_vec0,      $
+                              EX_VN0=ex_vn0,EX_VEC1=ex_vec1,EX_VN1=ex_vn1,            $
+                              NOKILL_PH=nokill_ph,PLANE=plane,NO_TRANS=no_trans,      $
+                              INTERP=interpo,SM_CONT=sm_cont,DFMIN=dfmin,DFMAX=dfmax, $
+                              TRANGE=trange,TROUTER=trouter,LIVE=live,CUTS=cuts,      $
+                              SNAPSHOTS=snapshots,QUALITY=quality,TSNAMES=tsnames,    $
+                              EXFRAMES=exframes
+
+;-----------------------------------------------------------------------------------------
+; => Define some constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+; => Dummy error messages
+noinpt_msg = 'No input supplied...'
+notstr_msg = 'Must be a [2]-element string array...'
+nofint_msg = 'No finite data...'
+nottpn_msg = 'Not valid TPLOT handles'
+; => Define dummy file names
+xyzvecs    = ['(V.B)','(BxV)xB','(BxV)']
+planes     = ['xy','xz','yz']
+xy_suff    = '_'+xyzvecs[1]+'_vs_'+xyzvecs[0]
+xz_suff    = '_'+xyzvecs[0]+'_vs_'+xyzvecs[2]
+yz_suff    = '_'+xyzvecs[2]+'_vs_'+xyzvecs[1]
+plane_sff  = [xy_suff[0],xz_suff[0],yz_suff[0]]
+IF ~KEYWORD_SET(cuts) THEN cut_nm = 0 ELSE cut_nm = 1
+midstr     = ('_'+['Contours','Cuts']+'-DF')[cut_nm]
+IF NOT KEYWORD_SET(plane)    THEN projxy = 'xy'    ELSE projxy = STRLOWCASE(plane[0])
+; => Define # of levels to use for contour.pro
+IF NOT KEYWORD_SET(ngrid) THEN ngrid = 30L 
+good_pln   = WHERE(projxy[0] EQ planes,gdpl)
+IF (gdpl GT 0) THEN BEGIN
+  mid_fname = plane_sff[good_pln[0]]+midstr[0]
+ENDIF ELSE BEGIN
+  ; => use default
+  projxy    = 'xy'
+  mid_fname = plane_sff[0]+midstr[0]
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 2) THEN BEGIN
+  ; => no input???
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Check TIMENAME
+;-----------------------------------------------------------------------------------------
+IF (SIZE(timename,/TYPE) NE 7 OR N_ELEMENTS(timename) NE 2) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+check      = tnames(REFORM(timename))
+bad        = TOTAL(check EQ '') GT 0
+IF (bad) THEN BEGIN
+  ; => no input???
+  MESSAGE,nottpn_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Get time series and format structure
+;-----------------------------------------------------------------------------------------
+t_name     = REFORM(timename)
+get_data,t_name[0],DATA=tp_name0,DLIMITS_STR=dlim_0,LIMITS_STR=lim_0
+get_data,t_name[1],DATA=tp_name1,DLIMITS_STR=dlim_1,LIMITS_STR=lim_1
+
+dat0       = tp_name0
+szy0       = SIZE(dat0.Y,/N_DIMENSIONS)
+str_element,dlim_0,'YTITLE',yttl0
+IF (N_ELEMENTS(yttl0) EQ 0) THEN str_element,lim_0,'YTITLE',yttl0
+IF (N_ELEMENTS(yttl0) EQ 0) THEN yttl0 = 'Data 1'
+str_element,dat0,'LIM',{YTITLE:yttl0[0],YSTYLE:1,XSTYLE:1,XMINOR:5},/ADD_REPLACE
+
+dat1       = tp_name1
+szy1       = SIZE(dat1.Y,/N_DIMENSIONS)
+str_element,dlim_1,'YTITLE',yttl1
+IF (N_ELEMENTS(yttl1) EQ 0) THEN str_element,lim_1,'YTITLE',yttl1
+IF (N_ELEMENTS(yttl1) EQ 0) THEN yttl1 = 'Data 1'
+str_element,dat1,'LIM',{YTITLE:yttl1[0],YSTYLE:1,XSTYLE:1,XMINOR:5},/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Determine time range of interest
+;-----------------------------------------------------------------------------------------
+all_time   = [dat0.X,dat1.X]
+out_tra    = [MIN(all_time,/NAN),MAX(all_time,/NAN)] + [-6d1,6d1]
+IF ~KEYWORD_SET(trange) THEN tra_out = out_tra ELSE tra_out = trange
+time_ra    = time_range_define(TRANGE=tra_out)
+tra_out    = time_ra.TR_UNIX
+
+good_0     = WHERE(dat0.X GE tra_out[0] AND dat0.X LE tra_out[1],gd0)
+good_1     = WHERE(dat1.X GE tra_out[0] AND dat1.X LE tra_out[1],gd1)
+IF (gd0 EQ 0 OR gd1 EQ 0) THEN BEGIN
+  badtra = 'No TPLOT data within desired time range...'
+  MESSAGE,badtra[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF ELSE BEGIN
+  ; => Redefine time series data
+  ;---------------------------------------------------------------------------------------
+  ; 1st time series of data
+  ;---------------------------------------------------------------------------------------
+  str_element,dat0,'X',dat0.X[good_0],/ADD_REPLACE
+  IF (szy0 EQ 1) THEN data_y0 = dat0.Y[good_0]
+  IF (szy0 EQ 2) THEN data_y0 = dat0.Y[good_0,*]
+  IF (szy0 EQ 3) THEN data_y0 = dat0.Y[good_0,*,*]
+  str_element,dat0,'Y',data_y0,/ADD_REPLACE
+  ; => yranges
+  ymax  = MAX(ABS(data_y0),/NAN)*1.05
+  neg   = TOTAL(WHERE(data_y0 LT 0)) GT 0
+  IF (neg) THEN BEGIN
+    ; => data is both +/-
+    yra   = [-1d0,1d0]*ymax[0]
+  ENDIF ELSE BEGIN
+    ; => data is + only
+    ymin  = MIN(ABS(data_y0),/NAN)*0.95
+    yra   = [ymin[0],ymax[0]]
+  ENDELSE
+  str_element,dat0,'LIM.YRANGE',yra,/ADD_REPLACE
+  ;---------------------------------------------------------------------------------------
+  ; 2nd time series of data
+  ;---------------------------------------------------------------------------------------
+  str_element,dat1,'X',dat1.X[good_1],/ADD_REPLACE
+  IF (szy1 EQ 1) THEN data_y1 = dat1.Y[good_1]
+  IF (szy1 EQ 2) THEN data_y1 = dat1.Y[good_1,*]
+  IF (szy1 EQ 3) THEN data_y1 = dat1.Y[good_1,*,*]
+  str_element,dat1,'Y',data_y1,/ADD_REPLACE
+  ; => yranges
+  ymax  = MAX(ABS(data_y1),/NAN)*1.05
+  neg   = TOTAL(WHERE(data_y1 LT 0)) GT 0
+  IF (neg) THEN BEGIN
+    ; => data is both +/-
+    yra   = [-1d0,1d0]*ymax[0]
+  ENDIF ELSE BEGIN
+    ; => data is + only
+    ymin  = MIN(ABS(data_y1),/NAN)*0.95
+    yra   = [ymin[0],ymax[0]]
+  ENDELSE
+  str_element,dat1,'LIM.YRANGE',yra,/ADD_REPLACE
+ENDELSE
+; => Define TIMESERIES input for contour_df_pos_slide_plot.pro
+timeseries = {T0:dat0,T1:dat1}
+; => Check on file name prefix for time series
+dumb_pr    = t_name[0]+'_'+t_name[1]+'_'
+IF ~KEYWORD_SET(tsnames) THEN BEGIN
+  ; => No prefix given, use default
+  ts_pref = dumb_pr[0]
+ENDIF ELSE BEGIN
+  IF (SIZE(tsnames,/TYPE) NE 7) THEN ts_pref = dumb_pr[0] ELSE ts_pref = tsnames[0]
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Determine time range outside of 3 DFs in middle of plot
+;-----------------------------------------------------------------------------------------
+trout_min  = 21d0
+IF ~KEYWORD_SET(trouter) THEN trout = trout_min[0] ELSE trout = trouter[0] > trout_min[0]
+; => make sure time range is large enough to handle space on either side of DFs
+tr_mid     = (tra_out[0] + tra_out[1])/2d0
+test       = ((tr_mid[0] - trout[0]) LT tra_out[0]) OR $
+             ((tr_mid[0] + trout[0]) GT tra_out[1])
+IF (test) THEN BEGIN
+  badmss0 = 'Time range is too small...'
+  badmss1 = 'Trying default...'
+  MESSAGE,badmss0[0],/INFORMATIONAL,/CONTINUE
+  IF (trout[0] EQ trout_min[0]) THEN RETURN
+  ; => re-call the routine
+  MESSAGE,badmss1[0],/INFORMATIONAL,/CONTINUE
+  contour_df_pos_slide_wrapper,t_name,dat,VLIM=vlim,NGRID=ngrid,XNAME=xname,          $
+                              YNAME=yname,DFRA=dfra,VCIRC=vcirc,EX_VEC0=ex_vec0,      $
+                              EX_VN0=ex_vn0,EX_VEC1=ex_vec1,EX_VN1=ex_vn1,            $
+                              NOKILL_PH=nokill_ph,PLANE=plane,NO_TRANS=no_trans,      $
+                              INTERP=interpo,SM_CONT=sm_cont,DFMIN=dfmin,DFMAX=dfmax, $
+                              TRANGE=tra_out,TROUTER=2d1,LIVE=live,CUTS=cuts,         $
+                              SNAPSHOTS=snapshots,QUALITY=quality,TSNAMES=tsnames,    $
+                              EXFRAMES=exframes
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Check DAT structure format
+;-----------------------------------------------------------------------------------------
+test0      = test_wind_vs_themis_esa_struct(dat,/NOM)
+test       = (test0.(0) + test0.(1)) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Check which spacecraft is being used
+;-----------------------------------------------------------------------------------------
+data       = dat
+IF (test0.(0)) THEN BEGIN
+  ;---------------------------------------------------------------------------------------
+  ; Wind
+  ;---------------------------------------------------------------------------------------
+  ; => Check which instrument is being used
+  strns   = dat_3dp_str_names(data[0])
+  IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+    RETURN
+  ENDIF
+  s_name  = strns.SN[0]  ; e.g. 'phb'
+  shnme   = STRLOWCASE(STRMID(s_name[0],0L,2L))
+  itype   = STRLOWCASE(STRMID(s_name[0],0L,1L))
+  prsfx   = (['_','_Burst_'])[STRLEN(s_name[0]) EQ 3]
+  lhfo_t  = WHERE(STRLOWCASE(STRMID(s_name[0],1L,1L)) EQ ['l','h','f','o'])
+  CASE itype[0] OF
+    'p'  : BEGIN
+      ; => PESA
+      IF (lhfo_t[0] EQ 1) THEN BEGIN
+        ; => PESA High
+        IF NOT KEYWORD_SET(nokill_ph) THEN BEGIN
+          pesa_high_bad_bins,data
+        ENDIF
+        ; => convert to 'df' units
+        convert_ph_units,data,'df'
+      ENDIF ELSE BEGIN
+        ; => PESA Low
+        ;    => Not OK, so return
+        badmssg = 'Cannot plot contours for PESA Low due to low FOV...'
+        MESSAGE,badmssg[0],/INFORMATIONAL,/CONTINUE
+        RETURN
+      ENDELSE
+      ; => Define file prefix
+      fpref = 'PESA_High'+prsfx[0]
+    END
+    'e'  : BEGIN
+      ; => EESA
+      IF (lhfo_t[0] EQ 1) THEN BEGIN
+        ; => EESA High
+        fpref = 'EESA_High'+prsfx[0]
+      ENDIF ELSE BEGIN
+        ; => EESA Low
+        fpref = 'EESA_Low'+prsfx[0]
+      ENDELSE
+      ; => convert to 'df' units
+      data  = conv_units(data,'df')
+    END
+    ELSE : BEGIN
+      ; => SST
+      badmssg = 'Cannot plot contours for Wind SST yet...'
+      MESSAGE,badmssg[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    END
+  ENDCASE
+  ; => Add Spacecraft name onto file name
+  fpref = fpref[0]+'Wind_'
+ENDIF ELSE BEGIN
+  ;---------------------------------------------------------------------------------------
+  ; THEMIS
+  ;---------------------------------------------------------------------------------------
+  strns = dat_themis_esa_str_names(data[0])
+  IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+    RETURN
+  ENDIF
+  s_name  = strns.SN[0]  ; e.g. 'peir'
+  type_sf = ['Full','Reduced','Burst']
+  shnme   = STRLOWCASE(STRMID(s_name[0],1L,2L))
+  stype   = WHERE(STRLOWCASE(STRMID(s_name[0],3L)) EQ ['f','r','b'])
+  CASE shnme[0] OF
+    'ee' : BEGIN
+      fpref = 'EESA_'+type_sf[stype[0]]+'_TH-'
+    END
+    'ei' : BEGIN
+      fpref = 'IESA_'+type_sf[stype[0]]+'_TH-'
+    END
+    ELSE : BEGIN
+      badmssg = 'Cannot plot contours for THEMIS SST yet...'
+      MESSAGE,badmssg[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    END
+  ENDCASE
+  fpref   = fpref[0]+data[0].SPACECRAFT[0]+'_'
+  ; => make sure the structure has been modified
+  test_un = STRLOWCASE(data[0].UNITS_PROCEDURE) NE 'thm_convert_esa_units_lbwiii'
+  IF (test_un) THEN BEGIN
+    bad_in = 'If THEMIS ESA structures used, then they must be modified using modify_themis_esa_struc.pro'
+    MESSAGE,bad_in[0],/INFORMATIONAL,/CONTINUE
+    ; => Modify THEMIS structures
+    modify_themis_esa_struc,data
+  ENDIF
+  ; => structure modified appropriately so convert units
+  data  = conv_units(data,'df')
+ENDELSE
+; => Add timeseries prefix to file prefix
+fpref   = ts_pref[0]+fpref[0]
+;-----------------------------------------------------------------------------------------
+; => Make sure DF time span is inside TPLOT variables
+;-----------------------------------------------------------------------------------------
+tra_df0    = tra_out + [1d0,-1d0]*trout[0]  ; shrink DF range so none on edge of window
+good_d     = WHERE(data.TIME GT tra_df0[0] AND data.END_TIME LT tra_df0[1],gdd)
+IF (gd1 GT 3) THEN BEGIN
+  data = data[good_d]
+ENDIF ELSE BEGIN
+  badmssg = 'No particle DFs in selected time range...'
+  MESSAGE,badmssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDELSE
+ndat       = N_ELEMENTS(data)
+df_tra     = [MIN(data.TIME,/NAN),MAX(data.END_TIME,/NAN)]
+;-----------------------------------------------------------------------------------------
+; => Define subinterval time ranges
+;-----------------------------------------------------------------------------------------
+nsub       = ndat - 2L
+i0         = LINDGEN(nsub)
+i1         = i0 + 1L
+i2         = i1 + 1L
+dat_i0     = data[i0]
+dat_i1     = data[i1]
+dat_i2     = data[i2]
+
+tsub_tra   = DBLARR(nsub,2L)
+tsub_tra[*,0] = dat_i0.TIME[0] - trout[0]
+tsub_tra[*,1] = dat_i2.END_TIME[0] + trout[0]
+;-----------------------------------------------------------------------------------------
+; => Define file names
+;-----------------------------------------------------------------------------------------
+; => Define velocity limit (km/s)
+IF NOT KEYWORD_SET(vlim) THEN BEGIN
+  allener = dat_all.ENERGY
+  allvlim = SQRT(2d0*allener/dat_all[0].MASS)
+  vlim    = MAX(allvlim,/NAN)
+ENDIF ELSE BEGIN
+  vlim    = DOUBLE(vlim[0])
+ENDELSE
+
+fnm_s   = file_name_times(tsub_tra[*,0],PREC=3)
+fnm_e   = file_name_times(tsub_tra[*,1],PREC=3)
+ftime_s = fnm_s.F_TIME          ; e.g. 1998-08-09_0801x09.494
+ftime_e = fnm_e.F_TIME          ; e.g. 1998-08-09_0801x09.494
+ftimes  = ftime_s+'_'+ftime_e
+
+vlim_st = STRING(vlim[0],FORMAT='(I5.5)')
+grid_st = STRING(ngrid[0],FORMAT='(I2.2)')
+f_pref  = fpref[0]+ftimes+'_'+grid_st[0]+'Grids_'+vlim_st[0]+'km-s'
+fnames  = f_pref+mid_fname[0]
+;-----------------------------------------------------------------------------------------
+; => Plot DFs with TIMESERIES
+;-----------------------------------------------------------------------------------------
+IF ~KEYWORD_SET(live) THEN BEGIN
+  ;---------------------------------------------------------------------------------------
+  ; => Save mode
+  ;---------------------------------------------------------------------------------------
+  IF ~KEYWORD_SET(snapshots) THEN BEGIN
+    ;-------------------------------------------------------------------------------------
+    ; => Load some parameters
+    ;-------------------------------------------------------------------------------------
+    old_chars      = !P.CHARSIZE
+    old_cthck      = !P.CHARTHICK
+    !P.CHARSIZE    = 1.5
+    !P.CHARTHICK   = 1.2
+    IF ~KEYWORD_SET(xsize) THEN xsize = 1200
+    IF ~KEYWORD_SET(ysize) THEN ysize = 1000
+    SET_PLOT,'Z'
+    DEVICE,SET_PIXEL_DEPTH=24,SET_RESOLUTION=[xsize,ysize]
+    DEVICE,DECOMPOSED=0
+    LOADCT,39,/SILENT
+    ;-------------------------------------------------------------------------------------
+    ; => Define movie name
+    ;-------------------------------------------------------------------------------------
+    tra       = [MIN(tsub_tra[*,0],/NAN),MAX(tsub_tra[*,1],/NAN)]
+    fnm       = file_name_times(tra,PREC=3)
+    ftimes    = fnm.F_TIME[0]+'_'+fnm.F_TIME[1]
+    moviename = fpref[0]+ftimes[0]+'_'+grid_st[0]+'Grids_'+vlim_st[0]+'km-s'+mid_fname[0]+'.mpeg'
+;    stop
+    ;-------------------------------------------------------------------------------------
+    ; => Create MPEG movie of snapshots
+    ;-------------------------------------------------------------------------------------
+    IF KEYWORD_SET(quality) THEN qual = quality[0] ELSE qual = 100
+    ; => QUAL -> defines image quality
+;    mpegID     = MPEG_OPEN([xsize,ysize],QUALITY=qual[0])
+    mpegID     = MPEG_OPEN([xsize,ysize],QUALITY=qual[0])
+    ; => Plot DFs
+    j          = 0L
+    cc         = 0L
+    test       = 1
+    IF ~KEYWORD_SET(exframes) THEN exf = 0L ELSE exf = exframes[0] > 0
+    WHILE (test) DO BEGIN
+;    FOR j=0L, nsub - 1L DO BEGIN
+      timeser = timeseries
+      dat_df  = [dat_i0[j],dat_i1[j],dat_i2[j]]
+      tra     = REFORM(tsub_tra[j,*])
+      ;-----------------------------------------------------------------------------------
+      ; => Define time ticks so they do not move in window
+      ;-----------------------------------------------------------------------------------
+      nn      = 5L
+      xtv     = DBLARR(nn)
+      xtn     = STRARR(nn)
+      xts     = nn - 1L   ; want 5 tick marks
+      ; => determine width of window
+      difft   = ABS(tra[1] - tra[0])
+      t_intv  = difft[0]/xts[0]  ;  tick interval
+      FOR ii=0L, 3L DO xtv[ii] = tra[0] + t_intv[0]*ii
+      xtv[nn - 1L]  = tra[1]
+      ; => determine tick names
+      tnme0   = time_string(xtv,PREC=3)
+      xtn     = STRMID(tnme0[*],0L,10L)+'!C'+STRMID(tnme0[*],11L)
+      ; => Add these to limits structures
+      str_element,timeser,'T0.LIM.XTICKNAME',xtn,/ADD_REPLACE
+      str_element,timeser,'T0.LIM.XTICKV',xtv,/ADD_REPLACE
+      str_element,timeser,'T0.LIM.XTICKS',xts,/ADD_REPLACE
+      str_element,timeser,'T1.LIM.XTICKNAME',xtn,/ADD_REPLACE
+      str_element,timeser,'T1.LIM.XTICKV',xtv,/ADD_REPLACE
+      str_element,timeser,'T1.LIM.XTICKS',xts,/ADD_REPLACE
+      ;-----------------------------------------------------------------------------------
+      ; => Plot data with contours
+      ;-----------------------------------------------------------------------------------
+      contour_df_pos_slide_plot,timeser,dat_df,VLIM=vlim,NGRID=ngrid,XNAME=xname,       $
+                                YNAME=yname,DFRA=dfra,VCIRC=vcirc,EX_VEC0=ex_vec0,      $
+                                EX_VN0=ex_vn0,EX_VEC1=ex_vec1,EX_VN1=ex_vn1,            $
+                                NOKILL_PH=nokill_ph,PLANE=projxy[0],NO_TRANS=no_trans,  $
+                                INTERP=interpo,SM_CONT=sm_cont,DFMIN=dfmin,DFMAX=dfmax, $
+                                TRANGE=tra
+      ;-----------------------------------------------------------------------------------
+      ; => Add frame to movie
+      ;-----------------------------------------------------------------------------------
+      FOR ff=0L, exf[0] - 1L DO BEGIN
+      ;;;;;;;;;;;
+      IF (j EQ 0 AND cc EQ 0) THEN fnum = 0L ELSE fnum += 1L
+      MPEG_PUT,mpegID,IMAGE=TVRD(TRUE=1),FRAME=fnum[0],/ORDER
+      ; => test
+      test = (j LT nsub - 1L)
+      IF (exf[0] GT 0) THEN BEGIN
+        ; => Add extra frames to MPEG
+        fr_test = cc[0] EQ exf[0]
+        IF (fr_test) THEN BEGIN
+          ; => extra frames already added, so reset counter and index j
+          cc = 0L
+          IF (j MOD 10 EQ 0) THEN PRINT,'Frame # saved: ',j
+          j += test
+        ENDIF ELSE BEGIN
+          ; => index counter
+          cc += 1L
+        ENDELSE
+      ENDIF ELSE BEGIN
+        ; => No extra frames
+        IF (j MOD 10 EQ 0) THEN PRINT,'Frame # saved: ',j
+        j   += test
+      ENDELSE
+      ;;;;;;;;;;;
+      ENDFOR
+    ENDWHILE
+;    ENDFOR
+    ;-------------------------------------------------------------------------------------
+    ; => Encode, save, and close MPEG
+    ;-------------------------------------------------------------------------------------
+    PRINT,''
+    PRINT,'Encoding movie: '+moviename[0]
+    PRINT,''
+    ; => save
+    MPEG_SAVE,mpegID,FILENAME=moviename[0]
+    ; => Close MPEG
+    MPEG_CLOSE,mpegID
+    PRINT,''
+    PRINT,'Movie named: '+moviename[0]+' has been saved...'
+    PRINT,''
+    ;-------------------------------------------------------------------------------------
+    ; => Return plot window to original state
+    ;-------------------------------------------------------------------------------------
+    !P.MULTI    = 0
+    SET_PLOT,'X'
+    !P.CHARSIZE  = old_chars[0]
+    !P.CHARTHICK = old_cthck[0]
+    ; => Return
+    RETURN
+  ENDIF ELSE BEGIN
+    ;-------------------------------------------------------------------------------------
+    ; => Save snapshots
+    ;-------------------------------------------------------------------------------------
+    FOR j=0L, nsub - 1L DO BEGIN
+      timeser = timeseries
+      dat_df  = [dat_i0[j],dat_i1[j],dat_i2[j]]
+      tra     = REFORM(tsub_tra[j,*])
+      ;-----------------------------------------------------------------------------------
+      ; => Define time ticks so they do not move in window
+      ;-----------------------------------------------------------------------------------
+      nn      = 5L
+      xtv     = DBLARR(nn)
+      xtn     = STRARR(nn)
+      xts     = nn - 1L   ; want 5 tick marks
+      ; => determine width of window
+      difft   = ABS(tra[1] - tra[0])
+      t_intv  = difft[0]/xts[0]  ;  tick interval
+      FOR ii=0L, 3L DO xtv[ii] = tra[0] + t_intv[0]*ii
+      xtv[nn - 1L]  = tra[1]
+      ; => determine tick names
+      tnme0   = time_string(xtv,PREC=3)
+      xtn     = STRMID(tnme0[*],0L,10L)+'!C'+STRMID(tnme0[*],11L)
+      ; => Add these to limits structures
+      str_element,timeser,'T0.LIM.XTICKNAME',xtn,/ADD_REPLACE
+      str_element,timeser,'T0.LIM.XTICKV',xtv,/ADD_REPLACE
+      str_element,timeser,'T0.LIM.XTICKS',xts,/ADD_REPLACE
+      str_element,timeser,'T1.LIM.XTICKNAME',xtn,/ADD_REPLACE
+      str_element,timeser,'T1.LIM.XTICKV',xtv,/ADD_REPLACE
+      str_element,timeser,'T1.LIM.XTICKS',xts,/ADD_REPLACE
+      ; => Save Plots
+      popen,fnames[j],/LAND
+        contour_df_pos_slide_plot,timeser,dat_df,VLIM=vlim,NGRID=ngrid,XNAME=xname,         $
+                                    YNAME=yname,DFRA=dfra,VCIRC=vcirc,EX_VEC0=ex_vec0,      $
+                                    EX_VN0=ex_vn0,EX_VEC1=ex_vec1,EX_VN1=ex_vn1,            $
+                                    NOKILL_PH=nokill_ph,PLANE=projxy[0],NO_TRANS=no_trans,  $
+                                    INTERP=interpo,SM_CONT=sm_cont,DFMIN=dfmin,DFMAX=dfmax, $
+                                    TRANGE=tra
+      pclose
+    ENDFOR
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;---------------------------------------------------------------------------------------
+  ; => Live mode
+  ;---------------------------------------------------------------------------------------
+  ind  = 0L
+  test = 1
+  WHILE (test) DO BEGIN
+    timeser = timeseries
+    dat_df  = [dat_i0[ind],dat_i1[ind],dat_i2[ind]]
+    tra     = REFORM(tsub_tra[ind,*])
+    contour_df_pos_slide_plot,timeser,dat_df,VLIM=vlim,NGRID=ngrid,XNAME=xname,       $
+                              YNAME=yname,DFRA=dfra,VCIRC=vcirc,EX_VEC0=ex_vec0,      $
+                              EX_VN0=ex_vn0,EX_VEC1=ex_vec1,EX_VN1=ex_vn1,            $
+                              NOKILL_PH=nokill_ph,PLANE=projxy[0],NO_TRANS=no_trans,  $
+                              INTERP=interpo,SM_CONT=sm_cont,DFMIN=dfmin,DFMAX=dfmax, $
+                              TRANGE=tra
+    ;-------------------------------------------------------------------------------------
+    ; => tests
+    ;-------------------------------------------------------------------------------------
+    test_r     = 1
+    read_pause = ''
+    line0      = 'Please enter one of the following commands:  '
+    line1      = '  n  =  shift to the next DFs [j + 1]'
+    line2      = '  p  =  shift to the previous DFs [j - 1]'
+    line3      = '  i  =  specify the index of the desired DFs [j = i]'
+    line4      = '  q  =  quit'
+    listmsg    = "Enter your command [type '?' for a list of options]:  "
+    WHILE (test_r) DO BEGIN
+      ; => prompt user
+      PRINT,''
+      READ,read_pause,PROMPT=listmsg[0]
+      test_r = ((read_pause NE '' ) AND (read_pause NE 'q') AND $
+                (read_pause NE 'n') AND (read_pause NE 'p') AND $
+                (read_pause NE 'i') AND (read_pause NE '?'))
+      IF (read_pause EQ '?') THEN BEGIN
+        PRINT,''
+        PRINT,line0[0]
+        PRINT,line1[0]
+        PRINT,line2[0]
+        PRINT,line3[0]
+        PRINT,line4[0]
+        PRINT,''
+        test_r = 1
+        read_pause = ''
+      ENDIF
+    ENDWHILE
+    CASE read_pause[0] OF
+      ''  : BEGIN
+        ; => no change, just replot
+        test    = test[0]
+        ind     = ind[0]
+      END
+      'n' : BEGIN
+        ; => plot next time range
+        test    = ind[0] LT (nsub - 1L)
+        ind    += test
+      END
+      'p' : BEGIN
+        ; => plot previous time range
+        test    = ind[0] GT 0L
+        ind    -= test
+      END
+      'i' : BEGIN
+        ; => plot specified index
+        indmssg = 'Enter a number between 0000 - '+STRING(nsub - 1L,FORMAT='(I4.4)')+': '
+        p_ind   = -1L
+        WHILE (p_ind LT 0L OR p_ind GT nsub - 1L) DO BEGIN
+          PRINT,''
+          READ,p_ind,PROMPT=indmssg[0]
+        ENDWHILE
+        test    = 1
+        ind     = p_ind[0]
+        tout_0  = time_string(REFORM(tsub_tra[ind,*]),PREC=3)
+        tout_1  = tout_0[0]+' - '+STRMID(tout_0[1],11L)
+        PRINT,''
+        PRINT,'Plotting time range:  '+tout_1[0]
+        PRINT,''
+      END
+      'q' : BEGIN
+        ; => quit
+        RETURN
+      END
+    ENDCASE
+  ENDWHILE
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Return
+;-----------------------------------------------------------------------------------------
+
+RETURN
+END

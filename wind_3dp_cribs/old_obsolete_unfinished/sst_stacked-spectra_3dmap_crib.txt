@@ -1,0 +1,673 @@
+;-----------------------------------------------------------------------------------------
+; => Load 3s B-field data
+;-----------------------------------------------------------------------------------------
+date  = '082698'
+t     = ['1998-08-22/04:00:00','1998-08-28/06:40:00']
+tramp = '1998-08-26/06:40:24.972'
+
+date   = '092498'
+t      = ['1998-09-24/22:20:00','1998-09-25/00:20:00']
+tramp  = '1998-09-24/23:20:37.000'
+
+date     = '021100'
+t        = ['2000-02-11/22:33:00','2000-02-12/00:33:00']
+tramp    = '2000-02-11/23:33:55.319'
+
+date  = '040600'
+t     = ['2000-04-02/00:00:00','2000-04-07/10:00:00']
+tramp = '2000-04-06/16:32:09.237'
+
+date   = '101101'
+t      = ['2001-10-11/15:50:00','2001-10-11/17:50:00']
+tramp  = '2001-10-11/16:50:55.000'
+
+date   = '102101'
+t      = ['2001-10-21/15:40:00','2001-10-21/17:40:00']
+tramp  = '2001-10-21/16:40:43.000'
+
+date   = '102501'
+t      = ['2001-10-25/07:59:00','2001-10-25/09:59:00']
+tramp  = '2001-10-25/08:59:28.000'
+
+date   = '112401'
+t      = ['2001-11-24/04:31:00','2001-11-24/06:51:00']
+tramp  = '2001-11-24/05:51:55.000'
+
+
+tr3   = time_double(t)
+tura  = time_double(tramp)
+
+mag3  = read_wind_mfi(TRANGE=tr3)
+t3x   = mag3.MAG.X
+bmag4 = mag3.MAG.Y
+magf4 = mag3.BGSE.Y
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Find SST IDL Save Files
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; => Note:  In the IDL save files I used, variables like "ael" are arrays of all the 
+;             Wind/3DP data structures within some time period (defined else where)
+;             for the Eesa Low detector.  Thus, "aelb" is for Eesa Low Burst, "apl" is
+;             for Pesa Low, etc.  The prefix "a" is used loosely to represent ALL here.
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+ymd = ['2000-04-06/15:30:00','2000-04-06/17:30:00']
+ydt = STRMID(ymd[*],0,4)+STRMID(ymd[*],5,2)+STRMID(ymd[*],8,2)
+yti = STRMID(ymd[*],11,2)+STRMID(ymd[*],14,2)+ $
+      STRMID(ymd[*],17,2)
+tra = ydt[0]+'-'+yti[0]+'_'+ydt[1]+'-'+yti[1]
+; => TRA = 20000406-153000_20000406-173000
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+sh_mit     = read_shocks_jck_database()
+mit_dates  = sh_mit.SDATES             ; => 'MMDDYY'
+shocks     = sh_mit.SHOCK
+; => Definitions:
+;      SHF  :  SHock Frame
+;      SCF  :  SpaceCraft Frame
+;      SWF  :  Solar Wind Frame
+anorms     = shocks.SH_NORM                ; => Shock normal vector
+a_compr    = shocks.COMPRESSION            ; => Shock compression ratio
+a_ushn     = shocks.USH_N[*,0]             ; => Upstream Shock normal speed (km/s) [SHF]
+a_vshn     = shocks.VSH_N                  ; => Upstream Shock normal speed (km/s) [SCF]
+gshock     = WHERE(mit_dates EQ date,gsh)
+IF (gsh GT 0L) THEN gnorm = REFORM(anorms[gshock[0],*]) ELSE gnorm = REPLICATE(f,3)
+
+midra      = tura[0]
+gcomp      = (REFORM(a_compr[gshock[0]]))[0]
+gushn      = (REFORM(a_ushn[gshock[0]]))[0]
+gvshn      = (REFORM(a_vshn[gshock[0]]))[0]
+;-----------------------------------------------------------------------------------------
+; => Load SST Open and Foil +Thick data
+;-----------------------------------------------------------------------------------------
+RESTORE,mfiles[3]
+
+ssft_time = REFORM(asft.TIME)
+esft_time = REFORM(asft.END_TIME)
+ssot_time = REFORM(asot.TIME)
+esot_time = REFORM(asot.END_TIME)
+;-----------------------------------------------------------------------------------------
+; => Load SST Open and Foil data
+;-----------------------------------------------------------------------------------------
+; => SST Data [2000-04-06/15:00 - 2000-04-06/18:00]
+RESTORE,mfiles[14]
+
+; => Redo B-field averaging
+sfmagfx  = interp(magf4[*,0],t3x,asf.TIME,/NO_EXTRAP)
+sfmagfy  = interp(magf4[*,1],t3x,asf.TIME,/NO_EXTRAP)
+sfmagfz  = interp(magf4[*,2],t3x,asf.TIME,/NO_EXTRAP)
+somagfx  = interp(magf4[*,0],t3x,aso.TIME,/NO_EXTRAP)
+somagfy  = interp(magf4[*,1],t3x,aso.TIME,/NO_EXTRAP)
+somagfz  = interp(magf4[*,2],t3x,aso.TIME,/NO_EXTRAP)
+
+efmagfx  = interp(magf4[*,0],t3x,asf.END_TIME,/NO_EXTRAP)
+efmagfy  = interp(magf4[*,1],t3x,asf.END_TIME,/NO_EXTRAP)
+efmagfz  = interp(magf4[*,2],t3x,asf.END_TIME,/NO_EXTRAP)
+eomagfx  = interp(magf4[*,0],t3x,aso.END_TIME,/NO_EXTRAP)
+eomagfy  = interp(magf4[*,1],t3x,aso.END_TIME,/NO_EXTRAP)
+eomagfz  = interp(magf4[*,2],t3x,aso.END_TIME,/NO_EXTRAP)
+
+fmagfx   = (sfmagfx + efmagfx)/2e0
+fmagfy   = (sfmagfy + efmagfy)/2e0
+fmagfz   = (sfmagfz + efmagfz)/2e0
+omagfx   = (somagfx + eomagfx)/2e0
+omagfy   = (somagfy + eomagfy)/2e0
+omagfz   = (somagfz + eomagfz)/2e0
+
+sfmagf   = [[sfmagfx],[sfmagfy],[sfmagfz]]
+efmagf   = [[efmagfx],[efmagfy],[efmagfz]]
+fmagf    = [[fmagfx],[fmagfy],[fmagfz]]
+
+somagf   = [[somagfx],[somagfy],[somagfz]]
+eomagf   = [[eomagfx],[eomagfy],[eomagfz]]
+omagf    = [[omagfx],[omagfy],[omagfz]]
+
+xyz_to_polar,sfmagf,THETA=sf_th,PHI=sf_ph
+xyz_to_polar,efmagf,THETA=ef_th,PHI=ef_ph
+xyz_to_polar,fmagf, THETA=ff_th,PHI=ff_ph
+print, minmax(ABS(fmagfx) - ABS(sfmagfx)), minmax(ABS(efmagfx) - ABS(sfmagfx))
+;      -5.8492234       3.4017120
+;      -5.5295956       6.8034240
+print, minmax(ABS(fmagfy) - ABS(sfmagfy)), minmax(ABS(efmagfy) - ABS(sfmagfy))
+;      -4.1898915       5.3192611
+;      -8.3797830       13.822880
+print, minmax(ABS(fmagfz) - ABS(sfmagfz)), minmax(ABS(efmagfz) - ABS(sfmagfz))
+;      -3.8581950       5.2633849
+;      -7.7163900       10.526770
+
+diff_ff_sf_th = ff_th[350L:469L] - sf_th[350L:469L]
+diff_ff_sf_ph = ff_ph[350L:469L] - sf_ph[350L:469L]
+diff_ef_sf_th = ef_th[350L:469L] - sf_th[350L:469L]
+diff_ef_sf_ph = ef_ph[350L:469L] - sf_ph[350L:469L]
+print, minmax(diff_ff_sf_th), minmax(diff_ff_sf_ph), $
+       minmax(diff_ef_sf_th), minmax(diff_ef_sf_ph)
+;      -16.757154       11.814166
+;      -17.028308       16.580221
+;      -33.266602       20.784443
+;      -34.360702       35.072869
+print, MAX(diff_ff_sf_th,/NAN) - MIN(diff_ff_sf_th,/NAN), $
+       MAX(diff_ff_sf_ph,/NAN) - MIN(diff_ff_sf_ph,/NAN), $
+       MAX(diff_ef_sf_th,/NAN) - MIN(diff_ef_sf_th,/NAN), $
+       MAX(diff_ef_sf_ph,/NAN) - MIN(diff_ef_sf_ph,/NAN)
+;       28.571320       33.608529       54.051045       69.433571
+print, MAX(ABS(diff_ff_sf_th),/NAN,mxsfth), MAX(ABS(diff_ff_sf_ph),/NAN,mxsfph), $
+       MAX(ABS(diff_ef_sf_th),/NAN,mxefth), MAX(ABS(diff_ef_sf_ph),/NAN,mxefph)
+;       16.757154       17.028308       33.266602       35.072869
+print, mxsfth, mxsfph, mxefth, mxefph
+;          21           4          21          63
+
+
+test_sf0 = asf[50:100]
+test_sf1 = asf[50:100]
+for j=0L, 50L do begin $
+  add_magf,test_sf0[j],'wi_B3(GSE)'
+add_magf2,test_sf1,'wi_B3(GSE)'
+
+diffx = reform(test_sf0.magf[0]) - reform(test_sf1.magf[0])
+diffy = reform(test_sf0.magf[1]) - reform(test_sf1.magf[1])
+diffz = reform(test_sf0.magf[2]) - reform(test_sf1.magf[2])
+
+print, minmax(diffx)
+;      0.00000      0.00000
+print, minmax(diffy)
+;      0.00000      0.00000
+print, minmax(diffz)
+;      0.00000      0.00000
+
+fmagf = TRANSPOSE([[fmagfx],[fmagfy],[fmagfz]])
+omagf = TRANSPOSE([[omagfx],[omagfy],[omagfz]])
+
+asf.MAGF = fmagf
+aso.MAGF = omagf
+DELVAR,asf,aso,sftpads,ssft_time,esft_time,ssot_time,esot_time,gaso,gasf
+DELVAR,sfmagfx,sfmagfy,sfmagfz,efmagfx,efmagfy,efmagfz,goodsft,goodsot,gdsft,gdsot
+DELVAR,somagfx,somagfy,somagfz,eomagfx,eomagfy,eomagfz
+DELVAR,fmagfx,fmagfy,fmagfz,omagfx,omagfy,omagfz
+DELVAR,sfmagf,efmagf,fmagf,omagf
+
+
+;-----------------------------------------------------------------------------------------
+; => Redo B-field averaging for all files
+;-----------------------------------------------------------------------------------------
+date  = '040600'
+t     = ['2000-04-06/15:00:00','2000-04-06/18:00:00']  ; -For moment writing
+tr3   = time_double(t)
+tramp = '2000-04-06/16:32:09.237'
+tura  = time_double(tramp)
+
+;sst_files = mfiles[3:18]
+good      = WHERE(STRMATCH(mfiles[*],'*SST-Foil-Open_*',/FOLD_CASE),gd)
+sst_files = mfiles[good]
+nfiles    = N_ELEMENTS(sst_files)
+FOR j=0L, nfiles - 1L DO BEGIN                                                        $
+  RESTORE,sst_files[j]                                                              & $
+  ssf_time = [[REFORM(asf.TIME)],[REFORM(asf.END_TIME)]]                            & $
+  sso_time = [[REFORM(aso.TIME)],[REFORM(aso.END_TIME)]]                            & $
+  trt      = [MIN([ssf_time,sso_time],/NAN)-1d2,MAX([ssf_time,sso_time],/NAN)+1d2]  & $
+  mag3     = read_wind_mfi(TRANGE=trt)                                              & $
+  t3x      = mag3.MAG.X                                                             & $
+  magf4    = mag3.BGSE.Y                                                            & $
+  sfmagfx  = interp(magf4[*,0],t3x,ssf_time[*,0],/NO_EXTRAP)                        & $
+  sfmagfy  = interp(magf4[*,1],t3x,ssf_time[*,0],/NO_EXTRAP)                        & $
+  sfmagfz  = interp(magf4[*,2],t3x,ssf_time[*,0],/NO_EXTRAP)                        & $
+  efmagfx  = interp(magf4[*,0],t3x,ssf_time[*,1],/NO_EXTRAP)                        & $
+  efmagfy  = interp(magf4[*,1],t3x,ssf_time[*,1],/NO_EXTRAP)                        & $
+  efmagfz  = interp(magf4[*,2],t3x,ssf_time[*,1],/NO_EXTRAP)                        & $
+  sfmagf   = [[sfmagfx],[sfmagfy],[sfmagfz]]                                        & $
+  efmagf   = [[efmagfx],[efmagfy],[efmagfz]]                                        & $
+  fmagf    = TRANSPOSE((sfmagf + efmagf)/2e0)                                       & $
+  asf.MAGF = fmagf                                                                  & $
+  somagfx  = interp(magf4[*,0],t3x,sso_time[*,0],/NO_EXTRAP)                        & $
+  somagfy  = interp(magf4[*,1],t3x,sso_time[*,0],/NO_EXTRAP)                        & $
+  somagfz  = interp(magf4[*,2],t3x,sso_time[*,0],/NO_EXTRAP)                        & $
+  eomagfx  = interp(magf4[*,0],t3x,sso_time[*,1],/NO_EXTRAP)                        & $
+  eomagfy  = interp(magf4[*,1],t3x,sso_time[*,1],/NO_EXTRAP)                        & $
+  eomagfz  = interp(magf4[*,2],t3x,sso_time[*,1],/NO_EXTRAP)                        & $
+  somagf   = [[somagfx],[somagfy],[somagfz]]                                        & $
+  eomagf   = [[eomagfx],[eomagfy],[eomagfz]]                                        & $
+  omagf    = TRANSPOSE((somagf + eomagf)/2e0)                                       & $
+  aso.MAGF = omagf                                                                  & $
+  SAVE,asf,aso,FILENAME=sst_files[j]
+;-----------------------------------------------------------------------------------------
+; => Write SST Open and Foil data to ASCII files
+;-----------------------------------------------------------------------------------------
+;sst_files = mfiles[3:18]
+good      = WHERE(STRMATCH(mfiles[*],'*SST-Foil-Open_*',/FOLD_CASE),gd)
+sst_files = mfiles[good]
+nfiles    = N_ELEMENTS(sst_files)
+j         = 0L
+k         = 0L
+cc        = 0L
+true      = 1
+guni      = 'df'
+;guni = 'flux'
+;guni = 'eflux'
+WHILE(true) DO BEGIN                                                       $
+  k   = cc                                                               & $
+  RESTORE,sst_files[k]                                                   & $
+  sf0 = asf                                                              & $
+  so0 = aso                                                              & $
+  k  += 1L                                                               & $
+  RESTORE,sst_files[k]                                                   & $
+  sf1 = asf                                                              & $
+  so1 = aso                                                              & $
+  k  += 1L                                                               & $
+  RESTORE,sst_files[k]                                                   & $
+  sf2 = asf                                                              & $
+  so2 = aso                                                              & $
+  k  += 1L                                                               & $
+  RESTORE,sst_files[k]                                                   & $
+  sf3 = asf                                                              & $
+  so3 = aso                                                              & $
+  asf = [sf0,sf1,sf2,sf3]                                                & $
+  aso = [so0,so1,so2,so3]                                                & $
+  asf = asf[SORT(asf.TIME)]                                              & $
+  aso = aso[SORT(aso.TIME)]                                              & $
+  uq  = UNIQ(asf.TIME,SORT(asf.TIME))                                    & $
+  asf = asf[uq[SORT(asf[uq].TIME)]]                                      & $
+  uq  = UNIQ(aso.TIME,SORT(aso.TIME))                                    & $
+  aso = aso[uq[SORT(aso[uq].TIME)]]                                      & $
+  write_padspec_ascii,'sf',NUM_PA=10L,DAT_ARR=asf,UNITS=guni,/G_MAGF     & $
+  write_padspec_ascii,'so',NUM_PA=10L,DAT_ARR=aso,UNITS=guni,/G_MAGF     & $
+  IF (k LT nfiles - 1L) THEN true = 1 ELSE true = 0                      & $
+  IF (true) THEN cc += 4
+
+good      = WHERE(STRMATCH(mfiles[*],'*SST-Foil-Open_*',/FOLD_CASE),gd)
+sst_files = mfiles[good]
+nfiles    = N_ELEMENTS(sst_files)
+j         = 0L
+k         = 0L
+cc        = 0L
+true      = 1
+guni      = 'df'
+WHILE(true) DO BEGIN                                                       $
+  k   = cc                                                               & $
+  RESTORE,sst_files[k]                                                   & $
+  sf0 = asf                                                              & $
+  so0 = aso                                                              & $
+  k  += 1L                                                               & $
+  RESTORE,sst_files[k]                                                   & $
+  sf1 = asf                                                              & $
+  so1 = aso                                                              & $
+  k  += 1L                                                               & $
+  asf = [sf0,sf1]                                                        & $
+  aso = [so0,so1]                                                        & $
+  asf = asf[SORT(asf.TIME)]                                              & $
+  aso = aso[SORT(aso.TIME)]                                              & $
+  uq  = UNIQ(asf.TIME,SORT(asf.TIME))                                    & $
+  asf = asf[uq[SORT(asf[uq].TIME)]]                                      & $
+  uq  = UNIQ(aso.TIME,SORT(aso.TIME))                                    & $
+  aso = aso[uq[SORT(aso[uq].TIME)]]                                      & $
+  write_padspec_ascii,'sf',NUM_PA=10L,DAT_ARR=asf,UNITS=guni,/G_MAGF,/NO_KILL  & $
+  write_padspec_ascii,'so',NUM_PA=10L,DAT_ARR=aso,UNITS=guni,/G_MAGF,/NO_KILL  & $
+  IF (k LT nfiles - 1L) THEN true = 1 ELSE true = 0                      & $
+  IF (true) THEN cc += 2
+
+
+; => If only 1 IDL Save file
+;guni = 'flux'
+;guni = 'eflux'
+good      = WHERE(STRMATCH(mfiles[*],'*SST-Foil-Open_*',/FOLD_CASE),gd)
+sst_files = mfiles[good]
+guni      = 'df'
+RESTORE,sst_files[0]
+write_padspec_ascii,'sf',NUM_PA=10L,DAT_ARR=asf,UNITS=guni,/G_MAGF,/NO_KILL
+write_padspec_ascii,'so',NUM_PA=10L,DAT_ARR=aso,UNITS=guni,/G_MAGF,/NO_KILL
+
+RESTORE,mfiles[0]
+guni     = 'df'
+write_padspec_ascii,'el',NUM_PA=17L,DAT_ARR=ael,UNITS=guni,/G_MAGF,/NO_KILL,EBINS=[0,9]
+write_padspec_ascii,'eh',NUM_PA=17L,DAT_ARR=aeh,UNITS=guni,/G_MAGF,/NO_KILL
+
+tall = [ael,aelb]
+talh = [aeh,aehb]
+guni     = 'df'
+write_padspec_ascii,'el',NUM_PA=17L,DAT_ARR=tall,UNITS=guni,/G_MAGF,/NO_KILL,EBINS=[0,9]
+write_padspec_ascii,'eh',NUM_PA=17L,DAT_ARR=talh,UNITS=guni,/G_MAGF,/NO_KILL
+
+;-----------------------------------------------------------------------------------------
+; => Read in SST Open and Foil data from ASCII files
+;-----------------------------------------------------------------------------------------
+date      = '082698'
+date      = '092498'
+date      = '021100'
+date      = '040600'
+date      = '101101'
+date      = '102101'
+date      = '102501'
+date      = '112401'
+
+name      = 'sf'
+units     = 'df'
+;units     = 'eflux'
+;range_avg = time_double(['2000-04-04/00:00:00','2000-04-04/12:00:00'])
+padspec_ascii_to_tplot,name,DATE=date,/DAT_NORM,/DAT_CLN,UNITS=units,RANGE_AVG=range_avg
+
+name      = 'so'
+units     = 'df'
+;units     = 'eflux'
+;range_avg = time_double(['2000-04-02/12:00:00','2000-04-03/12:00:00'])
+padspec_ascii_to_tplot,name,DATE=date,/DAT_NORM,/DAT_CLN,UNITS=units,RANGE_AVG=range_avg
+
+; => Calculate similar TPLOT variables for shorter periods of time, but overall mean
+;      values of data to normalize.
+RESTORE,sst_files[4]
+sfpads = calc_padspecs('sf',/G_MAGF,NUM_PA=10L,DAT_ARR=asf,/DAT_CLN,/DAT_NORM)
+
+
+name      = 'el'
+name      = 'eh'
+units     = 'df'
+padspec_ascii_to_tplot,name,DATE=date,/DAT_NORM,/DAT_CLN,UNITS=units
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+lpref = 'MFI-3s_Eesa-Low_para-perp-antipara_'
+hpref = 'MFI-3s_Eesa-High_para-perp-antipara_'
+fpref = 'MFI-3s_SST-Foil_para-perp-antipara_'
+opref = 'MFI-3s_SST-Open_para-perp-antipara_'
+
+; => May need to change if B-field names are different
+nn0   = ['wi_B3_MAG(GSE)','wi_B3(GSE)']
+nna   = ['nsf_pads_df-2-0:1_N_cln','nsf_pads_df-2-4:5_N_cln','nsf_pads_df-2-8:9_N_cln']
+tplot,tnames([nn0,nna])
+
+
+nn0   = ['wi_B3_MAG(GSE)','wi_B3(GSE)']
+nna   = ['nso_pads_df-2-0:1_N_cln','nso_pads_df-2-4:5_N_cln','nso_pads_df-2-8:9_N_cln']
+tplot,tnames([nn0,nna])
+
+
+nn0   = ['wi_B3_MAG(GSE)','wi_B3(GSE)']
+nna   = ['nel_pads_df-2-0:1_N_cln','nel_pads_df-2-8:9_N_cln','nel_pads_df-2-15:16_N_cln']
+tplot,tnames([nn0,nna])
+
+nn0   = ['wi_B3_MAG(GSE)','wi_B3(GSE)']
+nna   = ['neh_pads_df-2-0:1_N_cln','neh_pads_df-2-8:9_N_cln','neh_pads_df-2-15:16_N_cln']
+tplot,tnames([nn0,nna])
+
+
+;-----------------------------------------------------------------------------------------
+; => Manipulate SST Open and Foil Spectra Plots
+;-----------------------------------------------------------------------------------------
+n_names = tnames('nsf_pads*_N')
+n_n     = N_ELEMENTS(n_names)
+sffx_d1 = '_cln'
+n1_name = STRMID(n_names[*],0L,STRLEN(n_names[0])-2L)+sffx_d1
+hsmooth = 20L
+lsmooth = 10L
+mysmp   = [0,2,hsmooth]
+mysnp   = lsmooth
+; => Smooth the 4 lowest SST Foil energies by 10 points and the 3 highest energies by
+;      20 points
+FOR j=0L, n_n - 1L DO BEGIN $
+  clean_spec_spikes,n_names[j],NSMOOTH=mysnp,ESMOOTH=mysmp,NEW_NAME=n1_name[j]
+
+store_data,DELETE=n_names
+n_names = tnames('nsf_pads*_N_cln_n')
+ytn = ['10!U-2!N','10!U-1!N','10!U0!N','10!U1!N','10!U2!N','10!U3!N','10!U4!N']
+ytv = [1e-2,1e-1,1e0,1e1,1e2,1e3,1e4]
+yts = N_ELEMENTS(ytv) - 1L
+options,n_names,'YTICKS',yts
+options,n_names,'YTICKV',ytv
+options,n_names,'YTICKNAME',ytn
+
+; => Normalize the cleaned spectra by the average of the data within the time range
+;      defined by the variable RANGE_AVG
+sffx_d0   = '_n'
+FOR j=0L, n_n - 1L DO BEGIN                     $
+  name_1 = n1_name[j]                         & $
+  name_2 = name_1+sffx_d0                     & $
+  spec_vec_data_shift,name_1,NEW_NAME=name_2,/DATN,RANGE_AVG=range_avg
+
+; => Remove the 4 highest energies because they are overlapping with the lower
+;      energies making it impossible to see anything useful.  Separate the two 
+;      different sets of energies into two new TPLOT variables.
+
+n_names = tnames('nso_pads*_N_cln')
+n_n     = N_ELEMENTS(n_names)
+sffx_dL   = '_lowE'
+sffx_dH   = '_highE'
+FOR j=0L, n_n - 1L DO BEGIN                     $
+  name_1 = n_names[j]                         & $
+  name_2 = name_1+sffx_dL                     & $
+  name_3 = name_1+sffx_dH                     & $
+  energy_remove_split,name_1,NEW_NAME1=name_2,NEW_NAME2=name_3,/SPLIT,ENERGIES=[0,3]
+
+
+;ymd = ['2000-04-04/04:00:00','2000-04-07/10:00:00']
+;ymd = ['2000-04-06/00:00:00','2000-04-07/10:00:00']
+;ymd = ['2000-04-06/06:32:00','2000-04-07/02:32:00'] 
+;ymd = ['2000-04-06/12:32:00','2000-04-06/20:32:00']
+;ymd = ['2000-04-06/14:32:00','2000-04-06/18:32:00']
+ymd = ['2000-04-06/15:32:00','2000-04-06/17:32:00']
+ydt = STRMID(ymd[*],0,4)+STRMID(ymd[*],5,2)+STRMID(ymd[*],8,2)
+yti = STRMID(ymd[*],11,2)+STRMID(ymd[*],14,2)+ $
+      STRMID(ymd[*],17,2)
+tra = ydt[0]+'-'+yti[0]+'_'+ydt[1]+'-'+yti[1]
+pre = 'so_spectra_low-high_'+tra[0]
+nn0 = tnames('wi_B3*')
+n_names   = tnames('nso_pads*_N_cln')
+n_n       = N_ELEMENTS(n_names)
+sffx_dL   = '_lowE'
+sffx_dH   = '_highE'
+FOR j=0L, n_n - 1L DO BEGIN                     $
+  jstr = STRTRIM(j,2)                         & $
+  name_1 = n_names[j]                         & $
+  name_2 = name_1+sffx_dL                     & $
+  name_3 = name_1+sffx_dH                     & $
+  fnm  = pre+'_'+jstr                         & $
+  popen,fnm,/PORT                             & $
+    tplot,[nn0,name_2,name_3]                 & $
+  pclose
+
+
+n_names = tnames('nsf_pads*_N_cln')
+n_n     = N_ELEMENTS(n_names)
+sffx_dL   = '_lowE'
+sffx_dH   = '_highE'
+FOR j=0L, n_n - 1L DO BEGIN                     $
+  name_1 = n_names[j]                         & $
+  name_2 = name_1+sffx_dL                     & $
+  name_3 = name_1+sffx_dH                     & $
+  energy_remove_split,name_1,NEW_NAME1=name_2,NEW_NAME2=name_3,/SPLIT,ENERGIES=[0,2]
+
+;ymd = ['2000-04-04/04:00:00','2000-04-07/10:00:00']
+;ymd = ['2000-04-06/00:00:00','2000-04-07/10:00:00']
+;ymd = ['2000-04-06/06:32:00','2000-04-07/02:32:00'] 
+;ymd = ['2000-04-06/12:32:00','2000-04-06/20:32:00']
+;ymd = ['2000-04-06/14:32:00','2000-04-06/18:32:00']
+ymd = ['2000-04-06/15:32:00','2000-04-06/17:32:00']
+ydt = STRMID(ymd[*],0,4)+STRMID(ymd[*],5,2)+STRMID(ymd[*],8,2)
+yti = STRMID(ymd[*],11,2)+STRMID(ymd[*],14,2)+ $
+      STRMID(ymd[*],17,2)
+tra = ydt[0]+'-'+yti[0]+'_'+ydt[1]+'-'+yti[1]
+pre = 'sf_spectra_low-high_'+tra[0]
+nn0 = tnames('wi_B3*')
+n_names   = tnames('nsf_pads*_N_cln')
+n_n       = N_ELEMENTS(n_names)
+sffx_dL   = '_lowE'
+sffx_dH   = '_highE'
+FOR j=0L, n_n - 1L DO BEGIN                     $
+  jstr = STRTRIM(j,2)                         & $
+  name_1 = n_names[j]                         & $
+  name_2 = name_1+sffx_dL                     & $
+  name_3 = name_1+sffx_dH                     & $
+  fnm  = pre+'_'+jstr                         & $
+  popen,fnm,/PORT                             & $
+    tplot,[nn0,name_2,name_3]                 & $
+  pclose
+;-----------------------------------------------------------------------------------------
+; => SST Open and Foil PAD Plots
+;-----------------------------------------------------------------------------------------
+gasf     = asf[150L:599L]
+mts      = my_time_string(gasf.TIME,UNIX=1)
+ymdb     = mts.DATE_TIME
+UTtime   = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+           STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate    = STRMID(ymdb[*],0L,10L)
+nsf      = N_ELEMENTS(gasf)
+ngrid    = 30
+vlim     = 2d5
+FOR j=0L, nsf - 1L DO BEGIN                                                     $
+  dat    = gasf[j]                                                            & $
+  pdb    = pad(dat,NUM_PA=10,/SPIKE)                                          & $
+  pltn2  = '~/Desktop/3DP_contours/'+date[0]+'/PADS_SF/'                      & $
+  pltn2 += 'sf_'+gdate[j]+'_'+UTtime[j]+'-10PAs-All-Energies-PAD'             & $
+  popen,pltn2,/port                                                           & $
+    my_padplot_both,pdb,UNITS='counts',EBINS=[0,6]                            & $
+  pclose
+;  pclose                                                                      & $
+
+gaso     = aso[150L:699L]
+mts      = my_time_string(gaso.TIME,UNIX=1)
+ymdb     = mts.DATE_TIME
+UTtime   = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+           STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate    = STRMID(ymdb[*],0L,10L)
+nso      = N_ELEMENTS(gaso)
+ngrid    = 30
+vlim     = 3d4
+FOR j=0L, nso - 1L DO BEGIN                                                     $
+  dat    = gaso[j]                                                            & $
+  pdb    = pad(dat,NUM_PA=10,/SPIKE)                                          & $
+  pltn2  = '~/Desktop/3DP_contours/'+date[0]+'/PADS_SO/'                      & $
+  pltn2 += 'so_'+gdate[j]+'_'+UTtime[j]+'-10PAs-All-Energies-PAD'             & $
+  popen,pltn2,/port                                                           & $
+    my_padplot_both,pdb,UNITS='counts',EBINS=[0,6]                            & $
+  pclose
+
+;-----------------------------------------------------------------------------------------
+; => SST Open and Foil 3DP Maps
+;-----------------------------------------------------------------------------------------
+plot3d_options,MAP='ham',LOG =1,TRIANGULATE=1,COMPRESS=1,GRID=[30,30]
+; => Try outputting the shock normal direction
+eb         = [5,6]
+tasf       = asf[350L:469L]
+nsf        = N_ELEMENTS(tasf)
+;tasf.MAGF  = gnorm # REPLICATE(1.0,nsf)
+
+g_ener     = TOTAL(tasf.ENERGY,3,/NAN)/ TOTAL(FINITE(tasf.ENERGY),3,/NAN)
+eners      = REVERSE(TOTAL(g_ener,2,/NAN)/ TOTAL(FINITE(g_ener),2,/NAN))
+g_string   = [(roundsig(minmax(eners[eb]),SIG=2))[0],(roundsig(minmax(eners[eb]),SIG=2))[1]]
+estring    = STRTRIM(STRING(FORMAT='(f10.1)',g_string*1d-3),2)
+IF (FLOAT(estring[0]) LT 100.) THEN ss = 4 ELSE ss = 3
+IF (FLOAT(estring[1]) GT 1e3)  THEN mm = 4 ELSE mm = 3
+estring    = '_'+STRMID(estring[0],0,ss)+'-'+STRMID(estring[1],0,mm)+'keV'
+bdir       = '~/Desktop/3DP_contours/'+date[0]
+;pdir       = bdir+'/Hammer-Aitoff_Projections/SST_Foil_anti-Bfield-center/'
+pdir       = bdir+'/Hammer-Aitoff_Projections/SST_Foil_Bfield-center/'
+;suffx      = estring+'_anti-Bfield-center_DF_MAGF-MID'
+;suffx      = estring+'_anti-Bfield-center_DF'
+suffx      = estring+'_Bfield-center_DF_MAGF-MID'
+;suffx      = estring+'_Bfield-center_DF'
+pref       = 'SST-Foil_Hammer-Aitoff_'
+mts        = my_time_string(tasf.TIME,UNIX=1)
+ymdb       = mts.DATE_TIME
+UTtime     = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+             STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate      = STRMID(ymdb[*],0L,10L)
+FOR j=0L, nsf - 1L DO BEGIN                                    $
+  dat    = tasf[j]                                           & $
+  fname  = pdir+pref+gdate[j]+'_'+UTtime[j]+suffx            & $
+  popen,fname,/PORT                                          & $
+    plot3d,dat,BNCENTER=+1,UNITS='df',EBINS=eb,EX_VEC=gnorm  & $
+;    plot3d,dat,BNCENTER=-1,UNITS='df',EBINS=eb,EX_VEC=gnorm  & $
+  pclose
+
+; => Force 1 Z-Range
+zra0       = [5e-22,3e-21]
+zra1       = [5e-22,1.3e-21]
+ind        = LINDGEN(20) + 80L
+nnd        = 20
+eb         = [5,5]
+;eb         = [6,6]
+zra        = zra1
+tasf       = asf[350L:469L]
+zasf       = tasf[ind]
+nsf        = N_ELEMENTS(zasf)
+g_ener     = TOTAL(zasf.ENERGY,3,/NAN)/ TOTAL(FINITE(zasf.ENERGY),3,/NAN)
+eners      = REVERSE(TOTAL(g_ener,2,/NAN)/ TOTAL(FINITE(g_ener),2,/NAN))
+g_string   = [(roundsig(minmax(eners[eb]),SIG=2))[0],(roundsig(minmax(eners[eb]),SIG=2))[1]]
+estring    = STRTRIM(STRING(FORMAT='(f10.1)',g_string*1d-3),2)
+IF (FLOAT(estring[0]) LT 100.) THEN ss = 4 ELSE ss = 3
+IF (FLOAT(estring[1]) LT 100.)  THEN mm = 4 ELSE mm = 3
+estring    = '_'+STRMID(estring[0],0,ss)+'-'+STRMID(estring[1],0,mm)+'keV'
+bdir       = '~/Desktop/3DP_contours/'+date[0]
+pdir       = bdir+'/Hammer-Aitoff_Projections/SST_Foil_anti-Bfield-center/'
+;pdir       = bdir+'/Hammer-Aitoff_Projections/SST_Foil_Bfield-center/'
+suffx      = estring+'_anti-Bfield-center_DF_MAGF-MID_ZRA_4E-22_2E-21'
+;suffx      = estring+'_Bfield-center_DF_MAGF-MID_ZRA_4E-22_2E-21'
+mts        = my_time_string(zasf.TIME,UNIX=1)
+ymdb       = mts.DATE_TIME
+UTtime     = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+             STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate      = STRMID(ymdb[*],0L,10L)
+FOR j=0L, nsf - 1L DO BEGIN                                               $
+  dat    = zasf[j]                                                      & $
+  fname  = pdir+pref+gdate[j]+'_'+UTtime[j]+suffx                       & $
+  popen,fname,/PORT                                                     & $
+;    plot3d,dat,BNCENTER=+1,UNITS='df',EBINS=eb,EX_VEC=gnorm,ZRANGE=zra  & $
+    plot3d,dat,BNCENTER=-1,UNITS='df',EBINS=eb,EX_VEC=gnorm,ZRANGE=zra  & $
+  pclose
+
+
+; => Try outputting the shock normal direction
+eb         = [0,8]
+taso       = aso[350L:469L]
+nso        = N_ELEMENTS(taso)
+;taso.MAGF  = gnorm # REPLICATE(1.0,nso)
+
+g_ener     = TOTAL(taso.ENERGY,3,/NAN)/ TOTAL(FINITE(taso.ENERGY),3,/NAN)
+eners      = TOTAL(g_ener,2,/NAN)/ TOTAL(FINITE(g_ener),2,/NAN)
+g_string   = [(roundsig(minmax(eners[eb]),SIG=2))[0],(roundsig(minmax(eners[eb]),SIG=2))[1]]
+estring    = STRTRIM(STRING(FORMAT='(f10.1)',g_string*1d-3),2)
+IF (FLOAT(estring[0]) LT 100.) THEN ss = 4 ELSE ss = 3
+IF (FLOAT(estring[1]) GT 1e3)  THEN mm = 4 ELSE mm = 3
+estring    = '_'+STRMID(estring[0],0,ss)+'-'+STRMID(estring[1],0,mm)+'keV'
+bdir       = '~/Desktop/3DP_contours/'+date[0]
+pdir       = bdir+'/Hammer-Aitoff_Projections/SST_Open_anti-Bfield-center/'
+;pdir       = bdir+'/Hammer-Aitoff_Projections/SST_Open_Bfield-center/'
+;suffx      = estring+'_anti-Bfield-center_DF_MAGF-MID'
+;suffx      = estring+'_Bfield-center_DF_MAGF-MID'
+suffx      = estring+'_anti-Bfield-center_DF'
+;suffx      = estring+'_Bfield-center_DF'
+pref       = 'SST-Open_Hammer-Aitoff_'
+mts        = my_time_string(taso.TIME,UNIX=1)
+ymdb       = mts.DATE_TIME
+UTtime     = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+             STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate      = STRMID(ymdb[*],0L,10L)
+FOR j=0L, nso - 1L DO BEGIN                                    $
+  dat    = taso[j]                                           & $
+  fname  = pdir+pref+gdate[j]+'_'+UTtime[j]+suffx            & $
+  popen,fname,/PORT                                          & $
+;    plot3d,dat,BNCENTER=+1,UNITS='df',EBINS=eb,EX_VEC=gnorm  & $
+    plot3d,dat,BNCENTER=-1,UNITS='df',EBINS=eb,EX_VEC=gnorm  & $
+  pclose
+

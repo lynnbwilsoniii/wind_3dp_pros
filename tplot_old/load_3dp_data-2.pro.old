@@ -1,0 +1,146 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   load_3dp_data.pro
+;  PURPOSE  :   Opens and loads into memory the 3DP LZ data file(s) within the given time
+;                 range specified by user.  This must be called prior to any data 
+;                 retrieval program (e.g. get_el.pro)!
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               wind_com.pro
+;               tplot_com.pro
+;               init_wind_lib.pro
+;               get_timespan.pro
+;               time_double.pro
+;               time_string.pro
+;               str_element.pro
+;               timespan.pro
+;               load_wi_h0_mfi.pro
+;               store_data.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;               2)  WindLib Libraries and the following shared objects:
+;                     wind3dp_lib_ls32.so
+;                     wind3dp_lib_ss32.so
+;                     wind3dp_lib_darwin_i386.so   ; => for Macs
+;
+;  INPUT:
+;               TIME       :  Scalar String ['YY-MM-DD/hh:mm:ss']
+;               DELTAT     :  Scalar defining the number of hours to load
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               QUALITY    :  [integer] specifying the quality of data with the following
+;                                consequences for each bit case where the decommutator
+;                                filter allows these issues through:
+;                                1  :  Frame contains some fill data
+;                                2  :  Packets can be invalid
+;                                4  :  Packets can contain fill data
+;                                [Default = 0 (most conservative option)]
+;               MEMSIZE    :  Option that allows one to allocate more memory for IDL
+;               IF_NEEDED  :  
+;               NOSET      :  
+;
+;   CHANGED:  1)  Davin Larson changed something...          [11/05/2002   v1.0.20]
+;             2)  Changed the source location of Level Zero data files to:
+;                   '/data1/wind/3dp/lz/wi_lz_3dp_files'
+;                   => Specific to the University of Minnesotat
+;                                                            [06/19/2008   v1.0.22]
+;             3)  Updated man page                           [08/05/2009   v1.1.0]
+;             4)  Fixed minor syntax error                   [08/26/2009   v1.1.1]
+;             5)  Updated man page, added shared object library and added error handling
+;                                                            [08/05/2010   v1.2.0]
+;             6)  Master file path location no longer hard coded into init_wind_lib.pro
+;                   call                                     [07/25/2011   v1.2.1]
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  07/25/2011   v1.2.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO load_3dp_data,time,deltat,MEMSIZE=memsize,QUALITY=quality, $
+                  IF_NEEDED=if_needed,NOSET=noset
+
+;-----------------------------------------------------------------------------------------
+; => Initialize file locations and save in common block
+;-----------------------------------------------------------------------------------------
+init_wind_lib
+;-----------------------------------------------------------------------------------------
+; => Load common blocks and initialize LZ file locations
+;-----------------------------------------------------------------------------------------
+@wind_com.pro
+@tplot_com.pro
+
+COMMON times_dats, t
+;-----------------------------------------------------------------------------------------
+; => Check input parameters
+;-----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(quality) NE 1) THEN quality = 0
+IF (N_ELEMENTS(deltat) EQ 0)  THEN deltat  = 24d0
+
+CASE N_ELEMENTS(time) OF
+  0    : BEGIN
+    get_timespan,time
+    noset = 1
+  END
+  1    : BEGIN
+    to  = time_double(time)
+    t1  = to + 36d2*deltat
+    t   = [to,t1]
+  END
+  2    : BEGIN
+    t = time_double(time)
+  END
+  ELSE : BEGIN
+    MESSAGE,'Improper input format:  TIME',/INFORMATIONAL,/CONTINUE
+    RETURN
+  END
+ENDCASE
+ttype = SIZE(t,/TYPE)
+IF (N_ELEMENTS(t) NE 2) OR (ttype NE 5) THEN MESSAGE,'Improper time input!'
+;-----------------------------------------------------------------------------------------
+; => Check optional parameters
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(memsize) THEN memsize = FIX(memsize) ELSE memsize = 30
+
+IF (KEYWORD_SET(if_needed) and KEYWORD_SET(loaded_trange)) THEN BEGIN
+  IF (t[1] LE loaded_trange[1] AND t[0] GE loaded_trange[0]) THEN BEGIN
+    MESSAGE,'WIND decommutator data already loaded.  Skipping...',/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Call WindLib libraries
+;-----------------------------------------------------------------------------------------
+MESSAGE,'Using decomutator: "'+wind_lib+'"',/INFORMATIONAL,/CONTINUE
+err = CALL_EXTERNAL(wind_lib,'load_data_files_idl',t,lz_3dp_files,memsize,quality)
+;-----------------------------------------------------------------------------------------
+; => Define some common block variables
+;-----------------------------------------------------------------------------------------
+loaded_trange = t
+IF NOT KEYWORD_SET(noset) THEN timespan,t
+
+str     = time_string(t)
+refdate = STRMID(str[0],0,STRPOS(str[0],'/'))
+str_element,tplot_vars,'OPTIONS.REFDATE',refdate,/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Load magnetic field data
+;-----------------------------------------------------------------------------------------
+load_wi_h0_mfi, time_range=t;, /polar
+
+store_data,'TIME',DATA={STTR:t[0],ETTR:t[1]}
+
+MESSAGE,'Reference date is: '+refdate,/INFORMATIONAL,/CONTINUE
+RETURN
+END
+
+

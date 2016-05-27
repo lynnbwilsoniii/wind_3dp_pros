@@ -1,0 +1,250 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   convert_sf_units.pro
+;  PURPOSE  :   Converts units of data from the SST Foil instrument of the Wind/3DP
+;                 particle detector suite.
+;
+;  CALLED BY:   
+;               conv_units.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               test_3dp_struc_format.pro
+;               struct_value.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS SPEDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA      :  [N]-element array of Wind 3DP SST Foil IDL data structures
+;                              containing the associated particle velocity distributions
+;                              [e.g., see get_?.pro, ? = sf or sfb]
+;               UNITS     :  Scalar [string] defining to which the units to
+;                              convert.  The following inputs are allowed:
+;                                'counts'      ;  # of counts
+;                                'rate'        ;  raw count rate
+;                                                 [# s^(-1)]
+;                                'crate'       ;  scaled count rate
+;                                                 [# s^(-1)]
+;                                'flux'        ;  corrected # flux (or intensity or fluence)
+;                                                 [# cm^(-2) s^(-1) sr^(-1) eV^(-1)]
+;                                'uflux'       ;  uncorrected # flux
+;                                                 [# cm^(-2) s^(-1) sr^(-1) eV^(-1)]
+;                                'eflux'       ;  energy flux
+;                                                 [eV cm^(-2) s^(-1) sr^(-1) eV^(-1)]
+;                                'df'          ;  phase space density
+;                                                 [# cm^(-3) km^(3) s^(-3)]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               convert_sf_units, data, units [,SCALE=scale]
+;
+;  KEYWORDS:    
+;               SCALE     :  Set to a named variable to return the conversion factor
+;                              array used to scale the data
+;
+;   CHANGED:  1)  Davin Larson changed something...
+;                                                                   [??/??/????   v1.0.?]
+;             2)  Re-wrote and cleaned up
+;                                                                   [06/22/2009   v1.1.0]
+;             3)  Fixed syntax issue if data is an array of structures
+;                                                                   [08/05/2009   v1.1.1]
+;             4)  Updated 'man' page, cleaned up routine, added more error handling
+;                   and now calls test_3dp_struc_format.pro and struct_value.pro
+;                   and no longer calls convert_flux_units.pro [pointless call]
+;                   *** Unit conversions now done in double precision ***
+;                                                                   [02/19/2016   v1.2.0]
+;             5)  For some reason I used the GEOM_FACTOR structure tag instead of
+;                   GEOMFACTOR, which causes a failure
+;                                                                   [04/14/2016   v1.2.1]
+;             6)  Fixed typos in the unit conversion case statements
+;                                                                   [05/25/2016   v1.2.2]
+;
+;   NOTES:      
+;               1)  See also:  thm_convert_sst_units_lbwiii.pro
+;               2)  As of version 1.2.0
+;                     *** Unit conversions now done in double precision ***
+;                     This prevents rounding errors causing quantization artifacts
+;
+;  REFERENCES:  
+;               1)  Carlson et al., (1983), "An instrument for rapidly measuring
+;                      plasma distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70.
+;               2)  Curtis et al., (1989), "On-board data analysis techniques for
+;                      space plasma particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372.
+;               3)  Lin et al., (1995), "A Three-Dimensional Plasma and Energetic
+;                      particle investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125.
+;               4)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;               5)  McFadden, J.P., C.W. Carlson, D. Larson, M. Ludlam, R. Abiad,
+;                      B. Elliot, P. Turin, M. Marckwordt, and V. Angelopoulos
+;                      "The THEMIS ESA Plasma Instrument and In-flight Calibration,"
+;                      Space Sci. Rev. 141, pp. 277-302, (2008).
+;               6)  McFadden, J.P., C.W. Carlson, D. Larson, J.W. Bonnell,
+;                      F.S. Mozer, V. Angelopoulos, K.-H. Glassmeier, U. Auster
+;                      "THEMIS ESA First Science Results and Performance Issues,"
+;                      Space Sci. Rev. 141, pp. 477-508, (2008).
+;               7)  Auster, H.U., K.-H. Glassmeier, W. Magnes, O. Aydogar, W. Baumjohann,
+;                      D. Constantinescu, D. Fischer, K.H. Fornacon, E. Georgescu,
+;                      P. Harvey, O. Hillenmaier, R. Kroth, M. Ludlam, Y. Narita,
+;                      R. Nakamura, K. Okrafka, F. Plaschke, I. Richter, H. Schwarzl,
+;                      B. Stoll, A. Valavanoglou, and M. Wiedemann "The THEMIS Fluxgate
+;                      Magnetometer," Space Sci. Rev. 141, pp. 235-264, (2008).
+;               8)  Angelopoulos, V. "The THEMIS Mission," Space Sci. Rev. 141,
+;                      pp. 5-34, (2008).
+;               9)  Bordoni, F. "Channel electron multiplier efficiency for 10-1000 eV
+;                      electrons," Nucl. Inst. & Meth. 97, pp. 405, (1971).
+;              10)  Goruganthu, R.R. and W.G. Wilson "Relative electron detection
+;                      efficiency of microchannel plates from 0-3 keV,"
+;                      Rev. Sci. Inst. 55, pp. 2030-2033, (1984).
+;              11)  Meeks, C. and P.B. Siegel "Dead time correction via the time series,"
+;                      Amer. J. Phys. 76, pp. 589-590, (2008).
+;              12)  Schecker, J.A., M.M. Schauer, K. Holzscheiter, and M.H. Holzscheiter
+;                      "The performance of a microchannel plate at cryogenic temperatures
+;                      and in high magnetic fields, and the detection efficiency for
+;                      low energy positive hydrogen ions,"
+;                      Nucl. Inst. & Meth. in Phys. Res. A 320, pp. 556-561, (1992).
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  05/25/2016   v1.2.2
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO convert_sf_units,data,units,SCALE=scale
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+fedf_names     = ['FLUX','EFLUX','DF']
+;;  so scale gets passed back even if units = data.units_name
+scale          = 1e0
+;;  Define dummy messages
+notstr_mssg    = 'Must be an IDL structure...'
+badstr_wind3dp = 'Not an appropriate Wind 3DP structure...'
+notstring_msg  = 'UNITS must be a scalar string...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 2) THEN RETURN       ;;  Quit if nothing was entered
+str            = data[0]               ;;  in case it is an array of structures of the same format
+IF (SIZE(str,/TYPE) NE 8) THEN BEGIN
+  MESSAGE,notstr_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Check to make sure input is a Wind 3DP structure
+test           = (test_3dp_struc_format(str) NE 1)
+IF (test[0]) THEN RETURN
+;;  Check to make sure input is a string
+IF (SIZE(units,/TYPE) NE 7) THEN BEGIN
+  MESSAGE,notstring_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Check to make sure user is actually changing units
+old_unit       = data[0].UNITS_NAME
+new_unit       = units[0]
+IF (STRUPCASE(new_unit[0]) EQ STRUPCASE(old_unit[0])) THEN RETURN
+;;----------------------------------------------------------------------------------------
+;;  These are vectorized for array of data structures
+;;----------------------------------------------------------------------------------------
+n_e            = data[0].NENERGY               ;;  # of energy bins
+nbins          = data[0].NBINS                 ;;  # of angle bins
+n_str          = N_ELEMENTS(data)              ;;  # of data structures
+energy         = DOUBLE(data.ENERGY)           ;;  [n_e,nbins,n_str]-Element array of midpoint energies [eV] (i.e., = (Emax + Emin)/2)
+denergy        = DOUBLE(data.DENERGY)          ;;  " " energy bin bandwidths [eV] (i.e., = Emax - Emin)
+feff           = DOUBLE(data.FEFF)             ;;  " " foil efficiency [for background subtracted data only]
+dt             = DOUBLE(data.DT)               ;;  " " integration/accumulation time [s]
+deadtime       = DOUBLE(data.DEADTIME)         ;;  " " deadtimes [s]
+rate           = DOUBLE(data.DATA)/dt          ;;  " " raw count rates [# s^(-1)]
+dtc            = (1d0 - rate*deadtime) > 1d-1  ;;  " " scaled count rates [# s^(-1)]
+;;  Define the total geometry factor of the detector [cm^(+2) sr]
+gf_facs        = DBLARR(n_e,nbins,n_str)       ;;  " " optical geometric factors [cm^(+2) sr]
+mass           = DBLARR(n_e,nbins,n_str)       ;; Particle mass [eV/c^2, with c in km/s]
+FOR j=0L, n_str - 1L DO BEGIN
+  gf_facs[*,*,j] = DOUBLE(data[j].GEOMFACTOR[0])
+;  gf_facs[*,*,j] = DOUBLE(data[j].GEOM_FACTOR[0])
+  ;;  Define Particle mass [eV/(km/sec)^2]
+  mass[*,*,j]    = DOUBLE(data[j].MASS[0])
+ENDFOR
+gf             = DOUBLE(data.GF)*gf_facs       ;;  " " scaled geometry factors [cm^(+2) sr]
+;;  Define geometry factors w/ and w/o efficiencies times ∆E
+;;    *** from thm_convert_sst_units_lbwiii.pro ***
+gf_raw         = gf*denergy
+gf_eff         = gf_raw*feff
+;;----------------------------------------------------------------------------------------
+;;  Define scale factors to new units
+;;----------------------------------------------------------------------------------------
+CASE STRUPCASE(new_unit[0]) OF
+  'COUNTS' :  sfact = 1d0
+  'RATE'   :  sfact = 1d0 / dt
+  'CRATE'  :  sfact = 1d0 / (dtc * dt)
+  'UFLUX'  :  sfact = 1d0 / (dtc * dt * gf_raw)
+  'EFLUX'  :  sfact = 1d0 / (dtc * dt * gf_eff) * energy
+  'FLUX'   :  sfact = 1d0 / (dtc * dt * gf_eff)
+  'DF'     :  sfact = 1d0 / (dtc * dt * gf_eff * energy * (2d5/mass^2d0) )
+;  'UFLUX'  :  scale = 1d0 / dtc / (dt * gf)        / denergy
+;  'EFLUX'  :  scale = 1d0 / dtc / (dt * gf * feff) * (energy/denergy)
+;  'FLUX'   :  scale = 1d0 / dtc / (dt * gf * feff) / denergy
+;  'DF'     :  scale = 1d0 / dtc / (dt * gf * feff * denergy * energy * (2d5/mass^2d0) )
+;  'COUNTS' :  scale = 1.
+;  'RATE'   :  scale = 1 / dt
+;  'CRATE'  :  scale = 1 /dtc / dt
+;  'UFLUX'  :  scale = 1 /dtc / (dt * gf * denergy)
+;  'FLUX'   :  scale = 1 /dtc / (dt * gf * denergy * feff)
+;  'EFLUX'  :  scale = 1 /dtc / (dt *gf * denergy * feff) * energy
+;  'DF'     :  scale = 1d0 / dtc / (dt * gf * denergy * feff * energy * (2./mass/mass*1e5) )
+  ELSE: BEGIN
+    MESSAGE,'Undefined units: ',units[0]
+    RETURN
+  END
+ENDCASE
+;;  Adjust SCALE by factor associated with new units
+scale         *= sfact
+;;----------------------------------------------------------------------------------------
+;;  Define scale factors of units to convert from
+;;    *** Note ***
+;;    Unit conversion taken from thm_convert_sst_units_lbwiii.pro for 'FLUX', 'EFLUX', and 'DF'
+;;----------------------------------------------------------------------------------------
+CASE STRUPCASE(old_unit[0]) OF
+  'COUNTS' :  sfact = 1d0
+  'FLUX'   :  sfact = 1d0 * (dtc * dt * gf_eff)
+  'EFLUX'  :  sfact = 1d0 * (dtc * dt * gf_eff) / energy
+  'DF'     :  sfact = 1d0 * (dtc * dt * gf_eff  * energy * (2d5/mass^2d0) )
+;  'RATE'   :  scale = scale * dt
+;  'CRATE'  :  scale = scale * dtc * dt
+;  'EFLUX'  :  scale = scale * dtc * (dt * gf)
+;  'FLUX'   :  scale = scale * dtc * (dt * gf * energy)
+;  'DF'     :  scale = scale * dtc * (dt * gf * energy^2 * 2./mass/mass*1e5)
+  ELSE: BEGIN
+    PRINT,'Cannot use these starting units: ',old_unit[0]
+;    PRINT,'Unknown starting units: ',old_unit[0]
+    RETURN
+  END
+ENDCASE
+;;  Adjust SCALE by factor associated with input units
+scale1         = scale*sfact
+;;----------------------------------------------------------------------------------------
+;;  Scale to new units
+;;----------------------------------------------------------------------------------------
+data.UNITS_NAME = units[0]
+ddata0         = struct_value(data[0],'ddata',INDEX=index)
+IF (index[0] GE 0) THEN data.DDATA = FLOAT(scale1 * ddata0)
+temp           = DOUBLE(data.DATA)
+data.DATA      = FLOAT(scale1 * temp)
+scale          = FLOAT(scale1)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+

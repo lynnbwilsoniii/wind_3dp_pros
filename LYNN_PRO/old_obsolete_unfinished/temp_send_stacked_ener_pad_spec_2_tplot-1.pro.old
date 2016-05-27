@@ -1,0 +1,617 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   temp_send_stacked_ener_pad_spec_2_tplot.pro
+;  PURPOSE  :   This is a wrapping routine for the following two routines:
+;                 temp_create_stacked_energy_spec_2_tplot.pro
+;                 temp_create_stacked_pad_spec_2_tplot.pro
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               dat_3dp_str_names.pro
+;               dat_themis_esa_str_names.pro
+;               temp_create_stacked_energy_spec_2_tplot.pro
+;               temp_create_stacked_pad_spec_2_tplot.pro
+;               tnames.pro
+;               options.pro
+;               get_data.pro
+;               extract_tags.pro
+;               str_element.pro
+;               store_data.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT         :  [N]-Element [structure] array of THEMIS ESA or Wind/3DP
+;                                IDL data structures containing the 3D velocity
+;                                distribution functions to use to create the stacked
+;                                OMNI and PAD energy spectra plots
+;
+;  EXAMPLES:    
+;               ;;  Standard calling procedure given by:
+;               temp_send_stacked_ener_pad_spec_2_tplot,dat,LIMITS=limits,UNITS=units,$
+;                                                       BINS=bins,NUM_PA=num_pa,      $
+;                                                       TRANGE=trange,ERANGE=erange,  $
+;                                                       NAME=name,NO_TRANS=no_trans,  $
+;                                                       _EXTRA=ex_str
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***       DIRECT  INPUTS       ***
+;               **********************************
+;               LIMITS      :  Scalar [structure] that may contain any combination of the
+;                                following structure tags or keywords accepted by
+;                                PLOT.PRO:
+;                                  XLOG,   YLOG,   ZLOG,
+;                                  XRANGE, YRANGE, ZRANGE,
+;                                  XTITLE, YTITLE,
+;                                  TITLE, POSITION, REGION, etc.
+;                                  (see IDL documentation for a description)
+;               UNITS       :  Scalar [string] defining the units to use for the
+;                                vertical axis of the plot and the outputs YDAT and DYDAT
+;                                [Default = 'flux' or number flux]
+;               BINS        :  [M]-Element [byte] array defining which solid angle bins
+;                                should be plotted [i.e., BINS[good] = 1b] and which
+;                                bins should not be plotted [i.e., BINS[bad] = 0b].
+;                                One can also define bins as an array of indices that
+;                                define which solid angle bins to plot.  If this is the
+;                                case, then on output, BINS will be redefined to an
+;                                array of byte values specifying which bins are TRUE or
+;                                FALSE.
+;                                [Default:  BINS[*] = 1b]
+;               NAME        :  Scalar [string] defining the TPLOT handle for the energy
+;                                omni-directional spectra
+;                                [Default : '??_ener_spec', ?? = 'el','eh','elb',etc.]
+;               TRANGE      :  [2]-Element [double] array of Unix times specifying the
+;                                time range over which to calculate spectra
+;                                [Default : [MIN(DAT.TIME),MAX(DAT.END_TIME)] ]
+;               ERANGE      :  [2]-Element [double] array defining the energy [eV] range
+;                                over which to calculate spectra
+;                                [Default : [MIN(DAT.ENERGY),MAX(DAT.ENERGY)] ]
+;               NUM_PA      :  Scalar [integer] that defines the number of pitch-angle
+;                                bins to calculate for the resulting distribution
+;                                [Default = 8]
+;               NO_TRANS    :  If set, routine will not transform data into bulk flow
+;                                rest frame defined by the structure tag VSW in each
+;                                DAT structure (VELOCITY tag in THEMIS ESA structures
+;                                will work as well so long as the THETA/PHI angles are
+;                                in the same coordinate basis as VELOCITY and MAGF)
+;                                [Default = FALSE]
+;               TPN_STRUC   :  Set to a named variable to return an IDL structure
+;                                containing information relevant to the newly created
+;                                TPLOT handles
+;               DAT_STR2    :  [K]-Element [structure] array of THEMIS ESA or Wind/3DP
+;                                IDL data structures containing the 3D velocity
+;                                distribution functions to use to create the stacked
+;                                OMNI and PAD energy spectra plots.  These structures
+;                                will initially create separate TPLOT variables that
+;                                will eventually be merged with those created by DAT.
+;                                The purpose of using this keyword is for situations
+;                                where the format of DAT and DAT_STR2 are incompatible
+;                                so that it is not possible to concatenate the two
+;                                into one array like DAT3 = [DAT,DAT_STR2].
+;               _EXTRA      :  Scalar [structure] used by get_??.pro routines for Wind
+;                                or thm_part_dist_array.pro routine for THEMIS
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [02/11/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  See also:  get_spec.pro, get_padspecs.pro,
+;                     temp_create_stacked_energy_spec_2_tplot.pro, and
+;                     temp_create_stacked_pad_spec_2_tplot.pro
+;
+;  REFERENCES:  
+;               1)  Carlson et al., (1983), "An instrument for rapidly measuring
+;                      plasma distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70.
+;               2)  Curtis et al., (1989), "On-board data analysis techniques for
+;                      space plasma particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372.
+;               3)  Lin et al., (1995), "A Three-Dimensional Plasma and Energetic
+;                      particle investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125.
+;               4)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;               5)  McFadden, J.P., C.W. Carlson, D. Larson, M. Ludlam, R. Abiad,
+;                      B. Elliot, P. Turin, M. Marckwordt, and V. Angelopoulos
+;                      "The THEMIS ESA Plasma Instrument and In-flight Calibration,"
+;                      Space Sci. Rev. 141, pp. 277-302, (2008).
+;               6)  McFadden, J.P., C.W. Carlson, D. Larson, J.W. Bonnell,
+;                      F.S. Mozer, V. Angelopoulos, K.-H. Glassmeier, U. Auster
+;                      "THEMIS ESA First Science Results and Performance Issues,"
+;                      Space Sci. Rev. 141, pp. 477-508, (2008).
+;               7)  Auster, H.U., K.-H. Glassmeier, W. Magnes, O. Aydogar, W. Baumjohann,
+;                      D. Constantinescu, D. Fischer, K.H. Fornacon, E. Georgescu,
+;                      P. Harvey, O. Hillenmaier, R. Kroth, M. Ludlam, Y. Narita,
+;                      R. Nakamura, K. Okrafka, F. Plaschke, I. Richter, H. Schwarzl,
+;                      B. Stoll, A. Valavanoglou, and M. Wiedemann "The THEMIS Fluxgate
+;                      Magnetometer," Space Sci. Rev. 141, pp. 235-264, (2008).
+;               8)  Angelopoulos, V. "The THEMIS Mission," Space Sci. Rev. 141,
+;                      pp. 5-34, (2008).
+;
+;   CREATED:  02/10/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/11/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO temp_send_stacked_ener_pad_spec_2_tplot,dat,LIMITS=limits,UNITS=units,BINS=bins,$
+                                            NAME=name,TRANGE=trange,ERANGE=erange,  $
+                                            NUM_PA=num_pa,NO_TRANS=no_trans,        $
+                                            TPN_STRUC=tpn_struc,DAT_STR2=dat_str2,  $
+                                            _EXTRA=ex_str
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION test_wind_vs_themis_esa_struct, dat_3dp_str_names,                 $
+                 dat_themis_esa_str_names, struct_value, tnames
+;;****************************************************************************************
+ex_start = SYSTIME(1)
+;;****************************************************************************************
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+mission_logic  = [0b,0b]                ;;  Logic variable used for determining which mission is associated with DAT
+def_nm_suffx   = '_ener_spec'
+lab_strings    = ['para','perp','anti']
+;;  Define allowed number types
+isnum          = [1,2,3,4,5,6,12,13,14,15]
+;;  Dummy error messages
+noinpt_msg     = 'User must supply an array of velocity distribution functions as IDL structures...'
+notstr_msg     = 'DAT must be an array of IDL structures...'
+notvdf_msg     = 'Input must be a velocity distribution function as an IDL structure...'
+badtra_msg     = 'TRANGE must be a 2-element array of Unix times and DAT must have a range of times as well...'
+badera_msg     = 'ERANGE must be a 2-element array of energies [eV] and DAT.ENERGY must have a range of energies as well...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 1) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+IF (SIZE(dat,/TYPE) NE 8L OR N_ELEMENTS(dat) LT 2) THEN BEGIN
+  MESSAGE,notstr_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Check to make sure distribution has the correct format
+test0          = test_wind_vs_themis_esa_struct(dat[0],/NOM)
+test           = (test0.(0) + test0.(1)) NE 1
+IF (test[0]) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Determine instrument (i.e., ESA or 3DP) and define electric charge
+dat0           = dat[0]
+IF (test0.(0)) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Wind
+  ;;--------------------------------------------------------------------------------------
+  strns        = dat_3dp_str_names(dat0[0])
+  IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+    ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+    MESSAGE,not3dp_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF
+ENDIF ELSE BEGIN
+  IF (test0.(1)) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  THEMIS
+    ;;------------------------------------------------------------------------------------
+    strns        = dat_themis_esa_str_names(dat0[0])
+    IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+      ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+      MESSAGE,notthm_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    ENDIF
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Other mission?
+    ;;------------------------------------------------------------------------------------
+    ;;  Not handling any other missions yet
+    MESSAGE,badvdf_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDELSE
+ENDELSE
+data_str       = strns.SN[0]     ;;  e.g., 'el' for Wind EESA Low or 'peeb' for THEMIS EESA
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check NAME
+test           = (N_ELEMENTS(name) EQ 0) OR (SIZE(name,/TYPE) NE 7)
+IF (test[0]) THEN name = data_str[0]+def_nm_suffx[0]
+;;  Check NO_TRANS
+test           = ~KEYWORD_SET(no_trans)
+IF (test[0]) THEN no_trans = 1 ELSE no_trans = 0
+;;  Define associated TPLOT handle string dependent on frame
+yttl_frame     = STRUPCASE((['swf','scf'])[no_trans])
+tpn_frame      = '_'+STRLOWCASE(yttl_frame[0])
+;;  Check UNITS
+test           = (N_ELEMENTS(units) EQ 0) OR (SIZE(units,/TYPE) NE 7)
+IF (test[0]) THEN units = 'flux'
+;;  Check NUM_PA
+sznt0          = SIZE(num_pa,/TYPE)
+test           = (N_ELEMENTS(num_pa) EQ 0) OR (TOTAL(sznt0[0] EQ isnum) EQ 0)
+IF (test[0]) THEN num_pa = 8L ELSE num_pa = num_pa[0]
+;;  Check if DAT_STR2 is set
+test           = (SIZE(dat_str2,/TYPE) EQ 8L) AND (N_ELEMENTS(dat_str2) GT 2)
+IF (test[0]) THEN BEGIN
+  ;;  Make sure DAT_STR2 is from the same instrument
+  test2          = test_wind_vs_themis_esa_struct(dat_str2[0],/NOM)
+  test           = ((test2.(0) + test2.(1)) EQ 1) AND $
+                    ((test0.(0) AND test2.(0)) OR (test0.(1) AND test2.(1)) )
+  IF (test[0]) THEN merge_spec = 1 ELSE merge_spec = 0
+ENDIF ELSE merge_spec = 0
+;;----------------------------------------------------------------------------------------
+;;  Calculate OMNI directional energy spectrum
+;;----------------------------------------------------------------------------------------
+temp_create_stacked_energy_spec_2_tplot,dat,LIMITS=limits,UNITS=units,BINS=bins,$
+                                        NAME=name,TRANGE=trange,ERANGE=erange,  $
+                                        NO_TRANS=no_trans,_EXTRA=ex_str,        $
+                                        TPN_STRUC=tpn_struc
+;;  Define OMNI TPLOT handle
+omni_tpn       = struct_value(tpn_struc,'OMNI.SPEC_TPLOT_NAME')
+omni_tpn2      = ''   ;;  initialize variable
+IF (merge_spec[0]) THEN BEGIN
+  ;;  Calculate OMNI directional energy spectrum for DAT_STR2
+  temp_create_stacked_energy_spec_2_tplot,dat_str2,LIMITS=limits,UNITS=units,BINS=bins,$
+                                          NAME=name+'2',TRANGE=trange,ERANGE=erange,   $
+                                          NO_TRANS=no_trans,_EXTRA=ex_str,             $
+                                          TPN_STRUC=tpn_struc2
+  ;;  Define OMNI TPLOT handle
+  omni_tpn2      = struct_value(tpn_struc2,'OMNI.SPEC_TPLOT_NAME')
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Calculate pitch-angle distribution (PAD) energy spectrum
+;;----------------------------------------------------------------------------------------
+temp_create_stacked_pad_spec_2_tplot,dat,LIMITS=limits,UNITS=units,BINS=bins,$
+                                     NAME=name,TRANGE=trange,ERANGE=erange,  $
+                                     NUM_PA=num_pa,NO_TRANS=no_trans,        $
+                                     TPN_STRUC=tpn_struc
+;;  Define PAD TPLOT handles
+pad_omni__tpn  = struct_value(tpn_struc, 'PAD.SPEC_TPLOT_NAME')
+pad_spec_tpns  = struct_value(tpn_struc, 'PAD.PAD_TPLOT_NAMES')
+test           = (N_ELEMENTS([pad_omni__tpn,pad_spec_tpns]) LT 4)
+IF (test[0]) THEN test = (pad_spec_tpns[0] EQ '') OR (pad_omni__tpn[0] EQ '')
+IF (test[0]) THEN STOP        ;;  Problem --> Go no further
+;;  initialize variable
+pad_omni_tpn2  = ''
+pad_spec_tpn2  = ''
+IF (merge_spec[0]) THEN BEGIN
+  ;;  Calculate PAD energy spectrum for DAT_STR2
+  temp_create_stacked_pad_spec_2_tplot,dat_str2,LIMITS=limits,UNITS=units,BINS=bins,   $
+                                       NAME=name+'2',TRANGE=trange,ERANGE=erange,      $
+                                       NUM_PA=num_pa,NO_TRANS=no_trans,                $
+                                       TPN_STRUC=tpn_struc2
+  ;;  Define PAD TPLOT handles
+  pad_omni_tpn2  = struct_value(tpn_struc2, 'PAD.SPEC_TPLOT_NAME')
+  pad_spec_tpn2  = struct_value(tpn_struc2, 'PAD.PAD_TPLOT_NAMES')
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Merge OMNI spectra TPLOT handles if appropriate
+;;----------------------------------------------------------------------------------------
+test           = merge_spec[0] AND ((omni_tpn[0] NE '') AND (omni_tpn2[0] NE ''))
+IF (test[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Merge TPLOT handles  [should be the same number for each array of structures]
+  ;;--------------------------------------------------------------------------------------
+  ;;  First merge the OMNI spectra
+  get_data,omni_tpn[0], DATA=temp, DLIMIT=dlim, LIMIT=lim
+  get_data,omni_tpn2[0],DATA=temp2,DLIMIT=dlim2,LIMIT=lim2
+;  gtags  = ['x','y','v']   ;; expected tags
+  test   = (SIZE(temp,/TYPE) EQ 8L) AND (SIZE(temp2,/TYPE) EQ 8L)
+  IF (test[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Data is present for both TPLOT handles
+    ;;------------------------------------------------------------------------------------
+    temp_x  = struct_value(temp,'X')
+    temp_y  = struct_value(temp,'Y')
+    temp_v  = struct_value(temp,'V')
+    temp2x  = struct_value(temp2,'X')
+    temp2y  = struct_value(temp2,'Y')
+    temp2v  = struct_value(temp2,'V')
+    test    = (SIZE(temp_x,/N_DIMENSIONS) EQ SIZE(temp2x,/N_DIMENSIONS)) AND $
+              (SIZE(temp_y,/N_DIMENSIONS) EQ SIZE(temp2y,/N_DIMENSIONS)) AND $
+              (SIZE(temp_v,/N_DIMENSIONS) EQ SIZE(temp2v,/N_DIMENSIONS))
+    IF (test[0]) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  Everything seems okay --> merge
+      ;;----------------------------------------------------------------------------------
+      tempx = [temp_x,temp2x]
+      tempy = [temp_y,temp2y]
+      tempv = [temp_v,temp2v]
+      ;;  Sort by time
+      sp    = SORT(tempx)
+      tempx = TEMPORARY(tempx[sp])
+      tempy = TEMPORARY(tempy[sp,*])
+      tempv = TEMPORARY(tempv[sp,*])
+      ;;  Define data structure for TPLOT
+      tstrc = {X:tempx,Y:tempy,V:tempv}
+      ;;  Extract tags from LIMITS structures
+      extract_tags,dopts_str,dlim,EXCEPT_TAGS=['YRANGE']      ;;  Get current default plot limits settings
+      extract_tags,opts__str, lim,EXCEPT_TAGS=['YRANGE']
+      dlim_tags = TAG_NAMES(dopts_str)
+      lim__tags = TAG_NAMES(opts__str)
+      extract_tags,dopts_str,dlim2,EXCEPT_TAGS=dlim_tags
+      extract_tags,opts__str, lim2,EXCEPT_TAGS=lim__tags
+      ;;  Send results to TPLOT
+      store_data,omni_tpn[0],DATA=tstrc,DLIMIT=dopts_str,LIMIT=opts__str
+      ;;  Remove TPLOT handle associated with DAT_STR2
+      store_data,DELETE=omni_tpn2[0]
+      ;;  Clean up
+      temp_x    = 0 & temp_y    = 0 & temp_v    = 0
+      temp2x    = 0 & temp2y    = 0 & temp2v    = 0
+      tempx     = 0 & tempy     = 0 & tempv     = 0
+      tstrc     = 0 & dopts_str = 0 & opts__str = 0
+    ENDIF
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Merge PAD OMNI spectra TPLOT handles if appropriate
+;;----------------------------------------------------------------------------------------
+test           = merge_spec[0] AND                                       $
+                 ((pad_omni__tpn[0] NE '') AND (pad_omni_tpn2[0] NE ''))
+IF (test[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Merge TPLOT handles  [should be the same number for each array of structures]
+  ;;--------------------------------------------------------------------------------------
+  ;;  First merge the OMNI spectra
+  get_data,pad_omni__tpn[0],DATA=temp, DLIMIT=dlim, LIMIT=lim
+  get_data,pad_omni_tpn2[0],DATA=temp2,DLIMIT=dlim2,LIMIT=lim2
+  test   = (SIZE(temp,/TYPE) EQ 8L) AND (SIZE(temp2,/TYPE) EQ 8L)
+  IF (test[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Data is present for both TPLOT handles
+    ;;------------------------------------------------------------------------------------
+    temp_x  = struct_value(temp,'X')
+    temp_y  = struct_value(temp,'Y')
+    temp_v1 = struct_value(temp,'V1')
+    temp_v2 = struct_value(temp,'V2')
+    temp2x  = struct_value(temp2,'X')
+    temp2y  = struct_value(temp2,'Y')
+    temp2v1 = struct_value(temp2,'V1')
+    temp2v2 = struct_value(temp2,'V2')
+    test    = (SIZE(temp_x,/N_DIMENSIONS)  EQ SIZE(temp2x,/N_DIMENSIONS))  AND $
+              (SIZE(temp_y,/N_DIMENSIONS)  EQ SIZE(temp2y,/N_DIMENSIONS))  AND $
+              (SIZE(temp_v1,/N_DIMENSIONS) EQ SIZE(temp2v1,/N_DIMENSIONS)) AND $
+              (SIZE(temp_v2,/N_DIMENSIONS) EQ SIZE(temp2v2,/N_DIMENSIONS))
+    IF (test[0]) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  Everything seems okay --> merge
+      ;;----------------------------------------------------------------------------------
+      tempx     = [temp_x,temp2x]
+      tempy     = [temp_y,temp2y]
+      tempv1    = [temp_v1,temp2v1]
+      tempv2    = [temp_v2,temp2v2]
+      ;;  Sort by time
+      sp        = SORT(tempx)
+      tempx     =  TEMPORARY(tempx[sp])
+      tempy     =  TEMPORARY(tempy[sp,*,*])
+      tempv1    = TEMPORARY(tempv1[sp,*])
+      tempv2    = TEMPORARY(tempv2[sp,*])
+      ;;  Define data structure for TPLOT
+      tstrc     = {X:tempx,Y:tempy,V1:tempv1,V2:tempv2}
+      ;;  Extract tags from LIMITS structures
+      extract_tags,dopts_str,dlim,EXCEPT_TAGS=['YRANGE']      ;;  Get current default plot limits settings
+      extract_tags,opts__str, lim,EXCEPT_TAGS=['YRANGE']
+      dlim_tags = TAG_NAMES(dopts_str)
+      lim__tags = TAG_NAMES(opts__str)
+      extract_tags,dopts_str,dlim2,EXCEPT_TAGS=dlim_tags
+      extract_tags,opts__str, lim2,EXCEPT_TAGS=lim__tags
+      ;;  Send results to TPLOT
+      store_data,pad_omni__tpn[0],DATA=tstrc,DLIMIT=dopts_str,LIMIT=opts__str
+      ;;  Remove TPLOT handle associated with DAT_STR2
+      store_data,DELETE=pad_omni_tpn2[0]
+      ;;  Clean up
+      temp_x    = 0 & temp_y    = 0 & temp_v1   = 0 & temp_v2   = 0
+      temp2x    = 0 & temp2y    = 0 & temp2v1   = 0 & temp2v2   = 0
+      tempx     = 0 & tempy     = 0 & tempv1    = 0 & tempv2    = 0
+      tstrc     = 0 & dopts_str = 0 & opts__str = 0
+    ENDIF
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Merge PAD spectra TPLOT handles if appropriate
+;;----------------------------------------------------------------------------------------
+test           = merge_spec[0] AND                                       $
+                 ((pad_spec_tpns[0] NE '') AND (pad_spec_tpn2[0] NE ''))
+test2          = (N_ELEMENTS(pad_spec_tpns) EQ N_ELEMENTS(pad_spec_tpn2))
+IF (test[0] AND test2[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Merge TPLOT handles  [should be the same number for each array of structures]
+  ;;--------------------------------------------------------------------------------------
+  n_tpn  = N_ELEMENTS(pad_spec_tpns)
+  tpns1  = pad_spec_tpns
+  tpns2  = pad_spec_tpn2
+  FOR tj=0L, n_tpn[0] - 1L DO BEGIN
+    ;;  Get data and then test format
+    get_data,tpns1[tj],DATA=temp, DLIMIT=dlim, LIMIT=lim
+    get_data,tpns2[tj],DATA=temp2,DLIMIT=dlim2,LIMIT=lim2
+    test   = (SIZE(temp,/TYPE) EQ 8L) AND (SIZE(temp2,/TYPE) EQ 8L)
+    IF (test[0]) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  Data is present for both TPLOT handles
+      ;;----------------------------------------------------------------------------------
+      temp_x  = struct_value(temp,'X')
+      temp_y  = struct_value(temp,'Y')
+      temp_v  = struct_value(temp,'V')
+      temp2x  = struct_value(temp2,'X')
+      temp2y  = struct_value(temp2,'Y')
+      temp2v  = struct_value(temp2,'V')
+      test    = (SIZE(temp_x,/N_DIMENSIONS) EQ SIZE(temp2x,/N_DIMENSIONS)) AND $
+                (SIZE(temp_y,/N_DIMENSIONS) EQ SIZE(temp2y,/N_DIMENSIONS)) AND $
+                (SIZE(temp_v,/N_DIMENSIONS) EQ SIZE(temp2v,/N_DIMENSIONS))
+      IF (test[0]) THEN BEGIN
+        ;;--------------------------------------------------------------------------------
+        ;;  Everything seems okay --> merge
+        ;;--------------------------------------------------------------------------------
+        tempx = [temp_x,temp2x]
+        tempy = [temp_y,temp2y]
+        tempv = [temp_v,temp2v]
+        ;;  Sort by time
+        sp    = SORT(tempx)
+        tempx = TEMPORARY(tempx[sp])
+        tempy = TEMPORARY(tempy[sp,*])
+        tempv = TEMPORARY(tempv[sp,*])
+        ;;  Define data structure for TPLOT
+        tstrc = {X:tempx,Y:tempy,V:tempv}
+        ;;  Extract tags from LIMITS structures
+        extract_tags,dopts_str,dlim,EXCEPT_TAGS=['YRANGE']      ;;  Get current default plot limits settings
+        extract_tags,opts__str, lim,EXCEPT_TAGS=['YRANGE']
+        dlim_tags = TAG_NAMES(dopts_str)
+        lim__tags = TAG_NAMES(opts__str)
+        extract_tags,dopts_str,dlim2,EXCEPT_TAGS=dlim_tags
+        extract_tags,opts__str, lim2,EXCEPT_TAGS=lim__tags
+        ;;  Send results to TPLOT
+        store_data,tpns1[tj],DATA=tstrc,DLIMIT=dopts_str,LIMIT=opts__str
+        ;;  Remove TPLOT handle associated with DAT_STR2
+        store_data,DELETE=tpns2[tj]
+        ;;  Clean up
+        temp_x    = 0 & temp_y    = 0 & temp_v    = 0
+        temp2x    = 0 & temp2y    = 0 & temp2v    = 0
+        tempx     = 0 & tempy     = 0 & tempv     = 0
+        tstrc     = 0 & dopts_str = 0 & opts__str = 0
+      ENDIF
+    ENDIF
+  ENDFOR
+ENDIF
+
+;;  **  Create option to allow user to merge two conflicting structure types  **
+;;    [e.g., PESA Low and PESA Low Burst cannot be concatenated into arrays]
+
+;;;----------------------------------------------------------------------------------------
+;;;  Define TPLOT handles
+;;;----------------------------------------------------------------------------------------
+;;;  OMNI TPLOT handle
+;omni_tpn       = struct_value(tpn_struc,'OMNI.SPEC_TPLOT_NAME')
+;;omni_tpn       = tnames(name[0]+'_'+units[0])
+;;;  PAD TPLOT handles
+;pad_tpns       = struct_value(tpn_struc, 'PAD.SPEC_TPLOT_NAME')
+;;pad_tpns       = tnames(name[0]+tpn_frame[0]+'_'+units[0]+'*')
+;test           = (N_ELEMENTS(pad_tpns) LT 4)
+;IF (test[0]) THEN test = (pad_tpns[0] EQ '')
+;IF (test[0]) THEN STOP        ;;  Problem --> Go no further
+;;----------------------------------------------------------------------------------------
+;;  Set default TPLOT options
+;;----------------------------------------------------------------------------------------
+;nnw            = tnames([omni_tpn,pad_tpns])
+nnw            = tnames([omni_tpn,pad_omni__tpn,pad_spec_tpns])
+options,nnw,    'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,    'XMINOR',5
+options,nnw,  'XTICKLEN',0.04
+options,nnw,  'YTICKLEN',0.01
+options,nnw,    'YSTYLE',/DEF
+options,nnw,'PANEL_SIZE',/DEF
+options,nnw,    'XMINOR',/DEF
+options,nnw,  'XTICKLEN',/DEF
+options,nnw,  'YTICKLEN',/DEF
+;;  Remove the MAX_VALUE setting
+options,nnw, 'MAX_VALUE'
+options,nnw, 'MAX_VALUE',/DEF
+;;----------------------------------------------------------------------------------------
+;;  Calculate anisotropy
+;;    (i.e., para/perp and para/anti)
+;;----------------------------------------------------------------------------------------
+;ind_para       = 1L
+;ind_perp       = num_pa[0]/2L
+;ind_anti       = num_pa[0] - 1L
+;pad_tpn_para   = tnames(pad_tpns[ind_para[0]])
+;pad_tpn_perp   = tnames(pad_tpns[ind_perp[0]])
+;pad_tpn_anti   = tnames(pad_tpns[ind_anti[0]])
+ind_para       = 0L
+ind_perp       = (num_pa[0]/2L) - 1L
+ind_anti       = num_pa[0] - 2L
+pad_tpn_para   = tnames(pad_spec_tpns[ind_para[0]])
+pad_tpn_perp   = tnames(pad_spec_tpns[ind_perp[0]])
+pad_tpn_anti   = tnames(pad_spec_tpns[ind_anti[0]])
+test           = (pad_tpn_para[0] EQ '') OR (pad_tpn_perp[0] EQ '') OR (pad_tpn_anti[0] EQ '')
+IF (test[0]) THEN STOP        ;;  Problem --> Go no further
+;;  Get data from TPLOT
+get_data,pad_tpn_para[0],DATA=temp_para,DLIMIT=dlim_para,LIMIT=lim_para
+get_data,pad_tpn_perp[0],DATA=temp_perp,DLIMIT=dlim_perp,LIMIT=lim_perp
+get_data,pad_tpn_anti[0],DATA=temp_anti,DLIMIT=dlim_anti,LIMIT=lim_anti
+;;  Define data parameters
+para_x         = temp_para.X
+para_v         = temp_para.V
+para_y         = temp_para.Y
+perp_y         = temp_perp.Y
+anti_y         = temp_anti.Y
+;;  Calculate ratios
+ratio_paraperp = para_y/perp_y
+ratio_paraanti = para_y/anti_y
+struc_paraperp = {X:para_x,Y:ratio_paraperp,V:para_v}
+struc_paraanti = {X:para_x,Y:ratio_paraanti,V:para_v}
+;;----------------------------------------------------------------------------------------
+;;  Define TPLOT parameters
+;;----------------------------------------------------------------------------------------
+;;  Define range of angles [deg] corresponding to each TPLOT variable
+para_ang_ra    = STRTRIM(STRING(ROUND(lim_para.S_VALUE),FORMAT='(I)'),2L)
+perp_ang_ra    = STRTRIM(STRING(ROUND(lim_perp.S_VALUE),FORMAT='(I)'),2L)
+anti_ang_ra    = STRTRIM(STRING(ROUND(lim_anti.S_VALUE),FORMAT='(I)'),2L)
+para_ang_ra    = para_ang_ra[0]+'-'+para_ang_ra[1]
+perp_ang_ra    = perp_ang_ra[0]+'-'+perp_ang_ra[1]
+anti_ang_ra    = anti_ang_ra[0]+'-'+anti_ang_ra[1]
+;;  Define TPLOT YTITLE and YSUBTITLE strings
+yttl_anisotro  = data_str[0]+' '+units[0]+' ['+yttl_frame[0]+']'
+ymid_paraperp  = lab_strings[0]+'-to-'+lab_strings[1]
+ymid_paraanti  = lab_strings[0]+'-to-'+lab_strings[2]
+ysuf_paraperp  = lab_strings[0]+'_to_'+lab_strings[1]
+ysuf_paraanti  = lab_strings[0]+'_to_'+lab_strings[2]
+ysub_paraperp  = '['+ymid_paraperp[0]+' ratio]'
+note_paraperp  = '['+para_ang_ra[0]+' deg] / ['+perp_ang_ra[0]+' deg]'
+ysub_paraanti  = '['+lab_strings[0]+'-to-'+lab_strings[2]+' ratio]'
+note_paraanti  = '['+para_ang_ra[0]+' deg] / ['+anti_ang_ra[0]+' deg]'
+;;  Define TPLOT handles for anisotropies
+tpn__paraperp  = pad_omni__tpn[0]+'_'+ysuf_paraperp[0]
+tpn__paraanti  = pad_omni__tpn[0]+'_'+ysuf_paraanti[0]
+;tpn__paraperp  = pad_tpns[0]+'_'+ysuf_paraperp[0]
+;tpn__paraanti  = pad_tpns[0]+'_'+ysuf_paraanti[0]
+;;----------------------------------------------------------------------------------------
+;;  Define plot LIMITS structures
+;;----------------------------------------------------------------------------------------
+extract_tags,lim,lim_para,EXCEPT_TAGS=['YRANGE','S_VALUE']      ;;  Get current plot limits settings
+extract_tags,dlim,dlim_para,EXCEPT_TAGS=['YRANGE','THICK']      ;;  Get current default plot limits settings
+
+str_element,     dlim,   'YTITLE', yttl_anisotro[0],/ADD_REPLACE
+dlim_rat1      = dlim
+dlim_rat2      = dlim
+str_element,dlim_rat1,'YSUBTITLE', ysub_paraperp[0],/ADD_REPLACE
+str_element,dlim_rat1,     'NOTE', note_paraperp[0],/ADD_REPLACE
+str_element,dlim_rat2,'YSUBTITLE', ysub_paraanti[0],/ADD_REPLACE
+str_element,dlim_rat2,     'NOTE', note_paraanti[0],/ADD_REPLACE
+;;----------------------------------------------------------------------------------------
+;;  Send to TPLOT
+;;----------------------------------------------------------------------------------------
+store_data,tpn__paraperp[0],DATA=struc_paraperp,DLIMIT=dlim_rat1,LIMIT=lim
+store_data,tpn__paraanti[0],DATA=struc_paraanti,DLIMIT=dlim_rat2,LIMIT=lim
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+;;****************************************************************************************
+ex_time = SYSTIME(1) - ex_start[0]
+MESSAGE,STRING(ex_time)+' seconds execution time.',/INFORMATIONAL,/CONTINUE
+;;****************************************************************************************
+
+RETURN
+END
+
+
+
+
+
+
+
+
+
+
+
+

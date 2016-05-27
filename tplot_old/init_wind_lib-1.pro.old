@@ -1,0 +1,131 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   init_wind_lib.pro
+;  PURPOSE  :   Initializes common block variables for the WIND 3DP library.  There is
+;                 no reason for the typical user to execute this routine as it is
+;                 automatically called from "LOAD_3DP_DATA".  However it can be used to
+;                 overide the default directories and/or libraries.
+;
+;  CALLED BY:   
+;               load_3dp_data.pro
+;
+;  CALLS:
+;               wind_com.pro
+;               
+;
+;  REQUIRES:    
+;               WindLib Libraries and the following shared objects:
+;                 wind_lib.so
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               WLIB      :  Scalar string specifying the full pathname of the shared 
+;                              object code for wind data extraction library.   
+;                              [Default = $IDL_3DP_DIR/lib/wind_lib.so]
+;               MASTFILE  :  Scalar string specifying the full pathname of the
+;                              3DP master data file.
+;                              [Default = $WIND_DATA_DIR/wi_lz_3dp_files]
+;
+;   CHANGED:  1)  Davin Larson changed something...          [04/18/2002   v1.0.12]
+;             2)  Updated man page                           [08/05/2009   v1.1.0]
+;             3)  Fixed minor syntax error                   [08/26/2009   v1.1.1]
+;
+;
+;   NOTES:
+;               Please see help_3dp.html for information on creating the master file
+;                 for 3DP level zero data allocation.
+;
+;RESTRICTIONS:
+;               This procedure is operating system dependent!  (UNIX ONLY)
+;               This procedure expects to find two environment variables:
+;                 1)  WIND_DATA_DIR : The directory containing the master 
+;                                       file: 'wi_lz_3dp_files'
+;                 2)  IDL_3DP_DIR   : The directory containing the source code and 
+;                                       the sub-directory/file:  lib/wind_lib.so
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  08/26/2009   v1.1.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO init_wind_lib,WLIB=wlib,MASTFILE=mastfile
+
+
+;-----------------------------------------------------------------------------------------
+; => Load common blocks and initialize LZ file locations
+;-----------------------------------------------------------------------------------------
+@wind_com.pro
+;-----------------------------------------------------------------------------------------
+; => Check input parameters
+;-----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(wlib) NE 0) THEN wind_lib = wlib
+IF KEYWORD_SET(mastfile) THEN lz_3dp_files = mastfile
+
+IF (KEYWORD_SET(data_directory) EQ 0) THEN BEGIN
+  data_directory = GETENV('WIND_DATA_DIR')
+  IF KEYWORD_SET(data_directory) THEN BEGIN
+    data_directory = data_directory + '/'
+  ENDIF ELSE BEGIN
+    MESSAGE,'Environment Variable WIND_DATA_DIR not found!',/INFORMATIONAL,/CONTINUE
+  ENDELSE
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Define master file location
+;-----------------------------------------------------------------------------------------
+IF (KEYWORD_SET(lz_3dp_files) EQ 0) THEN BEGIN
+  lz_3dp_files = data_directory+'wi_lz_3dp_files'
+ENDIF
+
+IF (KEYWORD_SET(project_name) EQ 0) THEN BEGIN
+    project_name = 'Wind 3D Plasma'
+;    tplot_options,title = project_name
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Initialize file locations and save in common block
+;-----------------------------------------------------------------------------------------
+IF (SIZE(wind_lib,/TYPE) NE 7) THEN BEGIN
+  wind_lib_dir = GETENV('IDL_3DP_LIB_DIR')
+  IF (KEYWORD_SET(wind_lib_dir) EQ 0) THEN BEGIN
+    wind_lib_dir = '/home/lbwilson/overflow/wind_3dp/3DP_IDL_PROS/WIND_PRO'
+    MESSAGE,'      Warning!',/INFORMATIONAL,/CONTINUE
+    MESSAGE,'IDL_3DP_LIB_DIR environment variable not set!',/INFORMATIONAL,/CONTINUE
+    MESSAGE,'Using default value: '+wind_lib_dir,/INFORMATIONAL,/CONTINUE
+  ENDIF
+   
+  bitsize = '32'
+  IF (!VERSION.RELEASE GE '5.4') THEN BEGIN
+    IF (!VERSION.MEMORY_BITS NE 32) THEN BEGIN
+      wind_lib = 0
+      MESSAGE,'Only 32 bit WIND3DP library available at this time!.',/INFORMATIONAL,/CONTINUE
+      PRINT,'(use: idl -32)'
+    ENDIF
+  ENDIF
+
+  IF (!VERSION.RELEASE GE '5.5') THEN BEGIN
+    libname = 'wind3dp_lib_ls32.so'
+  ENDIF ELSE BEGIN
+    libname = 'wind3dp_lib_ss32.so' 
+  ENDELSE
+  wind_lib = wind_lib_dir+'/'+libname
+  IF (!VERSION.RELEASE GE '5.4') THEN BEGIN
+    IF (FILE_TEST(wind_lib) EQ 0) THEN BEGIN
+      MESSAGE,'WIND3DP Library: "'+wind_lib+'" Not found!',/INFORMATIONAL,/CONTINUE
+      wind_lib = 0
+    ENDIF
+  ENDIF
+  MESSAGE,'Using wind library code at: '+wind_lib,/INFORMATIONAL,/CONTINUE
+ENDIF
+
+RETURN
+END
+
+

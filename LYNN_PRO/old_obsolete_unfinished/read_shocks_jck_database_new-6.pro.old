@@ -1,0 +1,1047 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   gen_print_cfa_descr.pro
+;  PURPOSE  :   This is a general printing routine that prints out an input string array
+;                 as one print statement per array element.
+;
+;  CALLED BY:   
+;               print_cfa_db_descr_info.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               STR_ARR  :  [N]-Element [string] array to be printed
+;
+;  EXAMPLES:    
+;               test = gen_print_cfa_descr(str_arr)
+;
+;  KEYWORDS:    
+;               BEFORE   :  Scalar [string] to be output once before STR_ARR
+;               AFTER    :  Scalar [string] to be output once after STR_ARR
+;
+;   CHANGED:  1)  Finished writing the routine and moved to
+;                   ~/wind_3dp_pros/LYNN_PRO/JCKs_database_routines
+;                                                                   [02/24/2015   v1.0.0]
+;
+;   NOTES:      
+;               NA
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  02/18/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/24/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION gen_print_cfa_descr,str_arr,BEFORE=before,AFTER=after
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define dummy outputs
+out_before     = 0b
+out__after     = 0b
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply an [N]-element array of strings to be printed...'
+badinpt_msg    = 'Input must be a string!'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN BEGIN
+  ;;  User used an incorrect calling sequence
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test           = (SIZE(str_arr,/TYPE) NE 7) OR (N_ELEMENTS(str_arr) EQ 0)
+IF (test[0]) THEN BEGIN
+  ;;  User used an incorrect input format
+  MESSAGE,badinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+str_out        = REFORM(str_arr)
+ns             = N_ELEMENTS(str_out)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check BEFORE
+test           = (SIZE(before,/TYPE) EQ 7) AND (N_ELEMENTS(before) GT 0)
+IF (test[0]) THEN out_before = 1b
+;;  Check AFTER
+test           = (SIZE(after,/TYPE) EQ 7) OR (N_ELEMENTS(after) GT 0)
+IF (test[0]) THEN out__after = 1b
+;;----------------------------------------------------------------------------------------
+;;  Print results
+;;----------------------------------------------------------------------------------------
+IF (out_before[0]) THEN PRINT,before[0]
+FOR j=0L, ns[0] - 1L DO PRINT,str_out[j]
+IF (out__after[0]) THEN PRINT,after[0]
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,1b
+END
+
+;*****************************************************************************************
+;
+;  FUNCTION :   print_cfa_db_descr_info.pro
+;  PURPOSE  :   This is a wrapping routine for gen_print_cfa_descr.pro which ultimately
+;                 decides whether to print out information contained in the description
+;                 structure in the IDL save file.
+;
+;  CALLED BY:   
+;               read_shocks_jck_database_new.pro
+;
+;  CALLS:
+;               gen_print_cfa_descr.pro
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               DESCRIPT_STRUC  :  Scalar [structure] containing the description info
+;                                    created by write_shocks_jck_database_new.pro
+;
+;  EXAMPLES:    
+;               test = print_cfa_db_descr_info(descript_struc)
+;
+;  KEYWORDS:    
+;               YES_PRINT       :  If set, routine will skip the prompting of the user to
+;                                    determine whether the user wishes to print info
+;                                    [Default = FALSE]
+;
+;   CHANGED:  1)  Finished writing the routine and moved to
+;                   ~/wind_3dp_pros/LYNN_PRO/JCKs_database_routines
+;                                                                   [02/24/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  User should not call this routine
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  02/18/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/24/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION print_cfa_db_descr_info,descript_struc,YES_PRINT=yes_print
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+tott           = 0e0
+;;  Define structure containing structure description information
+top_tags       = ['GEN_INFO','ASY_INFO','BVN_INFO','KEY_INFO','UPS_INFO','DNS_INFO']
+def_tags       = ['GENERAL_STATEMENT','PROMPT2PRINT','YES1ST','METHODS_DESCR',$
+                  'TOP_LEV_TAGS','STRUCTURE_FORMATS',top_tags+'_DESCR']
+def_nt         = N_ELEMENTS(def_tags)
+;;  Define standard separators
+def_bfout      = ';;----------------------------------------------------------------------------------------'
+def_afout      = ';;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++'
+;;  Define separator for instructions
+str_pro        = "-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|"
+read_out       = ''
+;;  Define separators for prompts
+str_sta        = "=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>=>"
+str_end        = "<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<=<="
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply a scalar IDL structure...'
+badinpt_msg    = 'Input must be an IDL structure!'
+badform_msg    = 'Input IDL structure must match format of that created by write_shocks_jck_database_new.pro!'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN BEGIN
+  ;;  User used an incorrect calling sequence
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test           = (SIZE(descript_struc,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  ;;  User used an incorrect input format
+  MESSAGE,badinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+desc           = descript_struc[0]
+tags           = TAG_NAMES(desc)
+nt             = N_TAGS(desc)
+tott           = 0L
+FOR j=0L, nt[0] - 1L DO tott += LONG(TOTAL(tags[j] EQ def_tags))
+test           = (nt[0] NE def_nt[0]) OR (tott[0] NE def_nt[0])
+IF (test[0]) THEN BEGIN
+  ;;  User provided a structure with incorrect format
+  MESSAGE,badform_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check YES_PRINT
+test           = (N_ELEMENTS(yes_print) GT 0) AND KEYWORD_SET(yes_print)
+IF (test[0]) THEN read_out = 'y'
+;;----------------------------------------------------------------------------------------
+;;  Define parameters
+;;----------------------------------------------------------------------------------------
+gen_stat       = desc.GENERAL_STATEMENT
+promt2pr       = desc.PROMPT2PRINT
+yes1stot       = desc.YES1ST
+methdesc       = desc.METHODS_DESCR
+toplvtag       = desc.TOP_LEV_TAGS
+strucfor       = desc.STRUCTURE_FORMATS
+gen_info       = desc.GEN_INFO_DESCR
+asy_info       = desc.ASY_INFO_DESCR
+bvn_info       = desc.BVN_INFO_DESCR
+key_info       = desc.KEY_INFO_DESCR
+ups_info       = desc.UPS_INFO_DESCR
+dns_info       = desc.DNS_INFO_DESCR
+;;----------------------------------------------------------------------------------------
+;;  Print information
+;;----------------------------------------------------------------------------------------
+;;  Print general statement about the rest to be printed
+PRINT, ""
+test           = gen_print_cfa_descr(gen_stat,BEFORE=str_pro[0],AFTER=str_pro[0])
+PRINT, ""
+tott          += test[0]
+;;  Prompt user to determine whether they wish to continue
+WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
+  PRINT, ""
+  PRINT, str_sta[0]
+  READ,read_out,PROMPT=promt2pr[0]
+  PRINT, str_end[0]
+  PRINT, ""
+  IF (read_out EQ 'debug') THEN STOP
+ENDWHILE
+test           = (read_out[0] NE 'y')
+IF (test[0]) THEN BEGIN
+  ;;  User wants to quit
+  RETURN,1b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  User wants to stay
+;;    --> Print information
+;;----------------------------------------------------------------------------------------
+;;  Print general information about the CfA database
+PRINT, ""
+test           = gen_print_cfa_descr(yes1stot,BEFORE=def_afout[0],AFTER=def_afout[0])
+tott          += test[0]
+;;  Print general information about the labels of the methods used on the CfA database
+PRINT, ""
+test           = gen_print_cfa_descr(methdesc,BEFORE=def_afout[0],AFTER=def_afout[0])
+tott          += test[0]
+;;  Print definitions of top level tags in structure
+PRINT, ""
+test           = gen_print_cfa_descr(toplvtag,BEFORE=def_afout[0],AFTER=def_afout[0])
+tott          += test[0]
+;;  Print information about the general format of the structure
+PRINT, ""
+test           = gen_print_cfa_descr(strucfor,BEFORE=def_afout[0],AFTER=def_afout[0])
+tott          += test[0]
+;;  Print definitions of 2nd level tags in structure.GEN_INFO
+PRINT, ""
+test           = gen_print_cfa_descr(gen_info,BEFORE=def_bfout[0],AFTER=def_bfout[0])
+tott          += test[0]
+;;  Print definitions of 2nd level tags in structure.ASY_INFO
+PRINT, ""
+test           = gen_print_cfa_descr(asy_info,BEFORE=def_bfout[0],AFTER=def_bfout[0])
+tott          += test[0]
+;;  Print definitions of 2nd level tags in structure.BVN_INFO
+PRINT, ""
+test           = gen_print_cfa_descr(bvn_info,BEFORE=def_bfout[0],AFTER=def_bfout[0])
+tott          += test[0]
+;;  Print definitions of 2nd level tags in structure.KEY_INFO
+PRINT, ""
+test           = gen_print_cfa_descr(key_info,BEFORE=def_bfout[0],AFTER=def_bfout[0])
+tott          += test[0]
+;;  Print definitions of 2nd level tags in structure.UPS_INFO
+PRINT, ""
+test           = gen_print_cfa_descr(ups_info,BEFORE=def_bfout[0],AFTER=def_bfout[0])
+tott          += test[0]
+;;  Print definitions of 2nd level tags in structure.DNS_INFO
+PRINT, ""
+test           = gen_print_cfa_descr(dns_info,BEFORE=def_bfout[0],AFTER=def_bfout[0])
+tott          += test[0]
+;;  Check if things went okay
+test           = (tott EQ 11)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,test[0]
+END
+
+
+;*****************************************************************************************
+;
+;  FUNCTION :   get_only_good_cfa_val.pro
+;  PURPOSE  :   This routine returns an array containing only the good results defined
+;                 by the DBINS and MBINS inputs.
+;
+;  CALLED BY:   
+;               read_shocks_jck_database_new.pro
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               ARRAY  :  [N,{V,M}]-Element array of all values
+;               BINS1  :  [N,V,M]-Element [long] array defining which elements in the
+;                           1st {2nd, {and 3rd}} dimension of ARRAY to keep and which
+;                           to remove.
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [02/19/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [02/19/2015   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [02/19/2015   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [02/19/2015   v1.0.0]
+;             5)  Continued to write routine
+;                                                                   [02/20/2015   v1.0.0]
+;             6)  Finished writing the routine and moved to
+;                   ~/wind_3dp_pros/LYNN_PRO/JCKs_database_routines
+;                                                                   [02/24/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  Assume the user has pre-formatted the input to the right dimensions,
+;                     otherwise this is too much of a hassle to check all possible
+;                     formats
+;               2)  User should NOT call this routine
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  02/18/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/24/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION get_only_good_cfa_val,array,bins1
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+s              = ''
+b              = 255b
+i              = -1
+l              = -1L
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply two arrays and one scalar...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 2) THEN BEGIN
+  ;;  User used an incorrect calling sequence
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+sztypa         = SIZE(array,/TYPE)
+szna           = SIZE(array,/N_DIMENSIONS)
+szn1           = SIZE(bins1,/N_DIMENSIONS)
+szda           = SIZE(array,/DIMENSIONS)
+szd1           = SIZE(bins1,/DIMENSIONS)
+;;  Determine type of zero to fill with
+CASE sztypa[0] OF
+  1    :  zero = b[0]
+  2    :  zero = i[0]
+  3    :  zero = l[0]
+  4    :  zero = f[0]
+  5    :  zero = d[0]
+  7    :  zero = s[0]
+  ELSE : STOP  ;; something's wrong
+ENDCASE
+;;  Check input format
+test           = (szd1[0] NE szda[0])
+IF (test) THEN STOP  ;;  Something is wrong --> Debug
+;;----------------------------------------------------------------------------------------
+;;  Keep good elements
+;;----------------------------------------------------------------------------------------
+CASE szna[0] OF
+  1L  :  BEGIN
+    ;;  1D array --> Only DBINS matters [i.e., does not depend upon method]
+    gbins = REPLICATE(0b,szda[0])
+    FOR j=0L, szda[0] - 1L DO gbins[j] = (TOTAL(bins1[j,0,*]) GT 0)
+    good  = WHERE(gbins,gd)
+    IF (gd GT 0) THEN arr = array[gbins[good]]
+  END
+  2L  :  BEGIN
+    ;;  2D array --> result will be 1D
+    test  = (szda[1] EQ szd1[2])     ;;  TRUE if ARRAY = [N,M]-Element array
+    IF (test) THEN BEGIN
+      ;;  Assume user is not stupid
+      ;;    --> ARRAY = [N,M]-Element array and BINS1 = [N,V,M]-Element array
+      gbins = REFORM(bins1[*,0,*])
+      FOR j=0L, szda[0] - 1L DO BEGIN
+        gbin   = REFORM(gbins[j,*])
+        good   = WHERE(gbin,gd)
+        IF (gd GT 0) THEN BEGIN
+          test = (N_ELEMENTS(arr) EQ 0)
+          IF (test) THEN arr = array[j,good[0]] ELSE arr = [arr,array[j,good[0]]]
+        ENDIF
+      ENDFOR
+    ENDIF ELSE BEGIN
+      ;;  2D array but 2nd dimension does not depend upon method --> output = 2D
+      gbins = bins1
+      FOR j=0L, szda[0] - 1L DO BEGIN
+        gbin   = REFORM(gbins[j,0,*])
+        good   = WHERE(gbin,gd)
+        IF (gd GT 0) THEN BEGIN
+          t_arr    = REFORM(array[j,*],1,szda[1])
+          test     = (N_ELEMENTS(arr) EQ 0)
+          IF (test) THEN arr = t_arr ELSE arr = [arr,t_arr]
+        ENDIF
+      ENDFOR
+      ;;  Apparently I need to be more careful because the algorithm below just copies the elements...
+;      gbins = REPLICATE(0b,szda[0])
+;      FOR j=0L, szda[0] - 1L DO gbins[j] = (TOTAL(bins1[j,0,*]) GT 0)
+;      good  = WHERE(gbins,gd)
+;      IF (gd GT 0) THEN arr = array[gbins[good],*]
+    ENDELSE
+  END
+  3L  :  BEGIN
+    ;;  3D array --> result will be 2D
+    test = (szda[2] EQ szd1[2])
+    IF (test) THEN BEGIN
+      ;;  Assume user is not stupid
+      ;;    --> ARRAY = [N,V,M]-Element array and BINS1 = [N,V,M]-Element array
+      gbins = bins1
+      FOR j=0L, szda[0] - 1L DO BEGIN
+        ;;  Assume "good" copied across vector components in 2nd dimension
+        gbin   = REFORM(gbins[j,0,*])
+        good   = WHERE(gbin,gd)
+        IF (gd GT 0) THEN BEGIN
+          t_arr    = REFORM(array[j,*,good[0]],1,szda[1])
+          test     = (N_ELEMENTS(arr) EQ 0)
+          IF (test) THEN arr = t_arr ELSE arr = [arr,t_arr]
+        ENDIF
+      ENDFOR
+    ENDIF ELSE BEGIN
+      ;;  3D array but 3rd dimension is upstream/downstream index --> output = 3D
+      gbins = bins1
+      FOR j=0L, szda[0] - 1L DO BEGIN
+        gbin   = REFORM(gbins[j,0,*])
+        good   = WHERE(gbin,gd)
+        IF (gd GT 0) THEN BEGIN
+          t_arr    = REFORM(array[j,*,*],1,szda[1],szda[2])
+          test     = (N_ELEMENTS(arr) EQ 0)
+          IF (test) THEN arr = t_arr ELSE arr = [arr,t_arr]
+        ENDIF
+      ENDFOR
+      ;;  Apparently I need to be more careful because the algorithm below just copies the elements...
+;      gbins = REPLICATE(0b,szda[0])
+;      FOR j=0L, szda[0] - 1L DO gbins[j] = (TOTAL(bins1[j,0,*]) GT 0)
+;      good  = WHERE(gbins,gd)
+;      IF (gd GT 0) THEN arr = array[gbins[good],*,*]
+    ENDELSE
+  END
+  ELSE : STOP ;;  Something is wrong --> Debug
+ENDCASE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,arr
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   read_shocks_jck_database_new.pro
+;  PURPOSE  :   This routine returns a structure containing all the relevant information
+;                 from the interplanetary shocks analyzed (by the Harvard Center for
+;                 Astrophysics group) using Wind spacecraft data.  The shock database
+;                 can be found at:
+;                   https://www.cfa.harvard.edu/shocks/wi_data/
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               gen_print_cfa_descr.pro
+;               print_cfa_db_descr_info.pro
+;               get_only_good_cfa_val.pro
+;
+;  CALLS:
+;               get_os_slash.pro
+;               print_cfa_db_descr_info.pro
+;               str_element.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;               2)  IDL save file created by using
+;                       write_shocks_jck_database_new.pro
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               test = read_shocks_jck_database_new()
+;
+;  KEYWORDS:    
+;               DIRECT         :  Scalar [string] defining the directory location
+;                                   of the IDL save file created by
+;                                   write_shocks_jck_database_new.pro
+;                                   [Default = '~/wind_data_dir/JCK_Data-Base/']
+;               PRINT_DESCR    :  If set, routine will print out information found in the
+;                                   description IDL structure that defines the meaning of
+;                                   and format of the returned data structure
+;                                   [Default = FALSE]
+;               CFA_METH_ONLY  :  If set, routine will modify output structure to contain
+;                                   only the selected shock analysis methods listed in
+;                                   the "General Information" table for each event
+;                                   [Default = FALSE]
+;               FINDBEST_METH  :  If set, routine will modify output structure to contain
+;                                   only the "best" solutions of the various shock
+;                                   analysis methods available.  See the NOTES section
+;                                   below for definition of "best".
+;                                   [Default = FALSE]
+;               GIND_3D        :  Set to a named variable to return the bin values used
+;                                   if either CFA_METH_ONLY or FINDBEST_METH is set
+;                                   --> should be an [N,3,M]-element array
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [02/19/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [02/19/2015   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [02/19/2015   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [02/19/2015   v1.0.0]
+;             5)  Continued to write routine
+;                                                                   [02/20/2015   v1.0.0]
+;             6)  Finished writing the routine and moved to
+;                   ~/wind_3dp_pros/LYNN_PRO/JCKs_database_routines
+;                                                                   [02/24/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  "best" is defined by requiring every returned method-dependent result
+;                     is associated with a method that satisfies all of the following:
+;                       (Mf_up ≥ 1.0  &  Mc_up ≥ 1.0  &  Ma_up ≥ 1.0)
+;                       (Mf_dn < 1.0  &  Mc_dn < 1.0  &  Ma_dn < 1.0)
+;                       (Vshn > 10.0) & (Vshn < 1100)
+;                       (|Ushn,up| > 10.0) & (|Ushn,up| < 1100)
+;                       N2/N1 > 1.0
+;
+;  REFERENCES:  
+;               1)  Viñas, A.F. and J.D. Scudder (1986), "Fast and Optimal Solution to
+;                      the 'Rankine-Hugoniot Problem'," J. Geophys. Res. 91, pp. 39-58.
+;               2)  A. Szabo (1994), "An improved solution to the 'Rankine-Hugoniot'
+;                      problem," J. Geophys. Res. 99, pp. 14,737-14,746.
+;               3)  Koval, A. and A. Szabo (2008), "Modified 'Rankine-Hugoniot' shock
+;                      fitting technique:  Simultaneous solution for shock normal and
+;                      speed," J. Geophys. Res. 113, pp. A10110.
+;               4)  Russell, C.T., J.T. Gosling, R.D. Zwickl, and E.J. Smith (1983),
+;                      "Multiple spacecraft observations of interplanetary shocks:  ISEE
+;                      Three-Dimensional Plasma Measurements," J. Geophys. Res. 88,
+;                      pp. 9941-9947.
+;
+;   CREATED:  02/18/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/24/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION read_shocks_jck_database_new,DIRECT=direct,PRINT_DESCR=print_descr,       $
+                                      CFA_METH_ONLY=cfa_meth_only,                 $
+                                      FINDBEST_METH=findbest_meth,                 $
+                                      GIND_3D=gind_3d
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
+no_output      = 1b                     ;;  Default setting = No output printed from description structure
+cfa_m_only     = 0b                     ;;  Default setting = return all method results
+findb_only     = 0b                     ;;  Default setting = return all method results
+;;  Define shock analysis method strings [for General, Asymptotic, and Best Values tables]
+all_meth0_strs = ['MC','VC','MX1','MX2','MX3','RH08','RH09','RH10']
+all_meth1_strs = ['MC','VC','MX1','MX2','MX3','RH8','RH9','RH10']
+;;  Define output IDL save file name
+file           = 'All_JCKaspers_Shock_Parameters.sav'
+;;  Dummy error messages
+nooutput_msg   = 'No IDL save file was found --> No output will be returned!'
+no_descr_msg   = 'The IDL save file did not contain a description structure --> Returning data structure...'
+noudescr_msg   = 'The user did not want to read the information contained in the description structure --> Returning data structure...'
+noaltstr_msg   = 'The user did not want to alter output structure --> Returning all methods in the data structure...'
+;;----------------------------------------------------------------------------------------
+;;  Define default search paths and file names
+;;----------------------------------------------------------------------------------------
+;;  Define location of locally saved HTML files
+def_cfa_path   = '.'+slash[0]+'wind_3dp_pros'+slash[0]+'wind_data_dir'+slash[0]+ $
+                     'JCK_Data-Base'+slash[0]
+def_path       = def_cfa_path[0]
+;;  Define location of where to put output IDL save file
+def_idlsave_pt = def_cfa_path[0]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Setup file path to IDL save file
+;;  Check DIRECT
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+test           = ~KEYWORD_SET(exists) AND (SIZE(direct,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  mdir  = FILE_EXPAND_PATH(def_path[0])
+ENDIF ELSE BEGIN
+  test  = (SIZE(direct,/TYPE) NE 7)
+  IF (test[0]) THEN BEGIN
+    ;;  !wind3dp_umn system variable has been created
+    mdir  = !wind3dp_umn.ASCII_FILE_DIR
+    IF (mdir[0] EQ '') THEN BEGIN
+      mdir = FILE_EXPAND_PATH(def_path[0])
+    ENDIF ELSE BEGIN
+      mdir = mdir[0]
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;;  DIRECT keyword was set
+    ;;    --> check it
+    test = FILE_TEST(direct[0],/DIRECTORY)
+    IF (test[0]) THEN BEGIN
+      ;;  DIRECT is a directory
+      mdir  = EXPAND_PATH(direct[0])
+    ENDIF ELSE BEGIN
+      ;;  DIRECT is NOT a directory
+      ;;    --> use default
+      mdir  = FILE_EXPAND_PATH(def_path[0])
+    ENDELSE
+  ENDELSE
+ENDELSE
+;;  Check PRINT_DESCR
+test           = KEYWORD_SET(print_descr)
+IF (test[0]) THEN no_output = 0b
+;;  Check CFA_METH_ONLY
+test           = KEYWORD_SET(cfa_meth_only)
+IF (test[0]) THEN cfa_m_only = 1b
+;;  Check FINDBEST_METH
+test           = KEYWORD_SET(findbest_meth)
+IF (test[0]) THEN findb_only = 1b
+;;  Make sure user didn't set both
+test           = (cfa_m_only AND findb_only)
+IF (test[0]) THEN BEGIN
+  ;;  Finding "best" method trumps using CfA method
+  cfa_m_only = 0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Find IDL save file
+;;----------------------------------------------------------------------------------------
+idlsave_file   = FILE_SEARCH(mdir[0],file[0])
+IF (idlsave_file[0] EQ '') THEN BEGIN
+  MESSAGE,'0: '+nooutput_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Restore data from IDL save file
+;;----------------------------------------------------------------------------------------
+RESTORE,FILENAME=idlsave_file[0]
+;;  Check to see that proper structures were returned
+test_data      = (SIZE(cfa_db_wind,/TYPE) NE 8)
+test_desc      = (SIZE(descript_struc,/TYPE) NE 8)
+IF (test_data[0]) THEN STOP ;;  Something's wrong --> debug
+
+IF (test_desc[0]) THEN BEGIN
+  ;;  IDL save file was missing the description IDL structure
+  ;;    --> Return the data IDL structure
+  MESSAGE,no_descr_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,cfa_db_wind
+ENDIF
+
+IF (no_output[0]) THEN BEGIN
+  ;;  User did not want to read about the output structure
+  ;;    --> Return the data structure
+  MESSAGE,noudescr_msg,/INFORMATIONAL,/CONTINUE
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  User does want to read about the output structure
+  ;;    --> Print out information
+  ;;--------------------------------------------------------------------------------------
+  test           = print_cfa_db_descr_info(descript_struc,/YES_PRINT)
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Check if user wants only the CfA's selected results
+;;----------------------------------------------------------------------------------------
+test           = (cfa_m_only EQ 0) AND (findb_only EQ 0)
+IF (test[0]) THEN BEGIN
+  ;;  User did not want to alter the output structure
+  ;;    --> Return the data structure
+  MESSAGE,noaltstr_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,cfa_db_wind
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  User wants to limit the methods on output
+;;    --> Need to alter values in the following tags:
+;;          BVN_INFO
+;;          KEY_INFO
+;;          UPS_INFO
+;;          DNS_INFO
+;;----------------------------------------------------------------------------------------
+gen_info_str   = cfa_db_wind.GEN_INFO
+bvn_info_str   = cfa_db_wind.BVN_INFO
+key_info_str   = cfa_db_wind.KEY_INFO
+ups_info_str   = cfa_db_wind.UPS_INFO
+dns_info_str   = cfa_db_wind.DNS_INFO
+asy_info_str   = cfa_db_wind.ASY_INFO
+;;  Define a dummy string containing replicas of the possible methods
+all_cfa_meths  = gen_info_str.RH_METHOD             ;;  All CfA's selected shock analysis methods
+nf             = N_ELEMENTS(all_cfa_meths)          ;;  # of shock events in structure
+nm             = N_ELEMENTS(all_meth0_strs)         ;;  # of unique shock analysis methods
+;;----------------------------------------------------------------------------------------
+;;  Define dummy variables associated with parameters that will need to be changed
+;;----------------------------------------------------------------------------------------
+ones           = REPLICATE(1,nm)
+;;  Sound and Alfven speeds
+a____Csu       = REPLICATE(f,nf)           ;;  Avg. upstream ion-acoustic sound speed [km/s]
+a____VAu       = REPLICATE(f,nf)           ;;  Avg. upstream Alfvén speed [km/s]
+a___dCsu       = REPLICATE(f,nf)           ;;  Uncertainty of a____Csu
+a___dVAu       = REPLICATE(f,nf)           ;;  Uncertainty of a____VAu
+a____Csd       = REPLICATE(f,nf)           ;;  Avg. downstream ion-acoustic sound speed [km/s]
+a____VAd       = REPLICATE(f,nf)           ;;  Avg. downstream Alfvén speed [km/s]
+a___dCsd       = REPLICATE(f,nf)           ;;  Uncertainty of a____Csd
+a___dVAd       = REPLICATE(f,nf)           ;;  Uncertainty of a____VAd
+;;  Method-dependent parameters
+a____nsh       = REPLICATE(f,nf,3,nm)      ;;  Shock normal unit vector [Event,GSE,Method]
+a___nthe       = REPLICATE(f,nf,nm)        ;;  Spherical poloidal angle of n [Event,Method] [degrees]
+a___nphi       = REPLICATE(f,nf,nm)        ;;  Spherical azimuthal angle of n [Event,Method] [degrees]
+a___dnsh       = REPLICATE(f,nf,3,nm)      ;;  Uncertainty of Shock normal unit vector [Event,GSE,Method]
+a__dnthe       = REPLICATE(f,nf,nm)        ;;  Uncertainty of Spherical poloidal angle of n [Event,Method] [degrees]
+a__dnphi       = REPLICATE(f,nf,nm)        ;;  Uncertainty of Spherical azimuthal angle of n [Event,Method] [degrees]
+a__thebn       = REPLICATE(f,nf,nm)        ;;  Avg. upstream shock normal angle [Event,Method] [degrees]
+a___vshn       = REPLICATE(f,nf,nm)        ;;  Avg. upstream shock normal speed [Event,Method] [km/s, SCF]
+a___n2n1       = REPLICATE(f,nf,nm)        ;;  Avg. shock density compression ratio [Event,Method]
+a_dthebn       = REPLICATE(f,nf,nm)        ;;  Uncertainty of Avg. upstream shock normal angle [Event,Method] [degrees]
+a__dvshn       = REPLICATE(f,nf,nm)        ;;  Uncertainty of Avg. upstream shock normal speed [Event,Method] [km/s, SCF]
+a__dn2n1       = REPLICATE(f,nf,nm)        ;;  Uncertainty of Avg. shock density compression ratio [Event,Method]
+a__ushnu       = REPLICATE(f,nf,nm)        ;;  Avg. upstream shock normal speed [km/s, SHF]
+a____Vsu       = REPLICATE(f,nf,nm)        ;;  Avg. upstream MHD slow mode speed [km/s]
+a____Viu       = REPLICATE(f,nf,nm)        ;;  Avg. upstream MHD intermediate mode speed [km/s]
+a____Vfu       = REPLICATE(f,nf,nm)        ;;  Avg. upstream MHD fast mode speed [km/s]
+a____Msu       = REPLICATE(f,nf,nm)        ;;  Avg. upstream MHD slow mode Mach number
+a____Mfu       = REPLICATE(f,nf,nm)        ;;  Avg. upstream MHD fast mode Mach number
+a_dushnu       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a__ushnu
+a___dVsu       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Vsu
+a___dViu       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Viu
+a___dVfu       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Vfu
+a___dMsu       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Msu
+a___dMfu       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Mfu
+a__ushnd       = REPLICATE(f,nf,nm)        ;;  Avg. downstream shock normal speed [km/s, SHF]
+a____Vsd       = REPLICATE(f,nf,nm)        ;;  Avg. downstream MHD slow mode speed [km/s]
+a____Vid       = REPLICATE(f,nf,nm)        ;;  Avg. downstream MHD intermediate mode speed [km/s]
+a____Vfd       = REPLICATE(f,nf,nm)        ;;  Avg. downstream MHD fast mode speed [km/s]
+a____Msd       = REPLICATE(f,nf,nm)        ;;  Avg. downstream MHD slow mode Mach number
+a____Mfd       = REPLICATE(f,nf,nm)        ;;  Avg. downstream MHD fast mode Mach number
+a_dushnd       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a__ushnd
+a___dVsd       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Vsd
+a___dVid       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Vid
+a___dVfd       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Vfd
+a___dMsd       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Msd
+a___dMfd       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a____Mfd
+;;  Define extra Mach number params
+a___Mcsu       = REPLICATE(f,nf,nm)        ;;  Avg. upstream ion-acoustic sound Mach number
+a___Mvau       = REPLICATE(f,nf,nm)        ;;  Avg. upstream Alfvénic Mach number
+a___Mcsd       = REPLICATE(f,nf,nm)        ;;  Avg. downstream ion-acoustic sound Mach number
+a___Mvad       = REPLICATE(f,nf,nm)        ;;  Avg. downstream Alfvénic Mach number
+a__dMcsu       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a___Mcsu
+a__dMvau       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a___Mvau
+a__dMcsd       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a___Mcsd
+a__dMvad       = REPLICATE(f,nf,nm)        ;;  Uncertainty of a___Mvad
+;;----------------------------------------------------------------------------------------
+;;  Define parameters that will need to be changed
+;;----------------------------------------------------------------------------------------
+a____nsh       = bvn_info_str.SH_N_GSE.Y
+a___nthe       = bvn_info_str.SH_N_THE.Y
+a___nphi       = bvn_info_str.SH_N_PHI.Y
+a___dnsh       = bvn_info_str.SH_N_GSE.DY
+a__dnthe       = bvn_info_str.SH_N_THE.DY
+a__dnphi       = bvn_info_str.SH_N_PHI.DY
+a__thebn       = key_info_str.THETA_BN.Y
+a___vshn       = ABS(key_info_str.VSHN_UP.Y)
+a___n2n1       = key_info_str.NIDN_NIUP.Y
+a_dthebn       = key_info_str.THETA_BN.DY
+a__dvshn       = key_info_str.VSHN_UP.DY
+a__dn2n1       = key_info_str.NIDN_NIUP.DY
+a__ushnu       = ABS(ups_info_str.USHN.Y)
+a____Vsu       = ups_info_str.V_SLOW.Y
+a____Viu       = ups_info_str.V_INTM.Y
+a____Vfu       = ups_info_str.V_FAST.Y
+a____Msu       = ABS(ups_info_str.M_SLOW.Y)
+a____Mfu       = ABS(ups_info_str.M_FAST.Y)
+a_dushnu       = ups_info_str.USHN.DY
+a___dVsu       = ups_info_str.V_SLOW.DY
+a___dViu       = ups_info_str.V_INTM.DY
+a___dVfu       = ups_info_str.V_FAST.DY
+a___dMsu       = ups_info_str.M_SLOW.DY
+a___dMfu       = ups_info_str.M_FAST.DY
+a__ushnd       = ABS(dns_info_str.USHN.Y)
+a____Vsd       = dns_info_str.V_SLOW.Y
+a____Vid       = dns_info_str.V_INTM.Y
+a____Vfd       = dns_info_str.V_FAST.Y
+a____Msd       = ABS(dns_info_str.M_SLOW.Y)
+a____Mfd       = ABS(dns_info_str.M_FAST.Y)
+a_dushnd       = dns_info_str.USHN.DY
+a___dVsd       = dns_info_str.V_SLOW.DY
+a___dVid       = dns_info_str.V_INTM.DY
+a___dVfd       = dns_info_str.V_FAST.DY
+a___dMsd       = dns_info_str.M_SLOW.DY
+a___dMfd       = dns_info_str.M_FAST.DY
+;;  Define additional necessary parameters
+a____Csu       = asy_info_str.SOUND_SPEED.Y[*,0] # ones
+a____VAu       = asy_info_str.ALFVEN_SPEED.Y[*,0] # ones
+a___dCsu       = asy_info_str.SOUND_SPEED.DY[*,0] # ones
+a___dVAu       = asy_info_str.ALFVEN_SPEED.DY[*,0] # ones
+a____Csd       = asy_info_str.SOUND_SPEED.Y[*,1] # ones
+a____VAd       = asy_info_str.ALFVEN_SPEED.Y[*,1] # ones
+a___dCsd       = asy_info_str.SOUND_SPEED.DY[*,1] # ones
+a___dVAd       = asy_info_str.ALFVEN_SPEED.DY[*,1] # ones
+;;  Define additional Mach numbers
+a___Mcsu       = ABS(a__ushnu/a____Csu)    ;;  Avg. upstream ion-acoustic sound Mach number
+a___Mvau       = ABS(a__ushnu/a____VAu)    ;;  Avg. upstream Alfvénic Mach number
+a__dMcsu       = a___Mcsu*SQRT((a_dushnu/a__ushnu)^2 + (a___dCsu/a____Csu)^2)
+a__dMvau       = a___Mvau*SQRT((a_dushnu/a__ushnu)^2 + (a___dVAu/a____VAu)^2)
+a___Mcsd       = ABS(a__ushnd/a____Csd)    ;;  Avg. downstream ion-acoustic sound Mach number
+a___Mvad       = ABS(a__ushnd/a____VAd)    ;;  Avg. downstream Alfvénic Mach number
+a__dMcsd       = a___Mcsd*SQRT((a_dushnd/a__ushnd)^2 + (a___dCsd/a____Csd)^2)
+a__dMvad       = a___Mvad*SQRT((a_dushnd/a__ushnd)^2 + (a___dVAd/a____VAd)^2)
+;;  Define stats over methods for additional Mach numbers
+avg_Mcsu       = REPLICATE(f,nf)
+avg_Mvau       = REPLICATE(f,nf)
+avg_Mcsd       = REPLICATE(f,nf)
+avg_Mvad       = REPLICATE(f,nf)
+med_Mcsu       = REPLICATE(f,nf)
+med_Mvau       = REPLICATE(f,nf)
+med_Mcsd       = REPLICATE(f,nf)
+med_Mvad       = REPLICATE(f,nf)
+std_Mcsu       = REPLICATE(f,nf)
+std_Mvau       = REPLICATE(f,nf)
+std_Mcsd       = REPLICATE(f,nf)
+std_Mvad       = REPLICATE(f,nf)
+FOR j=0L, nf[0] - 1L DO BEGIN
+  avg_Mcsu[j]    =   MEAN(a___Mcsu[j,*],/NAN)
+  avg_Mvau[j]    =   MEAN(a___Mvau[j,*],/NAN)
+  avg_Mcsd[j]    =   MEAN(a___Mcsd[j,*],/NAN)
+  avg_Mvad[j]    =   MEAN(a___Mvad[j,*],/NAN)
+  med_Mcsu[j]    = MEDIAN(a___Mcsu[j,*])
+  med_Mvau[j]    = MEDIAN(a___Mvau[j,*])
+  med_Mcsd[j]    = MEDIAN(a___Mcsd[j,*])
+  med_Mvad[j]    = MEDIAN(a___Mvad[j,*])
+  std_Mcsu[j]    = STDDEV(a___Mcsu[j,*],/NAN)
+  std_Mvau[j]    = STDDEV(a___Mvau[j,*],/NAN)
+  std_Mcsd[j]    = STDDEV(a___Mcsd[j,*],/NAN)
+  std_Mvad[j]    = STDDEV(a___Mvad[j,*],/NAN)
+ENDFOR
+;;  Add additional Mach numbers to structure for output
+tags_pref      = ['UPS_INFO.','DNS_INFO.']
+tags_suff      = ['M_CS','M_VA']
+str_element,cfa_db_wind,tags_pref[0]+tags_suff[0],{Y:a___Mcsu,DY:a__dMcsu},/ADD_REPLACE
+str_element,cfa_db_wind,tags_pref[0]+tags_suff[1],{Y:a___Mvau,DY:a__dMvau},/ADD_REPLACE
+str_element,cfa_db_wind,tags_pref[1]+tags_suff[0],{Y:a___Mcsd,DY:a__dMcsd},/ADD_REPLACE
+str_element,cfa_db_wind,tags_pref[1]+tags_suff[1],{Y:a___Mvad,DY:a__dMvad},/ADD_REPLACE
+;;  Add stats over methods for additional Mach numbers to structure for output
+tags_pref      = ['UPS_INFO.','DNS_INFO.']+'STATS.'
+tags_suff      = ['M_CS','M_VA']
+str_element,cfa_db_wind,tags_pref[0]+tags_suff[0],{AVG:avg_Mcsu,MED:med_Mcsu,STD:std_Mcsu},/ADD_REPLACE
+str_element,cfa_db_wind,tags_pref[0]+tags_suff[1],{AVG:avg_Mvau,MED:med_Mvau,STD:std_Mvau},/ADD_REPLACE
+str_element,cfa_db_wind,tags_pref[1]+tags_suff[0],{AVG:avg_Mcsd,MED:med_Mcsd,STD:std_Mcsd},/ADD_REPLACE
+str_element,cfa_db_wind,tags_pref[1]+tags_suff[1],{AVG:avg_Mvad,MED:med_Mvad,STD:std_Mvad},/ADD_REPLACE
+;;----------------------------------------------------------------------------------------
+;;  Find indices associated with good Method-dependent parameters
+;;----------------------------------------------------------------------------------------
+new__meth      = REPLICATE('',nf)
+good_meth      = REPLICATE(-1,nf)
+gind           = REPLICATE(0b,nf)
+IF (cfa_m_only[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Use only the CfA's selected results
+  ;;--------------------------------------------------------------------------------------
+  new__meth   = all_cfa_meths
+  lc_0_meths  = STRLOWCASE(all_meth0_strs)
+  lc_1_meths  = STRLOWCASE(all_meth1_strs)
+  lc_c_meths  = STRTRIM(STRLOWCASE(all_cfa_meths),2L)
+  FOR j=0L, nf[0] - 1L DO BEGIN
+    cfa_meth = lc_c_meths[j]
+    test_m   = STRMATCH(lc_0_meths,cfa_meth[0],/FOLD_CASE) OR $
+               STRMATCH(lc_1_meths,cfa_meth[0],/FOLD_CASE)
+    good_m   = WHERE(test_m,gd_m)
+    IF (gd_m[0] EQ 1) THEN good_meth[j] = good_m[0]
+  ENDFOR
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Find the "best" results
+  ;;--------------------------------------------------------------------------------------
+  test_mach_up = (a____Mfu GE 1e0) AND (a___Mcsu GE 1e0) AND (a___Mvau GE 1e0)
+  test_mach_dn = (a____Mfd LT 1e0) AND (a___Mcsd LT 1e0) AND (a___Mvad LT 1e0)
+  test_vshn_up = (ABS(a___vshn) GT 1e1) AND (ABS(a___vshn) LE 11e2)
+  test_ushn_up = (ABS(a__ushnu) GT 1e1) AND (ABS(a__ushnu) LE 11e2)
+  test_comprat = (ABS(a___n2n1) GE 1e0)     ;;  [N,M]-Element array
+  test_best    = test_mach_up AND test_mach_dn AND test_vshn_up AND test_ushn_up AND test_comprat
+  good_best    = WHERE(test_best,gd_best,COMPLEMENT=bad_best,NCOMPLEMENT=bd_best)
+  ;;  Use relative uncertainty of (theta,phi) values to constrain when multiple methods work
+  temp_nthe    = a___nthe
+  temp_nphi    = a___nphi
+  tempdnthe    = a__dnthe
+  tempdnphi    = a__dnphi
+  IF (bd_best[0] GT 0) THEN BEGIN
+    temp_nthe[bad_best] = f
+    temp_nphi[bad_best] = f
+    tempdnthe[bad_best] = f
+    tempdnphi[bad_best] = f
+  ENDIF
+  ;;  Calc. (dtheta/theta) and (dphi/phi)
+  dth_th       = ABS(tempdnthe/temp_nthe)
+  dph_ph       = ABS(tempdnphi/temp_nphi)
+  d_totang     = dth_th + dph_ph
+  FOR j=0L, nf[0] - 1L DO BEGIN
+    temp     = REFORM(d_totang[j,*])
+    mndt     = MIN(temp,ln,/NAN)
+    test     = FINITE(mndt[0])
+    IF (test[0]) THEN BEGIN
+      good_meth[j] = ln[0]
+      new__meth[j] = all_meth0_strs[ln[0]]
+    ENDIF
+  ENDFOR
+ENDELSE
+good_0         = WHERE(good_meth GE 0,gd_0,COMPLEMENT=bad_0,NCOMPLEMENT=bd_0)
+IF (gd_0 EQ 0) THEN STOP ;;  something's wrong --> debug
+gind[good_0]   = 1b
+gind_1d        = gind
+gind_3d        = REPLICATE(0b,nf,3,nm)
+FOR j=0L, nf[0] - 1L DO BEGIN
+  IF (good_meth[j] GE 0) THEN BEGIN
+    gelm = good_meth[j]
+    gind_3d[j,*,gelm[0]] = 1b
+  ENDIF
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Keep only good Method-dependent parameters
+;;----------------------------------------------------------------------------------------
+str_0th        = cfa_db_wind
+nzero          = N_TAGS(str_0th)
+tag_0th        = TAG_NAMES(str_0th)       ;;  e.g., 'GEN_INFO'
+FOR zero=0L, nzero[0] - 1L DO BEGIN
+  ;;11111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define 1st level values
+  ;;--------------------------------------------------------------------------------------
+  ;;11111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+  str_1st = str_0th.(zero)           ;;  e.g., GEN_INFO structure
+  ;;  These are always structures, so no unnecessary IF THEN ELSE loops
+  tag_1st = TAG_NAMES(str_1st)       ;;  e.g., 'TDATES', or 'VBULK_GSE', or 'STATS'
+  nfirst  = N_TAGS(str_1st)
+  FOR first=0L, nfirst[0] - 1L DO BEGIN
+    ;;  Check if at RH_METHOD tag
+    test    = (tag_1st[first] EQ 'RH_METHOD')
+    IF (test) THEN BEGIN
+      new_val = new__meth      ;;  Already defined these --> no need to do anything else
+      new_tag = tag_0th[zero]+'.'+tag_1st[first]   ;;  e.g., 'GEN_INFO.RH_METHOD'
+      str_element,str_0th,new_tag[0],new_val,/ADD_REPLACE
+      CONTINUE                 ;;  Start next iteration of 2nd level
+    ENDIF
+    ;;222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+    ;;------------------------------------------------------------------------------------
+    ;;  Define 2nd level values
+    ;;------------------------------------------------------------------------------------
+    ;;222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+    str_2nd = str_1st.(first)        ;;  e.g., TDATES [array] or VBULK_GSE [structure]
+    typ_2nd = SIZE(str_2nd,/TYPE)
+    IF (typ_2nd[0] EQ 8) THEN BEGIN
+      ;;  2nd level values is a structure --> Go to next level
+      tag_2nd = TAG_NAMES(str_2nd)   ;;  e.g., 'Y', or 'VBULK_GSE', or 'USHN'
+      nsecond = N_TAGS(str_2nd)
+      FOR second=0L, nsecond[0] - 1L DO BEGIN
+        ;;33333333333333333333333333333333333333333333333333333333333333333333333333333333
+        ;;--------------------------------------------------------------------------------
+        ;;  Define 3rd level values
+        ;;--------------------------------------------------------------------------------
+        ;;33333333333333333333333333333333333333333333333333333333333333333333333333333333
+        str_3rd = str_2nd.(second)       ;;  e.g., [Y,DY] or STATS --> same as 2nd level tags minus STATS
+        typ_3rd = SIZE(str_3rd,/TYPE)
+        IF (typ_3rd[0] EQ 8) THEN BEGIN
+          ;;  3rd level values is a structure --> Go to next level
+          tag_3rd = TAG_NAMES(str_3rd)   ;;  e.g., 'VBULK_GSE', or 'USHN', or etc.  [must be STATS]
+          nthird  = N_TAGS(str_3rd)
+          FOR third=0L, nthird[0] - 1L DO BEGIN
+            ;;4444444444444444444444444444444444444444444444444444444444444444444444444444
+            ;;----------------------------------------------------------------------------
+            ;;  Define 4th level values
+            ;;----------------------------------------------------------------------------
+            ;;4444444444444444444444444444444444444444444444444444444444444444444444444444
+            str_4th = str_3rd.(third)       ;;  e.g., VBULK_GSE or USHN
+            typ_4th = SIZE(str_4th,/TYPE)
+            IF (typ_4th[0] EQ 8) THEN BEGIN
+              ;; Should not get this deep --> something's wrong ==> debug
+              STOP
+            ENDIF ELSE BEGIN
+              ;;  4th level values is an array --> alter here
+              new_tag = tag_0th[zero]+'.'+tag_1st[first]+'.'+tag_2nd[second]+'.'+tag_3rd[third]
+              szn     = SIZE(str_4th,/N_DIMENSIONS)
+              bins1   = gind_3d
+              new_val = get_only_good_cfa_val(str_4th,bins1)
+              str_element,str_0th,new_tag[0],new_val,/ADD_REPLACE
+            ENDELSE
+            ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+            ;;4444444444444444444444444444444444444444444444444444444444444444444444444444
+            ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+          ENDFOR
+        ENDIF ELSE BEGIN
+          ;;  3rd level values is an array --> alter here
+          new_tag = tag_0th[zero]+'.'+tag_1st[first]+'.'+tag_2nd[second]
+          szn     = SIZE(str_3rd,/N_DIMENSIONS)
+          bins1   = gind_3d
+          new_val = get_only_good_cfa_val(str_3rd,bins1)
+          str_element,str_0th,new_tag[0],new_val,/ADD_REPLACE
+        ENDELSE
+        ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        ;;33333333333333333333333333333333333333333333333333333333333333333333333333333333
+        ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+      ENDFOR
+    ENDIF ELSE BEGIN
+      ;;  2nd level values is an array --> alter here
+      new_tag = tag_0th[zero]+'.'+tag_1st[first]
+      szn     = SIZE(str_2nd,/N_DIMENSIONS)
+      bins1   = gind_3d
+      new_val = get_only_good_cfa_val(str_2nd,bins1)
+      str_element,str_0th,new_tag[0],new_val,/ADD_REPLACE
+    ENDELSE
+    ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ;;222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+    ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  ENDFOR
+  ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  ;;11111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+  ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,str_0th
+END

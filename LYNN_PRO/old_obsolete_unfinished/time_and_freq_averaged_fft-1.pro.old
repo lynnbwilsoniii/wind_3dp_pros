@@ -1,0 +1,311 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   time_and_freq_averaged_fft.pro
+;  PURPOSE  :   Calculates the time and frequency averaged FFT of an input time series,
+;                 either as the magnitude of a vector or the magnitude of a scalar.
+;                 On output, the routine returns a structure containing the relevant
+;                 parameters/results.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               format_2d_vec.pro
+;               sample_rate.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TIME   :  [N]-Element [double] array of time stamps, preferably with
+;                           uniform spacing and in the units of seconds
+;                             --> frequencies = Hz
+;               DATA   :  [N,3]- or [N]-Element [float/double] array of dependent
+;                           variable data corresponding to TIME
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               FLOW   :  Scalar [float/double] defining the low frequency [Hz]
+;                           cutoff to use for the Poynting flux analysis
+;                           [Default = 0.0]
+;               FHIGH  :  Scalar [float/double] defining the high frequency [Hz]
+;                           cutoff to use for the Poynting flux analysis
+;                           [Default = sample rate of input]
+;               NFFT   :  Scalar [long] defining the # of frequency bins in each FFT
+;                           [Default = 128]
+;               NSHFT  :  Scalar [long] defining the # of points to shift between
+;                           each FFT
+;                           [Default = 32]
+;
+;   CHANGED:  1)  Fixed Hanning window normalization
+;                                                                   [05/07/2014   v1.0.1]
+;
+;   NOTES:      
+;               1)  If [TIME] = seconds, then the output frequencies will be in Hz.
+;                     Technically, any unit of time on input is okay so long as the
+;                     user stays consistent and is aware that the routine does not
+;                     know the units of TIME or DATA.
+;               2)  Make sure the units of FLOW and FHIGH are consistent with the
+;                     inverse units of TIME.
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  05/06/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/07/2014   v1.0.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION time_and_freq_averaged_fft,time,data,FLOW=flow,FHIGH=fhigh,NFFT=nfft,NSHFT=nshft
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+def_nfft       = 128L          ;;  Default # of frequency bins in each FFT
+def_nsht       = 32L           ;;  " " points to shift between each FFT
+;;  Dummy error messages
+bad_nin_mssg   = 'Incorrect # of inputs'
+badtsp_msg     = 'Bad timestamp input format...'
+bad_fdin_mssg  = 'Incorrect input format:  DATA'
+bad_Tin_mssg   = 'Timestamps must satisfy:  T[i+1] - T[i] > 0'
+bad_NfNs_mssg  = 'Keywords must satisfy:  NFFT ≥ 2*NSHFT --> Using default values...'
+bad_fran_mssg  = 'Bad frequency range defined --> Return all values'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 2)
+IF (test[0]) THEN BEGIN
+  ;;  no input???
+  MESSAGE,bad_nin_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define new parameters
+;;----------------------------------------------------------------------------------------
+tt             = REFORM(time)
+vv             = REFORM(data)
+;;----------------------------------------------------------------------------------------
+;;  Check input format
+;;----------------------------------------------------------------------------------------
+szdt           = SIZE(tt,/DIMENSIONS)
+sznt           = SIZE(tt,/N_DIMENSIONS)
+test           = (sznt[0] NE 1)
+IF (test[0]) THEN BEGIN
+  ;;  incorrect timestamp input format
+  MESSAGE,badtsp_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+
+szdd           = SIZE(vv,/DIMENSIONS)
+sznd           = SIZE(vv,/N_DIMENSIONS)
+is_1D          = (sznd[0] EQ 1)
+is_2D          = (sznd[0] EQ 2)
+IF (is_2D[0]) THEN BEGIN
+  ;;  2D input --> check format
+  test = (szdd[0] NE szdt[0]) AND (szdd[0] NE szdt[0])
+ENDIF ELSE BEGIN
+  IF (is_1D[0]) THEN BEGIN
+    ;;  1D input
+    test = (szdd[0] NE szdt[0])
+  ENDIF ELSE BEGIN
+    ;;  ?D input
+    MESSAGE,bad_fdin_mssg[0],/INFORMATIONAL,/CONTINUE
+    RETURN,0
+  ENDELSE
+ENDELSE
+
+IF (test[0]) THEN BEGIN
+  ;;  # of timestamps do not match # of data points/vectors
+  MESSAGE,bad_fdin_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF ELSE BEGIN
+  IF (sznd[0] EQ 2) THEN BEGIN
+    ;;  2D input --> check format
+    vv   = 1d0*format_2d_vec(vv)
+    test = (N_ELEMENTS(vv) LT 3) AND (vv[0] EQ 0)
+    IF (test[0]) THEN RETURN,0
+  ENDIF ELSE BEGIN
+    ;;  1D input
+    vv   = REFORM(vv) # REPLICATE(1d0,3L)
+  ENDELSE
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Sort data by time (just in case)
+;;----------------------------------------------------------------------------------------
+nt             = N_ELEMENTS(tt)               ;;  # of time stamps
+sp             = SORT(tt)
+tt             = tt[sp]
+vv             = vv[sp,*]
+;;  Estimate average ∆t
+i              = LINDGEN(nt[0] - 1L)
+j              = i + 1L
+dt_all         = [0d0,(tt[j] - tt[i])]
+bad            = WHERE(dt_all LE 0,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN dt_all[bad] = d
+;;  Make sure time stamps are ascending and not the same value
+IF (gd LT 2) THEN BEGIN
+  ;;  timestamps were all equal --> BAD!
+  MESSAGE,bad_Tin_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+dt_avg         = MEAN(dt_all,/NAN)
+;;  Define sample rate
+srate          = DOUBLE(sample_rate(tt,GAP_THRESH=2*dt_avg[0],/AVE))
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check FLOW
+IF (N_ELEMENTS(flow) NE 1)  THEN flow   = 0d0      ELSE flow   = DOUBLE(flow[0])
+;;  Check FHIGH
+IF (N_ELEMENTS(fhigh) NE 1) THEN fupp   = srate[0] ELSE fupp   = DOUBLE(fhigh[0])
+;;  Check NFFT
+IF (N_ELEMENTS(nfft) NE 1)  THEN nfft   = 128L     ELSE nfft   = LONG(nfft[0])
+;;  Check NSHFT
+IF (N_ELEMENTS(nshft) NE 1) THEN nshft  = 32L      ELSE nshft  = LONG(nshft[0])
+;;  Make sure NFFT ≥ 2*NSHFT
+test           = (nfft[0] LT 2*nshft[0])
+IF (test[0]) THEN BEGIN
+  ;;  Use default values
+  MESSAGE,bad_NfNs_mssg[0],/INFORMATIONAL,/CONTINUE
+  nfft   = 128L
+  nshft  = 32L
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define some dummy parameters
+;;----------------------------------------------------------------------------------------
+nt_a           = nt[0] - 1L                   ;;  # of vectors in each interval
+n_dft          = nt_a[0] - nfft[0]            ;;  # of timestamps per interval
+;;  Create a Hanning window
+;win            = HANNING(nfft[0],/DOUBLE)*2d0 ;;  The 2 comes from C.M. Cully's crib sheet...
+win            = HANNING(nfft[0],/DOUBLE)
+win           /= MEAN(win,/NAN)               ;;  preserve energy
+;;  Define the bandwidth [ Hz or 1/[TIME] ] of each FFT frequency bin
+bw             = srate[0]/nfft[0]
+;;  Define the FFT frequency bin values [ Hz or 1/[TIME] ]
+freq           = DINDGEN(nfft[0]/2d0)*bw[0]
+gind_f         = WHERE(freq GE flow[0] AND freq LE fupp[0],gdsf)
+;;  Define # of timestamps for FFTs
+n_ts           = nt[0]/nshft[0] + 1L
+;;----------------------------------------------------------------------------------------
+;;  Calculate floating FFTs
+;;----------------------------------------------------------------------------------------
+;;  Define a dummy array for the complex FFT of DATA
+vv__fft        = DCOMPLEXARR(n_ts[0],nfft[0],3L)  ;;  [K,W,3]-Element array
+tt__fft        = DBLARR(n_ts[0])
+i              = 0L
+FOR j=0L, n_dft[0] - 1L, nshft[0] DO BEGIN
+  upj       = j + nfft[0] - 1L
+  FOR k=0L, 2L DO vv__fft[i,*,k] = FFT(vv[j[0]:upj[0],k]*win,/DOUBLE)
+  ;;  increment i
+  i++
+ENDFOR
+;;  Keep only relevant values
+ind            = (i[0] - 1L)
+;;  Remove extra/empty spectra on end
+vv__fft        = vv__fft[0L:(ind[0] - 1L),*,*]
+;;  Define timestamps for FFTs
+tt__fft        = tt[0] + (DINDGEN(ind[0])*nshft[0] + nfft[0]/2d0)/srate[0]
+;;----------------------------------------------------------------------------------------
+;;  Calculate FFT power
+;;----------------------------------------------------------------------------------------
+IF (gdsf GT 0) THEN BEGIN
+  ;;  Good frequency range defined
+  gind     = gind_f
+ENDIF ELSE BEGIN
+  ;;  Bad frequency range defined --> Return all
+  gind     = LINDGEN(N_ELEMENTS(freq))
+  MESSAGE,bad_fran_mssg[0],/INFORMATIONAL,/CONTINUE
+ENDELSE
+;;  Define output frequencies
+g_freqs        = freq[gind]
+pfac           = srate[0]/nfft[0]
+power__f       = REPLICATE(d,N_ELEMENTS(tt__fft))
+IF (is_2D[0]) THEN BEGIN
+  ;;  2D  -->  Sum over squared vector components
+  vv_fft   = REFORM(vv__fft[*,gind,*])
+  temp0    = TOTAL(vv_fft^2,3L,/NAN)
+ENDIF ELSE BEGIN
+  ;;  1D  -->  Square component
+  vv_fft   = REFORM(vv__fft[*,gind,0])
+  temp0    = REFORM(vv__fft^2)
+ENDELSE
+;;    -->  Sum over frequency bins
+temp1          = TOTAL(temp0,2L,/NAN)
+;;  Define power = |A|*Sr/N
+power__f       = SQRT(temp1)*pfac[0]
+;;  Remove negative or zero values
+bad            = WHERE(power__f LE 0,bd)
+IF (bd GT 0) THEN power__f[bad] = d
+;;----------------------------------------------------------------------------------------
+;;  Create return structure
+;;----------------------------------------------------------------------------------------
+tags           = ['TIME_FFT','VEC_FFT','FREQ_FFT','POWER_FFT']
+struc          = CREATE_STRUCT(tags,tt__fft,vv__fft,g_freqs,power__f)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END
+
+
+
+
+
+
+
+
+
+
+
+
+;IF (gdsf GT 0) THEN BEGIN
+;  ;;  Good frequency range defined
+;  IF (is_2D[0]) THEN BEGIN
+;    vv_fft   = REFORM(vv__fft[*,gind,*])
+;    ;;  2D  -->  Sum over squared vector components
+;    temp0    = TOTAL(vv_fft^2,3L,/NAN)
+;  ENDIF ELSE BEGIN
+;    vv_fft   = REFORM(vv__fft[*,gind,0])
+;    ;;  1D  -->  Square component
+;    temp0    = REFORM(vv__fft^2)
+;  ENDELSE
+;  ;;    -->  Sum over frequency bins
+;  temp1    = TOTAL(temp0,2L,/NAN)
+;  ;;  Define power
+;  power__f = SQRT(temp1)*pfac[0]
+;ENDIF ELSE BEGIN
+;  ;;  Bad frequency range defined --> Return all
+;ENDELSE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

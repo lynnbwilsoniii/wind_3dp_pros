@@ -1,0 +1,114 @@
+
+;+
+;PROCEDURE:	load_wi_h0_mfi
+;PURPOSE:	
+;   loads WIND MAGNETOMETER high resolution data for "tplot".
+;
+;INPUTS:	none, but will call "timespan" if time
+;		range is not already set.
+;KEYWORDS:
+;  TIME_RANGE:  2 element vector specifying the time range
+;  POLAR:       Also computes the B field in polar coordinates.
+;  DATA:        Data returned in this named variable.
+;  HOUR:	Load hourly averages instead of 3 second data.
+;  MINUTE:	Load 60 second averages instead of 3 second data.
+;  NODATA:	Returns 0 if data exists for time range, otherwise returns 1.
+;  GSM:		If set, GSM data is retrieved.
+;  PREFIX:	(string) prefix for tplot variables.  Default is 'wi_'
+;  NAME:	(string) name for tplot variables. Default is 'wi_Bh'
+;  RESOLUTION:	Resolution to return in seconds.
+;  MASTERFILE:	(string) full filename of master file.
+;SEE ALSO: 
+;  "make_cdf_index","loadcdf","loadcdfstr","loadallcdf"
+;
+;CREATED BY:	Peter Schroeder
+;LAST MODIFIED:	@(#)load_wi_h0_mfi.pro	1.10 02/11/01
+;
+; MODIFIED BY:  Lynn B. Wilson III
+;   DATE:  06/19/2008
+;  CHANGED:  altered plot labels for theta and phi B-fields due to 
+;             font issues
+;
+;-
+
+
+pro load_wi_h0_mfi,time_range=trange,polar=polar,data=d,  $
+  nodata=nodat, $
+  GSM = gsm, $
+  prefix = prefix, $
+  resolution = res,  $
+  name = bname, $
+  masterfile=masterfile, $
+  hour = hour, minute=minute
+  
+if not keyword_set(masterfile) then masterfile = 'wi_h0_mfi_files'
+;cdfnames = ['B3GSE','B3RMSGSE','B3GSM','B3RMSGSM']
+cdfnames = ['B3GSE']
+ppx = 'B3'
+if keyword_set(hour) then begin
+	cdfnames = ['B1GSE','B1RMSGSE','B3GSE']
+	ppx = 'B1'
+endif
+if keyword_set(minute) then begin
+	cdfnames = ['BGSE','BRMSGSE','B3GSE']
+	ppx = 'Bm'
+endif
+if keyword_set(gsm) then cdfnames =['B3GSM','B3RMSGSM']
+
+
+d=0
+nodat = 0
+
+loadallcdf,time_range=trange,masterfile=masterfile, $
+    cdfnames=cdfnames,data=d,res =res
+    
+;    get_mfi
+
+if keyword_set(d) eq 0 then begin
+   message,'No H0 MFI data during this time.',/info
+   nodat = 1
+  return
+endif
+
+; data type code:   7 = string
+
+if data_type(prefix) eq 7 then px=prefix else px = 'wi_'
+if data_type(bname) eq 7 then px = bname else px = px+ppx
+if keyword_set(gsm) then px =px+'_GSM'
+
+labs=['B!dx!n','B!dy!n','B!dz!n']
+
+
+time  = reform(d.time)
+str_element,d,cdfnames(0),bgse
+bgse = transpose(bgse)
+;str_element,d,cdfnames(1),brmsgse
+;brmsgse = transpose(brmsgse)
+;str_element,d,cdfnames(2),bgsm
+;bgsm = transpose(bgsm)
+;str_element,d,cdfnames(3),brmsgsm
+;brmsgsm =transpose(brmsgsm)
+
+bmag=sqrt(total(bgse*bgse,2))
+w =where(bmag gt 1000.,c)
+if c ne 0 then bgse[w,*] = !values.f_nan
+;if c ne 0 then brmsgse[w,*] = !values.f_nan
+
+store_data,px+'(GSE)',data={x:time,y:bgse},min= -1e30, dlim={labels:labs}
+;store_data,px+'_RMS(GSE)',data={x:time,y:brmsgse},min= -1e30 
+store_data,px+'_MAG(GSE)',data={x:time,y:bmag},min=-1e30
+;store_data,px+'(GSM)',data={x:time,y:bgsm},min= -1e30, dlim={labels:labs}
+;store_data,px+'_RMS(GSM)',data={x:time,y:bgsm},min= -1e30
+
+;if keyword_set(polar) then begin
+;   xyz_to_polar,px,/ph_0_360
+;   options,px+'_MAG(GSE)','ytitle','|B|',/def
+;   options,px+'_th','ytitle','!19Q!X!DB!U',/def
+;   options,px+'_th','ytitle','B!D!7h!3!N',/def
+;   ylim,px+'_th',-90,90,0,/def
+;   options,px+'_phi','ytitle','B!D!7u!3!N',/def
+;   options,px+'_phi','ytitle','!19F!X!DB!U',/def
+;   options,px+'_phi','psym',3,/def
+;   ylim,px+'_phi',0,360.,0,/def
+;endif
+end

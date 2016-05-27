@@ -1,0 +1,568 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   fft_movie.pro
+;  PURPOSE  :   Outputs a MPEG movie (.mov), of a sliding FFT of a timeseries data.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               my_windowf.pro
+;               power_of_2.pro
+;               vector_bandpass.pro
+;               extract_tags.pro
+;               tplot_struct_format_test.pro
+;
+;  REQUIRES:    
+;               1)  ffmpeg for Unix
+;               2)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TIME        :  N-Element array of times [seconds]
+;               TIMESERIES  :  N-Element array of data [units]
+;               FFTLENGTH   :  Scalar number of points of timeseries data to be used in 
+;                                each FFT
+;               FFTSTEP     :  Scalar number of points to shift FFT window
+;                                [Default = 0.05*FFTLENGTH]
+;
+;  EXAMPLES:    
+;               ==================================================================
+;               ; => Look at a Sawtooth Wave
+;               ==================================================================
+;               sr         = 1d0/0.092009201d0          ; => Sample rate (Hz)
+;               tt         = DINDGEN(2L^14)/sr + 1d0    ; => Times (s)
+;               tsaw       = tt
+;               xsaw       = 2d0*(tsaw/5d1 - FLOOR(tsaw/5d1 + 5d-1))
+;               fftlength  = 1024L
+;               fftstep    = 4L
+;               frange     = [1e-3,2e0]                 ; => Frequency Range (Hz)
+;               fft_movie,tsaw,xsaw,fftlength,fftstep,/SCREEN,FRANGE=frange
+;
+;  KEYWORDS:    
+;               MOVIENAME   :  Scalar string defining the name of the movie created
+;                                by the program
+;               SCREEN      :  If set, program plots snapshots to X-Window display,
+;                                otherwise movies are generated from PNG captures 
+;                                of Z buffer plots
+;               FULLSERIES  :  If set, program creates plots of full time series
+;                                range instead of zoomed-in plots of time ranges
+;               [XY]SIZE    :  Scalar values defining the size of the output windows
+;                                Defaults:  
+;                                          [800 x 600]     : if plotting to screen
+;                                          [10.2" x 6.99"] : if plotting to PS files
+;               FFT_ARRAY   :  Set to a named variable to return the windowed FFT
+;               NO_INTERP   :  If set, data is not interpolated to save time when
+;                                creating a movie
+;               EX_FREQS    :  Structure with a TPLOT format containing:
+;                          { X:([N]-Unix Times),Y:([N,M]-Element array of frequencies) }
+;                                to overplot on the FFT power spectra
+;                                [e.g. the cyclotron frequency]
+;                                [IF N = 1, then use the same value for all windows]
+;               EX_LABS     :  M-Element string array of labels for the frequency
+;                                inputs given by the EX_FREQS keyword
+;               FRANGE      :  2-Element float array defining the freq. range
+;                                to use when plotting the power spec (Hz)
+;                                [min, max]
+;               PRANGE      :  2-Element float array defining the power spectrum
+;                                Y-Axis range to use [min, max]
+;               WSTRUCT     :  Set to a plot structure with relevant info for waveform
+;                                plot [Used by PLOT.PRO with _EXTRA keyword]
+;               FSTRUCT     :  Set to a plot structure with relevant info for power
+;                                spectrum plot [Used by PLOT.PRO with _EXTRA keyword]
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Need to have ImageMagick with ffmpeg prior to running this routine
+;               2)  If you use EX_FREQS, make sure the times in the X structure tag
+;                     overlap with the input TIME
+;
+;   CREATED:  05/23/2011
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/23/2011   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO fft_movie,time,timeseries,fftlength,fftstep,MOVIENAME=moviename,       $
+              SCREEN=screen,FULLSERIES=fullseries,XSIZE=xsize,YSIZE=ysize, $
+              FFT_ARRAY=fft_array,NO_INTERP=no_interp,EX_FREQS=ex_freqs,   $
+              EX_LABS=ex_labs,FRANGE=frange,PRANGE=prange,                 $
+              WSTRUCT=wstruct,FSTRUCT=fstruct
+
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables
+;-----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;-----------------------------------------------------------------------------------------
+;  ----SET UP THE PLOT WINDOW----
+;-----------------------------------------------------------------------------------------
+xyzp_win       = {X:!X,Y:!Y,Z:!Z,P:!P}
+
+start_time     = SYSTIME(1)
+!P.MULTI       = [0,1,2]
+old_chars      = !P.CHARSIZE
+; => Set color scale
+SET_PLOT,'X'
+;-----------------------------------------------------------------------------------------
+; => Set up the window or Z buffer
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(fullseries) THEN BEGIN
+  !P.MULTI = [0,1,2]
+  IF ~KEYWORD_SET(xsize) THEN xsize = 800
+  IF ~KEYWORD_SET(ysize) THEN ysize = 600
+ENDIF ELSE BEGIN
+  !P.MULTI = [0,2,1]
+  IF ~KEYWORD_SET(xsize) THEN xsize = 900
+  IF ~KEYWORD_SET(ysize) THEN ysize = 450
+ENDELSE
+;-----------------------------------------------------------------------------------------
+;  ----DEFINE SOME USABLE COLORS----
+;-----------------------------------------------------------------------------------------
+; => Load current colors [*_orig] so they can be reset after done with routine
+COMMON colors, r_orig, g_orig, b_orig, r_curr, g_curr, b_curr
+r_orig0 = r_orig
+g_orig0 = g_orig
+b_orig0 = b_orig
+;-----------------------------------------------------------------------------------------
+; => plot to screen or z buffer (default)
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(screen) THEN BEGIN
+  SET_PLOT,'X'
+  !P.CHARSIZE = 0.8
+  WINDOW,XSIZE=xsize,YSIZE=ysize
+ENDIF ELSE BEGIN
+  SET_PLOT,'Z'
+  DEVICE,SET_PIXEL_DEPTH=24,SET_RESOLUTION=[xsize,ysize]
+  !P.CHARSIZE  = 0.65
+  !P.CHARTHICK = 1.2
+ENDELSE
+DEVICE,DECOMPOSED=0
+LOADCT,39,/SILENT
+;-----------------------------------------------------------------------------------------
+; => set up a randomly named image directory
+;-----------------------------------------------------------------------------------------
+IF ~KEYWORD_SET(moviename) THEN BEGIN
+  imgdir = 'wave_'+STRCOMPRESS(STRING(RANDOMU(SYSTIME(1),/LONG)),/REMOVE_ALL)
+ENDIF ELSE BEGIN
+  imgdir = STRCOMPRESS(moviename,/REMOVE_ALL)
+ENDELSE
+; => Create dummy directory for images
+SPAWN,'mkdir '+imgdir[0]
+PRINT,''
+PRINT,'Directory Created:  '+imgdir[0]
+PRINT,''
+IF ~KEYWORD_SET(screen) THEN BEGIN
+  fcolor = 190
+  fftcol = 220
+  pcolor = 120
+ENDIF ELSE BEGIN
+  fcolor = 200
+  fftcol = 220
+  pcolor = 150
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => figure out what to call the movie
+;-----------------------------------------------------------------------------------------
+IF ~KEYWORD_SET(moviename) THEN BEGIN
+  moviename = ''
+  PRINT,'Movie filename not set on input (set with moviename="example" keyword.)'
+  PRINT,'Please enter the base filename.' 
+  READ,moviename,PROMPT='(.mov extension will be added): '
+ENDIF
+moviename = moviename+'.mov'
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+times         = REFORM(time)
+data          = REFORM(timeseries)
+npoints       = N_ELEMENTS(data)
+np            = N_ELEMENTS(time)
+IF (np NE npoints) THEN BEGIN
+  errmssg = 'Each input component must have the same number of data points...'
+  MESSAGE,errmssg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+
+; => nsteps is the number of individual FFTs to perform
+nsteps        = (npoints[0] - fftlength[0])/fftstep[0]
+; => timestep is the average delay time between data points
+x             = LINDGEN(np - 1L)
+y             = x + 1L
+del_t         = times[y] - times[x]
+timestep      = MEAN(del_t,/NAN)
+;-----------------------------------------------------------------------------------------
+; => initialize the sub series variables
+;-----------------------------------------------------------------------------------------
+subseries     = FLTARR(fftlength[0])                                ; => Sub-array of data points
+subtimes      = FLTARR(fftlength[0])                                ; => Sub-array of times
+focn          = 2*fftlength[0]                                      ; => # of elements after zero padding
+freq_bins     = DINDGEN(fftlength[0]/2)/(timestep[0]*fftlength[0])  ; => Freq. bin values [Hz]
+fmin_index    = MIN(WHERE(freq_bins GT 0.))
+fmin          = freq_bins[fmin_index]                               ; => Min. FFT frequency [Hz]
+;-----------------------------------------------------------------------------------------
+; => set up the start and end points for the sub timeseries
+;-----------------------------------------------------------------------------------------
+startpoint    = 0L                                                  ; => Start Element
+endpoint      = LONG(startpoint[0] + fftlength[0] - 1L)             ; => End   Element
+nsub          = (endpoint[0] - startpoint[0]) + 1L                    ; => # of elements in subarray
+length        = npoints[0]*timestep[0]
+sublength     = fftlength[0]*timestep[0]
+; => Print out total and sub-length of the input [seconds]
+PRINT,'length (s):  ',length[0]
+PRINT,'sublength (s):  ',sublength[0]
+
+gels          = LINDGEN(nsub) + startpoint[0]
+subseries     = data[gels]
+subtimes      = times[gels]
+; => evlength is the FFT window length [seconds]
+evlength      = MAX(subtimes,/NAN) - MIN(subtimes,/NAN)
+;-----------------------------------------------------------------------------------------
+; => Calculate initial FFT window function
+;-----------------------------------------------------------------------------------------
+fft_win       = FLTARR(nsub)    ; => var. used for FFT windowing routine
+my_windowf,nsub - 1L,2,fft_win  ; => Uses a Hanning Window first
+wsign         = subseries*fft_win
+;-----------------------------------------------------------------------------------------
+; => Zero Pad timeseries and calculate new corresponding frequency bin values
+;-----------------------------------------------------------------------------------------
+signal        = power_of_2(wsign,FORCE_N=focn)
+nfbins2       = N_ELEMENTS(signal)
+nsps          = 1d0/timestep[0]
+nfreqbins     = DINDGEN(nfbins2[0]/2L)*(nsps[0]/(nfbins2[0] - 1L))
+fbin          = nfreqbins[2L] - nfreqbins[1L]                      ; => Width of freq. bin [Hz]
+npowers       = nfbins2[0]/2L - 1L
+; => First Power Spectrum Calculation
+temp          = (ABS(FFT(signal))^2/fbin[0])[0:npowers]
+; => Define Dummy Power Spectrum Array
+subpower      = DBLARR(nsteps,npowers+1L)
+subpower[0,*] = temp
+; => Shift start/end elements
+startpoint   += fftstep
+endpoint     += fftstep
+;-----------------------------------------------------------------------------------------
+; => Calculate power spectrum for the rest of the intervals
+;-----------------------------------------------------------------------------------------
+FOR j=1L, nsteps - 1L DO BEGIN
+  gels          = LINDGEN(nsub) + startpoint[0]
+  fels          = LINDGEN(nsub)
+  evlength      = MAX(times[gels],/NAN) - MIN(times[gels],/NAN)
+  nfbins        = (endpoint - startpoint) + 1L
+  IF (MAX(gels,/NAN) GE np) THEN BEGIN
+    bad = WHERE(gels GE np,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+    IF (gd GT 0) THEN gels  = gels[good]
+    IF (gd GT 0) THEN fels  = fels[good]
+    IF (gd GT 0) THEN wsign = data[gels]*fft_win[fels] ELSE wsign = REPLICATE(0d0,nsub)
+  ENDIF ELSE BEGIN
+    wsign = data[gels]*fft_win[fels]
+  ENDELSE
+; => this should not need to be done every loop
+;  fft_win       = DBLARR(nfbins)    ; => var. used for FFT windowing routine
+;  my_windowf,nfbins - 1L,2,fft_win  ; => Uses a Hanning Window first
+;  wsign         = data[gels]*fft_win
+  ;-----------------------------------------------------------------------------------------
+  ; => Zero Pad timeseries
+  ;-----------------------------------------------------------------------------------------
+  signal        = power_of_2(wsign,FORCE_N=focn)
+  nfbins2       = N_ELEMENTS(signal)
+  npowers       = nfbins2/2L - 1L
+  temp          = (ABS(FFT(signal))^2/fbin[0])[0:npowers]
+  subpower[j,*] = temp
+  ;-----------------------------------------------------------------------------------------
+  ; => now move to the next interval
+  ;-----------------------------------------------------------------------------------------
+  startpoint   += fftstep
+  endpoint     += fftstep
+  ;-----------------------------------------------------------------------------------------
+  ; => spit out a little status update so we know how fast we're moving through the ffts/
+  ;-----------------------------------------------------------------------------------------
+  IF (j MOD 100 EQ 0) THEN PRINT,'stepcount:',j
+ENDFOR
+;-----------------------------------------------------------------------------------------
+; => Smooth out spikes to get a better estimate of plot ranges by making up a sample rate
+;      and performing a bandpass filter to remove high frequencies...
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(frange) THEN BEGIN
+  fra_0 = REFORM(frange)
+ENDIF ELSE BEGIN
+  fra_0 = [fmin,freq_bins[fftlength/2-1]]
+ENDELSE
+p1    = subpower
+sepx  = [[p1],[p1],[p1]]
+gfreq = WHERE(nfreqbins GE fra_0[0] AND nfreqbins LE fra_0[1],gfr)
+;-----------------------------------------------------------------------------------------
+; => negative low freq inclues zero freq. [Fake frequencies and sample rates]
+;-----------------------------------------------------------------------------------------
+smpx  = vector_bandpass(sepx,1d3,-1d-9,49d1,/MIDF)  
+smp1  = REFORM(smpx[*,0])
+bad   = WHERE(smp1 LE 0.,bd)
+IF (bd GT 0) THEN smp1[bad] = f
+IF (gfr GT 0L) THEN BEGIN
+  powermin = MIN(smp1[gfreq],/NAN) - 3.5d-1*ABS(MIN(subpower[*,gfreq],/NAN))
+  powermax = MAX(subpower[gfreq],/NAN) + 3.5d-1*ABS(MAX(subpower[*,gfreq],/NAN))
+ENDIF ELSE BEGIN
+  powermin = MIN(smp1,/NAN) - 3.5d-1*ABS(MIN(subpower,/NAN))
+  powermax = MAX(subpower,/NAN) + 3.5d-1*ABS(MAX(subpower,/NAN))
+ENDELSE
+IF (powermin LE 0.) THEN powermin = ABS(MIN(smp1,/NAN))
+IF KEYWORD_SET(prange) THEN BEGIN
+  powermin = (REFORM(prange))[0]
+  powermax = (REFORM(prange))[1]
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => set up the timeseries plot range
+;-----------------------------------------------------------------------------------------
+ymax          = MAX(ABS(timeseries),/nan)
+plotyrange    = [-1.1*ymax,1.1*ymax]
+;-----------------------------------------------------------------------------------------
+; => Return FFT_ARRAY keyword to user if set
+;-----------------------------------------------------------------------------------------
+fft_array  = subpower
+;-----------------------------------------------------------------------------------------
+; => for the sake of speedy movie output, we're going to plot an interpolated
+;     array when we're working with the full series
+;-----------------------------------------------------------------------------------------
+IF KEYWORD_SET(no_interp) THEN BEGIN
+  scale            = 1
+  small_times      = times
+  small_timeseries = timeseries
+ENDIF ELSE BEGIN
+  scale            = 10
+  small_times      = INTERPOL(times,npoints[0]/scale[0])
+  small_timeseries = INTERPOL(timeseries,npoints[0]/scale[0])
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Plot structure for waveform
+;-----------------------------------------------------------------------------------------
+yttl  = 'Amplitude [units]'
+xttl  = 'Time [s]'
+wstr  = {YTITLE:yttl,XTITLE:xttl,XSTYLE:1,YSTYLE:1,NODATA:1,XMINOR:9}
+extract_tags,wstr,wstruct
+IF (TOTAL(TAG_NAMES(wstruct) EQ 'YRANGE',/NAN) EQ 0) THEN BEGIN
+  str_element,wstr,'YRANGE',plotyrange,/ADD_REPLACE
+ENDIF ELSE BEGIN
+  plotyrange = wstruct.YRANGE
+ENDELSE
+; => Plot structure for power spectrum
+yttl  = 'Wave Power [units!U2!N'+'/Hz]'
+xttl  = 'Frequency [Hz]'
+fstr  = {YRANGE:[powermin,powermax],YTITLE:yttl,XTITLE:xttl,XSTYLE:1,YSTYLE:1,$
+         NODATA:1,YMINOR:9,XMINOR:9,YLOG:1,XRANGE:fra_0}
+extract_tags,fstr,fstruct
+
+thick_ness = 1.0
+;-----------------------------------------------------------------------------------------
+; => Plot Data
+;-----------------------------------------------------------------------------------------
+; => Reset start/end points
+startpoint = LONG(0)
+endpoint   = LONG(startpoint + fftlength - 1L)
+
+FOR j=1L, nsteps - 1L DO BEGIN
+  gels          = LINDGEN(nsub) + startpoint[0]
+  ; => Define start and end points
+  startpoint    = MIN(gels,/NAN)
+  endpoint      = MAX(gels,/NAN)
+  ; => Check elements
+  IF (MAX(gels,/NAN) GE np) THEN BEGIN
+    bad = WHERE(gels GE np,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+    IF (gd GT 0) THEN BEGIN
+      gels       = gels[good]
+      fels       = fels[good]
+      dn_el0     = MIN(fels,/NAN)
+      up_el0     = MAX(fels,/NAN)
+      startpoint = MIN(gels,/NAN)
+      endpoint   = MAX(gels,/NAN)
+    ENDIF ELSE BEGIN
+      ; => None of the elements can be used
+      GOTO,JUMP_SKIP
+    ENDELSE
+  ENDIF ELSE BEGIN
+    dn_el0 = 0
+    up_el0 = startpoint[0]/scale[0] - 1L
+  ENDELSE
+  st_rat        = startpoint[0]/scale[0]
+  en_rat        = endpoint[0]/scale[0]
+  ; => Get the current starting time in the overall timeseries for plot label
+  stringtime    = STRING(startpoint[0]*timestep[0],FORMAT='(f6.2)')
+  stringcount   = STRING(j,FORMAT='(i4.4)')
+  ; => Sub series time range test
+  n_small       = N_ELEMENTS(small_times) - 1L
+  test0         = (st_rat[0] GT 0 AND st_rat[0] LT n_small[0])
+  time_ra       = [MIN(small_times[gels],/NAN),MAX(small_times[gels],/NAN)]
+  ;---------------------------------------------------------------------------------------
+  ; => Plot timeseries
+  ;---------------------------------------------------------------------------------------
+  IF KEYWORD_SET(fullseries) THEN BEGIN
+    PLOT,small_times,small_timeseries,_EXTRA=wstr,TITLE=stringtime+' (s)'
+  ENDIF ELSE BEGIN
+    str_element,wstr,'XRANGE',time_ra,/ADD_REPLACE
+    PLOT,small_times,small_timeseries,_EXTRA=wstr,TITLE=stringtime+' (s)'
+  ENDELSE
+  ; => Sub series highlighted [Range not shown in FFT]
+  IF (test0) THEN BEGIN
+;    dn_el0 = 0
+;    up_el0 = startpoint[0]/scale[0] - 1L
+    OPLOT,small_times[dn_el0:up_el0],small_timeseries[dn_el0:up_el0],$
+          COLOR=pcolor,THICK=thick_ness
+  ENDIF ELSE BEGIN
+    OPLOT,small_times,small_timeseries,COLOR=pcolor,THICK=thick_ness
+  ENDELSE
+  ;---------------------------------------------------------------------------------------
+  ; => Highlight FFT window
+  ;---------------------------------------------------------------------------------------
+  IF KEYWORD_SET(fullseries) THEN BEGIN
+    dn_el1 = st_rat[0]
+    up_el1 = en_rat[0] - 1L
+    dn_el2 = en_rat[0]
+    up_el2 = npoints/scale - 1L
+    test1  = (st_rat[0] LT en_rat[0]) AND (en_rat[0] LE n_small)
+    test2  = (en_rat[0]   LT npoints/scale - 1L) AND (npoints/scale - 1L LE n_small)
+    IF (test1) THEN BEGIN
+      OPLOT,small_times[dn_el1:up_el1],small_timeseries[dn_el1:up_el1],$
+            COLOR=fftcol,THICK=thick_ness
+      ; => Overplot lines to highlight box limits
+      OPLOT,[small_times[dn_el1],small_times[dn_el1]],plotyrange,$
+            COLOR=fftcol,THICK=thick_ness
+      OPLOT,[small_times[up_el1],small_times[up_el1]],plotyrange,$
+            COLOR=fftcol,THICK=thick_ness
+    ENDIF
+    IF (test2) THEN BEGIN
+      OPLOT,small_times[dn_el2:up_el2],small_timeseries[dn_el2:up_el2],$
+            COLOR=pcolor,THICK=thick_ness
+    ENDIF
+  ENDIF
+  ;---------------------------------------------------------------------------------------
+  ; => Plot zero line
+  ;---------------------------------------------------------------------------------------
+  zeros = REPLICATE(0e0,N_ELEMENTS(small_times))
+  OPLOT,small_times,zeros,THICK=1.0
+  ;---------------------------------------------------------------------------------------
+  ; => Plot power spectrum
+  ;---------------------------------------------------------------------------------------
+  PLOT,nfreqbins,subpower[j,*],_EXTRA=fstr
+  OPLOT,nfreqbins,subpower[j,*],THICK=2.0;,COLOR=fftcol
+  ;---------------------------------------------------------------------------------------
+  ; => Overplot frequencies if set
+  ;---------------------------------------------------------------------------------------
+  IF KEYWORD_SET(ex_freqs) THEN BEGIN
+    szt   = tplot_struct_format_test(ex_freqs)
+    IF (szt) THEN BEGIN
+      freqs = REFORM(ex_freqs.Y)      ; => Frequencies [Hz]
+      ftims = REFORM(ex_freqs.X)      ; => Corresponding times [s]
+      szf   = SIZE(freqs,/DIMENSIONS)
+      ndf   = N_ELEMENTS(szf)
+      nfrq  = N_ELEMENTS(freqs[dn_el1:up_el1,0])  ; => Assume user entered data correctly
+      IF (ndf GT 1) THEN mfrq = N_ELEMENTS(freqs[0,*]) ELSE mfrq = 1
+      IF KEYWORD_SET(ex_labs) THEN BEGIN
+        labels = REFORM(ex_labs)
+        nlabs  = N_ELEMENTS(labels)
+        IF (nlabs NE mfrq) THEN GOTO,JUMP_LABELS
+        mxwdth = MAX(STRLEN(labels),/NAN)
+      ENDIF ELSE BEGIN
+        JUMP_LABELS:
+        labels = STRARR(mfrq)
+        FOR jj=0L, mfrq - 1L DO labels[jj] = 'f!D'+STRTRIM(jj,2)+'!N'
+        mxwdth = MAX(STRLEN(labels),/NAN)
+      ENDELSE
+      pmxposi = powermax[0] + 2d-1*ABS(powermax[0])
+      
+      IF (mfrq GT 1) THEN BEGIN
+        ; => More than one frequency per time range
+        FOR kk=0L, mfrq - 1L DO BEGIN
+          avgfrq  = MEAN(freqs[dn_el1:up_el1,kk],/NAN)
+          labwdth = STRLEN(labels[kk]) EQ mxwdth[0]
+          IF (labwdth) THEN lshift = 1d-1 ELSE lshift = 5d-2
+          frqposi = avgfrq[0] - lshift[0]*ABS(avgfrq[0])
+          ; => Overplot vertical lines for extra frequencies
+          OPLOT,[avgfrq[0],avgfrq[0]],[powermin,powermax],THICK=2.0,COLOR=fcolor
+          ; => Output labels for extra frequencies
+          XYOUTS,frqposi[0],pmxposi[0],labels[0],/DATA,CHARSIZE=0.75,CHARTHICK=1.0,COLOR=fcolor
+        ENDFOR
+      ENDIF ELSE BEGIN
+        ; => Only one frequency per time range
+        avgfrq  = MEAN(freqs[dn_el1:up_el1],/NAN)
+        labwdth = STRLEN(labels[0]) EQ mxwdth[0]
+        IF (labwdth) THEN lshift = 1d-1 ELSE lshift = 5d-2
+        frqposi = avgfrq[0] - lshift[0]*ABS(avgfrq[0])
+        ; => Overplot vertical lines for extra frequencies
+        OPLOT,[avgfrq[0],avgfrq[0]],[powermin,powermax],THICK=2.0,COLOR=fcolor
+        ; => Output labels for extra frequencies
+        XYOUTS,frqposi[0],pmxposi[0],labels[0],/DATA,CHARSIZE=0.75,CHARTHICK=1.0,COLOR=fcolor
+      ENDELSE
+    ENDIF
+  ENDIF
+  ;---------------------------------------------------------------------------------------
+  ; => Write to PNG file
+  ;---------------------------------------------------------------------------------------
+  WRITE_PNG,imgdir+'/'+stringcount+'.png',TVRD(TRUE=1)
+  IF (j EQ 1) THEN BEGIN
+    ;-------------------------------------------------------------------------------------
+    ; => Plot blank time series data
+    ;-------------------------------------------------------------------------------------
+    PLOT,times,timeseries,_EXTRA=wstr,TITLE=stringtime+' (ms)'
+    ;-------------------------------------------------------------------------------------
+    ; => Plot blank power spectrum
+    ;-------------------------------------------------------------------------------------
+    PLOT,nfreqbins,subpower[j,*],_EXTRA=fstr
+    WRITE_PNG,'blank_plot.png',TVRD(TRUE=1)
+  ENDIF
+  ;=======================================================================================
+  JUMP_SKIP:
+  ;=======================================================================================
+  startpoint  += fftstep
+  endpoint    += fftstep
+  IF (j MOD 100 EQ 0) THEN PRINT,'stepcount:',j
+ENDFOR
+
+;-----------------------------------------------------------------------------------------
+; => Encode Movie
+;-----------------------------------------------------------------------------------------
+PRINT,''
+PRINT,'Encoding movie: '+moviename
+PRINT,''
+encode_command = 'ffmpeg -r 60 -i '+imgdir+'/%04d.png -qscale 2 '+moviename
+SPAWN,encode_command
+;-----------------------------------------------------------------------------------------
+; => Clean up images
+;-----------------------------------------------------------------------------------------
+PRINT,''
+PRINT,'Cleaning up frame images...'
+PRINT,''
+rmcommand = 'rm -rf '+imgdir
+SPAWN,rmcommand
+PRINT,''
+PRINT,'Done!'
+PRINT,''
+;-----------------------------------------------------------------------------------------
+; => Print out execution time
+;-----------------------------------------------------------------------------------------
+end_time       = SYSTIME(1)
+execution_time = end_time - start_time
+PRINT,''
+PRINT,'EXECUTION TIME: '+STRCOMPRESS(STRING(execution_time),/REMOVE_ALL)+' sec'
+PRINT,''
+IF (execution_time GT 60.) THEN PRINT,'                      ( '+        $
+  STRCOMPRESS(STRING(LONG(execution_time)/60),/REMOVE_ALL)+' min '+      $
+  STRCOMPRESS(STRING(LONG(execution_time) MOD 60),/REMOVE_ALL)+' sec )'
+;-----------------------------------------------------------------------------------------
+; => Return plot window to original state
+;-----------------------------------------------------------------------------------------
+!X          = xyzp_win.X
+!Y          = xyzp_win.Y
+!Z          = xyzp_win.Z
+!P          = xyzp_win.P
+!P.CHARSIZE = old_chars
+!P.MULTI    = 0
+; => Reset plot
+SET_PLOT,'X'
+; => Reset color table if changed
+IF (KEYWORD_SET(r_orig0) AND KEYWORD_SET(g_orig0) AND KEYWORD_SET(b_orig0)) THEN BEGIN
+  TVLCT,r_orig0,g_orig0,b_orig0
+ENDIF
+
+RETURN
+END

@@ -1,0 +1,188 @@
+
+;-----------------------------------------------------------------------------------------
+; => Definitions [for notes]:
+;        FFT     = Fast Fourier Transform
+;                = performs a discrete Fourier Transform on an input set of data
+;
+;        f_{Ny}  = Nyquist Frequency {= 1/2 (sample rate)}
+;        N       = # of data points
+;
+; => Definitions [for IDL inputs]:
+;        n       = # of data points
+;        x       = [n]-Element dummy abscissa array
+;        y       = [n]-Element dummy data array
+;        evl     = Scalar event length [units = time]
+;        srt     = Scalar sample rate [units = samples per unit time]
+;        nyqf    = Nyquist Frequency {= srt[0]/2d0}
+;        npow    = # of power spectrum points to plot
+;                   [ = n/2 because of FFT {see FFT documentation}]
+;        freqs0  = [npow]-Element array of frequencies [units = samples per unit time]
+;                   {same format for freqs1 and freqs2}
+;        yzero   = Y-Array padded with zeros to a power of 2
+;        tpower0 = [n]-Element dummy array { = ABS(FFT(y))^2 * (npow/nyqf[0]) }
+;                   {same format for tpower1 and tpower2}
+;        power0  = [npow]-Element array {tpower0[0L:(npow - 1L)]}
+;                   {same format for power1 and power2}
+;        fft_win = [npow]-Element array for a windowing function
+;                   {same format for fft_win2}
+;        
+;-----------------------------------------------------------------------------------------
+
+
+; => Define initial # of data points to use
+;      Note:  in IDL, n does not need to be a power of 2, but it makes FFT.PRO much
+;               faster if it is
+n    = 1024L                         
+x    = DINDGEN(n)*2d0*!DPI/(n - 1L)  ; => Create an array of abscissae
+; => Create a dummy signal
+y    = SIN(x) + COS(x) + SIN(x)^2 + COS(2.5*x) + SIN(5.*x) + SIN(1d1*x)^2 + COS(15.*x^2)
+; => Define a dummy event length [time units]
+evl  = MAX(x,/NAN) - MIN(x,/NAN)
+; => Define a dummy sample rate [samples per time units]
+srt  = (n - 1L)/evl[0]
+nyqf = srt[0]/2d0                               ; => Nyquist frequency
+PRINT,';', nyqf
+;       81.407753
+
+;-----------------------------------------------------------------------------------------
+; => Pad with zeros to create a second dummy array
+;-----------------------------------------------------------------------------------------
+npow     = n/2L
+yzero    = power_of_2(y,FORCE_N=2*n)
+n2       = N_ELEMENTS(yzero)
+npow2    = n2/2L
+; => Create 3 different powers and frequencies
+freqs0   = DINDGEN(npow)*srt[0]/(n - 1L)
+freqs1   = DINDGEN(npow)*srt[0]/(n - 1L)
+freqs2   = DINDGEN(npow2)*srt[0]/(n2 - 1L)
+
+PRINT,';', MIN(freqs0,/NAN), MAX(freqs0,/NAN)
+;       0.0000000       81.328176
+
+;-----------------------------------------------------------------------------------------
+; => Use Hanning Window [Note:  IDL has a built-in but my_windowf.pro has more options]
+;      calling sequence:  my_windowf,N - 1L,q,window
+;                           N      = # of data points in array
+;                           Q      = scalar determining the type of windowing function
+;                           window = [N]-element empty array that returns window function
+;-----------------------------------------------------------------------------------------
+fft_win  = FLTARR(n)
+fft_win2 = FLTARR(n2)
+my_windowf,n - 1L,2,fft_win
+; => Use Hanning Window
+my_windowf,n2 - 1L,2,fft_win2
+
+; => Define new dummy arrays and FFT's of those arrays
+y0      = y
+tpower0 = (ABS(FFT(y0))^2)            ; => Forward FFT
+tpower0 = tpower0*(2d0*npow)/srt[0]   ; => multiply by:  N/f_{Ny}
+power0  = tpower0[0L:(npow-1L)]       ; => Keep only values associated with real frequencies
+; => Apply Window
+y1      = y*fft_win
+tpower1 = (ABS(FFT(y1))^2)            ; => Forward FFT
+tpower1 = tpower1*(2d0*npow)/srt[0]   ; => multiply by:  N/f_{Ny}
+power1  = tpower1[0L:(npow-1L)]       ; => Keep only values associated with real frequencies
+; => Apply Window to zero-padded array
+y2      = yzero*fft_win2
+tpower2 = (ABS(FFT(y2))^2)            ; => Forward FFT
+tpower2 = tpower2*(2d0*npow2)/srt[0]  ; => multiply by:  N/f_{Ny}
+power2  = tpower2[0L:(npow2-1L)]      ; => Keep only values associated with real frequencies
+
+
+xramn   = freqs0[1]                   ; => Smallest positive definite frequency
+upper   = 0d0                         ; => Upper limit of X-Range
+jj0     = ROUND(ALOG10(xramn[0]))     ; => Starting power of 10
+tenpow  = 1d1^(jj0)
+test    = (tenpow[0] LT MAX(freqs0,/NAN))
+jj      = jj0 + 1L
+WHILE (test) DO BEGIN                              $
+  tenpow = 1d1^(jj)                              & $
+  test   = (tenpow[0] LT MAX(freqs0,/NAN))       & $
+  IF (test) THEN jj += 1
+
+PRINT,';', jj0, jj
+;          -1           2
+
+
+;-----------------------------------------------------------------------------------------
+; => Set up default plot structures
+;-----------------------------------------------------------------------------------------
+HELP, power0, power1, power2
+;  POWER0          DOUBLE    = Array[512]
+;  POWER1          DOUBLE    = Array[512]
+;  POWER2          DOUBLE    = Array[1024]
+PRINT,';', MIN(power0[10L:511L],/NAN), MAX(power0[10L:511L],/NAN)
+;   1.9462494e-05      0.29166132
+PRINT,';', MIN(power1[10L:511L],/NAN), MAX(power1[10L:511L],/NAN)
+;   3.4950070e-17      0.65933794
+PRINT,';', MIN(power2[10L:1023L],/NAN), MAX(power2[10L:1023L],/NAN)
+;   6.7346473e-07       1.3364931
+
+; => Define a power spectrum Y-Axis range from these estimates
+;yra     = [1e-10,1e1]
+
+
+; => Fix power spectrum Y-Axis range after plotting
+yra     = [1e-6,1e1]
+; => Create an array of tick marks
+range_t = ROUND(ALOG10(yra))    ; => range of powers of 10
+ten_nin = (MAX(range_t,/NAN) - MIN(range_t,/NAN)) + 1L
+ten_ind = LINDGEN(ten_nin) + MIN(range_t,/NAN)
+signs   = sign(ten_ind)
+s_str   = REPLICATE('',ten_nin)
+dumb    = ['-','+']
+FOR j=0L, ten_nin - 1L DO s_str[j] = dumb[(signs[j] GE 0.)]
+; => Create an array of tick mark values
+ytv     = 1d1^(1d0*ten_ind)
+ytn     = '10!U'+s_str+STRING(ABS(ten_ind),FORMAT='(I2.2)')+'!N'
+yts     = N_ELEMENTS(ytn) - 1L
+
+
+xra     = [xramn[0],tenpow[0]]
+ttlst   = ['Amplitude','Time','Time Series Plot']
+ttlpw   = ['Power','Frequency','Power Spectrum Plot']
+
+pstr    = {XSTYLE:1,YSTYLE:1,YLOG:1,XLOG:1,XRANGE:xra,YRANGE:yra,NODATA:1,    $
+           YTITLE:ttlpw[0],XTITLE:ttlpw[1],TITLE:ttlpw[2],YMINOR:9L,XMINOR:9L,$
+           YTICKNAME:ytn,YTICKV:ytv,YTICKS:yts}
+tstr    = {XSTYLE:1,YSTYLE:1,NODATA:1,YTITLE:ttlst[0],XTITLE:ttlst[1],TITLE:ttlst[2]}
+
+; => Plot
+!P.MULTI = [0,1,2]
+; => may wish to change the window size depending on your screen size
+WINDOW,0,RETAIN=2,XSIZE=1500,YSIZE=1000
+
+
+WSET,0
+PLOT,x,y,_EXTRA=tstr
+  OPLOT,x,y,COLOR=50
+PLOT,freqs0,power0,_EXTRA=pstr
+  OPLOT,freqs0,power0,COLOR= 50       ; => Power spectrum without windowing
+  OPLOT,freqs1,power1,COLOR=150       ; => Power spectrum with windowing
+  OPLOT,freqs2,power2,COLOR=250       ; => Power spectrum with windowing and zero-padding
+
+
+!P.MULTI = 0
+WINDOW,1,RETAIN=2,XSIZE=1500,YSIZE=1000
+; => Plot FFT Windows
+ttlwn   = ['Amplitude','Time','Windowing Function Plot']
+; => Shift times so that zero is in middle
+x2      = x - MAX(x,/NAN)/2d0
+x3      = DINDGEN(n2)*2d0*!DPI/(n2 - 1L)  ; => Create an array of abscissae
+x3      = x3 - MAX(x3,/NAN)/2d0
+tstr    = {XSTYLE:1,YSTYLE:1,NODATA:1,YTITLE:ttlwn[0],XTITLE:ttlwn[1],TITLE:ttlwn[2]}
+
+WSET,1
+PLOT,x2,fft_win,_EXTRA=tstr
+  OPLOT,x2,fft_win ,COLOR= 50
+  OPLOT,x3,fft_win2,COLOR=250
+
+
+
+
+
+
+
+
+
+

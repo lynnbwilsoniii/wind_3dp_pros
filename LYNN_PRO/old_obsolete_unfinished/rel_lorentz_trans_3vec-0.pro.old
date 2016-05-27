@@ -1,0 +1,165 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   rel_lorentz_trans_3vec.pro
+;  PURPOSE  :   This routine calculates the relativistic Lorentz transformation of an
+;                 input 3-vector, KVEC, in the K-frame into a new K'-frame moving at
+;                 velocity, LVEC, relative to the K-frame.
+;
+;  CALLED BY:   
+;               transform_vframe_3d.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;               format_2d_vec.pro
+;               my_dot_prod.pro
+;               mag__vec.pro
+;               relativistic_gamma.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               KVEC   :  [N,3]- or [3]-Element [float/double] array defining the
+;                           3-vector velocity to transform
+;               LVEC   :  [3]-Element [float/double] array defining the 3-vector velocity
+;                           of the K'-frame relative to the K-frame [km/s]
+;
+;  EXAMPLES:    
+;               utrans = rel_lorentz_trans_3vec(u,v)
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Both KVEC and LVEC must have units of km/s
+;               2)  Things to do:
+;                     - Add keyword to allow user to transform from K'-frame to K-frame
+;                     - Add keyword to output various results from within
+;
+;  REFERENCES:  
+;               1)  Jackson, J.D. "Classical Electrodynamics," 3rd Edition,
+;                     ISBN 0-471-30932-X. John Wiley & Sons, Inc., (1999)
+;                     [e.g., see Chapter 11]
+;
+;   CREATED:  11/16/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  11/16/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION rel_lorentz_trans_3vec,kvec,lvec
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION is_a_number, format_2d_vec, my_dot_prod, mag__vec, relativistic_gamma
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+c              = 2.9979245800d+08     ;;  Speed of light in vacuum [m/s]
+ckm            = c[0]                 ;;  Speed of light in vacuum [km/s]
+ckm           *= 1d-3                 ;;  m --> km
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply two 3-vectors either as single or arrays of vectors'
+badvfor_msg    = 'Incorrect input format:  KVEC and LVEC must be [3]-element [numeric] arrays of 3-vectors'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 2) OR (is_a_number(kvec,/NOMSSG) EQ 0) OR  $
+                 (is_a_number(lvec,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check vector formats
+av_2d          = format_2d_vec(kvec)    ;;  If a vector, routine will force to [N,3]-elements, even if N = 1
+bv_2d          = format_2d_vec(lvec)
+test           = ((N_ELEMENTS(av_2d) LT 3) OR ((N_ELEMENTS(av_2d) MOD 3) NE 0)) OR $
+                 ((N_ELEMENTS(bv_2d) LT 3) OR ((N_ELEMENTS(bv_2d) MOD 3) NE 0))
+IF (test[0]) THEN BEGIN
+  MESSAGE,badvfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Define paramters
+uv             = av_2d
+szdu           = SIZE(uv,/DIMENSIONS)
+vv             = REFORM(bv_2d)          ;;  [3]-element array defining the 3-vector transformation velocity
+vv_usz         = REPLICATE(1d0,szdu[0]) # vv
+;;----------------------------------------------------------------------------------------
+;;  Compute dot-products and magnitudes
+;;----------------------------------------------------------------------------------------
+u_d_v          = my_dot_prod(uv,vv,/NOM)     ;;  KVEC . LVEC
+v_mag          = mag__vec(vv)                ;;  |LVEC|
+;;----------------------------------------------------------------------------------------
+;;  Define parallel/perpendicular components of KVEC relative to LVEC
+;;
+;;              (U . V)
+;;    U_//  =  --------- V
+;;              |V . V|
+;;
+;;    U_|_  = U - U_//
+;;
+;;----------------------------------------------------------------------------------------
+u_d_v_2d       = u_d_v # REPLICATE(1d0,3)
+u_para         = u_d_v_2d/v_mag[0]^2
+u_para        *= vv_usz                     ;;  = U_//
+u_perp         = uv - u_para                ;;  = U_|_
+;;----------------------------------------------------------------------------------------
+;;  Define relativistic Lorentz factor
+;;
+;;                            -1/2
+;;          [       |V . V| ]
+;;    ¥  =  [ 1  -  ------- ]
+;;          [         c^2   ]
+;;
+;;
+;;----------------------------------------------------------------------------------------
+rl_gamma       = relativistic_gamma(v_mag,/SPEED)
+;;----------------------------------------------------------------------------------------
+;;  Compute velocity addition from K-frame to K'-frame
+;;
+;;                 U_//  - V
+;;    U'_//  =  ---------------
+;;                     |U . V|
+;;               1  -  -------
+;;                       c^2  
+;;
+;;                      U_|_
+;;    U'_|_  =  -------------------
+;;                 [      |U . V|]
+;;               ¥ [1  -  -------]
+;;                 [        c^2  ]
+;;
+;;----------------------------------------------------------------------------------------
+denom_fac      = 1d0 - (u_d_v_2d/ckm[0]^2)
+u_para_p       = (u_para - vv_usz)/denom_fac      ;;  =  U'_//
+u_perp_p       = u_perp/(rl_gamma[0]*denom_fac)
+;;----------------------------------------------------------------------------------------
+;;  Define Lorentz transformed output velocity
+;;----------------------------------------------------------------------------------------
+u_rl_trans     = u_para_p + u_perp_p
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,u_rl_trans
+END
+
+
+
+
+
+
+
+
+;FOR k=0L, 2L DO u_para[*,k] *= vv[k]        ;;  = U_//
+
+

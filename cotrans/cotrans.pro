@@ -1,0 +1,291 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   cotrans.pro
+;  PURPOSE  :   This program performs geophysical coordinate transformations
+;                 GEI<-->GSE;
+;                 GSE<-->GSM;
+;                 GSM<-->SM;
+;                 GEI<-->GEO;
+;                 GEO<-->MAG;
+;                 interpolates the spinphase, right ascension, declination
+;                 updates coord_sys atribute of output tplot variable.
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               cotrans_lib.pro
+;               get_data.pro
+;               cotrans_get_coord.pro
+;               sub_GSE2GSM.pro
+;               sub_GEI2GSE.pro
+;               sub_GSM2SM.pro
+;               sub_GEI2GEO.pro
+;               sub_GSE2GSM.pro
+;               sub_GEO2MAG.pro
+;               cotrans_set_coord.pro
+;               str_element.pro
+;               store_data.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS IDL Libraries
+;
+;  INPUT:
+;               NAME_IN         :  Data in the input coordinate system (t-plot variable 
+;                                    name, or array)
+;               NAME_OUT        :  variable name for output (t-plot variable name, 
+;                                    or array)
+;               TIME            :  [Optional Input]  Array of times for input values,
+;                                    if provided then the first parameter is an array,
+;                                    and the second parameter is a named variable to
+;                                    contain the output array.
+;
+;  EXAMPLES:    
+;               cotrans, name_in, name_out [, time]
+;
+;               cotrans,'tha_fgl_gse','tha_fgl_gsm',/GSE2GSM
+;               cotrans,'tha_fgl_gsm','tha_fgl_gse',/GSM2GSE
+;
+;               cotrans,'tha_fgl_gse','tha_fgl_gei',/GSE2GEI
+;               cotrans,'tha_fgl_gei','tha_fgl_gse',/GEI2GSE
+;
+;               cotrans,'tha_fgl_gsm','tha_fgl_sm',/GSM2SM
+;               cotrans,'tha_fgl_sm','tha_fgl_gsm',/SM2GSM
+;
+;  KEYWORDS:    
+;               IGNORE_DLIMITS  :  If set, the program won't require the coordinate
+;                                    system of the input tplot variable to match the 
+;                                    coordinate system from which the data is being 
+;                                    converted
+;               /GEI2GSE
+;               /GSE2GEI
+;               /GSE2GSM
+;               /GSM2GSE
+;               /GSM2SM
+;               /SM2GSM
+;               /GEI2GEO
+;               /GEO2GEI
+;               /GEO2MAG
+;               /MAG2GEO
+;
+;   CHANGED:  1)  P. Cruce changed something
+;                                                                   [01/29/2008   v1.0.?]
+;             2)  Updated man page
+;                                                                   [01/04/2010   v1.1.0]
+;             3)  Added additional GEO to MAG and MAG to GEO keywords
+;                                                                   [04/06/2016   v1.2.0]
+;
+;   NOTES:      
+;               1)  under construction!!
+;               2)  URL: svn+ssh://thmsvn@ambrosia.ssl.berkeley.edu/repos/ssl_general/tags/tdas_4_00/cotrans/cotrans.pro
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Hannes Schwarzl & Patrick Cruce (pcruce@igpp.ucla.edu)
+;    LAST MODIFIED:  04/06/2016   v1.2.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO cotrans,name_in,name_out,time,GSM2GSE=gsm2gse,GSE2GEI=gse2gei,GSE2GSM=gse2gsm,$
+                                  GEI2GSE=gei2gse,GSM2SM=gsm2sm,SM2GSM=sm2gsm,    $
+                                  GEI2GEO=gei2geo,GEO2GEI=geo2gei,                $
+                                  GEO2MAG=geo2mag0,MAG2GEO=mag2geo0,              $
+                                  IGNORE_DLIMITS=ignore_dlimits
+
+;;----------------------------------------------------------------------------------------
+;;  Define coordinate transform libraries
+;;----------------------------------------------------------------------------------------
+cotrans_lib
+
+IF N_PARAMS() EQ 2 THEN BEGIN
+  ; get the data using t-plot name
+   get_data,name_in,data=data_in,LIMIT=l_in,DL=dl_in ; krb
+   data_in_coord = cotrans_get_coord(dl_in) ; krb
+ENDIF ELSE BEGIN
+   data_in       = {X:time,Y:name_in}
+   data_in_coord = 'unknown'
+ENDELSE
+
+is_valid_keyws = 0
+;;----------------------------------------------------------------------------------------
+;;  GSE -> GSM
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(gse2gsm) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'gse'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'gse') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be GSE'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GSE2GSM,data_in,data_conv
+  out_coord = 'gsm'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  GSM -> GSE
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(gsm2gse) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'gsm'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'gsm') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be GSM'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GSE2GSM,data_in,data_conv,/GSM2GSE
+  out_coord = 'gse'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  GEI -> GSE
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(gei2gse) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'gei'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'gei') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be GEI'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GEI2GSE,data_in,data_conv
+  out_coord = 'gse'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  GSE -> GEI
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(gse2gei) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'gse'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'gse') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be GSE'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GEI2GSE,data_in,data_conv,/GSE2GEI
+  out_coord = 'gei'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  GSM -> SM
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(gsm2sm) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'gsm'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'gsm') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be GSM'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GSM2SM,data_in,data_conv
+  out_coord = 'sm'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  SM -> GSM
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(sm2gsm) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'sm'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'sm') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be SM'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GSM2SM,data_in,data_conv,/SM2GSM
+  out_coord = 'gsm'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  GEI -> GEO
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(gei2geo) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'gei'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'gei') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be GEI'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GEI2GEO,data_in,data_conv
+  out_coord = 'geo'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  GEO -> GEI
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(geo2gei) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'geo'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'geo') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be GEO'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GEI2GEO,data_in,data_conv,/GEO2GEI
+  out_coord = 'gei'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  GEO -> MAG
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(geo2mag0) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'geo'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'geo') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be GEO'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GEO2MAG,data_in,data_conv
+  out_coord = 'mag'
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  MAG -> GEO
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(mag2geo0) THEN BEGIN
+  IF KEYWORD_SET(ignore_dlimits) THEN BEGIN
+    data_in_coord = 'mag'
+  ENDIF
+  is_valid_keyws = 1
+  IF ~ STRMATCH(data_in_coord, 'unknown') && ~ STRMATCH(data_in_coord,'mag') THEN BEGIN
+    errmsg = 'coord of input '+name_in+': '+data_in_coord+'must be MAG'
+    MESSAGE,/CONTINUE,errmsg
+    RETURN
+  ENDIF
+  sub_GEO2MAG,data_in,data_conv,/MAG2GEO
+  out_coord = 'geo'
+ENDIF
+
+;;  Check functionality up to this point
+IF (is_valid_keyws EQ 0) THEN BEGIN
+   MESSAGE,/CONTINUE,'Not a valid combination of input arguments'
+ENDIF
+
+IF (N_PARAMS() EQ 2) THEN BEGIN
+  dl_conv = dl_in
+  cotrans_set_coord,dl_conv,out_coord ;krb
+  ;;  clear ytitle, so that it won't contain wrong info.
+  str_element, dl_conv,'YTITLE',/DELETE
+  l_conv  = l_in
+  str_element,l_conv,'YTITLE',/DELETE
+
+  store_data,name_out,DATA=data_conv,LIMIT=l_conv,DL=dl_conv ;krb
+ENDIF ELSE name_out = data_conv.Y
+
+;RETURN, data_conv
+RETURN
+END

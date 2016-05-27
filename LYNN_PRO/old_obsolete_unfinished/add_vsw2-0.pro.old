@@ -1,0 +1,176 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   add_vsw2.pro
+;  PURPOSE  :   Adds the solar wind velocity vector (km/s) to an array of 3DP data
+;                 structures obtained from get_??.pro (e.g. ?? = el, eh, sf, phb, etc.)
+;                 with the tag name VSW.
+;
+;  CALLED BY:   NA
+;
+;  CALLS:
+;               get_data.pro
+;               interp.pro   By:  Davin Larson
+;
+;  REQUIRES:    Proton/Ion moments must be loaded first with associated TPLOT variables
+;                 or data structure to use as the solar wind velocity
+;
+;  INPUT:
+;               DAT    :  An array of 3DP data structures
+;               SOURCE :  A string or TPLOT data structure specifying the data to use for
+;                           solar wind velocity estimates
+;                           [TPLOT Structure Format:  {X:(N-Unix Times),Y:[N,3]-Vectors}]
+;
+;  EXAMPLES:
+;               elb = my_3dp_str_call_2('elb',TRANGE=tr)
+;               de  = elb.DATA
+;               add_scpot,de,'Vp'
+;
+;  KEYWORDS:    NA
+;
+;   CHANGED:  1)  Rewrote entire program to resemble add_magf2.pro
+;                   for increased speed                        [11/06/2008   v2.0.0]
+;             2)  Changed function INTERPOL.PRO to interp.pro  [11/07/2008   v2.0.1]
+;             3)  Updated man page                             [06/17/2009   v2.0.2]
+;             4)  Rewrote to optimize a few parts and clean up some cludgy parts
+;                                                              [06/22/2009   v2.1.0]
+;             5)  Fixed syntax error                           [08/28/2009   v2.1.1]
+;             6)  Added error handling to check if DAT is a data structure and
+;                   added NO_EXTRAP option to interp.pro call
+;                                                              [12/15/2011   v2.1.2]
+;
+;   ADAPTED FROM: add_vsw.pro  BY: Davin Larson
+;   CREATED:  04/27/2008
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  12/15/2011   v2.1.2
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO add_vsw2,dat,source
+
+;*****************************************************************************************
+ex_start = SYSTIME(1)
+;*****************************************************************************************
+;-----------------------------------------------------------------------------------------
+; => Check input parameters
+;-----------------------------------------------------------------------------------------
+IF (SIZE(dat[0],/TYPE) NE 8L) THEN BEGIN
+  errmsg = 'Input DAT must be a data structure!'
+  MESSAGE,errmsg[0],/CONTINUE,/INFORMATIONAL
+  RETURN
+ENDIF
+
+IF (SIZE(source,/TYPE) EQ 8L) THEN BEGIN
+  vsw = source
+ENDIF
+IF (SIZE(source,/TYPE) EQ 7L) THEN BEGIN
+  get_data,source,DATA=vsw,INDEX=h
+  IF (h EQ 0) THEN BEGIN
+    cnt = 0
+    RETURN
+  ENDIF
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Define some dummy variables
+;-----------------------------------------------------------------------------------------
+n       = N_ELEMENTS(dat)
+myvsw   = FLTARR(n,3)
+;mytimes = DBLARR(n,2)  ; -start and end times 
+;mytimes = [[dat.TIME],[dat.END_TIME]]
+;-----------------------------------------------------------------------------------------
+; => Define time ranges
+;-----------------------------------------------------------------------------------------
+delt    = MIN(dat.END_TIME - dat.TIME,/NAN)   ; => Minimum length of data structure event
+myavt   = (dat.TIME + dat.END_TIME)/2d0
+tra     = [MIN(dat.TIME,/NAN)-delt,MAX(dat.END_TIME,/NAN)+delt]
+
+gvsw = WHERE(vsw.X LE tra[1] AND vsw.X GE tra[0],gvs)
+IF (gvs GT 0) THEN BEGIN
+  vswx = interp(vsw.Y[*,0],vsw.X,myavt,/NO_EXTRAP)
+  vswy = interp(vsw.Y[*,1],vsw.X,myavt,/NO_EXTRAP)
+  vswz = interp(vsw.Y[*,2],vsw.X,myavt,/NO_EXTRAP)
+  tvsw = [[vswx],[vswy],[vswz]]
+ENDIF ELSE BEGIN
+  MESSAGE,'Data times are outside of solar wind times... check input!',/CONTINUE,/INFORMATIONAL
+  tvsw           = REPLICATE(!VALUES.F_NAN,n,3)
+  dat[*].VSW[*]  = TRANSPOSE(tvsw)
+  RETURN
+ENDELSE
+v   = REFORM(tvsw)
+bsz = SIZE(v,/N_DIMENSIONS)
+ccc = 0L
+;=========================================================================================
+JUMP_RETRY:
+;=========================================================================================
+;-----------------------------------------------------------------------------------------
+; => Check if only one structure was passed through
+;-----------------------------------------------------------------------------------------
+IF (bsz[0] LE 1) THEN BEGIN
+  gvsw = WHERE(FINITE(v),gvs,COMPLEMENT=bvsw)
+  IF (gvs EQ 3L) THEN BEGIN
+    dat[0].VSW = v
+    RETURN
+  ENDIF ELSE BEGIN
+    MESSAGE,'There is no finite solar wind velocity for this time!',/CONTINUE,/INFORMATIONAL
+    dat[0].VSW = REPLICATE(!VALUES.F_NAN,3)
+    RETURN
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;---------------------------------------------------------------------------------------
+  ; -If one element of the 3 in any vector is not finite when the other two are
+  ;   then I force all of them to be !VALUES.F_NAN so that the number of "good"
+  ;   points are integer multiples of 3.  Once I have eliminated all the 
+  ;   vectors which aren't symmetrically finite or non-finite, then I can 
+  ;   interpolate the ones which remain.
+  ;---------------------------------------------------------------------------------------
+  gvswx = WHERE(FINITE(v[*,0]),gvsx,COMPLEMENT=bvswx,NCOMPLEMENT=bvsx)
+  gvswy = WHERE(FINITE(v[*,1]),gvsy,COMPLEMENT=bvswy,NCOMPLEMENT=bvsy)
+  gvswz = WHERE(FINITE(v[*,2]),gvsz,COMPLEMENT=bvswz,NCOMPLEMENT=bvsz)
+  agvsw = CREATE_STRUCT('T0',gvswx,'T1',gvswy,'T2',gvswz)
+  abvsw = CREATE_STRUCT('T0',bvswx,'T1',bvswy,'T2',bvswz)
+  chgv  = WHERE([gvsx,gvsy,gvsz] GT 0,ch)
+  chbv  = WHERE([bvsx,bvsy,bvsz] GT 0,bh)
+  gtest = ((gvsx EQ gvsy) AND (gvsx EQ gvsz))
+  ntest = ((gvsx EQ gvsy) AND (gvsx EQ gvsz)) AND (gvsx EQ n AND gvsy EQ n AND gvsz EQ n)
+  ;---------------------------------------------------------------------------------------
+  IF (ntest) THEN BEGIN 
+    myvsw = FLOAT(v)
+    GOTO,JUMP_GOOD  ; => All good
+  ENDIF
+  ;---------------------------------------------------------------------------------------
+  IF (bh GT 0L) THEN BEGIN
+    FOR j=0L, bh - 1L DO BEGIN
+      bels      = abvsw.(chbv[j])
+      gels      = agvsw.(chbv[j])
+      v[bels,*] = REPLICATE(!VALUES.F_NAN,N_ELEMENTS(bels),3)
+      IF (gels[0] NE -1) THEN BEGIN
+        tvswx     = interp(v[gels,0],myavt[gels],myavt,/NO_EXTRAP)
+        tvswy     = interp(v[gels,1],myavt[gels],myavt,/NO_EXTRAP)
+        tvswz     = interp(v[gels,2],myavt[gels],myavt,/NO_EXTRAP)
+        v         = [[tvswx],[tvswy],[tvswz]]
+      ENDIF
+    ENDFOR
+    ccc      += 1L
+    IF (ccc LT 3L) THEN GOTO,JUMP_RETRY ELSE myvsw = FLOAT(v)
+  ENDIF ELSE BEGIN
+    MESSAGE,'There is no finite solar wind velocity for these times!',/CONTINUE,/INFORMATIONAL
+    tvsw           = REPLICATE(!VALUES.F_NAN,n,3)
+    dat[*].VSW[*]  = TRANSPOSE(tvsw)
+    RETURN
+  ENDELSE
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Add magnetic field data to structure
+;-----------------------------------------------------------------------------------------
+;=========================================================================================
+JUMP_GOOD:
+;=========================================================================================
+dat[*].VSW[*] = TRANSPOSE(myvsw)
+;*****************************************************************************************
+ex_time = SYSTIME(1) - ex_start
+MESSAGE,STRING(ex_time)+' seconds execution time.',/CONTINUE,/INFORMATIONAL
+;*****************************************************************************************
+RETURN
+END

@@ -1,0 +1,162 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   plot_map.pro
+;  PURPOSE  :   Plot the map from the standard 3-D data structure that is returned
+;                 from the IDL from SDT interface.  The THETA, PHI, DTHETA, DPHI,
+;                 DATA_NAME and PROJECT_NAME tags must exist for this routine to work.
+;                 (The standard 3-D data structure should contain these.)
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               test_3dp_struc_format.pro
+;               dat_3dp_str_names.pro
+;               time_string.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT       :  3DP data structure(s) either from get_??.pro
+;                              [?? = el, elb, phb, sf, etc.]
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               DEFTICKS  :  If set, program uses a default set of [X,Y]-Axis tick mark
+;                              labels (makes for a nice looking plot) and axes ranges
+;
+;   CHANGED:  1)  Added error handling specific to data structure [08/22/1995   v1.0.1]
+;             2)  Cleaned up, updated man page...                 [01/13/2012   v1.1.0]
+;             3)  Changed angle bin corner calculations           [01/14/2012   v1.2.0]
+;
+;   NOTES:      
+;               1)  So long as the data structure has the same structure tags, this
+;                     routine should plot the data bins in [theta vs. phi]-space
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Jonathan M. Loran
+;    LAST MODIFIED:  01/14/2012   v1.2.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO plot_map,dat,DEFTICKS=defticks
+
+;-----------------------------------------------------------------------------------------
+; => Define some constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
+IF (N_PARAMS() EQ 0) THEN RETURN
+data  = dat[0]   ; => in case it is an array of structures of the same format
+; => The following checks that the input data structure has the same format as
+;      those returned by get_??.pro
+test  = test_3dp_struc_format(data)
+
+IF (NOT test) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Define angle parameters
+;-----------------------------------------------------------------------------------------
+n_a      = data.NBINS        ; => # of angle bins
+minph0   = data.PHI - data.DPHI/2e0
+maxph0   = data.PHI + data.DPHI/2e0
+minthet0 = data.THETA - data.DTHETA/2e0
+maxthet0 = data.THETA + data.DTHETA/2e0
+; => Average over energies
+minphi   = TOTAL(minph0,1,/NAN)/TOTAL(FINITE(minph0),1)
+maxphi   = TOTAL(maxph0,1,/NAN)/TOTAL(FINITE(maxph0),1)
+mintheta = TOTAL(minthet0,1,/NAN)/TOTAL(FINITE(minthet0),1)
+maxtheta = TOTAL(maxthet0,1,/NAN)/TOTAL(FINITE(maxthet0),1)
+;  LBW III  01/14/2012
+;minphi   = data.PHI[0,*] - data.DPHI[0,*]/2e0
+;maxphi   = data.PHI[0,*] + data.DPHI[0,*]/2e0
+;mintheta = data.THETA[0,*] - data.DTHETA[0,*]/2e0
+;maxtheta = data.THETA[0,*] + data.DTHETA[0,*]/2e0
+
+; => Define plot limits
+minx = MIN(minphi,/NAN)
+maxx = MAX(maxphi,/NAN)
+miny = MIN(mintheta,/NAN)
+maxy = MAX(maxtheta,/NAN)
+;-----------------------------------------------------------------------------------------
+; => Define some default plot parameters
+;-----------------------------------------------------------------------------------------
+def_xtv  = [0e0,3e1,6e1,9e1,12e1,15e1,18e1,21e1,24e1,27e1,30e1,33e1,36e1]
+def_xtn  = ['0','30','60','90','120','150','180','210','240','270','300','330','360']
+def_xts  = N_ELEMENTS(def_xtv) - 1L
+def_ytv  = [-9e1,-6e1,-3e1, 0e0, 3e1, 6e1, 9e1]
+def_ytn  = ['-90','-60','-30','0','30','60','90']
+def_yts  = N_ELEMENTS(def_ytv) - 1L
+
+strn     = dat_3dp_str_names(data[0])
+IF (STRMID(strn.SN[0],0,2) EQ 'ph') THEN BEGIN
+  def_xran = [-4e1,37e1]
+  def_xtv  = [-3e1,def_xtv]
+  def_xtn  = ['-30',def_xtn]
+  def_xts += 1L
+ENDIF ELSE BEGIN
+  def_xran = [-2e0,36e1] 
+ENDELSE
+def_yran = [-9e1,9e1]
+;-----------------------------------------------------------------------------------------
+; => Set up plot limit structure
+;-----------------------------------------------------------------------------------------
+time = time_string(data.TIME,PREC=3)
+; => Define plot title and axes titles
+ttle = 'Angle Map of: '+data.PROJECT_NAME+', '+data.DATA_NAME
+ttle = ttle[0]+'!C'+'at '+time[0]+' UT'
+xttl = 'Phi (degrees)'
+yttl = 'Theta (degrees)'
+IF NOT KEYWORD_SET(defticks) THEN BEGIN
+  ; => Define axes ranges
+  xran = [minx[0], maxx[0]]
+  yran = [miny[0], maxy[0]]
+  ; => Define plot limit structure
+  pstr = {NODATA:1,XSTYLE:1,YSTYLE:1,XMINOR:5,YMINOR:5,                  $
+          XTICKLEN:0.04,YTICKLEN:0.04,XTITLE:xttl,YTITLE:yttl,TITLE:ttle }
+ENDIF ELSE BEGIN
+  ; => Define axes ranges
+  xran = def_xran
+  yran = def_yran
+  ; => Define plot limit structure
+  pstr = {NODATA:1,XSTYLE:2,YSTYLE:2,XMINOR:5,YMINOR:5,                   $
+          XTICKLEN:0.02,YTICKLEN:0.02,XTITLE:xttl,YTITLE:yttl,TITLE:ttle, $
+          YTICKNAME:def_ytn,YTICKV:def_ytv,YTICKS:def_yts,                $
+          XTICKNAME:def_xtn,XTICKV:def_xtv,XTICKS:def_xts}
+ENDELSE
+;-----------------------------------------------------------------------------------------
+; => Plot
+;-----------------------------------------------------------------------------------------
+!P.MULTI = 0
+PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=pstr,YMARGIN=[4.,4.],XMARGIN=[10.,3.],$
+     XRANGE=xran,YRANGE=yran
+
+FOR j=0L, n_a - 1L DO BEGIN
+  ; => Define corners of angle bins
+  xlocs = [minphi[j], maxphi[j], maxphi[j], minphi[j], minphi[j]]
+  ylocs = [mintheta[j], mintheta[j], maxtheta[j], maxtheta[j], mintheta[j]]
+  ; => Plot angle bins
+  OPLOT,xlocs,ylocs,LINESTYLE=3
+  ; => Mark bin #'s
+  IF (j GE 10) THEN xshft = data.DPHI[0,j]/4e0 ELSE xshft = 0e0
+  xposi = (minphi[j] + maxphi[j])/2. + xshft[0]
+  yposi = (mintheta[j] + maxtheta[j])/2.
+  XYOUTS,xposi[0],yposi[0],ALIGN=1.0,STRING(j),/DATA
+ENDFOR
+;-----------------------------------------------------------------------------------------
+; => Return
+;-----------------------------------------------------------------------------------------
+
+RETURN
+END

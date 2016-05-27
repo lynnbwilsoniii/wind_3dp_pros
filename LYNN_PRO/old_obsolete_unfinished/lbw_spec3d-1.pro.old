@@ -1,0 +1,664 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   lbw_spec3d.pro
+;  PURPOSE  :   This routine produces a plot showing the power spectra of a particle
+;                 velocity distribution versus energy or speed.  The spectra can have
+;                 any of the units allowed in convert_esa_units.pro.  The plot shows
+;                 multiple line plots, one for each solid-angle bin [default mode], that
+;                 can be organized by pitch-angle or by a user defined vector.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               dat_3dp_str_names.pro
+;               dat_themis_esa_str_names.pro
+;               str_element.pro
+;               energy_to_vel.pro
+;               average.pro
+;               bytescale.pro
+;               xyz_to_polar.pro
+;               pangle.pro
+;               format_esa_bins_keyword.pro
+;               conv_units.pro
+;               wind_3dp_units.pro
+;               trange_str.pro
+;               define_particle_charge.pro
+;               log10_tickmarks.pro
+;               mplot.pro
+;               time_stamp.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TEMPDAT     :  Scalar particle distribution from either Wind/3DP
+;                                or THEMIS ESA
+;                                [See:  get_??.pro for Wind]
+;                                [See:  thm_part_dist_array.pro for THEMIS]
+;
+;  EXAMPLES:    
+;               ;;=======================================================================
+;               ;;  The following examples assumes the user has loaded either 3DP or ESA
+;               ;;    data and defined a velocity distribution function data structure
+;               ;;    as the variable DAT.
+;               ;;    [See tutorials for more information]
+;               ;;=======================================================================
+;               units = 'df'  ;;  phase space density units [i.e., s^3 km^(-3) cm^(-3)]
+;               limit = {XRANGE:[1d0,10d3],XSTYLE:1,YSTYLE:1}
+;               ;;  Output the dependent and independent variable data as well
+;               lbw_spec3d,dat,UNITS=units,XDAT=energy,YDAT=data,LIMITS=limit
+;
+;               ;;..............................................................
+;               ;;  Try a different form for LIMITS
+;               ;;..............................................................
+;               units  = 'df'
+;               xran   = [1d0,10d3]
+;               yran   = [1d-18,1d-9]
+;               limits = {XRANGE:xran,XSTYLE:1,YRANGE:yran,YSTYLE:1}
+;               lbw_spec3d,dat,UNITS=units,XDAT=energy,YDAT=data,LIMITS=limits
+;
+;               ;;..............................................................
+;               ;;  Try removing photoelectrons
+;               ;;..............................................................
+;               units  = 'df'
+;               xran   = [1d0,10d3]
+;               yran   = [1d-18,1d-9]
+;               limits = {XRANGE:xran,XSTYLE:1,YRANGE:yran,YSTYLE:1}
+;               lbw_spec3d,dat,UNITS=units,XDAT=energy,YDAT=data,LIMITS=limits,$
+;                          /RM_PHOTO_E
+;
+;               ;;..............................................................
+;               ;;  Try removing photoelectrons and coloring by pitch-angle
+;               ;;..............................................................
+;               units  = 'df'
+;               xran   = [1d1,10d3]
+;               yran   = [1d-18,2d-10]
+;               limits = {XRANGE:xran,XSTYLE:1,YRANGE:yran,YSTYLE:1}
+;               lbw_spec3d,dat,UNITS=units,XDAT=energy,YDAT=data,LIMITS=limits,$
+;                          /RM_PHOTO_E,/PITCHANGLE
+;
+;               ;;..............................................................
+;               ;;  Try removing photoelectrons and coloring by sun direction
+;               ;;..............................................................
+;               units  = 'df'
+;               xran   = [1d1,10d3]
+;               yran   = [1d-18,2d-10]
+;               limits = {XRANGE:xran,XSTYLE:1,YRANGE:yran,YSTYLE:1}
+;               lbw_spec3d,dat,UNITS=units,XDAT=energy,YDAT=data,LIMITS=limits,$
+;                          /RM_PHOTO_E,/SUNDIR
+;
+;               ;;..............................................................
+;               ;;  Try removing photoelectrons and coloring by PHI angles
+;               ;;..............................................................
+;               units  = 'df'
+;               xran   = [1d1,10d3]
+;               yran   = [1d-18,2d-10]
+;               limits = {XRANGE:xran,XSTYLE:1,YRANGE:yran,YSTYLE:1}
+;               lbw_spec3d,dat,UNITS=units,XDAT=energy,YDAT=data,LIMITS=limits,$
+;                          /RM_PHOTO_E,A_COLOR='ph'
+;
+;               ;;..............................................................
+;               ;;  Try removing photoelectrons and coloring by THETA angles
+;               ;;..............................................................
+;               units  = 'df'
+;               xran   = [1d1,10d3]
+;               yran   = [1d-18,2d-10]
+;               limits = {XRANGE:xran,XSTYLE:1,YRANGE:yran,YSTYLE:1}
+;               lbw_spec3d,dat,UNITS=units,XDAT=energy,YDAT=data,LIMITS=limits,$
+;                          /RM_PHOTO_E,A_COLOR='th'
+;
+;               ;;..............................................................
+;               ;;  Try removing photoelectrons, coloring by pitch-angle,
+;               ;;    specifying labels and their positions, and specifying
+;               ;;    X-Margins
+;               ;;..............................................................
+;               units  = 'df'
+;               xran   = [1d1,10d3]
+;               yran   = [1d-18,2d-10]
+;               l10yr  = ALOG10(yran*[1d1,5d-1])
+;               temp   = DINDGEN(nnd[0])*(l10yr[1] - l10yr[0])/(nnd[0] - 1L) + l10yr[0]
+;               yposi  = 1d1^(temp)
+;               limits = {XRANGE:xran,XSTYLE:1,YRANGE:yran,YSTYLE:1,LABPOS:yposi,$
+;                         XMARGIN:[10,10]}
+;               lbw_spec3d,dat,UNITS=units,XDAT=energy,YDAT=data,LIMITS=limits,/RM_PHOTO_E,$
+;                          /PITCHANGLE,/LABEL,COLOR=pa_cols
+;
+;               ;;..............................................................
+;               ;;  Try removing photoelectrons, coloring by pitch-angle,
+;               ;;    and returning the pitch-angles
+;               ;;..............................................................
+;               units  = 'df'
+;               xran   = [1d1,10d3]
+;               yran   = [1d-18,2d-10]
+;               pang   = 1
+;               limits = {XRANGE:xran,XSTYLE:1,YRANGE:yran,YSTYLE:1}
+;               lbw_spec3d,dat,UNITS=units,XDAT=energy,YDAT=data,LIMITS=limits,$
+;                          /RM_PHOTO_E,PITCHANGLE=pang
+;               PRINT,';;',MIN(pang,/NAN),MAX(pang,/NAN)
+;               ;;       10.131169       169.86883
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***       DIRECT  INPUTS       ***
+;               **********************************
+;               LIMITS      :  Scalar [structure] that may contain any combination of the
+;                                following structure tags or keywords accepted by
+;                                PLOT.PRO:
+;                                  XLOG,   YLOG,   ZLOG,
+;                                  XRANGE, YRANGE, ZRANGE,
+;                                  XTITLE, YTITLE,
+;                                  TITLE, POSITION, REGION, etc.
+;                                  (see IDL documentation for a description)
+;               UNITS       :  Scalar [string] defining the units to use for the
+;                                vertical axis of the plot and the outputs YDAT and DYDAT
+;                                [Default = 'flux' or number flux]
+;               A_COLOR     :  Scalar [string] defining how to define the color scale
+;                                for the output data plot.  The allowed inputs are:
+;                                  'pi'  :  use the pitch-angles
+;                                  'su'  :  use the sun direction for VECTOR
+;                                  'th'  :  use the theta angles in TEMPDAT
+;                                  'ph'  :  use the phi angles in TEMPDAT
+;                                ******************************************************
+;                                ** See NOTES below for list of conflicting keywords **
+;                                ******************************************************
+;                                [Default = '']
+;               VELOCITY    :  If set, X-axis is in units of km/s instead of eV
+;                                [Default = FALSE]
+;               PHI         :  If set, routine will define the color scale based upon
+;                                the average azimuthal angles defined by the structure
+;                                tag PHI
+;                                [Default = FALSE]
+;                                ******************************************************
+;                                ** See NOTES below for list of conflicting keywords **
+;                                ******************************************************
+;               THETA       :  If set or found in LIMITS with the structure tag THETADIR,
+;                                then the routine will define the color scale based upon
+;                                the average poloidal angles defined by the structure
+;                                tag THETA in TEMPDAT
+;                                [Default = FALSE]
+;                                ******************************************************
+;                                ** See NOTES below for list of conflicting keywords **
+;                                ******************************************************
+;               PITCHANGLE  :  If set or found in LIMITS with the structure tag
+;                                PITCHANGLE, then the routine will define the color scale
+;                                based upon the pitch-angle of each {THETA,PHI}-angle
+;                                in TEMPDAT relative to the vector defined by the
+;                                structure tag MAGF in TEMPDAT
+;                                [Default = FALSE]
+;                                ******************************************************
+;                                ** See NOTES below for list of conflicting keywords **
+;                                ******************************************************
+;               SUNDIR      :  If set or found in LIMITS with the structure tag
+;                                SUNDIR, then the routine will define the color scale
+;                                based upon the pitch-angle of each {THETA,PHI}-angle
+;                                in TEMPDAT relative to the vector defined by the sun
+;                                direction in GSE coordinates = [ -1, 0, 0 ]
+;                                [Default = FALSE]
+;                                ******************************************************
+;                                ** See NOTES below for list of conflicting keywords **
+;                                ******************************************************
+;               VECTOR      :  [3]-Element [float/double] array defining the vector
+;                                to use when defining the relative pitch-angle of each
+;                                {THETA,PHI}-angle in TEMPDAT
+;                                [Default = FALSE]
+;                                [See comment for output result]
+;                                ******************************************************
+;                                ** See NOTES below for list of conflicting keywords **
+;                                ******************************************************
+;               BINS        :  [N]-Element [byte] array defining which solid angle bins
+;                                should be plotted [i.e., BINS[good] = 1b] and which
+;                                bins should not be plotted [i.e., BINS[bad] = 0b].
+;                                One can also define bins as an array of indices that
+;                                define which solid angle bins to plot.  If this is the
+;                                case, then on output, BINS will be redefined to an
+;                                array of byte values specifying which bins are TRUE or
+;                                FALSE.
+;                                [Default:  BINS[*] = 1b]
+;               LABEL       :  If set, plot shows bin labels [i.e., bin numbers]
+;                                [Default = FALSE]
+;               OVERPLOT    :  If set, plots over an existing plot
+;                                [Default = FALSE]
+;               RM_PHOTO_E  :  If set, routine will remove data below the spacecraft
+;                                potential defined by the structure tag SC_POT and
+;                                shift the corresponding energy bins by
+;                                CHARGE*SC_POT
+;                                [Default = FALSE]
+;               ONE_C       :  If set, routine computes one-count levels as well and
+;                                outputs an average on the plot (but returns the full
+;                                array of points)
+;                                [Default = FALSE]
+;               BDIR        :  ** Obselete **
+;
+;               **********************************
+;               ***     ALTERED ON OUTPUT      ***
+;               **********************************
+;               PITCHANGLE  :  Set to a named variable to return an array of angles
+;                                between the {THETA,PHI}-angles in TEMPDAT and the
+;                                value of VECTOR determined by one of the following
+;                                input keywords:  
+;                                                 A_COLOR ['pi' or 'su'], PITCHANGLE,
+;                                                 SUNDIR, or VECTOR
+;               BINS        :  Set to a named variable to return an array of byte values
+;                                defining which solid angle bins were plotted [TRUE] and
+;                                which were not [FALSE]
+;               COLOR       :  Set to a named variable to return the numerical values
+;                                associated with the colors shown in the output plot
+;               DYDAT       :  Set to a named variable to return the uncertainty or noise
+;                                in TEMPDAT.DATA (which is YDAT on output in the correct
+;                                units).  The array will have the same dimensions as
+;                                XDAT, YDAT, THETA, and PHI.
+;               PHI         :  Set to a named variable to return the azimuthal angles
+;                                [degrees] used in plot
+;               THETA       :  Set to a named variable to return the poloidal angles
+;                                [degrees] used in plot
+;               X[Y]DAT     :  Set to a named variable to return the X[Y] data used in
+;                                the spectra plot
+;               ONE_C       :  Set to a named variable to return the one-count levels
+;                                associated with each YDAT output value
+;
+;   CHANGED:  1)  Davin Larson changed something...
+;                                                                   [06/??/1995   v1.0.24]
+;             2)  Altered a few minor things
+;                                                                   [07/23/2007   v1.0.25]
+;             3)  Re-wrote and cleaned up
+;                                                                   [11/01/2010   v1.1.0]
+;             4)  Fixed typo in unit conversion call
+;                                                                   [09/07/2011   v1.1.1]
+;             5)  Updated the man page and cleaned up some things
+;                                                                   [04/02/2014   v1.1.2]
+;             6)  Updated Man. page, added comments and error handling in routine, and
+;                   now calls energy_to_vel.pro instead of velocity.pro and
+;                   now calls test_wind_vs_themis_esa_struct.pro, dat_3dp_str_names.pro,
+;                   and dat_themis_esa_str_names.pro
+;                                                                   [09/11/2014   v1.2.0]
+;             7)  Cleaned up and rewrote and
+;                   added keyword:  RM_PHOTO_E and
+;                   now calls log10_tickmarks.pro
+;                   [add notes about additional changes]
+;                                                                   [09/11/2014   v2.0.0]
+;             8)  Added more examples and altered structure defaults for LIMITS and
+;                   now allows for the PITCHANGLE keyword to return the angles relative
+;                   to the value of VECTOR defined in the routine or by the user
+;                                                                   [09/12/2014   v2.0.1]
+;             9)  Fixed typos in output error messages
+;                                                                   [09/13/2014   v2.0.2]
+;            10)  Removed some unnecessary print statements and slightly altered effect
+;                   of RM_PHOTO_E keyword and now calls define_particle_charge.pro
+;                                                                   [10/02/2014   v2.1.0]
+;            11)  Changed name to lbw_spec3d.pro from spec3d.pro and replaced spec3d.pro
+;                   with SPEDAS/TDAS version (i.e., original), moved this version to
+;                   ~/LYNN_PRO/esa_mcp_software/ and
+;                   cleaned up routine and Man. page
+;                                                                   [08/15/2015   v3.0.0]
+;            12)  Added ONE_C keyword to output one-count levels and now calls
+;                   format_esa_bins_keyword.pro
+;                                                                   [02/19/2016   v3.1.0]
+;
+;   NOTES:      
+;               1)  See also:  moments_3d.pro or moments_3du.pro
+;               2)  Some keywords are incompatible and/or trump other keywords.
+;                     Below are the ranks of keywords, where rank 1 trumps all others:
+;                       1  :  VECTOR
+;                       2  :  SUNDIR
+;                       3  :  PITCHANGLE
+;                       4  :  THETA [or THETADIR in LIMITS]
+;                       5  :  PHI
+;                       6  :  A_COLOR
+;
+;  REFERENCES:  
+;               1)  Carlson et al., (1983), "An instrument for rapidly measuring
+;                      plasma distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70.
+;               2)  Curtis et al., (1989), "On-board data analysis techniques for
+;                      space plasma particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372.
+;               3)  Lin et al., (1995), "A Three-Dimensional Plasma and Energetic
+;                      particle investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125.
+;               4)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;               5)  McFadden, J.P., C.W. Carlson, D. Larson, M. Ludlam, R. Abiad,
+;                      B. Elliot, P. Turin, M. Marckwordt, and V. Angelopoulos
+;                      "The THEMIS ESA Plasma Instrument and In-flight Calibration,"
+;                      Space Sci. Rev. 141, pp. 277-302, (2008).
+;               6)  McFadden, J.P., C.W. Carlson, D. Larson, J.W. Bonnell,
+;                      F.S. Mozer, V. Angelopoulos, K.-H. Glassmeier, U. Auster
+;                      "THEMIS ESA First Science Results and Performance Issues,"
+;                      Space Sci. Rev. 141, pp. 477-508, (2008).
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  02/19/2016   v3.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO lbw_spec3d,tempda0,LIMITS=limits,UNITS=units,COLOR=col,BDIR=bdir,PHI=phi,THETA=theta, $
+                       PITCHANGLE=pang,VECTOR=vec,SUNDIR=sundir,A_COLOR=a_color,          $
+                       LABEL=label,XDAT=xdat,YDAT=ydat,DYDAT=dydat,BINS=bins,VELOCITY=vel,$
+                       OVERPLOT=oplot,RM_PHOTO_E=rm_photo_e,ONE_C=one_c
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION conv_units, test_wind_vs_themis_esa_struct, dat_3dp_str_names,   $
+                 dat_themis_esa_str_names, energy_to_vel, average, bytescale,     $
+                 pangle, wind_3dp_units, define_particle_charge, log10_tickmarks, $
+                 format_esa_bins_keyword
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+;;  Dummy error messages
+;;    --> LBW III  09/13/2014   v2.0.2
+noinpt_msg     = 'User must supply an a velocity distribution function as an IDL structure...'
+notstr_msg     = 'Must be an IDL structure...'
+notvdf_msg     = 'Input must be a velocity distribution function as an IDL structure...'
+badvdf_msg     = 'Input must be an IDL structure with similar format to Wind/3DP or THEMIS/ESA...'
+not3dp_msg     = 'Input must be a velocity distribution IDL structure from Wind/3DP...'
+notthm_msg     = 'Input must be a velocity distribution IDL structure from THEMIS/ESA...'
+badvdf_msg     = 'Input must be an IDL structure with similar format to Wind/3DP or THEMIS/ESA...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+;;    --> LBW III  09/13/2014   v2.0.2
+IF (N_PARAMS() LT 1) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;    --> LBW III  09/11/2014   v2.0.0
+IF (SIZE(tempda0,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+tempdat        = tempda0[0]
+;;  Check to make sure distribution has the correct format
+test0          = test_wind_vs_themis_esa_struct(tempdat[0],/NOM)
+test           = (test0.(0) + test0.(1)) NE 1
+IF (test[0]) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Define number of solid-angle bins
+data3d         = tempdat[0]
+nb             = data3d[0].NBINS
+;;  Determine instrument (i.e., ESA or 3DP) and define electric charge
+IF (test0.(0)) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Wind
+  ;;--------------------------------------------------------------------------------------
+  mission = 'Wind'
+  strns   = dat_3dp_str_names(data3d[0])
+  IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+    ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+    MESSAGE,not3dp_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF ELSE inst_nm_mode = strns.LC[0]         ;;  e.g., 'Pesa Low Burst'
+ENDIF ELSE BEGIN
+  IF (test0.(1)) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  THEMIS
+    ;;------------------------------------------------------------------------------------
+    mission = 'THEMIS'
+    strns   = dat_themis_esa_str_names(data3d[0])
+    IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+      ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+      MESSAGE,notthm_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    ENDIF ELSE BEGIN
+      temp         = strns.LC[0]                  ;;  e.g., 'IESA 3D Reduced Distribution'
+      tposi        = STRPOS(temp[0],'Distribution') - 1L
+      inst_nm_mode = STRMID(temp[0],0L,tposi[0])  ;;  e.g., 'IESA 3D Reduced'
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;;  Other mission?
+    str_element,data3d,'DATA_NAME',inst_nm_mode
+    str_element,data3d,'PROJECT_NAME',mission
+    IF (N_ELEMENTS(inst_nm_mode) EQ 0) THEN BEGIN
+      MESSAGE,badvdf_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    ENDIF
+  ENDELSE
+ENDELSE
+;;  Define plot title prefix
+test           = (N_ELEMENTS(mission) EQ 0)
+IF (test[0]) THEN ttl_pref = inst_nm_mode[0] ELSE ttl_pref = mission[0]+' '+inst_nm_mode[0]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;    --> LBW III  09/11/2014   v2.0.0
+;;----------------------------------------------------------------------------------------
+;;  Check A_COLOR keyword
+test           = (SIZE(a_color,/TYPE) NE 7)
+IF (test[0]) THEN str_element,limits,'A_COLOR',a_color
+test           = (N_ELEMENTS(a_color) EQ 0)
+IF (test[0]) THEN a_color = ''
+CASE STRLOWCASE(STRMID(a_color,0,2)) OF
+  'pi' : pang   = 1
+  'su' : sundir = 1
+  'th' : theta  = 1
+  'ph' : phi    = 1
+  ELSE :
+ENDCASE
+;;  Check UNITS keyword
+test           = (N_ELEMENTS(units) EQ 0)
+IF (test[0]) THEN str_element,limits,'UNITS'     ,VALUE=units
+test           = (N_ELEMENTS(units) EQ 0)
+IF (test[0]) THEN gunits = 'flux' ELSE gunits = units[0]
+;;  Check VELOCITY keyword
+;;    --> Then define X-Axis title and data
+test           = ~KEYWORD_SET(vel)
+IF (test[0]) THEN str_element,limits,'VELOCITY'  ,VALUE=vel
+test           = KEYWORD_SET(vel)
+IF (test[0]) THEN BEGIN
+  xdat   = energy_to_vel(data3d[0].ENERGY,data3d[0].MASS[0])
+  xtitle = "Velocity [km/s]"
+ENDIF ELSE BEGIN
+  xdat   = data3d[0].ENERGY
+  xtitle = 'Energy [eV]'
+ENDELSE
+;;  Check COLOR keyword
+str_element,limits,'COLOR'     ,VALUE=col
+;;  Check PHI keyword
+test           = KEYWORD_SET(phi)
+IF (test[0]) THEN BEGIN
+  phi = average(data3d[0].PHI,1,/NAN)    ;;  average phi = azimuthal angles [deg]
+  col = bytescale(phi)
+ENDIF
+;;  Check THETA keyword
+test           = ~KEYWORD_SET(theta)
+IF (test[0]) THEN str_element,limits,'THETADIR'  ,VALUE=theta
+test           = KEYWORD_SET(theta)
+IF (test[0]) THEN BEGIN
+  theta = average(data3d.THETA,1,/NAN)  ;; average theta
+  col   = bytescale(theta)
+ENDIF
+;;  Check PITCHANGLE keyword
+test           = ~KEYWORD_SET(pang)
+IF (test[0]) THEN str_element,limits,'PITCHANGLE',VALUE=pang
+;;    --> LBW III  09/12/2014   v2.0.1
+test           = KEYWORD_SET(pang) AND ~KEYWORD_SET(vec)
+IF (test[0]) THEN str_element,data3d,'MAGF',vec
+;;  Check SUNDIR keyword
+test           = ~KEYWORD_SET(sundir)
+IF (test[0]) THEN str_element,limits,'SUNDIR'    ,VALUE=sundir
+;;    --> LBW III  09/12/2014   v2.0.1
+test           = KEYWORD_SET(sundir) AND ~KEYWORD_SET(vec)
+IF (test[0]) THEN vec = [-1.,0.,0.]
+;;  Check VECTOR keyword
+test           = KEYWORD_SET(vec)
+IF KEYWORD_SET(vec) THEN BEGIN
+  ;;  Define average azimuthal and poloidal angles
+  phi   = average(data3d.PHI,1,/NAN)    ;; average phi
+  theta = average(data3d.THETA,1,/NAN)  ;; average theta
+  ;;  Define the azimuthal and poloidal angle for VEC
+  xyz_to_polar,vec,THETA=bth,PHI=bph
+  ;;  Define "pitch-angles" relative to VEC
+  p     = pangle(theta,phi,bth,bph)
+  col   = bytescale(p,RANGE=[0.,180.])
+  ;;    --> LBW III  09/12/2014   v2.0.1
+  ;;  Define pitch-angles for output
+  pang  = p
+ENDIF
+;;  Check COLOR keyword
+IF KEYWORD_SET(col) THEN shades = col
+;;  Check LABEL keyword
+IF KEYWORD_SET(label) THEN labels = STRCOMPRESS(INDGEN(nb))
+;;  Check BINS keyword
+bstr           = format_esa_bins_keyword(data3d,BINS=bins)
+test           = (SIZE(bstr,/TYPE) NE 8)
+IF (test[0]) THEN bins = REPLICATE(1b,nb[0])  ;;  Just assume user wants to use all bins
+;;  Check ONE_C keyword
+test           = KEYWORD_SET(one_c) OR (N_ELEMENTS(one_c) GT 1)
+IF (test[0]) THEN BEGIN
+  data1c0         = conv_units(data3d[0],'rate')
+;  data1c0         = conv_units(data3d[0],'counts')
+  data1c0[0].DATA = 1e0
+  log_1c          = 1b
+ENDIF ELSE log_1c = 0b
+;;----------------------------------------------------------------------------------------
+;;  Define relevant values for plot structure from input LIMITS
+;;----------------------------------------------------------------------------------------
+;;    --> LBW III  09/11/2014   v2.0.0
+;;  Convert to desired units
+new_units      = wind_3dp_units(gunits[0])
+gunits         = new_units.G_UNIT_NAME      ;;  e.g., 'flux'
+punits         = new_units.G_UNIT_P_NAME    ;;  e.g., ' (# cm!U-2!Ns!U-1!Nsr!U-1!NeV!U-1!N)'
+;;  Convert data units
+data3d         = conv_units(tempdat,gunits[0])
+str_element,data3d,'DDATA'     ,VALUE=dydat
+
+;;  Define plot title
+title          = '('+ttl_pref[0]+')'+' '+trange_str(data3d[0].TIME,data3d[0].END_TIME)
+ytitle         = gunits[0]+punits[0]
+ydat           = data3d[0].DATA
+IF (log_1c[0]) THEN BEGIN
+  ;;  Compute one-count level in units specified by user
+  data1c = conv_units(data1c0,gunits[0])
+  ydat1c = data1c[0].DATA
+ENDIF
+;;  Check RM_PHOTO_E keyword
+test           = KEYWORD_SET(rm_photo_e)
+IF (test[0]) THEN BEGIN
+  ;;    --> LBW III  10/02/2014   v2.1.0
+  ;;  Get particle charge and energy shift
+  charge = define_particle_charge(data,E_SHIFT=e_shift)
+  ;;  User wishes to remove data below SC potential
+  str_element,data3d,'SC_POT',VALUE=scpot
+  IF (N_ELEMENTS(scpot) EQ 0) THEN scpot = 0e0
+  temp   = (data3d[0].ENERGY + e_shift[0]) + (scpot[0]*charge[0])
+;  temp   = data3d[0].ENERGY + e_shift[0]
+;  temp  += (scpot[0]*charge[0])
+  bad    = WHERE(temp LE 0e0,bd)
+  IF (bd[0] GT 0) THEN BEGIN
+    ydat[bad] = !VALUES.F_NAN
+    temp[bad] = !VALUES.F_NAN
+    IF (log_1c[0]) THEN ydat1c[bad] = !VALUES.F_NAN
+  ENDIF
+  ;;  Redefine XDAT
+  mass   = data3d[0].MASS
+  IF (KEYWORD_SET(vel)) THEN xdat = energy_to_vel(temp,mass[0]) ELSE xdat = temp
+ENDIF
+;;  Check ONE_C
+IF (log_1c[0]) THEN BEGIN
+  ;;  Redefine output
+  one_c   = ydat1c
+  ;;  Define average (over solid angle bins) values to show on plot only
+  x1cplot = average(xdat,2,/NAN)
+  y1cplot = average(ydat1c,2,/NAN)
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Setup plot limits structures for MPLOT
+;;----------------------------------------------------------------------------------------
+;;  Define structure for MPLOT
+plot = {TITLE:title,XTITLE:xtitle,X:xdat,XLOG:1,YTITLE:ytitle,Y:ydat,YLOG:1,BINS:bins}
+str_element,plot,'DY',dydat,/ADD_REPLACE
+;;  If desired, define one-count plot structure for mplot.pro
+IF (log_1c[0]) THEN plot1c = {X:x1cplot,Y:y1cplot,BINS:bins,XLOG:1,YLOG:1}
+;;    --> LBW III  09/12/2014   v2.0.1
+IF (SIZE(limits,/TYPE) NE 8) THEN BEGIN
+  ;;  Force the following values for structure tags if LIMITS is not set
+  str_element,limits,'XSTYLE',1,/ADD_REPLACE       ;;  LBW III  09/07/2011   v1.1.1
+  str_element,limits,'YSTYLE',1,/ADD_REPLACE       ;;  LBW III  09/07/2011   v1.1.1
+  str_element,limits,'CHARSIZE',1.2,/ADD_REPLACE   ;;  LBW III  04/02/2014   v1.1.2
+ENDIF ELSE BEGIN
+  ;;  Check if user wants their own values for various LIMITS structure tags
+  str_element,limits,  'XSTYLE',xstyle
+  str_element,limits,  'YSTYLE',ystyle
+  str_element,limits,'CHARSIZE',charsize
+  test = (N_ELEMENTS(xstyle) EQ 0)
+  IF (test[0]) THEN str_element,limits,  'XSTYLE',1,/ADD_REPLACE
+  test = (N_ELEMENTS(ystyle) EQ 0)
+  IF (test[0]) THEN str_element,limits,  'YSTYLE',1,/ADD_REPLACE
+  test = (N_ELEMENTS(charsize) EQ 0)
+  IF (test[0]) THEN str_element,limits,'CHARSIZE',1.2,/ADD_REPLACE
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define tick marks for both axes
+;;    --> Check for associated structure tags in LIMITS beforehand
+;;----------------------------------------------------------------------------------------
+;;    --> LBW III  09/11/2014   v2.0.0
+tagns          = STRLOWCASE(TAG_NAMES(limits))
+pref_tag       = STRMID(tagns,0L,5L)
+check_suffx    = ['tickv','tickname','ticks','range']
+check_xtags    = 'x'+check_suffx
+check_ytags    = 'y'+check_suffx
+test_xyran     = [WHERE(tagns EQ check_xtags[3]),WHERE(tagns EQ check_ytags[3])]
+test_xytic     = [WHERE(pref_tag EQ 'xtick'),WHERE(pref_tag EQ 'ytick')]
+def_minmax     = [1d-30,1d30]
+
+IF (test_xytic[0] LT 0) THEN BEGIN
+  ;;  Define new tick marks for X-Axis
+  test = (test_xyran[0] GE 0)
+  IF (test[0]) THEN BEGIN
+    xran  = limits.XRANGE
+    rmnmx = xran
+    force = 1
+  ENDIF ELSE BEGIN
+    rmnmx = def_minmax
+    force = 0
+  ENDELSE
+  xtick_str = log10_tickmarks(xdat,RANGE=xran,MIN_VAL=rmnmx[0],MAX_VAL=rmnmx[1],FORCE_RA=force)
+  IF (SIZE(xtick_str,/TYPE) EQ 8) THEN BEGIN
+    str_element,limits,   'XTICKV',   xtick_str.TICKV,/ADD_REPLACE
+    str_element,limits,'XTICKNAME',xtick_str.TICKNAME,/ADD_REPLACE
+    str_element,limits,   'XTICKS',   xtick_str.TICKS,/ADD_REPLACE
+    str_element,limits,   'XMINOR',                 9,/ADD_REPLACE
+  ENDIF
+ENDIF
+
+IF (test_xytic[1] LT 0) THEN BEGIN
+  ;;  Define new tick marks for Y-Axis
+  test = (test_xyran[1] GE 0)
+  IF (test[0]) THEN  BEGIN
+    yran  = limits.YRANGE
+    rmnmx = yran
+    force = 1
+  ENDIF ELSE BEGIN
+    rmnmx = def_minmax
+    force = 0
+  ENDELSE
+  ytick_str = log10_tickmarks(ydat,RANGE=yran,MIN_VAL=rmnmx[0],MAX_VAL=rmnmx[1],FORCE_RA=force)
+  IF (SIZE(ytick_str,/TYPE) EQ 8) THEN BEGIN
+    str_element,limits,   'YTICKV',   ytick_str.TICKV,/ADD_REPLACE
+    str_element,limits,'YTICKNAME',ytick_str.TICKNAME,/ADD_REPLACE
+    str_element,limits,   'YTICKS',   ytick_str.TICKS,/ADD_REPLACE
+    str_element,limits,   'YMINOR',                 9,/ADD_REPLACE
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Plot data
+;;----------------------------------------------------------------------------------------
+mplot,DATA=plot,COLORS=shades,LIMITS=limits,LABELS=labels,OVERPLOT=oplot
+;;  If desired, overplot one-count data
+IF (log_1c[0]) THEN mplot,DATA=plot1c,COLORS=shades,LIMITS={LINESTYLE:2},/OVERPLOT
+time_stamp     ;;  Print date plot was created in lower right-hand corner
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+

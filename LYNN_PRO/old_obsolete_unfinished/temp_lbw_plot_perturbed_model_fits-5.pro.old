@@ -1,0 +1,519 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_lbw_get_defaults_pmf_plots.pro
+;  PURPOSE  :   This routine returns defaults for the main calling routine.
+;
+;  CALLED BY:   
+;               temp_lbw_plot_perturbed_model_fits.pro
+;
+;  CALLS:
+;               time_string.pro
+;               get_power_of_ten_ticks.pro
+;               extract_tags.pro
+;               plot_keyword_lists.pro
+;               str_element.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               test = temp_lbw_get_defaults_pmf_plots(_EXTRA=extra)
+;
+;  KEYWORDS:    
+;               _EXTRA    :  Scalar [structure] containing tags relevant to plotting
+;                              routines
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [07/28/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [07/28/2015   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [07/28/2015   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [07/30/2015   v1.0.0]
+;             5)  Continued to write routine
+;                                                                   [07/31/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  User should not call this routine directly
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  07/27/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/31/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION temp_lbw_get_defaults_pmf_plots,_EXTRA=ex_str
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION time_string, get_power_of_ten_ticks, plot_keyword_lists, is_a_number
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define some constants, dummy variables, and defaults
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Dummy variables
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+today_str      = 'Output at:  '+time_string(SYSTIME(1,/SECONDS),PREC=4)+' UTC'
+exfac          = 2.5d0
+xyfac          = [1d0/exfac[0],exfac[0]]
+;;--------------------------------------------
+;;  Defaults
+;;--------------------------------------------
+def_cols       = 50L
+def_nsum       = 5L
+def_nxsm       = 30L
+def_symb       = 3
+def_syms       = 2.0
+def_thck       = 2.0
+def_lsty       = 2
+def_fname      = 'perturbed_model_fit_functions'
+def_olims      = {N_SUM:def_nsum[0],N_HBINS:def_nxsm[0],PSYM:def_symb[0],      $
+                  SYMSIZE:def_syms[0],THICK:def_thck[0],LINESTYLE:def_lsty[0], $
+                  COLOR:def_cols[0],FNAME:def_fname[0],VERSION:today_str[0]}
+olims_tags     = TAG_NAMES(def_olims)
+;;--------------------------------------------
+;;  Define default base LIMITS structure
+;;--------------------------------------------
+def_xttle      = "X [units]"
+def_yttle      = "Y [units]"
+def_pttle      = "Y vs X"
+def_xyran      = [1d-2,1d3]
+;;  Define default plot position
+def_p_posi     = [0.1,0.1,0.9,0.9]
+def_plims      = {YLOG:1,XLOG:1,NODATA:1,YMINOR:9L,XMINOR:9L,YSTYLE:1,XSTYLE:1,$
+                  POSITION:def_p_posi,XTITLE:def_xttle[0],YTITLE:def_yttle[0], $
+                  TITLE:def_pttle[0],XRANGE:def_xyran,YRANGE:def_xyran}
+;;--------------------------------------------
+;;  Setup dummy log-scale tick marks
+;;--------------------------------------------
+def_tick_str   = get_power_of_ten_ticks(def_xyran)
+;;  Get tick structure info
+tag_suff       = ['TICKNAME','TICKV','TICKS']
+excpt_tags     = 'Z'+tag_suff
+extract_tags,def_plims,def_tick_str,EXCEPT_TAGS=excpt_tags
+plims_tags     = plot_keyword_lists(/PLOT)      ;;  All keywords accepted by PLOT.PRO
+;;--------------------------------------------
+;;  Define default XYOUTS LIMITS structure
+;;--------------------------------------------
+;;  Define XYOUTS structure for routine version
+xylim_rv       = {CHARSIZE:0.65,NORMAL:1,ORIENTATION:90.}
+xyout_lim_tags = ['ALIGNMENT','CHARSIZE','CHARTHICK','TEXT_AXES','WIDTH','CLIP',     $
+                  'COLOR','DATA','DEVICE','FONT','NOCLIP','NORMAL','ORIENTATION',    $
+                  'T3D','Z']
+;;--------------------------------------------
+;;  Define default POPEN LIMITS structure
+;;--------------------------------------------
+postruc        = {LANDSCAPE:1,UNITS:'inches',XSIZE:8.,YSIZE:8.,ASPECT:1.}
+;postruc        = {LANDSCAPE:1,UNITS:'inches',XSIZE:8.,YSIZE:10.5}
+popen_lim_tags = ['PORT','LANDSCAPE','COLOR','BW','PRINTER','DIRECTORY','FONT',$
+                  'ASPECT','XSIZE','YSIZE','UNITS','INTERP','CTABLE','OPTIONS',$
+                  'COPY','ENCAPSULATED']
+;;--------------------------------------------
+;;  Define default output structure
+;;--------------------------------------------
+def_out_struc  = {P_LIMITS:def_plims,O_LIMITS:def_olims,XYOUTS_LIMS:xylim_rv,    $
+                  POPEN_LIM:postruc}
+;;--------------------------------------------
+;;  Dummy error messages
+;;--------------------------------------------
+noinpt_msg     = 'User should supply keywords for more specific output...'
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+test_ex        = (SIZE(ex_str,/TYPE) NE 8)
+IF (test_ex) THEN BEGIN
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,def_out_struc
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Get extra information from keywords
+;;----------------------------------------------------------------------------------------
+;;--------------------------------------------
+;;  Check XRANGE and YRANGE
+;;--------------------------------------------
+str_element,ex_str,   'XRANGE',xran
+str_element,ex_str,   'YRANGE',yran
+test           = (is_a_number(xran,/NOMSSG) EQ 0) OR (N_ELEMENTS(xran) NE 2)
+IF (test) THEN xran = def_xyran ELSE xran = TEMPORARY(xran[SORT(xran)])
+test           = (xran[0] EQ xran[1])
+IF (test) THEN xran = def_xyran
+test           = (is_a_number(yran,/NOMSSG) EQ 0) OR (N_ELEMENTS(yran) NE 2)
+IF (test) THEN yran = def_xyran ELSE yran = TEMPORARY(yran[SORT(yran)])
+test           = (yran[0] EQ yran[1])
+IF (test) THEN yran = def_xyran
+def_xtick_str  = get_power_of_ten_ticks(xran)
+def_ytick_str  = get_power_of_ten_ticks(yran)
+tag_suff       = ['TICKNAME','TICKV','TICKS']
+;;--------------------------------------------
+;;  Define P_LIMITS
+;;--------------------------------------------
+extract_tags,plims_str,def_plims
+extract_tags,plims_str,ex_str,TAGS=plims_tags
+excpt_tags     = ['Y'+tag_suff,'Z'+tag_suff]
+extract_tags,plims_str,def_xtick_str,EXCEPT_TAGS=excpt_tags
+excpt_tags     = ['X'+tag_suff,'Z'+tag_suff]
+extract_tags,plims_str,def_ytick_str,EXCEPT_TAGS=excpt_tags
+str_element,plims_str,'XRANGE',xran,/ADD_REPLACE
+str_element,plims_str,'YRANGE',yran,/ADD_REPLACE
+;;--------------------------------------------
+;;  Define O_LIMITS
+;;--------------------------------------------
+;;  Check VERSION
+str_element,ex_str,  'VERSION',r_version
+test           = (N_ELEMENTS(r_version) LT 1) OR (SIZE(r_version,/TYPE) NE 7)
+IF (test[0]) THEN r_version = today_str[0]
+test           = (r_version[0] EQ '')
+IF (test[0]) THEN r_version = today_str[0] ELSE r_version = r_version[0]+' '+today_str[0]
+;;  Get default tag values
+extract_tags,olims_str,def_olims
+;;  Replace default tag values if user specified
+extract_tags,olims_str,ex_str,TAGS=olims_tags
+;;  Add VERSION
+str_element,olims_str,'VERSION',r_version[0],/ADD_REPLACE
+;;--------------------------------------------
+;;  Define POPEN LIMITS structure
+;;--------------------------------------------
+extract_tags,popen_struc,postruc
+extract_tags,popen_struc,ex_str,TAGS=popen_lim_tags
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+new_out_struc  = {P_LIMITS:plims_str,O_LIMITS:olims_str,        $
+                  XYOUTS_LIMS:xylim_rv,POPEN_LIM:popen_struc}
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,new_out_struc
+END
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_lbw_plot_perturbed_model_fits.pro
+;  PURPOSE  :   This routine perturbs and then plots the results of a model fit line at
+;                 specific points, where the perturbations are treated as ranges for the
+;                 error bars in the plot.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               temp_lbw_get_defaults_pmf_plots.pro
+;
+;  CALLS:
+;               temp_lbw_get_dxdy_ranges_from_fits.pro
+;               str_element.pro
+;               is_a_number.pro
+;               temp_lbw_get_defaults_pmf_plots.pro
+;               oploterrxy.pro
+;               popen.pro
+;               pclose.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               X         :  [N,2]-Element [float/double] array of independent variable
+;                              values or abscissa, where F_j = F(X_j)
+;               PARAM     :  [4]-Element [float/double] array containing the following
+;                              model fit parameters, {A,B,C,D}, for the model functions
+;                              (see KEYWORDS section below) defined as:
+;                                PARAM[0] = A
+;                                PARAM[1] = B
+;                                PARAM[2] = C
+;                                PARAM[3] = D
+;               DPARM     :  [4]-Element [float/double] array defining the uncertainties
+;                              for each fit element in PARAM
+;
+;  EXAMPLES:    
+;               x_low = [1d-2,1d4,1d14]
+;               x_upp = [1d2,1d7,1d18]
+;               xin   = [[x_low],[x_upp]]
+;               param = [3.972d0,0.536d0,1.859d0,0d0]
+;               dparm = [0.055d0,0.007d0,0.047d0,0d0]
+;               func  = 1
+;               temp  = temp_lbw_plot_perturbed_model_fits(xin,param,dparm,FUNC=func,$
+;                                                          /XLOG,/YLOG,_EXTRA=pstr)
+;
+;  KEYWORDS:    
+;               FUNC      :  Scalar [integer] specifying the type of function to use
+;                              [Default  :  1]
+;                              1  :  F(X) = A X^(B) + C
+;                              2  :  F(X) = A e^(B X) + C
+;                              3  :  F(X) = A + B Log_{e} |X^C|
+;                              4  :  F(X) = A X^(B) e^(C X) + D
+;                              5  :  F(X) = A B^(X) + C
+;                              6  :  F(X) = A B^(C X) + D
+;                              7  :  F(X) = ( A + B X )^(-1)
+;                              8  :  F(X) = ( A B^(X) + C )^(-1)
+;                              9  :  F(X) = A X^(B) ( e^(C X) + D )^(-1)
+;                             10  :  F(X) = A + B Log_{10} |X| + C (Log_{10} |X|)^2
+;                             11  :  F(X) = A X^(B) e^(C X) e^(D X)
+;               XLOG      :  If set, averages values are calculated in logarithmic space
+;                              for the X_OUT values
+;               YLOG      :  If set, averages values are calculated in logarithmic space
+;                              for the Y_OUT values
+;               VERSION   :  Scalar [string or integer] defining whether [TRUE] or not
+;                              [FALSE] to output the current routine version and date
+;                              to be placed on outside of lower-right-hand corner.
+;                              If a string is supplied, the string is output.  If TRUE
+;                              is supplied, then routine_version.pro is called to get
+;                              the current version and date/time for output.
+;                              [Default  :  current time]
+;               FNAME     :  Scalar [string] defining the output file name to use
+;                              [Default  :  'perturbed_model_fit_functions']
+;               _EXTRA    :  Scalar [structure] containing tags relevant to plotting
+;                              routines
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [07/28/2015   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [07/28/2015   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [07/28/2015   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [07/30/2015   v1.0.0]
+;             5)  Continued to write routine
+;                                                                   [07/31/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  Do not add the file extension for FNAME
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  07/27/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/31/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION temp_lbw_plot_perturbed_model_fits,x,param,dparm,FUNC=func,XLOG=xlog,YLOG=ylog,$
+                                            _EXTRA=ex_str
+
+;;  Let IDL know that the following are functions
+FORWARD_FUNCTION temp_lbw_get_dxdy_ranges_from_fits, temp_lbw_get_defaults_pmf_plots, $
+                 is_a_number
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define some constants, dummy variables, and defaults
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Dummy variables
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+exfac          = 2.5d0
+xyfac          = [1d0/exfac[0],exfac[0]]
+def_fname      = 'perturbed_model_fit_functions'
+letter_prefx   = ['A','B','C','D']+' = '
+dletter_prefx  = '+/- d'+letter_prefx
+deff_ysubttl   = 'Y = A X!UB!N + C'
+deff_print     = 'Y = A X^(B) + C'
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Get perturbed model fit function values
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+temp           = temp_lbw_get_dxdy_ranges_from_fits(x,param,dparm,FUNC=func,$
+                                                    XLOG=xlog,YLOG=ylog)
+
+test           = (SIZE(temp,/TYPE) NE 8)
+IF (test[0]) THEN RETURN,0b          ;;  Error handling done within temp_lbw_get_dxdy_ranges_from_fits.pro
+;;----------------------------------------------------------------------------------------
+;;  Define parameters
+;;----------------------------------------------------------------------------------------
+dxdy_struc     = temp
+x_val          = temp.X_VAL
+x_err          = temp.X_ERR
+y_val          = temp.Y_VAL
+y_err          = temp.Y_ERR
+;;  Define plot ranges
+x__ran         = [MIN((x_val - x_err[*,0]),/NAN),MAX((x_val + x_err[*,1]),/NAN)]
+y__ran         = [MIN((y_val - y_err[*,0]),/NAN),MAX((y_val + y_err[*,1]),/NAN)]
+xy_low         = MIN([(x_val - x_err[*,0]),(y_val - y_err[*,0])],/NAN)
+xy_upp         = MAX([(x_val + x_err[*,1]),(y_val + y_err[*,1])],/NAN)
+x__ran        *= xyfac
+y__ran        *= xyfac
+xran_0         = [xy_low[0],xy_upp[0]]*xyfac
+;;----------------------------------------------------------------------------------------
+;;  Create dummy fit line
+;;----------------------------------------------------------------------------------------
+;nx             = 10L
+;dumbx          = DINDGEN(nx)*(xran_0[1] - xran_0[0])/(nx - 1L) + xran_0[0]
+;nx             = 100L
+nx             = 200L
+l10xran        = ALOG10(xran_0)
+dumbxl10       = DINDGEN(nx)*(l10xran[1] - l10xran[0])/(nx - 1L) + l10xran[0]
+dumbx          = 1d1^(dumbxl10)
+
+
+
+dumby          = param[0]*dumbx^(param[1]) + param[2]
+;;  Add dummy fit line to structure
+str_element,dxdy_struc,'X_FIT', dumbx,/ADD_REPLACE
+str_element,dxdy_struc,'Y_FIT', dumby,/ADD_REPLACE
+;;----------------------------------------------------------------------------------------
+;;  Get some defaults and check keywords
+;;----------------------------------------------------------------------------------------
+test_ex        = (SIZE(ex_str,/TYPE) NE 8)
+IF (test_ex[0]) THEN BEGIN
+  ;;  Add XRANGE and YRANGE
+  str_element,ex_str,   'XRANGE', x__ran,/ADD_REPLACE
+  str_element,ex_str,   'YRANGE', y__ran,/ADD_REPLACE
+ENDIF ELSE BEGIN
+  ;;  Check for XRANGE and YRANGE
+  str_element,ex_str,   'XRANGE', x_ran0
+  str_element,ex_str,   'YRANGE', y_ran0
+  ;;  Add XRANGE and YRANGE if necessary
+  test           = (is_a_number(x_ran0,/NOMSSG) EQ 0) OR (N_ELEMENTS(x_ran0) NE 2)
+  IF (test) THEN str_element,ex_str,   'XRANGE', x__ran,/ADD_REPLACE
+  test           = (is_a_number(y_ran0,/NOMSSG) EQ 0) OR (N_ELEMENTS(y_ran0) NE 2)
+  IF (test) THEN str_element,ex_str,   'YRANGE', y__ran,/ADD_REPLACE
+ENDELSE
+  ;;  Add XLOG and YLOG
+str_element,ex_str,     'XLOG',xlog[0],/ADD_REPLACE
+str_element,ex_str,     'YLOG',ylog[0],/ADD_REPLACE
+;;  Get defaults
+defaults       = temp_lbw_get_defaults_pmf_plots(_EXTRA=ex_str)
+;;----------------------------------------------------------------------------------------
+;;  Define parameters
+;;----------------------------------------------------------------------------------------
+pstr           = defaults.P_LIMITS
+ostr           = defaults.O_LIMITS
+xyo_str        = defaults.XYOUTS_LIMS
+postruc        = defaults.POPEN_LIM
+;;  Remove COLOR tag from LIMITS
+str_element,pstr,'COLOR',/DELETE
+;;  Define VERSION and FNAME
+fname          = ostr.FNAME
+r_version      = ostr.VERSION
+;;  Define PSYM, SYMSIZE, THICK, and LINESTYLE
+symb           = ostr.PSYM
+syms           = ostr.SYMSIZE
+thck           = ostr.THICK
+lsty           = ostr.LINESTYLE
+cols           = ostr.COLOR
+;;----------------------------------------------------------------------------------------
+;;  Define dE labels for error bars
+;;----------------------------------------------------------------------------------------
+;;  Define high/low values for XY-Errors
+xlow           = x_val - x_err[*,0]
+xhig           = x_val + x_err[*,1]
+ylow           = y_val - y_err[*,0]
+yhig           = y_val + y_err[*,1]
+;;  Convert positions to DEVICE coordinates
+dE_lxly_pos    = CONVERT_COORD(xlow,ylow,/DATA,/TO_DEVICE)
+dE_lxhy_pos    = CONVERT_COORD(xlow,yhig,/DATA,/TO_DEVICE)
+dE_hxly_pos    = CONVERT_COORD(xhig,ylow,/DATA,/TO_DEVICE)
+dE_hxhy_pos    = CONVERT_COORD(xhig,yhig,/DATA,/TO_DEVICE)
+dE_axly_pos    = REFORM((dE_lxly_pos[0,*] + dE_hxly_pos[0,*])/2)
+;;  Convert positions to DEVICE coordinates [PS]
+popen,fname[0],_EXTRA=postruc
+  ;;  Initialize plot
+  PLOT,x_val,y_val,_EXTRA=pstr
+  ;;  Get device positions
+  dE_lxly_pos_ps = CONVERT_COORD(xlow,ylow,/DATA,/TO_DEVICE)
+  dE_lxhy_pos_ps = CONVERT_COORD(xlow,yhig,/DATA,/TO_DEVICE)
+  dE_hxly_pos_ps = CONVERT_COORD(xhig,ylow,/DATA,/TO_DEVICE)
+  dE_hxhy_pos_ps = CONVERT_COORD(xhig,yhig,/DATA,/TO_DEVICE)
+  dE_axly_pos_ps = REFORM((dE_lxly_pos_ps[0,*] + dE_hxly_pos_ps[0,*])/2)
+pclose
+;;  Define dE strings
+dE_low_str0    = format_number_2_string(ylow,NV=15,ND=3,NEXP=0)
+dE_hig_str0    = format_number_2_string(yhig,NV=15,ND=3,NEXP=0)
+dE_low_str     = '|Y| [lower] = '+dE_low_str0+' [units]'
+dE_hig_str     = '|Y| [upper] = '+dE_hig_str0+' [units]'
+;dE_low_str     = '|Y| [lower] = '+dE_low_str0+' mV/m'
+;dE_hig_str     = '|Y| [upper] = '+dE_hig_str0+' mV/m'
+n_labs         = N_ELEMENTS(dE_low_str)
+;;  Define XYOUTS structure for range labels
+xyout_labs     = {CHARSIZE:0.75,DEVICE:1,ORIENTATION:0.}
+xyout_labs_ps  = {CHARSIZE:0.65,DEVICE:1,ORIENTATION:0.}
+;;  Define parameter label outputs for XYOUTS
+
+;;----------------------------------------------------------------------------------------
+;;  Plot and save
+;;----------------------------------------------------------------------------------------
+WSET,1
+WSHOW,1
+  ;;  Initialize plot
+  PLOT,x_val,y_val,_EXTRA=pstr
+    ;;  Overplot with error bars
+    oploterrxy,x_val,y_val,x_err,y_err,PSYM=symb[0],SYMSIZE=syms[0],COLOR=cols[0]
+    ;;  Overplot fit line
+    OPLOT,dumbx,dumby,COLOR=cols[0],LINESTYLE=lsty[0],THICK=thck[0]
+    ;;------------------------------------------------------------------------------------
+    ;;  Output labels
+    ;;------------------------------------------------------------------------------------
+    ;;  Define XY-visible sizes
+    xy_v_sz        = [!D.X_VSIZE[0],!D.Y_VSIZE[0]]
+    x_off_ly       = xy_v_sz[0]/100. + dE_axly_pos
+    FOR j=0L, n_labs[0] - 1L DO BEGIN
+      test   = (j EQ 0) OR (j EQ n_labs[0] - 1L)
+      IF (test) THEN BEGIN
+        test = (j EQ 0)
+        IF (test) THEN x_lh_0 = [x_off_ly[j],dE_lxhy_pos[0,j]] ELSE x_lh_0 = [dE_lxhy_pos[0,j],dE_lxhy_pos[0,j]]
+      ENDIF ELSE x_lh_0 = [dE_lxly_pos[0,j],dE_lxhy_pos[0,j]]
+      test   = (j EQ 0)
+      IF (test) THEN y_off_0 = (xy_v_sz[1]/100.*[1,1]) ELSE y_off_0 = (xy_v_sz[1]/100.*[-1,1])
+      y_lh_0 = [dE_lxly_pos[1,j],dE_hxhy_pos[1,j]] + y_off_0
+      ;;  output labels
+      XYOUTS,x_lh_0[0],y_lh_0[0],dE_low_str[j],_EXTRA=xyout_labs
+      XYOUTS,x_lh_0[1],y_lh_0[1],dE_hig_str[j],_EXTRA=xyout_labs
+    ENDFOR
+
+popen,fname[0],_EXTRA=postruc
+  ;;  Initialize plot
+  PLOT,x_val,y_val,_EXTRA=pstr
+    ;;  Overplot with error bars
+    oploterrxy,x_val,y_val,x_err,y_err,PSYM=symb[0],SYMSIZE=syms[0],COLOR=cols[0]
+    ;;------------------------------------------------------------------------------------
+    ;;  Overplot fit line
+    ;;------------------------------------------------------------------------------------
+    OPLOT,dumbx,dumby,COLOR=cols[0],LINESTYLE=lsty[0],THICK=thck[0]
+    ;;  Output routine version
+    xwin0          = !X.WINDOW + 0.025
+    ywin0          = !Y.WINDOW + 0.010
+    test_rv        = (SIZE(ostr.VERSION[0],/TYPE) EQ 7)
+    IF (test_rv[0]) THEN XYOUTS,xwin0[1],ywin0[0],ostr.VERSION[0],_EXTRA=xyo_str
+    ;;------------------------------------------------------------------------------------
+    ;;  Output labels
+    ;;------------------------------------------------------------------------------------
+    ;;  Define XY-visible sizes
+    xy_v_sz        = [!D.X_VSIZE[0],!D.Y_VSIZE[0]]
+    x_off_ly       = xy_v_sz[0]/100. + dE_axly_pos_ps
+    FOR j=0L, n_labs[0] - 1L DO BEGIN
+      test   = (j EQ 0) OR (j EQ n_labs[0] - 1L)
+      IF (test) THEN BEGIN
+        test = (j EQ 0)
+        IF (test) THEN x_lh_0 = [x_off_ly[j],dE_lxhy_pos_ps[0,j]] ELSE x_lh_0 = [dE_lxhy_pos_ps[0,j],dE_lxhy_pos_ps[0,j]]
+      ENDIF ELSE x_lh_0 = [dE_lxly_pos_ps[0,j],dE_lxhy_pos_ps[0,j]]
+      test   = (j EQ 0)
+      IF (test) THEN y_off_0 = (xy_v_sz[1]/100.*[1,1]) ELSE y_off_0 = (xy_v_sz[1]/100.*[-1,1])
+      y_lh_0 = [dE_lxly_pos_ps[1,j],dE_hxhy_pos_ps[1,j]] + y_off_0
+      ;;  output labels
+      XYOUTS,x_lh_0[0],y_lh_0[0],dE_low_str[j],_EXTRA=xyout_labs_ps
+      XYOUTS,x_lh_0[1],y_lh_0[1],dE_hig_str[j],_EXTRA=xyout_labs_ps
+    ENDFOR
+pclose
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,{DEFAULTS:defaults,DXDY:dxdy_struc}
+END
+
+
+

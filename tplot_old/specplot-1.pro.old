@@ -1,0 +1,357 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   specplot.pro
+;  PURPOSE  :   Creates a spectrogram plot from given input.  User defines axes
+;                 labels and positions in the keyword LIMITS.
+;
+;  CALLED BY: 
+;               tplot.pro
+;
+;  CALLS:
+;               extract_tags.pro
+;               str_element.pro
+;               makegap.pro
+;               dimen.pro
+;               specplot.pro
+;               minmax.pro
+;               interp.pro
+;               dimen2.pro
+;               bytescale.pro
+;               box.pro
+;               draw_color_scale.pro
+;
+;  REQUIRES:    NA
+;
+;  INPUT:
+;               X :  X-axis values => Dimension N.
+;               Y :  Y-axis values => Dimension M.  (Future update will allow (N,M))
+;               Z :  Color axis values:  Dimension (N,M).
+;
+;  EXAMPLES:
+;
+;  KEYWORDS:  
+;               LIMITS        :  A structure that may contain any combination of the 
+;                                  following elements:
+;=========================================================================================
+;                                  ALL plot keywords such as:
+;                                  XLOG,   YLOG,   ZLOG,
+;                                  XRANGE, YRANGE, ZRANGE,
+;                                  XTITLE, YTITLE,
+;                                  TITLE, POSITION, REGION  etc. (see IDL
+;                                    documentation for a description)
+;                                  The following elements can be included in 
+;                                    LIMITS to effect DRAW_COLOR_SCALE:
+;                                      ZTICKS, ZRANGE, ZTITLE, ZPOSITION, ZOFFSET
+; **[Note: Program deals with these by itself, so just set them if necessary and let 
+;           it do the rest.  Meaning, if you know what the tick marks should be on 
+;           your color bar, define them under the ZTICK[V,NAME,S] keywords in the 
+;           structure ahead of time.]**
+;=========================================================================================
+;               DATE          :  [string] 'MMDDYY'
+;               TIME          :  [string] ['HH:MM:SS.xxx'] associated with time of 
+;                                  TDS event
+;               PS_RESOLUTION :  Post Script resolution.  Default is 60.
+;               COLOR_POS     :  Same as output of plot positions, but this specifies
+;                                  the position(s) of the color bar(s) [normalized
+;                                  coords.] => Define as a named variable to be
+;                                  returned by program {see: my_plot_positions.pro}
+;               NO_INTERP     :  If set, do no x or y interpolation.
+;               X_NO_INTERP   :  Prevents interpolation along the x-axis.
+;               Y_NO_INTERP   :  Prevents interpolation along the y-axis.
+;               OVERPLOT      :  If non-zero, then data is plotted over last plot.
+;               OVERLAY       :  If non-zero, then data is plotted on top of data 
+;                                  from last plot.
+;               IGNORE_NAN    :  If non-zero, ignore data points that are not finite.
+;               DATA          :  A structure that provides an alternate means of
+;                                   supplying the data and options.  This is the 
+;                                   method used by "TPLOT".
+;
+;   NOTES:
+;               1)  The arrays x and y MUST be monotonic!  (increasing or decreasing)
+;               2)  The default is to interpolate in both the x and y dimensions.
+;               3)  Data gaps can be included by setting the z values to !VALUES.F_NAN.
+;               4)  If ZLOG is set then non-positive zvalues are treated as missing data.
+;
+;  SEE ALSO:
+;               xlim.pro
+;               ylim.pro
+;               zlim.pro
+;               options.pro
+;               tplot.pro
+;               draw_color_scale.pro
+;
+;   CHANGED:  1)  Davin Larson changed something...       [11/01/2002   v1.0.?]
+;             2)  Re-wrote and cleaned up                 [06/10/2009   v1.1.0]
+;             3)  Changed some minor syntax stuff         [06/11/2009   v1.1.1]
+;             4)  Fixed a typo which occured when Y input had 2-Dimensions
+;                                                         [09/14/2009   v1.1.2]
+;
+;   CREATED:  ??/??/????
+;   CREATED BY:  Davin Larson
+;    LAST MODIFIED:  09/14/2009   v1.1.2
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO specplot,x,y,z,LIMITS=lim,DATA=data,OVERPLOT=overplot,OVERLAY=overlay,$
+                   PS_RESOLUTION=ps_res,X_NO_INTERP=x_no_interp,          $
+                   Y_NO_INTERP=y_no_interp,NO_INTERP=no_interp,           $
+                   IGNORE_NAN=ignore_nan
+
+;-----------------------------------------------------------------------------------------
+; Set defaults:
+;-----------------------------------------------------------------------------------------
+opt = {XRANGE:[0.,0.],YRANGE:[0.,0.],ZRANGE:[1.,1.]}
+
+IF KEYWORD_SET(data) THEN BEGIN
+  x = data.X
+  y = data.V
+  z = data.Y
+  extract_tags,opt,data,EXCEPT=['X','Y','V']
+  str_element,lim,'DATAGAP',dg
+  IF KEYWORD_SET(dg) THEN makegap,dg,x,z,V=y
+ENDIF
+
+IF KEYWORD_SET(no_interp) THEN BEGIN
+   x_no_interp = 1
+   y_no_interp = 1
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Recall program
+;-----------------------------------------------------------------------------------------
+IF (N_PARAMS() EQ 1) THEN BEGIN
+  dim = dimen(x)
+  specplot,FINDGEN(dim[0]),FINDGEN(dim[1]),x,LIMITS=lim,OVERPLOT=overplot,$
+           OVERLAY=overlay,PS_RESOLUTION=ps_res, $
+           X_NO_INTERP=x_no_interp,Y_NO_INTERP=y_no_interp
+  RETURN
+ENDIF
+;-----------------------------------------------------------------------------------------
+; Set more defaults:
+;-----------------------------------------------------------------------------------------
+extract_tags,opt,lim
+
+IF (opt.XRANGE[0] EQ opt.XRANGE[1]) THEN opt.XRANGE = minmax(x)
+IF (opt.YRANGE[0] EQ opt.YRANGE[1]) THEN opt.YRANGE = minmax(y)
+
+;str_element,opt,'ytype',VALUE=ylog   ; obsolete keywords
+;str_element,opt,'xtype',VALUE=xlog
+;str_element,opt,'ztype',VALUE=zlog
+
+str_element,opt,'XLOG',VALUE=xlog
+str_element,opt,'YLOG',VALUE=ylog
+str_element,opt,'ZLOG',VALUE=zlog
+
+str_element,opt,'GIFPLOT',VALUE=gifplot
+IF KEYWORD_SET(gifplot) THEN BEGIN
+  x_no_interp    = 1
+  y_no_interp    = 1
+  no_color_scale = 1
+ENDIF
+
+str_element,opt,'X_NO_INTERP',VALUE=x_no_interp
+str_element,opt,'Y_NO_INTERP',VALUE=y_no_interp
+str_element,opt,'NO_INTERP',VALUE=no_interp
+IF KEYWORD_SET(no_interp) THEN BEGIN
+   x_no_interp = 1
+   y_no_interp = 1
+ENDIF
+
+
+str_element,opt,'MAX_VALUE',VALUE=mx
+str_element,opt,'MIN_VALUE',VALUE=mn
+str_element,opt,'ZTITLE',   VALUE=ztitle
+str_element,opt,'BOTTOM',   VALUE=bottom
+str_element,opt,'TOP',      VALUE=top
+
+IF NOT KEYWORD_SET(overplot) THEN box,opt     ; Sets plot parameters.
+
+
+zrange = opt.ZRANGE
+y1     = y
+IF KEYWORD_SET(ylog) THEN BEGIN
+  bad = WHERE(FINITE(y1) EQ 0,c)
+  IF (c NE 0) THEN y1[bad] = 0.
+  bad = WHERE(y1 LE 0,c)
+  IF (c NE 0) THEN y1[bad] = !VALUES.F_NAN
+  y1 = ALOG10(y1)
+ENDIF
+
+IF KEYWORD_SET(xlog) THEN x1 = ALOG10(x) ELSE x1 = x
+
+z1 = z
+IF KEYWORD_SET(zlog) THEN BEGIN
+   bad = WHERE(FINITE(z1) EQ 0,c)
+   IF (c NE 0) THEN z1[bad] = 0.
+   bad = WHERE(z1 LE 0,c)
+   IF (c NE 0) THEN z1[bad] = !VALUES.F_NAN
+   z1 = ALOG10(z1)
+   zrange = ALOG10(zrange)
+   IF KEYWORD_SET(mn) THEN mn = ALOG10(mn)
+   IF KEYWORD_SET(mx) THEN mx = ALOG10(mx)
+ENDIF
+
+xwindow=!X.WINDOW
+ywindow=!Y.WINDOW
+xcrange=!X.CRANGE
+ycrange=!Y.CRANGE
+
+str_element,opt,'OVERLAY',VALUE=overlay
+IF KEYWORD_SET(overlay) THEN BEGIN
+   winpos     = CONVERT_COORD(minmax(x),minmax(y),/DATA,/TO_NORM)
+   xwr        = minmax(winpos[0,*])
+   ywr        = minmax(winpos[1,*])
+;   xwindow(0) = xwindow(0) > xwr(0)
+;   xwindow(1) = xwindow(1) < xwr(1)
+   xwindow    = xwindow > xwr[0]
+   xwindow    = xwindow < xwr[1]
+   ywindow[0] = ywindow[0] > ywr[0]
+   ywindow[1] = ywindow[1] < ywr[1]
+   datpos     = CONVERT_COORD(xwindow,ywindow,/NORM,/TO_DATA)
+   xcrange    = REFORM(datpos[0,*])
+   ycrange    = REFORM(datpos[1,*])
+   IF !X.TYPE THEN xcrange = ALOG10(xcrange)
+   IF !Y.TYPE THEN ycrange = ALOG10(ycrange)
+ENDIF
+
+
+pixpos    = ROUND(CONVERT_COORD(xwindow,ywindow,/NORM,/TO_DEVICE))
+npx       = pixpos[0,1] - pixpos[0,0] + 1
+npy       = pixpos[1,1] - pixpos[1,0] + 1
+xposition = pixpos[0,0]
+yposition = pixpos[1,0]
+
+IF (npx GT 0 AND npy GT 0) THEN BEGIN
+  str_element,opt,'IGNORE_NAN',ignore_nan
+  IF KEYWORD_SET(ignore_nan) THEN BEGIN
+    wg = WHERE(FINITE(TOTAL(z1,2)),c)
+    IF (c GT 0) THEN BEGIN
+      z1 = z1[wg,*]
+      y1 = y1[wg,*]
+      x1 = x1[wg]
+    ENDIF
+  ENDIF
+  ;---------------------------------------------------------------------------------------
+  ; => Scalable pixels (postscript)
+  ;      Postscript defaults to 60 dpi => adjust if user desires
+  ;---------------------------------------------------------------------------------------
+  IF (!D.FLAGS AND 1) THEN BEGIN
+   IF KEYWORD_SET(ps_res) THEN ps_resolution = ps_res ELSE  ps_resolution = 60.
+   str_element,opt,'PS_RESOLUTION',VALUE=ps_resolution
+   scale = ps_resolution/!D.X_PX_CM/2.54
+  ENDIF ELSE BEGIN
+    scale = 1.
+  ENDELSE
+
+  yd = ndimen(y1)
+  IF (yd EQ 1) THEN BEGIN            ; Typical, y does not vary with time
+    ;-------------------------------------------------------------------------------------
+    ; => Rescale Y-Data
+    ;-------------------------------------------------------------------------------------
+    nypiy = ROUND(scale*npy)
+    ny    = N_ELEMENTS(y1)
+    yp    = FINDGEN(nypiy)*(ycrange[1] - ycrange[0])/(nypiy - 1L) + ycrange[0]
+    ys    = interp(FINDGEN(ny),y1,yp)
+    IF KEYWORD_SET(y_no_interp) THEN  ys = ROUND(ys)
+    ;-------------------------------------------------------------------------------------
+    ; => Rescale X-Data and interpolate
+    ;-------------------------------------------------------------------------------------
+    nxpix = ROUND(scale*npx)
+    nx    = N_ELEMENTS(x1)
+    xp    = FINDGEN(nxpix)*(xcrange[1] - xcrange[0])/(nxpix - 1L) + xcrange[0]
+    xs    = interp(FINDGEN(nx),x1,xp)
+    IF KEYWORD_SET(x_no_interp) THEN  xs = ROUND(xs)
+    image = INTERPOLATE(z1,xs,ys,MISSING=!VALUES.F_NAN,/GRID)
+    ;-------------------------------------------------------------------------------------
+    ;  str_element,opt,'roi',roi
+    ;  IF KEYWORD_SET(roi) then begin
+    ;     xp_ = xp # REPLICATE(1.,nypix)
+    ;     yp_ = REPLICATE(1.,nxpix) # yp
+    ;     roi_x = keyword_set(xlog) ? ALOG10(roi[*,0]) : roi[*,0]
+    ;     roi_y = keyword_set(ylog) ? ALOG10(roi[*,1]) : roi[*,1]
+    ;     dummy = enclosed(xp_,yp_,roi_x,roi_y,ncircs=ncirc)
+    ;     image[WHERE(ncirc eq 0)] = !VALUES.F_NAN
+    ;  endif
+    ;-------------------------------------------------------------------------------------
+  ENDIF ELSE BEGIN      ; => y is 2D
+    ;-------------------------------------------------------------------------------------
+    ; => Rescale Y-Data
+    ;-------------------------------------------------------------------------------------
+    nypiy = ROUND(scale*npy)
+    ny    = dimen2(y1)
+    yp    = FINDGEN(nypiy)*(ycrange[1] - ycrange[0])/(nypiy - 1L) + ycrange[0]
+    ;-------------------------------------------------------------------------------------
+    ; => Rescale X-Data and interpolate
+    ;-------------------------------------------------------------------------------------
+    nxpix = ROUND(scale*npx)
+    nx    = N_ELEMENTS(x1)
+    xp    = FINDGEN(nxpix)*(xcrange[1] - xcrange[0])/(nxpix - 1L) + xcrange[0]
+    xs    = interp(FINDGEN(nx),x1,xp)
+    xs    = xs # REPLICATE(1.,nypiy)
+    bad   = WHERE(FINITE(xs) eq 0,c)
+    IF (c NE 0) THEN xs[bad] = -1
+    IF KEYWORD_SET(x_no_interp) THEN  xs = ROUND(xs)
+    ;-------------------------------------------------------------------------------------
+    ; => Resize Y-Data
+    ;-------------------------------------------------------------------------------------
+    ys    = REPLICATE(-1.,nxpix,nypiy)
+    ny1   = dimen1(y1)
+    y_ind = FINDGEN(ny)
+    xi    = ROUND(xs)
+    FOR i=0L, nxpix - 1L DO BEGIN
+      m       = (xi[i] > 0) < (ny1 - 1L)
+      yt1     = REFORM(y1[m,*])
+      ys[i,*] = interp(y_ind,yt1,yp)
+    ENDFOR
+    ;-------------------------------------------------------------------------------------
+    ; => Interpolate data
+    ;-------------------------------------------------------------------------------------
+    bad = WHERE(FINITE(ys) EQ 0,c)
+    IF (c NE 0) THEN ys[bad] = -1
+    IF KEYWORD_SET(y_no_interp) THEN  ys = ROUND(ys)
+    image = INTERPOLATE(z1,xs,ys,MISSING=!VALUES.F_NAN)
+  ENDELSE
+  ;---------------------------------------------------------------------------------------
+  ; => Convert image to byte-scale
+  ;---------------------------------------------------------------------------------------
+  IF NOT KEYWORD_SET(gifplot) THEN BEGIN
+    IF (zrange[0] EQ zrange[1]) THEN zrange = minmax(image,MAX=mx,MIN=mn)
+    image = bytescale(image,BOTTOM=bottom,TOP=top,RANGE=zrange)
+  ENDIF
+  ;---------------------------------------------------------------------------------------
+  ; => Plot image
+  ;---------------------------------------------------------------------------------------
+  TV,image,xposition,yposition,XSIZE=npx,YSIZE=npy
+  ;---------------------------------------------------------------------------------------
+  ; => Redraw the axes
+  ;---------------------------------------------------------------------------------------
+  str_element,/ADD_REPLACE,opt,'NOERASE',1
+  str_element,/ADD_REPLACE,opt,'OVERPLOT',/DELETE
+  str_element,/ADD_REPLACE,opt,'YTITLE',/DELETE
+  str_element,/ADD_REPLACE,opt,'POSITION',REFORM(TRANSPOSE([[!X.WINDOW],[!Y.WINDOW]]),4)
+  box,opt
+ENDIF ELSE STOP
+
+
+IF KEYWORD_SET(zlog) THEN zrange = 10.^zrange
+
+c_opt    = opt
+charsize = !P.CHARSIZE
+str_element,opt,'CHARSIZE',VALUE=charsize
+IF NOT KEYWORD_SET(charsize) THEN charsize = 1.
+
+str_element,opt,'NO_COLOR_SCALE',VALUE=no_color_scale
+str_element,opt,'ZTICKS',zticks
+str_element,opt,'ZPOSITION',zposition
+str_element,opt,'ZOFFSET',zoffset
+;-----------------------------------------------------------------------------------------
+; => Draw color bar if desired
+;-----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(no_color_scale) THEN BEGIN
+  draw_color_scale,BRANGE=[bottom,top],RANGE=zrange,LOG=zlog,TITLE=ztitle, $
+                   CHARSIZE=charsize,YTICKS=zticks,POSITION=zposition,     $
+                   OFFSET=zoffset
+ENDIF
+END

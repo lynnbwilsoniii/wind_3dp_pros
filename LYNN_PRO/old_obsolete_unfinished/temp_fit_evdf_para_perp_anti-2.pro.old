@@ -1,0 +1,1393 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_init_evdf_limits_str.pro
+;  PURPOSE  :   This routine initializes the LIMITS structure and formats the data to
+;                 be fitted in the wrapping routines.
+;
+;  CALLED BY:   
+;               temp_fit_evdf_para_perp_anti.pro
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               dat_3dp_str_names.pro
+;               dat_themis_esa_str_names.pro
+;               str_element.pro
+;               time_range_define.pro
+;               wind_3dp_units.pro
+;               trange_str.pro
+;               conv_units.pro
+;               spec3d.pro
+;               log10_tickmarks.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA       :  Scalar [structure] associated with a known THEMIS ESA
+;                               data structure [see get_th?_peib.pro, ? = a-f]
+;                               or a Wind/3DP data structure
+;                               [see get_?.pro, ? = el, elb, pl, ph, eh, etc.]
+;
+;  EXAMPLES:    
+;               temp = temp_init_evdf_limits_str(data,_EXTRA=ex_str)
+;
+;  KEYWORDS:    
+;               LIMITS     :  Scalar [structure] that may contain any combination of the
+;                               following structure tags or keywords accepted by
+;                               PLOT.PRO:
+;                                 XLOG,   YLOG,   ZLOG,
+;                                 XRANGE, YRANGE, ZRANGE,
+;                                 XTITLE, YTITLE,
+;                                 TITLE, POSITION, REGION, etc.
+;                                 (see IDL documentation for a description)
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [09/14/2014   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [09/15/2014   v1.0.0]
+;
+;   NOTES:      
+;               1)  User should not call this routine directly
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  09/13/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/15/2014   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION temp_init_evdf_limits_str,data,_EXTRA=ex_str
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+fit_f_string   = 'Y = A X!UB!N e!UC X!N + D'
+;;  Dummy error messages
+noinpt_msg     = 'User must supply an a velocity distribution function as an IDL structure...'
+nofind_msg     = 'No finite data for this VDF...'
+notstr_msg     = 'Must be an IDL structure...'
+notvdf_msg     = 'Input must be a velocity distribution function as an IDL structure...'
+badvdf_msg     = 'Input must be an IDL structure with similar format to Wind/3DP or THEMIS/ESA...'
+not3dp_msg     = 'Input must be a velocity distribution IDL structure from Wind/3DP...'
+notthm_msg     = 'Input must be a velocity distribution IDL structure from THEMIS/ESA...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 1) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+IF (SIZE(data,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+dat            = data[0]
+;;  Check to make sure distribution has the correct format
+test0          = test_wind_vs_themis_esa_struct(dat[0],/NOM)
+test           = (test0.(0) + test0.(1)) NE 1
+IF (test[0]) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Define number of solid-angle and energy bins
+dat0           = dat[0]
+;nb             = dat0[0].NBINS
+nnd            = dat0[0].NBINS[0]
+nne            = dat0[0].NENERGY[0]
+;;  Determine instrument (i.e., ESA or 3DP) and define electric charge
+IF (test0.(0)) THEN BEGIN
+  ;;  Wind
+  mission = 'Wind'
+  strns   = dat_3dp_str_names(dat0[0])
+  IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+    ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+    MESSAGE,not3dp_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN,0b
+  ENDIF ELSE inst_nm_mode = strns.LC[0]         ;;  e.g., 'Pesa Low Burst'
+ENDIF ELSE BEGIN
+  IF (test0.(1)) THEN BEGIN
+    ;;  THEMIS
+    mission = 'THEMIS'
+    strns   = dat_themis_esa_str_names(dat0[0])
+    IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+      ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+      MESSAGE,notthm_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN,0b
+    ENDIF ELSE BEGIN
+      temp         = strns.LC[0]                  ;;  e.g., 'IESA 3D Reduced Distribution'
+      tposi        = STRPOS(temp[0],'Distribution') - 1L
+      inst_nm_mode = STRMID(temp[0],0L,tposi[0])  ;;  e.g., 'IESA 3D Reduced'
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;;  Other mission?
+    str_element,dat0,'DATA_NAME',inst_nm_mode
+    str_element,dat0,'PROJECT_NAME',mission
+    IF (N_ELEMENTS(inst_nm_mode) EQ 0) THEN BEGIN
+      MESSAGE,badvdf_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN,0b
+    ENDIF
+  ENDELSE
+ENDELSE
+;;  Define plot title prefix
+test           = (N_ELEMENTS(mission) EQ 0)
+IF (test[0]) THEN ttl_pref = inst_nm_mode[0] ELSE ttl_pref = mission[0]+' '+inst_nm_mode[0]
+;;----------------------------------------------------------------------------------------
+;;  Set up plot specific parameters
+;;----------------------------------------------------------------------------------------
+;;  Define time range and date of eVDF
+tr_vdf         = [dat0[0].TIME,dat0[0].END_TIME]
+time_ra        = time_range_define(TRANGE=tr_vdf)
+tra            = time_ra.TR_UNIX
+tdate          = time_ra.TDATE_SE  ;  e.g. '2009-07-13'
+;;  Define desired units strings for plot titles
+units          = 'flux'                     ;;  i.e., # cm^(-2) s^(-1) sr^(-1) eV^(-1)
+new_units      = wind_3dp_units(units[0])
+gunits         = new_units.G_UNIT_NAME      ;;  e.g., 'flux'
+punits         = new_units.G_UNIT_P_NAME    ;;  e.g., ' (# cm!U-2!Ns!U-1!Nsr!U-1!NeV!U-1!N)'
+ytitle         = gunits[0]+punits[0]
+ysubttl        = 'Fit Function: '+fit_f_string[0]
+title          = '('+ttl_pref[0]+')'+' '+trange_str(tra[0],tra[1])
+xtitle         = 'Energy [eV]'
+;;  Check for input plot limits structure
+chsz           = 1.05
+xmarg          = [10,10]
+IF (SIZE(ex_str,/TYPE) NE 8) THEN BEGIN
+  ;;  Nothing set, so set up default limits structure
+  str_element,limits,'XSTYLE',1,/ADD_REPLACE
+  str_element,limits,'YSTYLE',1,/ADD_REPLACE
+  str_element,limits,'CHARSIZE',chsz[0],/ADD_REPLACE
+  str_element,limits,'XMARGIN',xmarg,/ADD_REPLACE
+ENDIF ELSE BEGIN
+  ;;  Structure set, check for LIMITS structure inside
+  str_element,ex_str,'LIMITS',limits
+  IF (SIZE(limits,/TYPE) NE 8) THEN BEGIN
+    ;;  Nothing set, so set up default limits structure
+    str_element,limits,'XSTYLE',1,/ADD_REPLACE
+    str_element,limits,'YSTYLE',1,/ADD_REPLACE
+    str_element,limits,'CHARSIZE',chsz[0],/ADD_REPLACE
+    str_element,limits,'XMARGIN',xmarg,/ADD_REPLACE
+  ENDIF ELSE BEGIN
+    ;;  Check for appropriate structure tags
+    str_element,limits,  'XSTYLE',xstyle
+    str_element,limits,  'YSTYLE',ystyle
+    str_element,limits,'CHARSIZE',charsize
+    str_element,limits, 'XMARGIN',xmargin
+    test = (N_ELEMENTS(xstyle) EQ 0)
+    IF (test[0]) THEN str_element,limits,  'XSTYLE',1,/ADD_REPLACE
+    test = (N_ELEMENTS(ystyle) EQ 0)
+    IF (test[0]) THEN str_element,limits,  'YSTYLE',1,/ADD_REPLACE
+    test = (N_ELEMENTS(charsize) EQ 0)
+    IF (test[0]) THEN str_element,limits,'CHARSIZE',chsz[0],/ADD_REPLACE
+    test = (N_ELEMENTS(xmargin) EQ 0)
+    IF (test[0]) THEN str_element,limits, 'XMARGIN',xmarg,/ADD_REPLACE
+  ENDELSE
+ENDELSE
+;;  Check current device settings
+IF (STRLOWCASE(!D.NAME) EQ 'ps') THEN SET_PLOT,'X'
+;;  Open windows
+wxpos          = 0L
+wypos          = 50L
+win_lims       = {RETAIN:2,XSIZE:800,YSIZE:800,TITLE:ttl_pref[0]+' Plots ['+tdate[0]+']'}
+;;  Only call if windows not already open
+DEVICE,WINDOW_STATE=wins_open
+IF (wins_open[1] EQ 0) THEN WINDOW,1,_EXTRA=win_lims,XPOS=wxpos[0]+000L,YPOS=wypos[0]+000L
+;DEVICE,GET_WINDOW_POSITION=w1pos
+IF (wins_open[2] EQ 0) THEN WINDOW,2,_EXTRA=win_lims,XPOS=wxpos[0]+300L,YPOS=wypos[0]+050L
+;DEVICE,GET_WINDOW_POSITION=w2pos
+IF (wins_open[3] EQ 0) THEN WINDOW,3,_EXTRA=win_lims,XPOS=wxpos[0]+600L,YPOS=wypos[0]+100L
+;DEVICE,GET_WINDOW_POSITION=w3pos
+;stop
+;WINDOW,2,RETAIN=2,XSIZE=800,YSIZE=800,TITLE=ttl_pref[0]+' Plots ['+tdate[0]+']'
+;WINDOW,3,RETAIN=2,XSIZE=800,YSIZE=800,TITLE=ttl_pref[0]+' Plots ['+tdate[0]+']'
+;;----------------------------------------------------------------------------------------
+;;  Plot initial distribution spectra with colors indicating pitch-angles
+;;----------------------------------------------------------------------------------------
+units          = 'flux'
+;;  Calculate the one-count levels for error estimates
+dat1c          = dat0[0]
+dat2f          = conv_units(dat0[0],units[0],/FRACTIONAL_COUNTS)
+dat1c[0].DATA  = 1e0
+dat1c          = conv_units(dat1c[0],units[0],/FRACTIONAL_COUNTS)
+onec0          = dat1c[0].DATA
+;;  Plot all bins
+pang           = 1
+WSET,1
+WSHOW,1
+spec3d,dat0[0],UNITS=units,XDAT=energy0,YDAT=data0,LIMITS=limits,/RM_PHOTO_E,$
+               PITCHANGLE=pang,/LABEL,COLOR=pa_cols
+;;----------------------------------------------------------------------------------------
+;;  First make sure results are consistent
+;;----------------------------------------------------------------------------------------
+sze0           = SIZE(energy0,/DIMENSIONS)
+szd0           = SIZE(data0,/DIMENSIONS)
+szp0           = SIZE(pang,/DIMENSIONS)
+test           = (sze0[0] NE nne[0]) OR (sze0[1] NE nnd[0]) OR $
+                 (szd0[0] NE nne[0]) OR (szd0[1] NE nnd[0]) OR $
+                 (szp0[0] NE nnd[0])
+IF (test[0]) THEN BEGIN
+  MESSAGE,nofind_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Second, add titles and log-scale settings to LIMITS
+;;----------------------------------------------------------------------------------------
+str_element,limits,   'XTITLE', xtitle[0],/ADD_REPLACE
+str_element,limits,   'YTITLE', ytitle[0],/ADD_REPLACE
+str_element,limits,'YSUBTITLE',ysubttl[0],/ADD_REPLACE
+str_element,limits,    'TITLE',  title[0],/ADD_REPLACE
+str_element,limits,     'XLOG',         1,/ADD_REPLACE
+str_element,limits,     'YLOG',         1,/ADD_REPLACE
+;;----------------------------------------------------------------------------------------
+;;  Third, define plot ranges (if not already done in LIMITS structure)
+;;----------------------------------------------------------------------------------------
+test           = (data0 GT 0) AND FINITE(data0)
+good           = WHERE(test,gd)
+IF (gd[0] EQ 0) THEN BEGIN
+  MESSAGE,nofind_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+e_mnmx         = [MIN(energy0[good],/NAN),MAX(energy0[good],/NAN)]*[9d-1,11d-1]
+d_mnmx         = [MIN(data0[good],/NAN),MAX(data0[good],/NAN)]*[9d-1,11d-1]
+str_element,limits,'XRANGE',xran
+str_element,limits,'YRANGE',yran
+IF (N_ELEMENTS(xran) EQ 0) THEN BEGIN
+  xran = e_mnmx
+  str_element,limits,'XRANGE',xran,/ADD_REPLACE
+ENDIF
+IF (N_ELEMENTS(yran) EQ 0) THEN BEGIN
+  yran = d_mnmx
+  str_element,limits,'YRANGE',yran,/ADD_REPLACE
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Fourth, define plot tick marks (if not already done in LIMITS structure)
+;;----------------------------------------------------------------------------------------
+tagns          = STRLOWCASE(TAG_NAMES(limits))
+pref_tag       = STRMID(tagns,0L,5L)
+check_suffx    = ['tickv','tickname','ticks','range']
+check_xtags    = 'x'+check_suffx
+check_ytags    = 'y'+check_suffx
+test_xyran     = [WHERE(tagns EQ check_xtags[3]),WHERE(tagns EQ check_ytags[3])]
+test_xytic     = [WHERE(pref_tag EQ 'xtick'),WHERE(pref_tag EQ 'ytick')]
+def_minmax     = [1d-30,1d30]
+IF (test_xytic[0] LT 0) THEN BEGIN
+  ;;  Define new tick marks for X-Axis
+  IF (test_xyran[0] GE 0) THEN BEGIN
+    xran  = limits.XRANGE
+    rmnmx = xran
+    force = 1
+  ENDIF ELSE BEGIN
+    rmnmx = def_minmax
+    force = 0
+  ENDELSE
+  xtick_str = log10_tickmarks(energy0,RANGE=xran,MIN_VAL=rmnmx[0],MAX_VAL=rmnmx[1],FORCE_RA=force)
+  IF (SIZE(xtick_str,/TYPE) EQ 8) THEN BEGIN
+    str_element,limits,   'XTICKV',   xtick_str.TICKV,/ADD_REPLACE
+    str_element,limits,'XTICKNAME',xtick_str.TICKNAME,/ADD_REPLACE
+    str_element,limits,   'XTICKS',   xtick_str.TICKS,/ADD_REPLACE
+    str_element,limits,   'XMINOR',                 9,/ADD_REPLACE
+  ENDIF
+ENDIF
+IF (test_xytic[1] LT 0) THEN BEGIN
+  ;;  Define new tick marks for Y-Axis
+  IF (test_xyran[1] GE 0) THEN  BEGIN
+    yran  = limits.YRANGE
+    rmnmx = yran
+    force = 1
+  ENDIF ELSE BEGIN
+    rmnmx = def_minmax
+    force = 0
+  ENDELSE
+  ytick_str = log10_tickmarks(data0,RANGE=yran,MIN_VAL=rmnmx[0],MAX_VAL=rmnmx[1],FORCE_RA=force)
+  IF (SIZE(ytick_str,/TYPE) EQ 8) THEN BEGIN
+    str_element,limits,   'YTICKV',   ytick_str.TICKV,/ADD_REPLACE
+    str_element,limits,'YTICKNAME',ytick_str.TICKNAME,/ADD_REPLACE
+    str_element,limits,   'YTICKS',   ytick_str.TICKS,/ADD_REPLACE
+    str_element,limits,   'YMINOR',                 9,/ADD_REPLACE
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+;;  Define original eVDF data structure in units of counts
+str_element,struc,     'DATA',        dat0,/ADD_REPLACE
+;;  Define one-count copy eVDF data structure
+str_element,struc,   'DAT_1C',       dat1c,/ADD_REPLACE
+;;  Define original eVDF data structure in units of flux
+str_element,struc,   'DAT__F',       dat2f,/ADD_REPLACE
+str_element,struc,   'LIMITS',      limits,/ADD_REPLACE
+str_element,struc,   'P_ANGS',        pang,/ADD_REPLACE
+str_element,struc,  'PA_COLS',     pa_cols,/ADD_REPLACE
+str_element,struc,   'DATA_0',       data0,/ADD_REPLACE
+str_element,struc, 'ENERGY_0',     energy0,/ADD_REPLACE
+str_element,struc,   'ONE_C0',       onec0,/ADD_REPLACE
+;;  Define extra outputs
+str_element,struc,  'MISSION',     mission,/ADD_REPLACE
+str_element,struc,'INST_MODE',inst_nm_mode,/ADD_REPLACE
+str_element,struc,    'TDATE',    tdate[0],/ADD_REPLACE
+str_element,struc,   'TRANGE',         tra,/ADD_REPLACE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END
+
+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_fit_evdf_cut_wrapper.pro
+;  PURPOSE  :   This is a wrapping routine for the actual fit function calling sequence.
+;                 The model function is a combined power-law, exponential function of
+;                 the form:
+;
+;                   Y = A X^(B) e^(C X) + D
+;
+;                 where the physical interpretation of the parameters are:
+;
+;                   Y  :  dJ/dE  = differential intensity
+;                                  [# cm^(-2) s^(-1) sr^(-1) eV^(-1)]
+;                   X  :   E     = particle kinetic energy
+;                                  [eV]
+;                   A  :   K     = Lim_{E --> 0} (dJ/dE)
+;                                  [~10^(6) for electrons]
+;                   B  :  -¥     = power-law slope or spectral index
+;                                  [unitless]
+;                   C  :  -1/E_o = inverse of e-folding energy
+;                                  { where:  E_o ~ 100's of eV for electrons }
+;                                  [eV^(-1)]
+;                   D  :  dJdE_o = Lim_{E --> Infinity} (dJ/dE) ~ 0
+;                                  { expect:  ~ 0 for reasonable particles }
+;                                  [# cm^(-2) s^(-1) sr^(-1) eV^(-1)]
+;
+;  CALLED BY:   
+;               temp_fit_evdf_para_perp_anti.pro
+;
+;  CALLS:
+;               wrapper_multi_func_fit.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               ;;..................................................
+;               ;;  Below, the following definitions apply:
+;               ;;    T  =  # of solid angle bins in eVDF
+;               ;;    S  =  # of energy bins in eVDF
+;               ;;..................................................
+;               DATA     :  [T,S]-Element array [float] containing the data [flux] to
+;                             which the the model function should be fit
+;               ENERGY   :  [T,S]-Element array [float] containing the energies [eV]
+;                             associated with each element in DATA
+;               PANG     :  [T]-Element array [float] defining the average pitch-angle
+;                             of each solid angle bin in DATA
+;               CUT_RAN  :  [2]-Element array [float] defining the range of angles
+;                             between which to average the data and use to fit
+;               PARAM    :  [4]-Element [float] array containing the following
+;                             initialization quantities for the model function
+;                             (see above):
+;                               PARAM[0] = A
+;                               PARAM[1] = B
+;                               PARAM[2] = C
+;                               PARAM[3] = D
+;
+;  EXAMPLES:    
+;               test = temp_fit_evdf_cut_wrapper(data,energy,pang,cut_ran,param,_EXTRA=ex_str)
+;
+;  KEYWORDS:    
+;               CUT_DIR  :  Scalar [float] defining the angle along which
+;                             the fit is being performed
+;                                          {  MIN(CUT_RAN)  for Parallel cut
+;                               Default  = { MEAN(CUT_RAN)  for Perpendicular cut
+;                                          {  MAX(CUT_RAN)  for Anti-parallel cut
+;               E_LOW    :  Scalar [float] defining the lowest energy [eV] to consider
+;                             for the data to send to the fit routines
+;                             [Default = 30e0]
+;               E_HIGH   :  Scalar [float] defining the highest energy [eV] to consider
+;                             for the data to send to the fit routines
+;                             [Default = 1e5]
+;               ONE_C    :  [T,S]-Element array [float] containing the one-count level
+;                             for the eVDF from which DATA was derived [flux]
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [09/14/2014   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [09/15/2014   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  09/13/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/15/2014   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION temp_fit_evdf_cut_wrapper,data0,energy0,pang0,cut_ran,param,_EXTRA=ex_str
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+noinpt_msg     = 'User must supply DATA, ENERGY, PANG, CUT_RAN, and PARAM...'
+nofind_msg     = 'Incorrect input format...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 5) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check formats
+sze0           = SIZE(energy0,/DIMENSIONS)
+szd0           = SIZE(data0,/DIMENSIONS)
+szp0           = SIZE(pang0,/DIMENSIONS)
+szc0           = SIZE(cut_ran,/DIMENSIONS)
+szm0           = SIZE(param,/DIMENSIONS)
+test           = (sze0[0] NE szd0[0]) OR (sze0[1] NE szd0[1]) OR $
+                 (sze0[1] NE szp0[0]) OR (szd0[1] NE szp0[0]) OR $
+                 (szc0[0] NE      2L) OR (szm0[0] NE      4L)
+IF (test[0]) THEN BEGIN
+  MESSAGE,nofind_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define parameters
+;;----------------------------------------------------------------------------------------
+nne            = sze0[0]
+nnd            = sze0[1]
+pang1          = pang0
+data1          = data0
+energy1        = energy0
+;;  Sort by pitch-angle
+sp             = SORT(pang1)
+pang           = pang1[sp]
+data_pa        = data1[*,sp]
+ener_pa        = energy1[*,sp]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check ONE_C
+str_element,ex_str,'ONE_C',one_c
+test           = (TOTAL(SIZE(one_c,/DIMENSIONS) EQ szd0) EQ 2)
+IF (test[0])   THEN g_onec = 1 ELSE g_onec = 0
+IF (g_onec[0]) THEN onec_pa = one_c[*,sp] ELSE onec_pa = REPLICATE(f,szd0[0],szd0[1])
+;;  Check E_LOW
+str_element,ex_str,'E_LOW',e_low
+test           = (N_ELEMENTS(e_low) EQ 1)
+IF (test[0]) THEN BEGIN
+  IF (e_low[0] GE 0 AND FINITE(e_low[0])) THEN e_low = e_low[0] ELSE e_low = 30e0
+ENDIF ELSE BEGIN
+  e_low = 30e0
+ENDELSE
+;;  Check E_HIGH
+str_element,ex_str,'E_HIGH',e_high
+test           = (N_ELEMENTS(e_high) EQ 1)
+IF (test[0]) THEN BEGIN
+  IF (e_high[0] GE 0 AND FINITE(e_high[0])) THEN e_high = e_high[0] ELSE e_high = 1e5
+ENDIF ELSE BEGIN
+  e_high = 1e5
+ENDELSE
+;;  Check CUT_DIR
+avg_cran       = MEAN(cut_ran,/NAN)
+tests          = [(avg_cran[0] LT 45e0),                          $
+                  (avg_cran[0] LT 135e0 AND avg_cran[0] GE 45e0), $
+                  (avg_cran[0] GE 135e0)]
+good           = WHERE(tests,gd)
+CASE good[0] OF
+  0 : def_cdir = MIN(cut_ran,/NAN)   ;;  Parallel fit
+  1 : def_cdir = avg_cran[0]         ;;  Perpendicular fit
+  2 : def_cdir = MAX(cut_ran,/NAN)   ;;  Anti-parallel fit
+ENDCASE
+IF (good[0] EQ 1) THEN perpfit = 1 ELSE perpfit = 0
+str_element,ex_str,'CUT_DIR',cut_dir
+test           = (N_ELEMENTS(cut_dir) EQ 1)
+IF (test[0]) THEN BEGIN
+  test = (cut_dir[0] LT cut_ran[0]) OR (cut_dir[0] GT cut_ran[1])
+  IF (test[0]) THEN cut_dir = def_cdir[0]
+ENDIF ELSE BEGIN
+  ;;  CUT_DIR not supplied by user
+  cut_dir = def_cdir[0]
+ENDELSE
+;;  Check [A,B,C,D]_RANGE
+str_element,ex_str,'A_RANGE',a_range
+str_element,ex_str,'B_RANGE',b_range
+str_element,ex_str,'C_RANGE',c_range
+str_element,ex_str,'D_RANGE',d_range
+;;  Check TIED_P and FIXED_P
+str_element,ex_str,'TIED_P',tied_p
+str_element,ex_str,'FIXED_P',fixed_p
+;;  Check ITMAX and CTOL
+str_element,ex_str,'ITMAX',itmax
+str_element,ex_str,'CTOL',ctol
+;;----------------------------------------------------------------------------------------
+;;  Determine the elements that fall withing desired pitch-angle ranges
+;;----------------------------------------------------------------------------------------
+test_pang      = (pang GE cut_ran[0]) AND (pang LE cut_ran[1])
+good_pang      = WHERE(test_pang,gd_pang,COMPLEMENT=bad_pang,NCOMPLEMENT=bd_pang)
+;;----------------------------------------------------------------------------------------
+;;  Fit to model function if data within constraints
+;;----------------------------------------------------------------------------------------
+IF (gd_pang GT 0) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Good values found --> try to fit
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define the good data, energy, and pitch-angles
+  data_pang      = data_pa[*,good_pang]
+  ener_pang      = ener_pa[*,good_pang]
+  pang_pang      = pang[good_pang]
+  ;;  Average data over each direction
+  Avgf_pang      = TOTAL(data_pang,2L,/NAN)/TOTAL(FINITE(data_pang),2L,/NAN)
+  AvgE_pang      = TOTAL(ener_pang,2L,/NAN)/TOTAL(FINITE(ener_pang),2L,/NAN)
+  IF (g_onec[0]) THEN BEGIN
+    ;;  Find PA bin closest to CUT_DIR
+    diff_pang      = MIN(ABS(cut_dir[0] - pang_pang),gind_pang,/NAN)
+    onec_pang      = SQRT(onec_pa[*,good_pang[gind_pang[0]]])
+    Avg1_pang      = onec_pang
+  ENDIF ELSE BEGIN
+    diff_pang      = MIN(ABS(pang_pang),gind_pang,/NAN)
+    onec_pang      = REPLICATE(f,nne[0])
+    Avg1_pang      = 1e-2*Avgf_pang
+  ENDELSE
+  ;;--------------------------------------------------------------------------------------
+  ;;  Try fitting to Y = A X^(B) e^(C X) + D
+  ;;
+  ;;    Y  =  dJ/dE [flux units]
+  ;;    X  =  E  [eV]
+  ;;    A  =  K  [some constant]
+  ;;    B  =  -¥ = power-law slope = spectral index
+  ;;    C  =  -1/E_o, E_o = e-folding energy [eV]
+  ;;    D  =  (dJ/dE)_o = limit as E --> 0
+  ;;--------------------------------------------------------------------------------------
+  ;;  Use only those elements which satisfy the following two constraints:
+  ;;    1)  E > 30 eV
+  ;;    2)  f > (f_1c)^(1/2)    [f_1c = one-count level]
+  e_low          = 30e0
+  test_pang_fit  =  (AvgE_pang GE e_low[0]) AND (AvgE_pang LE e_high[0]) AND $
+                   ((Avgf_pang GE Avg1_pang) AND (Avgf_pang GT 0) AND FINITE(Avgf_pang))
+  good_pang_fit  = WHERE(test_pang_fit,gd_pang_fit,COMPLEMENT=bad_pang_fit,NCOMPLEMENT=bd_pang_fit)
+  IF (gd_pang_fit GT 0) THEN BEGIN
+    x              = AvgE_pang[good_pang_fit]
+    y              = Avgf_pang[good_pang_fit]
+    yerr           = ABS(Avg1_pang[good_pang_fit])
+    wghts          = 1d0/ABS(yerr)            ;;  Poisson weighting
+    func           = 4                        ;;  i.e., Y = A X^(B) e^(C X) + D
+;    IF (perpfit) THEN STOP
+    fit_str_pang   = wrapper_multi_func_fit(x,y,param,FIT_FUNC=func[0],ERROR=yerr,        $
+                                            WEIGHTS=wghts,A_RANGE=a_range,B_RANGE=b_range,$
+                                            C_RANGE=c_range,D_RANGE=d_range,TIED_P=tied_p,$
+                                            FIXED_P=fixed_p,ITMAX=itmax,CTOL=ctol,/P_QUIET)
+    IF (SIZE(fit_str_pang,/TYPE) NE 8L) THEN BEGIN
+      x            = dumb10
+      fit_str_pang = d_fit_struc
+    ENDIF
+  ENDIF ELSE BEGIN
+    ;;  No finite data within constraints --> use dummy values
+    x            = dumb10
+    fit_str_pang = d_fit_struc
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Nothing within 20 degrees of 0 was found --> No parallel fit
+  ;;--------------------------------------------------------------------------------------
+  pang_pang      = dumb10
+  diff_pang      = dumb10
+  data_pang      = dumb10
+  ener_pang      = dumb10
+  onec_pang      = dumb10
+  Avgf_pang      = dumb10
+  AvgE_pang      = dumb10
+  Avg1_pang      = dumb10
+  x              = dumb10
+  y              = dumb10
+  fit_str_pang   = d_fit_struc
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+data_str       = {DATA_SORT:data_pa,DATA_PANG:data_pang,AVG_DATA:Avgf_pang,FIT_DATA:y}
+ener_str       = {ENER_SORT:ener_pa,ENER_PANG:ener_pang,AVG_ENER:AvgE_pang,FIT_ENER:x}
+onec_str       = {ONEC_SORT:onec_pa,ONEC_PANG:onec_pang,AVG_ONEC:Avg1_pang,FIT_ONEC:yerr}
+struc          = {DATA:data_str,ENERGY:ener_str,ONE_C:onec_str,FIT:fit_str_pang}
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END
+
+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_moments_evdf_str.pro
+;  PURPOSE  :   This routine calculates the moments of the input velocity distribution
+;                 function then defines strings for the density, Avg. temperature, both
+;                 parallel and perpendicular temperatures, and temperature anisotropy.
+;                 These strings are then appended to the X-Axis Title for output.
+;
+;  CALLED BY:   
+;               temp_fit_evdf_para_perp_anti.pro
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               str_element.pro
+;               moments_3d_new.pro
+;               get_font_symbol.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA       :  Scalar [structure] associated with a known THEMIS ESA
+;                               data structure [see get_th?_peib.pro, ? = a-f]
+;                               or a Wind/3DP data structure
+;                               [see get_?.pro, ? = el, elb, pl, ph, eh, etc.]
+;
+;  EXAMPLES:    
+;               limits = temp_moments_evdf_str(data,LIMITS=limits)
+;
+;  KEYWORDS:    
+;               LIMITS     :  Scalar [structure] that may contain any combination of the
+;                               following structure tags or keywords accepted by
+;                               PLOT.PRO:
+;                                 XLOG,   YLOG,   ZLOG,
+;                                 XRANGE, YRANGE, ZRANGE,
+;                                 XTITLE, YTITLE,
+;                                 TITLE, POSITION, REGION, etc.
+;                                 (see IDL documentation for a description)
+;
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  If this routine is called when SET_PLOT,'X' is the current
+;                     graphics device, then the font symbols may not be the same
+;                     in the 'PS' graphics device if the font settings changed.
+;                     Thus, the routine may need to be called for both X-Win plots
+;                     and for output to PS files.
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  09/15/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/15/2014   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION temp_moments_evdf_str,data,LIMITS=limit0
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+noinpt_msg     = 'User must supply an a velocity distribution function as an IDL structure...'
+nofind_msg     = 'No finite data for this VDF...'
+notstr_msg     = 'Must be an IDL structure...'
+notvdf_msg     = 'Input must be a velocity distribution function as an IDL structure...'
+badvdf_msg     = 'Input must be an IDL structure with similar format to Wind/3DP or THEMIS/ESA...'
+not3dp_msg     = 'Input must be a velocity distribution IDL structure from Wind/3DP...'
+notthm_msg     = 'Input must be a velocity distribution IDL structure from THEMIS/ESA...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 1) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+IF (SIZE(data,/TYPE) NE 8L) THEN BEGIN
+  MESSAGE,notstr_mssg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+dat            = data[0]
+;;  Check to make sure distribution has the correct format
+test0          = test_wind_vs_themis_esa_struct(dat[0],/NOM)
+test           = (test0.(0) + test0.(1)) NE 1
+IF (test[0]) THEN BEGIN
+  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Re-define data structure
+dat0           = dat[0]
+;;----------------------------------------------------------------------------------------
+;;  Check LIMITS
+;;----------------------------------------------------------------------------------------
+ymargin        = [8,4]
+spacing        = 1.2
+;;  Get current character size
+chsz_old       = !P.CHARSIZE
+;;  Set LIMITS.YMARGIN
+IF (SIZE(limit0,/TYPE) NE 8) THEN BEGIN
+  str_element,limits,'YMARGIN',ymargin,/ADD_REPLACE
+ENDIF ELSE BEGIN
+  limits = limit0
+  str_element,limits,'YMARGIN',ymargin,/ADD_REPLACE
+ENDELSE
+;;  Check for LIMITS.CHARSIZE
+;;    --> Use to define line spacing
+str_element,limits,'CHARSIZE',chsz
+test           = (N_ELEMENTS(chsz) EQ 0) AND (chsz_old[0] EQ 0)
+ratio          = FLOAT(!D.Y_CH_SIZE)/FLOAT(!D.Y_SIZE)
+IF (test[0]) THEN BEGIN
+  line_space = ratio[0]*spacing[0]
+ENDIF ELSE BEGIN
+  IF (chsz_old[0] EQ 0) THEN charsize = chsz[0] ELSE charsize = chsz_old[0]
+  line_space = ratio[0]*(spacing[0] > charsize[0])
+ENDELSE
+;;  Redefine [X,Y]_CH_SIZE within the current device
+;DEVICE,SET_CHARACTER_SIZE=[!D.X_CH_SIZE[0],line_space[0]]
+
+;;  Check for LIMITS.XTITLE
+str_element,limits,'XTITLE',xttle
+IF (N_ELEMENTS(xttle) EQ 0) THEN BEGIN
+  xttle = 'Energy [eV]'
+ENDIF ELSE BEGIN
+  xlen   = STRLEN(xttle) GT 15
+  IF (xlen[0]) THEN BEGIN
+    gposi = STRPOS(xttle[0],'!C')
+    ;;  routine was already called
+    ;;    --> remove appended strings in case DEVICE settings have changed
+    ;;      --> redefine within current DEVICE
+    IF (gposi[0] GT 0) THEN xttle = STRMID(xttle[0],0L,gposi[0])
+  ENDIF
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Compute moments of VDF
+;;----------------------------------------------------------------------------------------
+sform          = moments_3d_new()
+scpot          = dat0[0].SC_POT
+magf           = dat0[0].MAGF
+extra          = {FORMAT:sform,DOMEGA_WEIGHTS:1,SC_POT:scpot[0],MAGDIR:magf}
+del            = dat0[0]
+vdf_moms       = moments_3d_new(del,_EXTRA=extra)
+;;  Define N, T, Tpara, Tperp, Tanis
+vdf__dens      = vdf_moms[0].DENSITY            ;;  Particle density [# cm^(-3)]
+vdf__avgT      = vdf_moms[0].AVGTEMP            ;;  Avg. temperature [eV]
+vdf__T3_B      = vdf_moms[0].MAGT3              ;;  Temperature tensor components {perp1,perp2,para} [eV]
+vdf_Tpara      = vdf__T3_B[2]                   ;;  Tpara [eV]
+vdf_Tperp      = (vdf__T3_B[0] + vdf__T3_B[1])  ;;  Tperp [eV]
+vdf_Tanis      = vdf_Tperp[0]/vdf_Tpara[0]      ;;  Tperp/Tpara
+;;----------------------------------------------------------------------------------------
+;;  Convert results to strings
+;;----------------------------------------------------------------------------------------
+mform          = '(e15.3)'
+vdf_N_T_string = STRTRIM(STRING([vdf__dens[0],vdf__avgT[0]],FORMAT=mform),2L)
+vdf_T12_string = STRTRIM(STRING([vdf_Tperp[0],vdf_Tpara[0]],FORMAT=mform),2L)
+vdf_Tan_string = STRTRIM(STRING(vdf_Tanis[0],FORMAT=mform),2L)
+
+perp_string    = get_font_symbol('perpendicular')
+para_string    = get_font_symbol('parallel')
+subs           = '!D'+[perp_string[0],para_string[0]]+'!N'
+tanis_string   = '(T'+subs[0]+'/T'+subs[1]+')!De!N'
+units_suffx    = ['cm!U-3!N','eV']
+label_prefx    = [['N','T']+'!De!N','T'+subs+'!De!N',tanis_string[0]]+' = '
+Ne_Te_string   = label_prefx[0]+vdf_N_T_string[0]+' '+units_suffx[0]+'; '
+Ne_Te_string   = Ne_Te_string[0]+label_prefx[1]+vdf_N_T_string[1]+' '+units_suffx[1]
+T12___string   = label_prefx[2]+vdf_T12_string[0]+' '+units_suffx[1]+'; '
+T12___string   = T12___string[0]+label_prefx[3]+vdf_T12_string[1]+' '+units_suffx[1]
+Tanis_string   = label_prefx[4]+vdf_Tan_string[0]
+moms__string   = [Ne_Te_string[0],T12___string[0],Tanis_string[0]]
+;;----------------------------------------------------------------------------------------
+;;  Append moment results to LIMITS.XTITLE using the SUBTITLE option
+;;----------------------------------------------------------------------------------------
+;xttle          = xttle[0]+'!C'+moms__string[0]+'!C'+moms__string[1]+'!C'+moms__string[2]
+;str_element,limits,'XTITLE',xttle,/ADD_REPLACE
+;subttl         = moms__string[0]+'!C'+moms__string[1]+'!C'+moms__string[2]
+subttl         = moms__string
+str_element,limits,'XSUBTITLE',subttl,/ADD_REPLACE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,limits
+END
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_fit_evdf_para_perp_anti.pro
+;  PURPOSE  :   This is a wrapping routine that takes an input velocity distribution
+;                 function, in the form of an IDL structure, and then fits cuts of the
+;                 data along the parallel, perpendicular, and anti-parallel directions
+;                 to a combined power-law, exponential function of the form:
+;
+;                   Y = A X^(B) e^(C X) + D
+;
+;                 where the physical interpretation of the parameters are:
+;
+;                   Y  :  dJ/dE  = differential intensity
+;                                  [# cm^(-2) s^(-1) sr^(-1) eV^(-1)]
+;                   X  :   E     = particle kinetic energy
+;                                  [eV]
+;                   A  :   K     = Lim_{E --> 0} (dJ/dE)
+;                                  [~10^(6) for electrons]
+;                   B  :  -¥     = power-law slope or spectral index
+;                                  [unitless]
+;                   C  :  -1/E_o = inverse of e-folding energy
+;                                  { where:  E_o ~ 100's of eV for electrons }
+;                                  [eV^(-1)]
+;                   D  :  dJdE_o = Lim_{E --> Infinity} (dJ/dE) ~ 0
+;                                  { expect:  ~ 0 for reasonable particles }
+;                                  [# cm^(-2) s^(-1) sr^(-1) eV^(-1)]
+;
+;  CALLED BY:   
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA       :  Scalar [structure] associated with a known THEMIS ESA
+;                               data structure [see get_th?_peib.pro, ? = a-f]
+;                               or a Wind/3DP data structure
+;                               [see get_?.pro, ? = el, elb, pl, ph, eh, etc.]
+;
+;  EXAMPLES:    
+;               temp = temp_fit_evdf_para_perp_anti(data,_EXTRA=ex_str)
+;
+;  KEYWORDS:    
+;               LIMITS     :  Scalar [structure] that may contain any combination of the
+;                               following structure tags or keywords accepted by
+;                               PLOT.PRO:
+;                                 XLOG,   YLOG,   ZLOG,
+;                                 XRANGE, YRANGE, ZRANGE,
+;                                 XTITLE, YTITLE,
+;                                 TITLE, POSITION, REGION, etc.
+;                                 (see IDL documentation for a description)
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [09/14/2014   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [09/15/2014   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  09/13/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/15/2014   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION temp_fit_evdf_para_perp_anti,data,_EXTRA=ex_str
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+struc          = 0
+dumb0          = d
+dumb2          = REPLICATE(d,2)
+dumb4          = REPLICATE(d,4)
+dumb10         = REPLICATE(d,10)
+tags           = ['YFIT','FIT_RESULTS','SIG_PARAM','CHISQ','N_ITER','STATUS','YERROR','FUNC']
+d_fit_struc    = CREATE_STRUCT(tags,dumb10,dumb4,dumb4,dumb0,-1,-1,dumb0,'')
+;;  Dummy logic variables
+parallel_fit   = 1
+perpendi_fit   = 1
+antipara_fit   = 1
+;;  Dummy error messages
+noinpt_msg     = 'User must supply an a velocity distribution function as an IDL structure...'
+nofind_msg     = 'No finite data for this VDF...'
+notstr_msg     = 'Must be an IDL structure...'
+notvdf_msg     = 'Input must be a velocity distribution function as an IDL structure...'
+badvdf_msg     = 'Input must be an IDL structure with similar format to Wind/3DP or THEMIS/ESA...'
+not3dp_msg     = 'Input must be a velocity distribution IDL structure from Wind/3DP...'
+notthm_msg     = 'Input must be a velocity distribution IDL structure from THEMIS/ESA...'
+;;----------------------------------------------------------------------------------------
+;;  Initialize data structure and LIMITS structure
+;;----------------------------------------------------------------------------------------
+init_struc     = temp_init_evdf_limits_str(data,_EXTRA=ex_str)
+IF (SIZE(init_struc,/TYPE) NE 8L) THEN BEGIN
+  RETURN,0b
+ENDIF
+;;  Define eVDF data structures
+dat0           = init_struc.DATA
+dat1c          = init_struc.DAT_1C
+dat2f          = init_struc.DAT__F
+onec0          = init_struc.ONE_C0
+;;  Define LIMITS structure
+limits         = init_struc.LIMITS
+;;  Define outputs from spec3d.pro
+pang0          = init_struc.P_ANGS        ;;  Pitch-angle bins [degrees]
+pa_cols        = init_struc.PA_COLS
+data0          = init_struc.DATA_0        ;;  Data sorted by pitch-angle bins [flux units]
+energy0        = init_struc.ENERGY_0      ;;  Energies [eV] sorted by pitch-angle bins
+;;  Define extra outputs
+mission        = init_struc.MISSION
+inst_nm_mode   = init_struc.INST_MODE
+tdate          = init_struc.TDATE
+trange         = init_struc.TRANGE
+IF (N_ELEMENTS(trange) EQ 2) THEN BEGIN
+  fnm            = file_name_times(trange,PREC=3)
+  ftimes         = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+  fn_tsuffx      = ftimes[0]+'-'+STRMID(ftimes[1],11L)
+ENDIF ELSE BEGIN
+  fn_tsuffx      = '0000-00-00_0000x00.000-0000x00.000'
+ENDELSE
+fn_inst_name   = string_replace_char(inst_nm_mode[0],' ','_')
+fn_prefx       = mission[0]+'_'+fn_inst_name[0]+'_'
+fit_file_name  = fn_prefx[0]+'Fit_Results_Func_P-L_plus_Expon_'+fn_tsuffx[0]
+;;  Define pitch-angle ranges for parallel, perpendicular, and anti-parallel
+para_ra        = [0d0,2d1]
+perp_ra        = [8d1,10d1]
+anti_ra        = [16d1,18d1]
+;;  Define energy range to consider
+e_range        = [30e0,12e3]
+;;----------------------------------------------------------------------------------------
+;;  Compute moments of VDF
+;;----------------------------------------------------------------------------------------
+limits         = temp_moments_evdf_str(dat0,LIMITS=limits)
+;sform          = moments_3d_new()
+;scpot          = dat0[0].SC_POT
+;magf           = dat0[0].MAGF
+;extra          = {FORMAT:sform,DOMEGA_WEIGHTS:1,SC_POT:scpot[0],MAGDIR:magf}
+;del            = dat0[0]
+;vdf_moms       = moments_3d_new(del,_EXTRA=extra)
+;;;  Define N, T, Tpara, Tperp, Tanis
+;vdf__dens      = vdf_moms[0].DENSITY            ;;  Particle density [# cm^(-3)]
+;vdf__avgT      = vdf_moms[0].AVGTEMP            ;;  Avg. temperature [eV]
+;vdf__T3_B      = vdf_moms[0].MAGT3              ;;  Temperature tensor components {perp1,perp2,para} [eV]
+;vdf_Tpara      = vdf__T3_B[2]                   ;;  Tpara [eV]
+;vdf_Tperp      = (vdf__T3_B[0] + vdf__T3_B[1])  ;;  Tperp [eV]
+;vdf_Tanis      = vdf_Tperp[0]/vdf_Tpara[0]      ;;  Tperp/Tpara
+;;;  Convert results to strings
+;mform          = '(e15.3)'
+;vdf_N_T_string = STRTRIM(STRING([vdf__dens[0],vdf__avgT[0]],FORMAT=mform),2L)
+;vdf_T12_string = STRTRIM(STRING([vdf_Tperp[0],vdf_Tpara[0]],FORMAT=mform),2L)
+;vdf_Tan_string = STRTRIM(STRING(vdf_Tanis[0],FORMAT=mform),2L)
+;
+;perp_string    = get_font_symbol('perpendicular')
+;para_string    = get_font_symbol('parallel')
+;subs           = '!D'+[perp_string[0],para_string[0]]+'!N'
+;tanis_string   = '(T'+subs[0]+'/T'+subs[1]+')!De!N'
+;units_suffx    = ['cm!U-3!N','eV']
+;label_prefx    = [['N','T']+'!De!N','T'+subs+'!De!N',tanis_string[0]]+' = '
+;Ne_Te_string   = label_prefx[0]+vdf_N_T_string[0]+' '+units_suffx[0]+'; '
+;Ne_Te_string   = Ne_Te_string[0]+label_prefx[1]+vdf_N_T_string[1]+' '+units_suffx[1]
+;T12___string   = label_prefx[2]+vdf_T12_string[0]+' '+units_suffx[1]+'; '
+;T12___string   = T12___string[0]+label_prefx[3]+vdf_T12_string[1]+' '+units_suffx[1]
+;Tanis_string   = label_prefx[4]+vdf_Tan_string[0]
+;moms__string   = [Ne_Te_string[0],T12___string[0],Tanis_string[0]]
+;;----------------------------------------------------------------------------------------
+;;  Parallel Fit
+;;----------------------------------------------------------------------------------------
+param          = DBLARR(4)
+;param[0]       = 1d6                      ;;  Lim_{E --> Infinity} (dJ/dE) ~ 10^(6)
+param[0]       = MAX(ABS(data0),/NAN)     ;;  Lim_{E --> Infinity} (dJ/dE) ~ 10^(6)
+param[1]       = -2d0                     ;;  ¥ ~ 2
+param[2]       = -1d0/1d2                 ;;  E_o ~ 100 eV
+param[3]       = 0d0                      ;;  Lim_{E --> Infinity} (dJ/dE)_o ~ 0
+bran           = [1,1,-7d0,-5d-2]         ;;  Constrain spectral index
+;cran           = [1,1,-1d0/1d1,-1d0/1d4]  ;;  Constrain E_o
+cran           = [1,1,-1d0/1d1,-1d0/1d5]  ;;  Constrain E_o
+fixed_p        = REPLICATE(1b,4)
+fixed_p[3]     = 0b
+fit_str_para   = temp_fit_evdf_cut_wrapper(data0,energy0,pang0,para_ra,param,          $
+                                           CUT_DIR=0e0,E_LOW=e_range[0],               $
+                                           E_HIGH=e_range[1],B_RANGE=bran, $
+                                           C_RANGE=cran,FIXED_P=fixed_p)
+;;  Define parameters
+data_para_str  = fit_str_para.DATA
+ener_para_str  = fit_str_para.ENERGY
+onec_para_str  = fit_str_para.ONE_C
+fit__para_str  = fit_str_para.FIT
+Avgf_para      = data_para_str.AVG_DATA
+AvgE_para      = ener_para_str.AVG_ENER
+Avg1_para      = onec_para_str.AVG_ONEC
+
+;;  Define fit results
+xx_fit_para    = ener_para_str.FIT_ENER
+yy_fit_para    = data_para_str.FIT_DATA
+yerr___para    = onec_para_str.FIT_ONEC
+ff_fit_para    = fit__para_str.YFIT
+fit_parm_para  = fit__para_str.FIT_PARAMS
+fit_sigp_para  = fit__para_str.SIG_PARAM
+;;----------------------------------------------------------------------------------------
+;;  Perpendicular Fit
+;;----------------------------------------------------------------------------------------
+param          = DBLARR(4)
+;param[0]       = 1d6                      ;;  Lim_{E --> Infinity} (dJ/dE) ~ 10^(6)
+param[0]       = MAX(ABS(data0),/NAN)     ;;  Lim_{E --> Infinity} (dJ/dE) ~ 10^(6)
+param[1]       = -2d0                     ;;  ¥ ~ 2
+param[2]       = -1d0/1d2                 ;;  E_o ~ 100 eV
+param[3]       = 0d0                      ;;  Lim_{E --> Infinity} (dJ/dE)_o ~ 0
+bran           = [1,1,-7d0,-5d-2]         ;;  Constrain spectral index
+;cran           = [1,1,-1d0/1d1,-1d0/1d4]  ;;  Constrain E_o
+cran           = [1,1,-1d0/1d1,-1d0/1d5]  ;;  Constrain E_o
+fixed_p        = REPLICATE(1b,4)
+fixed_p[3]     = 0b
+fit_str_perp   = temp_fit_evdf_cut_wrapper(data0,energy0,pang0,perp_ra,param,          $
+                                           CUT_DIR=90e0,E_LOW=e_range[0],              $
+                                           E_HIGH=e_range[1],B_RANGE=bran, $
+                                           C_RANGE=cran,FIXED_P=fixed_p)
+;;  Define parameters
+data_perp_str  = fit_str_perp.DATA
+ener_perp_str  = fit_str_perp.ENERGY
+onec_perp_str  = fit_str_perp.ONE_C
+fit__perp_str  = fit_str_perp.FIT
+Avgf_perp      = data_perp_str.AVG_DATA
+AvgE_perp      = ener_perp_str.AVG_ENER
+Avg1_perp      = onec_perp_str.AVG_ONEC
+
+;;  Define fit results
+xx_fit_perp    = ener_perp_str.FIT_ENER
+yy_fit_perp    = data_perp_str.FIT_DATA
+yerr___perp    = onec_perp_str.FIT_ONEC
+ff_fit_perp    = fit__perp_str.YFIT
+fit_parm_perp  = fit__perp_str.FIT_PARAMS
+fit_sigp_perp  = fit__perp_str.SIG_PARAM
+;;----------------------------------------------------------------------------------------
+;;  Anti-parallel Fit
+;;----------------------------------------------------------------------------------------
+param          = DBLARR(4)
+;param[0]       = 1d6                      ;;  Lim_{E --> Infinity} (dJ/dE) ~ 10^(6)
+param[0]       = MAX(ABS(data0),/NAN)     ;;  Lim_{E --> Infinity} (dJ/dE) ~ 10^(6)
+param[1]       = -2d0                     ;;  ¥ ~ 2
+param[2]       = -1d0/1d2                 ;;  E_o ~ 100 eV
+param[3]       = 0d0                      ;;  Lim_{E --> Infinity} (dJ/dE)_o ~ 0
+bran           = [1,1,-7d0,-5d-2]         ;;  Constrain spectral index
+;cran           = [1,1,-1d0/1d1,-1d0/1d4]  ;;  Constrain E_o
+cran           = [1,1,-1d0/1d1,-1d0/1d5]  ;;  Constrain E_o
+fixed_p        = REPLICATE(1b,4)
+fixed_p[3]     = 0b
+fit_str_anti   = temp_fit_evdf_cut_wrapper(data0,energy0,pang0,anti_ra,param,          $
+                                           CUT_DIR=180e0,E_LOW=e_range[0],             $
+                                           E_HIGH=e_range[1],B_RANGE=bran, $
+                                           C_RANGE=cran,FIXED_P=fixed_p)
+;;  Define parameters
+data_anti_str  = fit_str_anti.DATA
+ener_anti_str  = fit_str_anti.ENERGY
+onec_anti_str  = fit_str_anti.ONE_C
+fit__anti_str  = fit_str_anti.FIT
+Avgf_anti      = data_anti_str.AVG_DATA
+AvgE_anti      = ener_anti_str.AVG_ENER
+Avg1_anti      = onec_anti_str.AVG_ONEC
+
+;;  Define fit results
+xx_fit_anti    = ener_anti_str.FIT_ENER
+yy_fit_anti    = data_anti_str.FIT_DATA
+yerr___anti    = onec_anti_str.FIT_ONEC
+ff_fit_anti    = fit__anti_str.YFIT
+fit_parm_anti  = fit__anti_str.FIT_PARAMS
+fit_sigp_anti  = fit__anti_str.SIG_PARAM
+;;----------------------------------------------------------------------------------------
+;;  Define strings for XYOUTS.PRO
+;;----------------------------------------------------------------------------------------
+fit_f_string   = 'Y = A X^(B) e^(C X) + D'
+letter_prefx   = ['A','B','C','D']+' = '
+dletter_prefx  = '+/- d'+letter_prefx
+mform          = '(e15.3)'
+fparm_para_str = STRTRIM(STRING(fit_parm_para,FORMAT=mform),2L)
+fsigp_para_str = STRTRIM(STRING(fit_sigp_para,FORMAT=mform),2L)
+fparm_perp_str = STRTRIM(STRING(fit_parm_perp,FORMAT=mform),2L)
+fsigp_perp_str = STRTRIM(STRING(fit_sigp_perp,FORMAT=mform),2L)
+fparm_anti_str = STRTRIM(STRING(fit_parm_anti,FORMAT=mform),2L)
+fsigp_anti_str = STRTRIM(STRING(fit_sigp_anti,FORMAT=mform),2L)
+;;  Define e-folding energy [eV] values = -1/C
+efold_eners    = -1d0/[fit_parm_para[2],fit_parm_perp[2],fit_parm_anti[2]]
+efold_ener_str = STRTRIM(STRING(efold_eners,FORMAT=mform),2L)
+
+;str_out_para   = fparm_para_str+' +/- '+fsigp_para_str
+;str_out_perp   = fparm_perp_str+' +/- '+fsigp_perp_str
+;str_out_anti   = fparm_anti_str+' +/- '+fsigp_anti_str
+
+;;  Defined parameters for XYOUTS [Legend]
+legend_out     = ['Parallel','Perpendicular','Anti-parallel']+' Avg.'
+lo_xposi       = 0.15
+lo_yposi       = 0.25
+;;  Append moment results to LIMITS.XTITLE and set LIMITS.YMARGIN
+;str_element,limits,'YMARGIN',[10,4],/ADD_REPLACE
+;str_element,limits,'XTITLE',xttle
+;IF (N_ELEMENTS(xttle) EQ 0) THEN xttle = 'Energy [eV]'
+;xttle          = xttle[0]+'!C'+moms__string[0]+'!C'+moms__string[1]+'!C'+moms__string[2]
+;str_element,limits,'XTITLE',xttle,/ADD_REPLACE
+;;  Defined parameters for XYOUTS
+xposi          = 0.50
+yposi          = 0.95  ;;  X-Windows project differently than PS files
+chsz           = 1.15
+lthck          = 2.00
+symsz          = 1.50
+dypos          = 0.03
+nparm          = N_ELEMENTS(fparm_para_str)
+xylims         = {ALIGNMENT:0.,CHARSIZE:chsz[0],NORMAL:1}
+cols           = [250,125,45]
+;;  Defined user symbol for outputing all data points
+nxxo           = 25
+xxro           = 0.35
+xxo            = FINDGEN(nxxo[0])*(!PI*2.)/(nxxo[0] - 1L)
+USERSYM,xxro[0]*COS(xxo),xxro[0]*SIN(xxo),/FILL
+;;----------------------------------------------------------------------------------------
+;;  Define new LIMITS structure
+;;----------------------------------------------------------------------------------------
+except_tags    = ['XTITLE','YTITLE','XSUBTITLE','YSUBTITLE']
+extract_tags,new_limits,limits,EXCEPT_TAGS=except_tags
+;;----------------------------------------------------------------------------------------
+;;  Plot results
+;;----------------------------------------------------------------------------------------
+xdat0          = AvgE_para
+xdat1          = AvgE_perp
+xdat2          = AvgE_anti
+ydat0          = Avgf_para
+ydat1          = Avgf_perp
+ydat2          = Avgf_anti
+;;  Define one-count levels for comparison
+yone0          = Avg1_para
+yone1          = Avg1_perp
+yone2          = Avg1_anti
+;;  Define fit results
+xfit0          = xx_fit_para
+xfit1          = xx_fit_perp
+xfit2          = xx_fit_anti
+yfit0          = ff_fit_para
+yfit1          = ff_fit_perp
+yfit2          = ff_fit_anti
+
+;;  Plot all data
+WSET,2
+WSHOW,2
+PLOT,xdat0,ydat0,_EXTRA=limits,/NODATA
+  OPLOT,xdat0,ydat0,COLOR=cols[0],PSYM=2
+  OPLOT,xdat1,ydat1,COLOR=cols[1],PSYM=2
+  OPLOT,xdat2,ydat2,COLOR=cols[2],PSYM=2
+  ;;  Plot one-count levels
+  OPLOT,xdat0,yone0,COLOR=cols[0],LINESTYLE=2
+  OPLOT,xdat1,yone1,COLOR=cols[1],LINESTYLE=2
+  OPLOT,xdat2,yone2,COLOR=cols[2],LINESTYLE=2
+
+;;----------------------------------------------------------------------------------------
+;;  Plot only data used in fit
+;;----------------------------------------------------------------------------------------
+xdat0          = xx_fit_para
+xdat1          = xx_fit_perp
+xdat2          = xx_fit_anti
+ydat0          = yy_fit_para
+ydat1          = yy_fit_perp
+ydat2          = yy_fit_anti
+
+WSET,3
+WSHOW,3
+;  PLOT,AvgE_para,Avgf_para,_EXTRA=limits,/NODATA
+  PLOT,AvgE_para,Avgf_para,_EXTRA=new_limits,/NODATA
+    ;;------------------------------------------------------------------------------------
+    ;;  Output specialized Axes Titles
+    ;;------------------------------------------------------------------------------------
+    ;;  Get current position of plot axes
+    x_loc = !X.WINDOW       ;;  [X0,X1] = [start,end] of X-Axis (normal coordinates)
+    y_loc = !Y.WINDOW       ;;  [X0,X1] = [start,end] of X-Axis (normal coordinates)
+    STOP
+    ;;  Plot fit lines
+    OPLOT,    xfit0,    yfit0,COLOR=cols[0],LINESTYLE=2,THICK=lthck[0]
+    OPLOT,    xfit1,    yfit1,COLOR=cols[1],LINESTYLE=2,THICK=lthck[0]
+    OPLOT,    xfit2,    yfit2,COLOR=cols[2],LINESTYLE=2,THICK=lthck[0]
+    ;;  Plot all data points
+    OPLOT,AvgE_para,Avgf_para,COLOR=cols[0],PSYM=8
+    OPLOT,AvgE_perp,Avgf_perp,COLOR=cols[1],PSYM=8
+    OPLOT,AvgE_anti,Avgf_anti,COLOR=cols[2],PSYM=8
+    ;;  Plot only the data points used for fits
+    OPLOT,xdat0,ydat0,COLOR=cols[0],PSYM=6,SYMSIZE=symsz[0]
+    OPLOT,xdat1,ydat1,COLOR=cols[1],PSYM=6,SYMSIZE=symsz[0]
+    OPLOT,xdat2,ydat2,COLOR=cols[2],PSYM=6,SYMSIZE=symsz[0]
+    ;;  Output plot labels/legend
+    loy0 = lo_yposi[0] + dypos[0]
+    FOR j=0L, 2L DO BEGIN
+;      loy0 = lo_yposi[0]*(1. - dypos[0]*j[0])
+      loy0 -= dypos[0]
+      XYOUTS,lo_xposi[0],loy0[0],legend_out[j],_EXTRA=xylims,COLOR=cols[j]
+    ENDFOR
+;    XYOUTS,0.15,0.25,     'Parallel Avg.',_EXTRA=xylims,COLOR=cols[0]
+;    XYOUTS,0.15,0.22,'Perpendicular Avg.',_EXTRA=xylims,COLOR=cols[1]
+;    XYOUTS,0.15,0.19,'Anti-parallel Avg.',_EXTRA=xylims,COLOR=cols[2]
+    ;;------------------------------------------------------------------------------------
+    ;;  Output fit parameters
+    ;;------------------------------------------------------------------------------------
+    str_out_para   = fparm_para_str
+    str_out_perp   = fparm_perp_str
+    str_out_anti   = fparm_anti_str
+;    XYOUTS,xposi[0],yposi[0],fit_f_string[0],_EXTRA=xylims
+    FOR j=0L, nparm[0] - 1L DO BEGIN
+      yposi -= dypos[0]
+      ;;  Output letter prefix
+      sout   = letter_prefx[j]
+      XYOUTS,xposi[0],yposi[0],sout[0],_EXTRA=xylims,WIDTH=wda
+      ;;  Parallel Fit Params
+      sout   = str_out_para[j]+', '
+      XYOUTS,xposi[0]+wda[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[0],WIDTH=wdb
+      ;;  Perpendicular Fit Params
+      sout   = str_out_perp[j]+', '
+      XYOUTS,xposi[0]+wda[0]+wdb[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[1],WIDTH=wdc
+      ;;  Anti-parallel Fit Params
+      sout   = str_out_anti[j]
+      XYOUTS,xposi[0]+wda[0]+wdb[0]+wdc[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[2],WIDTH=wdd
+    ENDFOR
+    ;;------------------------------------------------------------------------------------
+    ;;  Output fit parameter uncertainties
+    ;;------------------------------------------------------------------------------------
+    str_out_para   = fsigp_para_str
+    str_out_perp   = fsigp_perp_str
+    str_out_anti   = fsigp_anti_str
+    FOR j=0L, nparm[0] - 1L DO BEGIN
+      yposi -= dypos[0]
+      ;;  Output letter prefix
+      sout   = dletter_prefx[j]
+      XYOUTS,xposi[0],yposi[0],sout[0],_EXTRA=xylims,WIDTH=wda
+      ;;  Parallel Fit Params
+      sout   = dletter_prefx[j]+str_out_para[j]+', '
+      XYOUTS,xposi[0]+wda[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[0],WIDTH=wdb
+      ;;  Perpendicular Fit Params
+      sout   = str_out_perp[j]+', '
+      XYOUTS,xposi[0]+wda[0]+wdb[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[1],WIDTH=wdc
+      ;;  Anti-parallel Fit Params
+      sout   = str_out_anti[j]
+      XYOUTS,xposi[0]+wda[0]+wdb[0]+wdc[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[2],WIDTH=wdd
+    ENDFOR
+    ;;------------------------------------------------------------------------------------
+    ;;  Output e-folding energy [eV] values
+    ;;------------------------------------------------------------------------------------
+    yposi -= dypos[0]
+    sout   = 'Eo = '
+    XYOUTS,xposi[0],yposi[0],sout[0],_EXTRA=xylims,WIDTH=wda
+    cc     = 0
+    FOR j=0L, 2L DO BEGIN
+      cc    += wda[0]
+      sout   = efold_ener_str[j]
+      IF (j EQ 2) THEN sout = sout[0]+' eV' ELSE sout = sout[0]+', '
+      XYOUTS,xposi[0]+cc[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[j],WIDTH=wda
+    ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Save plots
+;;----------------------------------------------------------------------------------------
+;;  Reset initial XYOUTS positions
+xposi          = 0.50
+yposi          = 0.92
+lthck          = 2.50
+chsz           = 1.00
+dypos          = 0.03
+xylims         = {ALIGNMENT:0.,CHARSIZE:chsz[0],NORMAL:1}
+
+popen,fit_file_name[0],/LAND
+;;  Redefine LIMITS from within PS DEVICE
+limits         = temp_moments_evdf_str(dat0,LIMITS=limits)
+  PLOT,AvgE_para,Avgf_para,_EXTRA=limits,/NODATA
+    ;;  Plot fit lines
+    OPLOT,    xfit0,    yfit0,COLOR=cols[0],LINESTYLE=2,THICK=lthck[0]
+    OPLOT,    xfit1,    yfit1,COLOR=cols[1],LINESTYLE=2,THICK=lthck[0]
+    OPLOT,    xfit2,    yfit2,COLOR=cols[2],LINESTYLE=2,THICK=lthck[0]
+    ;;  Plot all data points
+    OPLOT,AvgE_para,Avgf_para,COLOR=cols[0],PSYM=8
+    OPLOT,AvgE_perp,Avgf_perp,COLOR=cols[1],PSYM=8
+    OPLOT,AvgE_anti,Avgf_anti,COLOR=cols[2],PSYM=8
+    ;;  Plot only the data points used for fits
+    OPLOT,xdat0,ydat0,COLOR=cols[0],PSYM=6,SYMSIZE=symsz[0]
+    OPLOT,xdat1,ydat1,COLOR=cols[1],PSYM=6,SYMSIZE=symsz[0]
+    OPLOT,xdat2,ydat2,COLOR=cols[2],PSYM=6,SYMSIZE=symsz[0]
+    ;;  Output plot labels/legend
+    loy0 = lo_yposi[0] + dypos[0]
+    FOR j=0L, 2L DO BEGIN
+;      loy0 = lo_yposi[0]*(1. - dypos[0]*j[0])
+      loy0 -= dypos[0]
+      XYOUTS,lo_xposi[0],loy0[0],legend_out[j],_EXTRA=xylims,COLOR=cols[j]
+    ENDFOR
+;    XYOUTS,0.15,0.25,     'Parallel Avg.',_EXTRA=xylims,COLOR=cols[0]
+;    XYOUTS,0.15,0.22,'Perpendicular Avg.',_EXTRA=xylims,COLOR=cols[1]
+;    XYOUTS,0.15,0.19,'Anti-parallel Avg.',_EXTRA=xylims,COLOR=cols[2]
+    ;;------------------------------------------------------------------------------------
+    ;;  Output fit parameters
+    ;;------------------------------------------------------------------------------------
+    str_out_para   = fparm_para_str
+    str_out_perp   = fparm_perp_str
+    str_out_anti   = fparm_anti_str
+;    XYOUTS,xposi[0],yposi[0],fit_f_string[0],_EXTRA=xylims
+    FOR j=0L, nparm[0] - 1L DO BEGIN
+      yposi -= dypos[0]
+      ;;  Output letter prefix
+      sout   = letter_prefx[j]
+      XYOUTS,xposi[0],yposi[0],sout[0],_EXTRA=xylims,WIDTH=wda
+      ;;  Parallel Fit Params
+      sout   = str_out_para[j]+', '
+      XYOUTS,xposi[0]+wda[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[0],WIDTH=wdb
+      ;;  Perpendicular Fit Params
+      sout   = str_out_perp[j]+', '
+      XYOUTS,xposi[0]+wda[0]+wdb[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[1],WIDTH=wdc
+      ;;  Anti-parallel Fit Params
+      sout   = str_out_anti[j]
+      XYOUTS,xposi[0]+wda[0]+wdb[0]+wdc[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[2],WIDTH=wdd
+    ENDFOR
+    ;;------------------------------------------------------------------------------------
+    ;;  Output fit parameter uncertainties
+    ;;------------------------------------------------------------------------------------
+    str_out_para   = fsigp_para_str
+    str_out_perp   = fsigp_perp_str
+    str_out_anti   = fsigp_anti_str
+    FOR j=0L, nparm[0] - 1L DO BEGIN
+      yposi -= dypos[0]
+      ;;  Output letter prefix
+      sout   = dletter_prefx[j]
+      XYOUTS,xposi[0],yposi[0],sout[0],_EXTRA=xylims,WIDTH=wda
+      ;;  Parallel Fit Params
+      sout   = dletter_prefx[j]+str_out_para[j]+', '
+      XYOUTS,xposi[0]+wda[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[0],WIDTH=wdb
+      ;;  Perpendicular Fit Params
+      sout   = str_out_perp[j]+', '
+      XYOUTS,xposi[0]+wda[0]+wdb[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[1],WIDTH=wdc
+      ;;  Anti-parallel Fit Params
+      sout   = str_out_anti[j]
+      XYOUTS,xposi[0]+wda[0]+wdb[0]+wdc[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[2],WIDTH=wdd
+    ENDFOR
+    ;;------------------------------------------------------------------------------------
+    ;;  Output e-folding energy [eV] values
+    ;;------------------------------------------------------------------------------------
+    yposi -= dypos[0]
+    sout   = 'Eo = '
+    XYOUTS,xposi[0],yposi[0],sout[0],_EXTRA=xylims,WIDTH=wda
+    cc     = 0
+    FOR j=0L, 2L DO BEGIN
+      cc    += wda[0]
+      sout   = efold_ener_str[j]
+      IF (j EQ 2) THEN sout = sout[0]+' eV' ELSE sout = sout[0]+', '
+      XYOUTS,xposi[0]+cc[0],yposi[0],sout[0],_EXTRA=xylims,COLOR=cols[j],WIDTH=wda
+    ENDFOR
+pclose
+;;----------------------------------------------------------------------------------------
+;;  Define return structure
+;;----------------------------------------------------------------------------------------
+;;  Change init_struc.LIMITS to account for changes added in wrapping routins
+str_element,init_struc,'LIMITS',limits,/ADD_REPLACE
+;;  Add to initialization structure
+fit_cons       = {INIT_PARAM:param,B_RANGE:bran,C_RANGE:cran,FIXED_P:fixed_p}
+added          = {PARA_RA:para_ra,PERP_RA:perp_ra,ANTI_RA:anti_ra,FILE_NAME:fit_file_name[0],FIT_CONSTRAINTS:fit_cons}
+str_element,init_struc,        'EXTRAS',        added,/ADD_REPLACE
+;;  Define tags for return structure
+str_element,     struc,    'INIT_STRUC',   init_struc,/ADD_REPLACE
+str_element,     struc,'FIT_PARA_STRUC', fit_str_para,/ADD_REPLACE
+str_element,     struc,'FIT_PERP_STRUC', fit_str_perp,/ADD_REPLACE
+str_element,     struc,'FIT_ANTI_STRUC', fit_str_anti,/ADD_REPLACE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END
+
+

@@ -1,0 +1,188 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   read_url_page_source.pro
+;  PURPOSE  :   This routine reads in the text associated with a URL.
+;
+;  CALLED BY:   
+;               convert_html_url_2_string.pro
+;
+;  CALLS:
+;               curl  [bash script --> requires Unix or Linux]
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               URL  :  Scalar [string] defining a full URL to a web page that the
+;                         user wishes to return as a string of the page source
+;
+;  EXAMPLES:    
+;               url         = 'http://www.google.com'
+;               page_source = read_url_page_source(url)
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  No longer uses the Java routine, now uses the bash routine, curl
+;                                                                   [02/17/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  In Unix or Linux, type the following:
+;                     $ man curl
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  02/16/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/17/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION read_url_page_source, url
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
+vers           = !VERSION.OS_FAMILY     ;;  e.g., 'unix'
+vern           = !VERSION.RELEASE       ;;  e.g., '7.1.1'
+;;  Define the search path separator character
+IF (vern[0] GE '5.5') THEN sepath_sep = PATH_SEP(/SEARCH_PATH)  ;;  e.g., ':' [for unix and linux]
+IF (vern[0] LT '5.5') THEN $
+  IF (vers[0] NE 'unix') THEN sepath_sep = ';' ELSE sepath_sep = ':'
+
+bb             = 0b
+sztb           = SIZE(bb,/TYPE)
+my_dyld_lib    = slash[0]+'usr'+slash[0]+'lib'
+;;----------------------------------------------------------------------------------------
+;;  Need to make sure IDL looks for the updated version of curl, not its old one
+;;----------------------------------------------------------------------------------------
+lib_dir        = GETENV('DYLD_LIBRARY_PATH')
+IF (lib_dir[0] EQ '') THEN new_lib = my_dyld_lib[0] ELSE new_lib = my_dyld_lib[0]+sepath_sep[0]+lib_dir[0]
+SETENV,'DYLD_LIBRARY_PATH='+new_lib[0]
+;;----------------------------------------------------------------------------------------
+;;  Use SPAWN to read URL
+;;----------------------------------------------------------------------------------------
+;SPAWN, 'curl url', page_as_string
+;;  The following is critical!
+;;    1)  The string needs to be formed before calling SPAWN, otherwise SPAWN will try
+;;          to apply curl to literal 'url'
+myspawn_cmd    = 'curl '+url[0]
+SPAWN, myspawn_cmd[0], page_as_string
+
+;oJURLReader    = OBJ_NEW('IDLjavaObject$URLReader', 'URLReader')
+;;;  Read the URL data into our Java-side buffer.
+;nBytes         = oJURLReader -> ReadURL(url)
+;;;  Pull the data into IDL  [byte array]
+;page_as_bytes  = oJURLReader -> GetData()
+;;;  Remove Java object
+;OBJ_DESTROY, oJURLReader
+;;;  Check format
+;test           = (SIZE(page_as_bytes,/TYPE) NE sztb[0])
+;IF (test[0]) THEN RETURN,''
+;;;  Convert to strings if valid
+;page_as_string = STRING(page_as_bytes)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,page_as_string
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   convert_html_url_2_string.pro
+;  PURPOSE  :   This routine takes an input URL and reads the associated page source
+;                 and then returns a string containing the page source code.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               read_url_page_source.pro
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               URL          :  [N]-Element [string] array defining full URLs to web
+;                                 pages that the user wishes to return as a strings
+;                                 of the page sources
+;
+;  EXAMPLES:    
+;               url         = 'http://www.google.com'
+;               convert_html_url_2_string,url,PAGE_SOURCE=page_source
+;
+;  KEYWORDS:    
+;               PAGE_SOURCE  :  Set to a named variable that will contain an
+;                                 [N]-Element [string] array, where PAGE_SOURCE[i] is
+;                                 a single string of the page source associated with
+;                                 URL[i]
+;
+;   CHANGED:  1)  No longer uses the Java routine, now uses the bash routine, curl
+;                                                                   [02/17/2015   v1.0.0]
+;
+;   NOTES:      
+;               1)  The Java file, URLReader.java, comes with IDL
+;                     --> See:  http://www.exelisvis.com/docs/AccessingURLsExample.html
+;               2)  In Unix or Linux, type the following:
+;                     $ man curl
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  02/16/2015
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/17/2015   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO convert_html_url_2_string,url,PAGE_SOURCE=page_source
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy and constant variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+noinpt_msg     = 'User must supply an [N]-element [string] array of URLs...'
+badfor_msg     = 'URL must be a an [N]-element string array of valid URLs...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 1) THEN BEGIN
+  MESSAGE,noinpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+test           = (SIZE(url,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define relevant parameters
+;;----------------------------------------------------------------------------------------
+good           = WHERE(url NE '',gd)
+IF (gd[0] EQ 0) THEN BEGIN
+  MESSAGE,'2: '+badfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+all_urls       = url[good]
+n_url          = N_ELEMENTS(all_urls)
+page_source    = STRARR(n_url)
+;;----------------------------------------------------------------------------------------
+;;  Get page source
+;;----------------------------------------------------------------------------------------
+FOR j=0L, n_url[0] - 1L DO page_source[j] = read_url_page_source(all_urls[j])
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

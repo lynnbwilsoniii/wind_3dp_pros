@@ -1,0 +1,334 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   rotate_and_triangulate_dfs.pro
+;  PURPOSE  :   Uses the velocities corresponding to the energy/angle bins of a
+;                 particle distribution and the corresponding data points to create
+;                 projections onto three different planes defined by user supplied
+;                 rotation matrices.  The input rotation matrices are defined by the
+;                 routine rot_matrix_array_dfs.pro and produce a new primed basis given
+;                 by the following:
+;
+;                           Z'
+;                           |
+;                           |
+;                           |
+;                           |
+;                           |
+;                           |
+;                           |
+;                           |
+;                           O --------------- Y'
+;                          /
+;                        /
+;                      /
+;                    /
+;                  /
+;                 X'
+;
+;                 where ROTMXY gives the following unit vectors:
+;                   X'  :  V1
+;                   Z'  :  (V1 x V2)       = (X x V2)
+;                   Y'  :  (V1 x V2) x V1  = (Z x X)
+;
+;                 and ROTMZY gives the following unit vectors:
+;                   Z'  :  V1
+;                   Y'  :  (V1 x V2)       = (Z x V2)
+;                   X'  :  (V1 x V2) x V1  = (Y x Z)
+;
+;                 where V1 and V2 are the input 3-vectors for rot_matrix_array_dfs.pro.
+;                 Thus, the following plane projections/slices are produced:
+;                   Y vs. X  :  [(V1 x V2) x V1] vs. [V1]
+;                   X vs. Z  :  [V1] vs. [(V1 x V2)]
+;                   Z vs. Y  :  [(V1 x V2)] vs. [(V1 x V2) x V1]
+;
+;                 See rot_matrix_array_dfs.pro and rotate_3dp_structure.pro for possible
+;                 definitions of V1 and V2.
+;
+;  CALLED BY:   
+;               rotate_esa_htr_structure.pro
+;               rotate_3dp_htr_structure.pro
+;               rotate_3dp_structure.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               VELS       :  [K,3]-Element [numeric] array of particle velocities [km/s]
+;               DATA       :  [K]-Element [numeric] array of phase (velocity) space
+;                               densities [e.g., s^(3) cm^(-3) km^(-3)]
+;               ROTMXY     :  [K,3,3]-Element [numeric] array of rotation matrices for
+;                               the new XY- and XZ-Planes
+;               ROTMZY     :  [K,3,3]-Element [numeric] array of rotation matrices for
+;                               the new ZY--Plane
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               r_vels = rotate_and_triangulate_dfs(vels, data, rotmx, rotmz [,VLIM=vlim] [,/PROJECT])
+;
+;  KEYWORDS:    
+;               VLIM       :  Scalar [numeric] defining the speed limit for the velocity
+;                               grids over which to triangulate the data [km/s]
+;                               [Default = max vel. magnitude]
+;               PROJECT    :  If set, routine uses the projection of the rotated
+;                               velocities for triangulation, producing a projection
+;                               onto the three planes defined by the input rotation
+;                               matrices, ROTMXY and ROTMZY.  Otherwise it uses the
+;                               actual rotated velocities producing a slice through
+;                               the planes of projection.
+;                               [Default = TRUE]
+;
+;   CHANGED:  1)  Continued writing routine                        [08/08/2012   v1.0.0]
+;             2)  Original version added NaNs to end of arrays, but now we keep track
+;                   of elements so calling routines can use them to invert to original
+;                   data structure elements
+;                                                                  [08/20/2012   v1.1.0]
+;             3)  Added keyword:  PROJECT
+;                                                                  [09/08/2012   v1.2.0]
+;             4)  Cleaned up and added more documentation
+;                                                                  [11/24/2015   v1.3.0]
+;             5)  Added use of TOLERANCE keyword in calls to TRIANGULATE.PRO to reduce
+;                   chances of "co-linear points" errors
+;                                                                  [04/08/2016   v1.4.0]
+;             6)  Create small (1e-6 times) perturbations about velocity values used
+;                   in calls to TRIANGULATE.PRO to reduce chances of
+;                   "co-linear points" errors
+;                                                                  [04/08/2016   v1.5.0]
+;             7)  Fixed a bug when no finite Z data case occurs
+;                                                                  [05/15/2016   v1.5.1]
+;
+;   NOTES:      
+;               1)  User should not call this routine
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  08/07/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/15/2016   v1.5.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION rotate_and_triangulate_dfs,vels,data,rotmxy,rotmzy,VLIM=vlim,PROJECT=project
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;----------------------------------------------------------------------------------------
+;;  Check input structure format
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 4) THEN RETURN,0b
+
+swfv           = vels                        ;;  [K,3]-Element array
+szv            = SIZE(swfv,/DIMENSIONS)
+kk             = szv[0]                      ;;  # of vectors
+dat_1d         = data                        ;;  [K]-Element array
+rotm           = rotmxy                      ;;  [K,3,3]-Element array
+rotz           = rotmzy                      ;;  [K,3,3]-Element array
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(vlim) THEN BEGIN
+  vlim = MAX(SQRT(TOTAL(swfv^2,2L,/NAN)),/NAN)
+ENDIF ELSE BEGIN
+  vlim = FLOAT(vlim[0])
+ENDELSE
+IF (N_ELEMENTS(project) EQ 0) THEN proj = 1 ELSE proj = 0
+
+dgs            = vlim[0]/5e1
+gs             = [dgs,dgs]               ;;  grid spacing for triangulation used later
+xylim          = [-1*vlim[0],-1*vlim[0],vlim[0],vlim[0]]
+dumb1d         = REPLICATE(d,kk)
+dumb2d         = REPLICATE(d,101L,101L)
+;;  Force regularly gridded velocities (for contour plots)
+vx2d           = -1e0*vlim[0] + gs[0]*FINDGEN(FIX((2e0*vlim[0])/gs[0]) + 1L)
+vy2d           = -1e0*vlim[0] + gs[1]*FINDGEN(FIX((2e0*vlim[0])/gs[1]) + 1L)
+;;----------------------------------------------------------------------------------------
+;;  Rotate velocities into new coordinate basis and triangulate
+;;----------------------------------------------------------------------------------------
+vel_r         = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTM
+vel_z         = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTZ
+
+temp_r        = REBIN(swfv,kk,3L,3L)            ;;  expand to a [K,3,3]-element array
+;;  Apply rotations [vectorized]
+temp_rm       = TOTAL(temp_r*rotm,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
+temp_rz       = TOTAL(temp_r*rotz,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
+vel_r         = temp_rm
+vel_z         = temp_rz
+;;  Define new basis velocities components [cal_rot.pro]
+vel2dx        = REFORM(vel_r[*,0])                   ;;  // to [V1]
+vyz2d         = SQRT(TOTAL(vel_r[*,1:2]^2,2,/NAN))
+;;  Define new basis velocities components [rot_mat.pro]
+vyz2d_z       = SQRT(TOTAL(vel_z[*,1:2]^2,2,/NAN))
+vel2dx_z      = REFORM(vel_z[*,0])                   ;;  // to [(V1 x V2) x V1]
+;;  Define YZ-components for both velocities components [rot_mat.pro]
+IF KEYWORD_SET(proj) THEN BEGIN
+  ;; Use projected YZ-velocities
+  vel2dy        = vyz2d*REFORM(vel_r[*,1])/ABS(REFORM(vel_r[*,1]))     ;;  // to [(V1 x V2) x V1]
+  vel2dz        = vyz2d*REFORM(vel_r[*,2])/ABS(REFORM(vel_r[*,2]))     ;;  // to [(V1 x V2)]
+  vel2dy_z      = vyz2d_z*REFORM(vel_z[*,1])/ABS(REFORM(vel_z[*,1]))   ;;  // to [(V1 x V2)]
+  vel2dz_z      = vyz2d_z*REFORM(vel_z[*,2])/ABS(REFORM(vel_z[*,2]))   ;;  // to [V1]
+ENDIF ELSE BEGIN
+  ;; Use measured  YZ-velocities
+  vel2dy        = REFORM(vel_r[*,1])
+  vel2dz        = REFORM(vel_r[*,2])
+  vel2dy_z      = REFORM(vel_z[*,1])
+  vel2dz_z      = REFORM(vel_z[*,2])
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define parameters to fill
+;;----------------------------------------------------------------------------------------
+vx2d_xy       = REPLICATE(d,kk)
+vy2d_xy       = REPLICATE(d,kk)
+vz2d_xy       = REPLICATE(d,kk)
+
+vx2d_xz       = REPLICATE(d,kk)
+vy2d_xz       = REPLICATE(d,kk)
+vz2d_xz       = REPLICATE(d,kk)
+
+vx2d_yz       = REPLICATE(d,kk)
+vy2d_yz       = REPLICATE(d,kk)
+vz2d_yz       = REPLICATE(d,kk)
+;;----------------------------------------------------------------------------------------
+;;  MISSING keyword in TRIGRID.PRO allows for non-finite input
+;;      However, TRIANGULATE.PRO does not allow for non-finite inputs
+;;----------------------------------------------------------------------------------------
+testf          = FINITE(dat_1d) AND (dat_1d GE 0.)
+;testf          = (FINITE(dat_1d) EQ 1) AND (dat_1d GE 0.)
+;testv          = (FINITE(vel2dx) EQ 1) AND (FINITE(vel2dy) EQ 1) AND (FINITE(vel2dz) EQ 1)
+testv          = FINITE(vel2dx) AND FINITE(vel2dy) AND FINITE(vel2dz)
+indx           = WHERE(testv,cnt,COMPLEMENT=bad,NCOMPLEMENT=bd)
+IF (cnt GT 0L) THEN BEGIN
+  ;;  Finite values found --> Triangulate
+  vel2dx_2 = vel2dx[indx]     ;;  // to [V1]
+  vel2dy_2 = vel2dy[indx]     ;;  // to [(V1 x V2) x V1]
+  vel2dz_2 = vel2dz[indx]     ;;  // to [(V1 x V2)]
+  dat_1d2  = dat_1d[indx]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Y vs. X Plane projection
+  ;;    --> [(V1 x V2) x V1] vs. [V1]
+  ;;--------------------------------------------------------------------------------------
+  toler          = 1d-6*MAX(ABS([vel2dx_2,vel2dy_2]),/NAN)
+  vx             = vel2dx_2 + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
+  vy             = vel2dy_2 + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
+  TRIANGULATE,vx,vy,tr_xy,REPEATS=rep_xy
+  df2d_xy        = TRIGRID(vx,vy,dat_1d2,tr_xy,gs,xylim,MISSING=f,$
+                           XGRID=vxgrid_xy,YGRID=vygrid_xy)
+;  TRIANGULATE,vel2dx_2,vel2dy_2,tr_xy,REPEATS=rep_xy,TOLERANCE=toler[0]
+  ;;  put DF on regular grid
+;  df2d_xy        = TRIGRID(vel2dx_2,vel2dy_2,dat_1d2,tr_xy,gs,xylim,MISSING=f,$
+;                           XGRID=vxgrid_xy,YGRID=vygrid_xy)
+  vx2d_xy[indx]  = vel2dx_2
+  vy2d_xy[indx]  = vel2dy_2
+  vz2d_xy[indx]  = vel2dz_2
+  ;;--------------------------------------------------------------------------------------
+  ;;  X vs. Z Plane projection
+  ;;    --> [V1] vs. [(V1 x V2)]
+  ;;--------------------------------------------------------------------------------------
+  toler          = 1d-5*MAX(ABS([vel2dz_2,vel2dx_2]),/NAN)
+  vz             = vel2dz_2 + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
+  vx             = vel2dx_2 + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
+  TRIANGULATE,vz,vx,tr_xz,REPEATS=rep_xz
+  df2d_xz        = TRIGRID(vz,vx,dat_1d2,tr_xz,gs,xylim,MISSING=f,$
+                           XGRID=vxgrid_xz,YGRID=vygrid_xz)
+;  TRIANGULATE,vel2dz_2,vel2dx_2,tr_xz,REPEATS=rep_xz,TOLERANCE=toler[0]
+  ;;  put DF on regular grid
+;  df2d_xz        = TRIGRID(vel2dz_2,vel2dx_2,dat_1d2,tr_xz,gs,xylim,MISSING=f,$
+;                           XGRID=vxgrid_xz,YGRID=vygrid_xz)
+  vx2d_xz[indx]  = vel2dz_2
+  vy2d_xz[indx]  = vel2dx_2
+  vz2d_xz[indx]  = vel2dy_2
+  gind_xy        = indx
+ENDIF ELSE BEGIN
+  ;;  No finite values found --> skip
+  MESSAGE,'No finite XY data',/CONTINUE,/INFORMATIONAL
+  ;;  X-Y Plane projection
+  df2d_xy        = dumb2d
+  vx2d_xy        = dumb1d
+  vy2d_xy        = dumb1d
+  vz2d_xy        = dumb1d
+  ;;  X-Z Plane projection
+  df2d_xz        = dumb2d
+  vx2d_xz        = dumb1d
+  vy2d_xz        = dumb1d
+  vz2d_xz        = dumb1d
+  ;;  Triangulation outputs
+  vxgrid_xy      = dumb1d
+  vygrid_xy      = dumb1d
+  vxgrid_xz      = dumb1d
+  vygrid_xz      = dumb1d
+  tr_xy          = REPLICATE(1d0,3L) # dumb1d
+  tr_xz          = REPLICATE(1d0,3L) # dumb1d
+  gind_xy        = -1
+ENDELSE
+
+;testf      = (FINITE(dat_1d) EQ 1) AND (dat_1d GE 0.)
+testf      = FINITE(dat_1d) AND (dat_1d GE 0.)
+testv      = FINITE(vel2dx_z) AND FINITE(vel2dy_z) AND FINITE(vel2dz_z)
+;testv      = (FINITE(vel2dx_z) EQ 1) AND (FINITE(vel2dy_z) EQ 1) AND (FINITE(vel2dz_z) EQ 1)
+indx       = WHERE(testv,cnt,COMPLEMENT=bad,NCOMPLEMENT=bd)
+IF (cnt GT 0L) THEN BEGIN
+  ;;  Finite values found --> Triangulate
+  vel2dx_z = vel2dx_z[indx]     ;;  // to [(V1 x V2) x V1]
+  vel2dy_z = vel2dy_z[indx]     ;;  // to [(V1 x V2)]
+  vel2dz_z = vel2dz_z[indx]     ;;  // to [V1]
+  dat_1dz  = dat_1d[indx]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Z vs. Y Plane projection
+  ;;    --> [(V1 x V2)] vs. [(V1 x V2) x V1]
+  ;;--------------------------------------------------------------------------------------
+  toler          = 1d-5*MAX(ABS([vel2dx_z,vel2dy_z]),/NAN)
+  vx             = vel2dx_z + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
+  vy             = vel2dy_z + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
+  TRIANGULATE,vx,vy,tr_yz,REPEATS=rep_yz
+  df2d_yz        = TRIGRID(vx,vy,dat_1dz,tr_yz,gs,xylim,MISSING=f,$
+                           XGRID=vxgrid_yz,YGRID=vygrid_yz)
+;  TRIANGULATE,vel2dx_z,vel2dy_z,tr_yz,REPEATS=rep_yz,TOLERANCE=toler[0]
+;  df2d_yz        = TRIGRID(vel2dx_z,vel2dy_z,dat_1dz,tr_yz,gs,xylim,MISSING=f,$
+;                           XGRID=vxgrid_yz,YGRID=vygrid_yz)
+  vx2d_yz[indx]  = vel2dx_z
+  vy2d_yz[indx]  = vel2dy_z
+  vz2d_yz[indx]  = vel2dz_z
+  gind_yz        = indx
+ENDIF ELSE BEGIN
+  ;;  No finite values found --> skip
+  MESSAGE,'No finite Z data',/CONTINUE,/INFORMATIONAL
+  ;;  Y-Z Plane projection
+  df2d_yz        = dumb2d
+  vx2d_yz        = dumb1d
+  vy2d_yz        = dumb1d
+  vz2d_yz        = dumb1d
+  vxgrid_yz      = dumb1d
+  vygrid_yz      = dumb1d
+  tr_yz          = REPLICATE(1d0,3L) # dumb1d
+  gind_yz        = -1
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Create return structure
+;;----------------------------------------------------------------------------------------
+tag_pref       = ['DF2D','VELX','VELY','VELZ','TR','VX_GRID','VY_GRID','GOOD_IND']
+tags           = ['VX2D','VY2D','PLANE_XY','PLANE_XZ','PLANE_YZ']
+tag_xy         = tag_pref+'_XY'
+tag_xz         = tag_pref+'_XZ'
+tag_yz         = tag_pref+'_YZ'
+
+str_xy         = CREATE_STRUCT(tag_xy,df2d_xy,vx2d_xy,vy2d_xy,vz2d_xy,tr_xy,vxgrid_xy,vygrid_xy,gind_xy)
+str_xz         = CREATE_STRUCT(tag_xz,df2d_xz,vx2d_xz,vy2d_xz,vz2d_xz,tr_xz,vxgrid_xz,vygrid_xz,gind_xy)
+str_yz         = CREATE_STRUCT(tag_yz,df2d_yz,vx2d_yz,vy2d_yz,vz2d_yz,tr_yz,vxgrid_yz,vygrid_yz,gind_yz)
+struct         = CREATE_STRUCT(tags,vx2d,vy2d,str_xy,str_xz,str_yz)
+;;----------------------------------------------------------------------------------------
+;;  Return structure to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END

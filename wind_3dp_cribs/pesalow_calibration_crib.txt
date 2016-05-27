@@ -1,0 +1,199 @@
+;-----------------------------------------------------------------------------------------
+; => Some constants and time ranges
+;-----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+epo            = 8.854187817d-12        ; => Permittivity of free space (F/m)
+muo            = 4d0*!DPI*1d-7          ; => Permeability of free space (N/A^2 or H/m)
+me             = 9.1093897d-31          ; => Electron mass (kg)
+mp             = 1.6726231d-27          ; => Proton mass (kg)
+qq             = 1.60217733d-19         ; => Fundamental charge (C)
+K_eV           = 1.160474d4             ; => Conversion = degree Kelvin/eV
+kB             = 1.380658d-23           ; => Boltzmann Constant (J/K)
+c              = 2.99792458d8           ; => Speed of light in vacuum (m/s)
+
+
+tdate          = '2000-04-17'
+ldate          = '20000417'
+t3dpd          = '00-04-17/00:00:00'
+
+tdate          = '2000-05-15'
+ldate          = '20000515'
+t3dpd          = '00-05-15/00:00:00'
+;-----------------------------------------------------------------------------------------
+; => Load 3DP data
+;-----------------------------------------------------------------------------------------
+load_3dp_data,t3dpd[0],150,qu=2,memsize=200.
+
+t     = tdate[0]+'/'+['00:00:00','23:59:59']
+tra   = time_double(t)
+
+;-----------------------------------------------------------------------------------------
+; => Load SWE data
+;-----------------------------------------------------------------------------------------
+; => Make sure the following file path and files exist prior to doing the following
+file  = '/data1/wind/swe/k0/2000/wi_k0_swe_'+ldate[0]+'_v01.cdf'
+tfile = FILE_SEARCH(file[0])
+windb = read_cdf(tfile[0],datab,varb,/NOTIME)
+epoch = *datab[0]
+pdens = *datab[26]    ; => Proton density [cm^(-3)]
+vthp  = *datab[25]    ; => Thermal speed [km/s]
+vsw   = *datab[18]    ; => Vsw [km/s]
+velp  = *datab[22]    ; => Proton bulk velocity [km/s]
+PTR_FREE,datab
+
+epoch = epoch[*,0]
+pdens = pdens[*,0]
+vthp  = vthp[*,0]
+; => Convert epoch time to Unix
+unix  = epoch2unix(epoch)
+; => Remove "spikes"
+pdens = pdens[*,0]
+bad   = WHERE(pdens LT -1d29,bd)
+IF (bd GT 0) THEN pdens[bad] = f
+vthp  = vthp[*,0]
+bad   = WHERE(vthp LT -1d29,bd)
+IF (bd GT 0) THEN vthp[bad] = f
+
+badx  = WHERE(vsw[*,0] LT -1d29,bdx)
+bady  = WHERE(vsw[*,1] LT -1d29,bdy)
+badz  = WHERE(vsw[*,2] LT -1d29,bdz)
+IF (bdx GT 0) THEN vsw[badx,0] = f
+IF (bdy GT 0) THEN vsw[bady,1] = f
+IF (bdz GT 0) THEN vsw[badz,2] = f
+
+badx  = WHERE(velp[*,0] LT -1d29,bdx)
+bady  = WHERE(velp[*,1] LT -1d29,bdy)
+badz  = WHERE(velp[*,2] LT -1d29,bdz)
+IF (bdx GT 0) THEN velp[badx,0] = f
+IF (bdy GT 0) THEN velp[bady,1] = f
+IF (bdz GT 0) THEN velp[badz,2] = f
+
+temp_p = ((vthp*1d3)^2*mp/2d0)/qq        ; => Convert to eV
+
+store_data,'wi_swe_Np',  DATA={X:unix,Y:pdens}
+store_data,'wi_swe_Vsw', DATA={X:unix,Y:vsw}
+store_data,'wi_swe_Vp',  DATA={X:unix,Y:velp}
+store_data,'wi_swe_Tp',  DATA={X:unix,Y:temp_p}
+store_data,'wi_swe_VTHp',DATA={X:unix,Y:vthp}
+
+options,'wi_swe_Np',  'YTITLE','N!Dp!N [SWE, cm!U-3!N'+']'
+options,'wi_swe_Vsw', 'YTITLE','V!Dsw!N [SWE GSE, km/s]'
+options,'wi_swe_Vp',  'YTITLE','V!Dp!N [SWE GSE, km/s]'
+options,'wi_swe_Tp',  'YTITLE','T!Dp!N [SWE, eV]'
+options,'wi_swe_VTHp','YTITLE','V!DTp!N [SWE, km/s]'
+options,['wi_swe_Vsw','wi_swe_Vp'],'COLORS',[250,150,50]
+;-----------------------------------------------------------------------------------------
+; => Load 3DP proton moments
+;-----------------------------------------------------------------------------------------
+get_pmom2,/PROTONS,PREFIX='p_',MAGNAME='wi_B3(GSE)',/NOFIXMCP
+
+; => p at end : protons
+options,'p_Np','YTITLE','N!Dp!N [3DP, cm!U-3!N'+']' ; => Density
+options,'p_Vp','YTITLE','V!Dp!N [3DP GSE, km/s]'    ; => Bulk Flow
+options,'p_VTHp','YTITLE','V!DTp!N [3DP, km/s]'     ; => Thermal Speed
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+;-----------------------------------------------------------------------------------------
+; => Interpolate 3DP proton moments to SWE time scale since much smaller than 3DP
+;-----------------------------------------------------------------------------------------
+get_data,'p_Np',DATA=wi_3dp_np
+get_data,'p_Vp',DATA=wi_3dp_vp
+get_data,'p_VTHp',DATA=wi_3dp_vtp
+
+; => SWE Data
+get_data,'wi_swe_Np',DATA=wi_swe_np
+np_swe   = wi_swe_np.Y
+time_s   = wi_swe_np.X
+
+; => 3DP Data
+np_3dp   = wi_3dp_np.Y
+time3    = wi_3dp_np.X
+np_3dp_s = interp(np_3dp,time3,time_s,/NO_EXTRAP)
+
+vsw_3dp  = wi_3dp_vp.Y
+vmag_3dp = SQRT(TOTAL(vsw_3dp^2,2,/NAN))
+time3    = wi_3dp_vp.X
+vp_3dp_s = interp(vmag_3dp,time3,time_s,/NO_EXTRAP)
+
+vtp_3dp  = wi_3dp_vtp.Y
+time3    = wi_3dp_vtp.X
+vt_3dp_s = interp(vtp_3dp,time3,time_s,/NO_EXTRAP)
+;-----------------------------------------------------------------------------------------
+; => Calculate efficiency and dead time
+;-----------------------------------------------------------------------------------------
+nmax     = 400L
+calc_pl_mcp_eff_dt,np_3dp_s,vp_3dp_s,vt_3dp_s,np_swe,EFFICIENCY=eff, $
+                       DEADTIME=tau,NMAX=nmax,CHI_SQ=chi_sq
+PRINT,';', eff[0], tau[0],'  => For  '+tdate[0]
+;       1.0285714    0.0042813324  => For  2000-04-17
+
+
+; => Calculate correction for density
+rmax      = np_3dp_s*vp_3dp_s^4/(vt_3dp_s^3*1d6)
+corr      = (1d0 + rmax*tau[0])/eff[0]
+np_3dp_c  = corr*np_3dp_s
+
+store_data,'wi_3dp_Np_c',  DATA={X:time_s,Y:np_3dp_c}
+options,'wi_3dp_Np_c','YTITLE','Corrected N!Dp!N [3DP, cm!U-3!N'+']' ; => Density
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+; => Plot comparison
+nn0       = ['wi_B3_MAG(GSE)','wi_B3(GSE)']
+nna       = ['wi_swe_Np','wi_3dp_Np_c']
+tplot,[nn0,nna],TRANGE=tra
+
+;-----------------------------------------------------------------------------------------
+; => Plot contour plot of chi^2
+;-----------------------------------------------------------------------------------------
+eff_a     = chi_sq.EFF
+tau_a     = chi_sq.DEADT
+chisq     = chi_sq.CHISQ
+
+nlevels   = 60L
+xra       = [MIN(eff_a,/NAN),MAX(eff_a,/NAN)]
+yra       = [MIN(tau_a,/NAN),MAX(tau_a,/NAN)]
+xttl      = 'efficiency (unitless)'
+yttl      = 'dead time (s)'
+
+result    = ALOG(chisq*1d0)/ALOG(1d1)
+range     = [MIN(result,/NAN),MAX(result,/NAN)]
+cpd0      = FLOOR(nlevels/(range[1] - range[0])) > 1.
+cpd       = FIX(nlevels/(range[1] - range[0])) > 1
+nn2       = nlevels - 1L
+mxres     = CEIL(MAX(result,/NAN))
+levels    = FINDGEN(nlevels)*(mxres[0] - range[0])/nn2 + range[0]
+levels    = roundsig(levels,SIG=2)
+color     = LONARR(nlevels)
+color     = LINDGEN(nlevels)*(254L - 15L)/(nlevels - 1L) + 15L
+color     = ROUND((color*1e3)^(2e0/3e0)/16e0)
+c_colors  = BYTE(color)
+good_lbs           = INDGEN(nlevels/3L)*3L + 2L
+c_labels           = REPLICATE(0,nlevels)
+c_labels[good_lbs] = 1
+
+pstr      = {NLEVELS:nlevels,XTITLE:xttl,YTITLE:yttl,$
+             XSTYLE:1,YSTYLE:1,ZSTYLE:1,FILL:1,C_COLORS:c_colors,   $
+             XRANGE:xra,YRANGE:yra,XLOG:1,YLOG:1,ZLOG:0,XMINOR:9L, $
+             YMINOR:9L}
+
+wi,1
+WSET,1
+!P.MULTI = 0
+CONTOUR,ALOG10(chisq),eff_a,tau_a,_EXTRA=pstr
+  OPLOT,[eff[0]],[tau[0]],PSYM=1,COLOR=250,SYMSIZE=2.0   ; => put a + at minimum
+
+
+
+
+
+

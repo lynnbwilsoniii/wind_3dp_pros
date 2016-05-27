@@ -1,0 +1,221 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   dat_themis_esa_str_names.pro
+;  PURPOSE  :   Returns the associated structure name for the input.  Enter a
+;                 string to get the "formal" name associated with a particular
+;                 THEMIS ESA detector (e.g. 'peeb' -> 'EESA 3D BURST Distribution')
+;                 or a structure to get a four letter string associated with structure
+;                 (e.g. dat = get_tha_peeb() => result = 'peeb').
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT  :  [string,structure] associated with a known THEMIS ESA data
+;                         structure
+;                           String Inputs:
+;                             pee[f,r,b]  :  EESA Electrons
+;                             pei[f,r,b]  :  IESA Ions
+;                             pse[f,r,b]  :  SST Electrons
+;                             psi[f,r,b]  :  SST Ions
+;                             [f,r,b]     :  [Full, Reduced, BURST]
+;                           Structure Inputs:
+;                             dat = get_th?_p???()
+;                             {outputs from thm_load_p???.pro routines should work too}
+;
+;  EXAMPLES:    
+;               temp = dat_themis_esa_str_names('peir')
+;               PRINT,';  '+temp.LC[0]
+;               ;  IESA 3D Reduced Distribution
+;               
+;               PRINT,';  '+temp.SN[0]
+;               ;  peir
+;
+;  KEYWORDS:    
+;               NOM  :  If set, routine will not print out messages
+;
+;   CHANGED:  1)  Added keyword:  NOM
+;                                                                   [03/29/2012   v1.1.0]
+;             2)  Fixed an issue when SST data structures do not have the typical
+;                   string defined by the structure tag DATA_NAME
+;                                                                   [11/15/2015   v1.2.0]
+;
+;   NOTES:      
+;               1)  see also:  dat_3dp_str_names.pro
+;               2)  This routine is specific to the THEMIS mission
+;
+;   CREATED:  03/08/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  11/15/2015   v1.2.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+
+FUNCTION dat_themis_esa_str_names,dat,NOM=nom
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+short_suff     = ['f','r','b']
+short_pref     = ['pee','pei','pse','psi']
+data_pref      = ['EESA 3D','IESA 3D','SST Electron','SST Ion']+' '
+data_suff      = ['Full','Reduced','Burst']
+
+short_strings  = STRARR(4,3)
+data_names     = STRARR(4,3)
+FOR j=0L, 2L DO BEGIN
+  short_strings[*,j] = short_pref[*]+short_suff[j]
+  data_names[*,j]    = data_pref[*]+data_suff[j]+' Distribution'
+ENDFOR
+
+notstr_mssg    = 'Must be an IDL structure...'
+badstr_mssg    = 'Not an appropriate ESA structure...'
+badsat_mssg    = 'Not a THEMIS structure...'
+badstn_mssg    = 'Not an appropriate ESA string name...'
+;;----------------------------------------------------------------------------------------
+;;  Determine input type
+;;----------------------------------------------------------------------------------------
+dtype = SIZE(dat,/TYPE)
+CASE dtype[0] OF
+  8    : BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Input is a structure
+    ;;------------------------------------------------------------------------------------
+    tags = TAG_NAMES(dat)
+    test = (TOTAL((STRUPCASE(tags) EQ 'PROJECT_NAME')) NE 1) OR $
+           (TOTAL((STRUPCASE(tags) EQ 'DATA_NAME')) NE 1)
+    IF (test) THEN BEGIN
+      ;;  bad structure format
+      IF ~KEYWORD_SET(nom) THEN MESSAGE,badstr_mssg[0],/CONT,/INFO
+      RETURN,0b
+    ENDIF
+    data = dat[0]
+    test = STRMID(STRTRIM(STRUPCASE(data.PROJECT_NAME),2),0L,6L) NE 'THEMIS'
+    IF (test) THEN BEGIN
+      ;;  not a THEMIS structure format
+      IF ~KEYWORD_SET(nom) THEN MESSAGE,badsat_mssg[0],/CONT,/INFO
+      RETURN,0b
+    ENDIF
+    ;;------------------------------------------------------------------------------------
+    ;;  Determine particle type and instrument name
+    ;;------------------------------------------------------------------------------------
+    part_name = STRMID(STRLOWCASE(data.DATA_NAME),0L,1L)  ;;  e.g. 'e'
+    CASE part_name[0] OF
+      'e'  : BEGIN
+        ;;  EESA
+        inst_name = STRMID(STRLOWCASE(data.DATA_NAME),1L,3L)  ;;  e.g. 'esa'
+        s_name    = short_pref[0]  ;;  short name prefix [e.g. 'pei']
+        l_name    = data_pref[0]   ;;  long name prefix [e.g. 'pei']
+      END
+      'i'  : BEGIN
+        ;;  IESA
+        inst_name = STRMID(STRLOWCASE(data.DATA_NAME),1L,3L)  ;;  e.g. 'esa'
+        s_name    = short_pref[1]
+        l_name    = data_pref[1]
+      END
+      's'  : BEGIN
+        ;;  SST
+        inst_name = STRMID(STRLOWCASE(data.DATA_NAME),0L,3L)  ;;  e.g. 'sst'
+        part_name = STRMID(STRLOWCASE(data.DATA_NAME),4L,1L)  ;;  e.g. 'e'
+        IF (part_name[0] EQ 'e') THEN s_name = short_pref[2] ELSE s_name = short_pref[3]
+        IF (part_name[0] EQ 'e') THEN l_name =  data_pref[2] ELSE l_name =  data_pref[3]
+      END
+      ELSE : BEGIN
+        ;;  No match --> check if structure did the work for us...
+        test = (TOTAL(STRLOWCASE(data[0].DATA_NAME[0]) EQ short_strings) NE 1)
+        IF (test[0]) THEN BEGIN
+          IF ~KEYWORD_SET(nom) THEN MESSAGE,badstr_mssg[0],/CONT,/INFO
+          RETURN,0b
+        ENDIF ELSE BEGIN
+          sname = STRLOWCASE(data[0].DATA_NAME[0])
+          RETURN,dat_themis_esa_str_names(sname,NOM=nom)
+        ENDELSE
+      END
+    ENDCASE
+    ;;------------------------------------------------------------------------------------
+    ;;  Determine distribution type
+    ;;------------------------------------------------------------------------------------
+    dist_type = BYTARR(3)
+    FOR j=0L, 2L DO dist_type[j] = STRMATCH(STRLOWCASE(data.DATA_NAME),'*'+STRLOWCASE(data_suff[j])+'*',/FOLD_CASE)
+    test      = TOTAL(dist_type) NE 1
+    IF (test) THEN BEGIN
+      ;;  not a THEMIS structure format
+      badmssg = 'Inappropriate project name contains multiple distribution types...'
+      IF ~KEYWORD_SET(nom) THEN MESSAGE,badmssg[0],/CONT,/INFO
+      RETURN,0b
+    ENDIF
+    good      = WHERE(dist_type,gtg)
+    IF (gtg GT 0) THEN short_name = s_name[0]+short_suff[good[0]]                ELSE short_name = ''
+    IF (gtg GT 0) THEN long_name  = l_name[0]+data_suff[good[0]]+' Distribution' ELSE long_name  = ''
+  END
+  7    : BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Input is a string
+    ;;------------------------------------------------------------------------------------
+    test0 = (short_strings EQ dat[0])
+    test1 = TOTAL(test0) NE 1
+    IF (test1) THEN BEGIN
+      ;;  bad string format
+      IF ~KEYWORD_SET(nom) THEN MESSAGE,badstn_mssg[0],/CONT,/INFO
+      RETURN,0b
+    ENDIF
+    ;;------------------------------------------------------------------------------------
+    ;;  Determine appropriate names
+    ;;------------------------------------------------------------------------------------
+    good       = WHERE(test0,gtg)
+    short_name = (REFORM(short_strings[good[0]]))[0]
+    long_name  = (REFORM(data_names[good[0]]))[0]
+  END
+  ELSE : BEGIN
+    IF ~KEYWORD_SET(nom) THEN MESSAGE,'Incorrect data format entered!',/CONT,/INFO
+    RETURN,0b
+  END
+ENDCASE
+;;----------------------------------------------------------------------------------------
+;;  Define return structure
+;;----------------------------------------------------------------------------------------
+struct    = {LC:long_name[0],UC:STRUPCASE(long_name[0]),SN:short_name[0]}
+
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END
+;
+;  string format structure for themis ESA data
+;
+;  Electrons:
+;              pee[f,r,b]
+;
+;  Ions:
+;              pei[f,r,b]
+;
+;  SST Electrons:
+;              pse[f,r,b]
+;
+;  SST Ions:
+;              psi[f,r,b]
+;
+;
+;  f       :  full
+;  r       :  reduced
+;  b       :  burst
+;
+;
+; psir  = 'SST Ion Reduced Distribution'
+; psif  = 'SST Ion Full Distribution'
+; psib  = 'SST Ion Burst Distribution'
+;
+; pser  = 'SST Electron Reduced Distribution'
+; psef  = 'SST Electron Full Distribution'
+; pseb  = 'SST Electron Full Burst Distribution'

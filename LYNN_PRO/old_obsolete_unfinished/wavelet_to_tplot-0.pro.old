@@ -1,0 +1,317 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   wavelet_to_tplot.pro
+;  PURPOSE  :   This is a small wrapping program for the program wavelet.pro written
+;                 by Dr. Christopher Torrence and Dr. Gilbert P. Compo.  The citation
+;                 information is shown below.  The program takes a time array and
+;                 data array, performs a wavelet transform on them, then sends the
+;                 power spectrum to TPLOT for analysis.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               wavelet.pro
+;               wavelet2d.pro
+;
+;  REQUIRES:    
+;               Software produced by Dr. Christopher Torrence and Dr. Gilbert P. Compo.
+;
+;  INPUT:
+;               TT  :  N-Element array of Unix times
+;               DD  :  N-Element array of data
+;
+;  EXAMPLES:    
+;               nscet = '1998/08/26 06:40:26.120 UT'
+;               ntime = STRMID(nscet,0,4)+'-'+STRMID(nscet,5,2)+'-'+STRMID(nscet,8,2)+ $
+;                       '_'+STRMID(nscet,11,2)+STRMID(nscet,14,2)
+;               utx   = REFORM(tds_unx[j,*])            ; => Unix time
+;               bperp = REFORM(rot_shn_bfields[*,j,0])  ; => Perp. B-field
+;               store_data,'Bperp_'+ntime+'_FIXED',DATA={X:utx,Y:bperp}
+;               nname = 'Bperp_'+ntime+'_wavelet'
+;               wavelet_to_tplot,utx,bperp1,NEW_NAME=nname,/KILL_CONE
+;               options,'Bperp_'+ntime,'YTITLE','B!D'+'!9x!3'+'!N (nT)'
+;               options,'Bperp_'+ntime,'COLORS',50
+;               options,nname,'YRANGE',[2e0,1e3]        ; => 2.0 to 1000 Hz
+;               options,nname,'ZRANGE',[1e-1,1e3]
+;               mxbf = MAX(ABS(rot_shn_bfields[*,j,*]),/NAN)
+;               ; => Make component plot have symmetric Y-Axis range about zero
+;               options,'Bperp_'+ntime,'YRANGE',[-1e0*mxbf,mxbf]*1.05
+;               ; => Fix all TPLOT variables to match output from this PRO
+;               nnw = tnames()
+;               options,nnw,"YSTYLE",1
+;               options,nnw,"PANEL_SIZE",2.
+;               options,nnw,'XMINOR',5
+;               options,nnw,'XTICKLEN',0.04
+;
+;  KEYWORDS:    
+;               ORDER        :  Set to one of the following values [3,24,6] for the
+;                                 order # (i.e. base wavenumber for Morlet) of the
+;                                 Morlet wavelet family
+;                                 [Default = 6 for Morlet and forced to 4(Paul) 2(DOG)]
+;               DSCALE       :  Set to a value (logarithmic units) defining the spacing
+;                                 between scale values 
+;                                 [Default = 0.125]
+;               NSCALE       :  Set to a scalar defining the total # of scales to use
+;                                 in constructing the wavelet
+;                                 [Default = (ALOG10(N/2)/ALOG10(2))/DSCALE + 1]
+;               START_SCALE  :  Set to a scalar value defining the starting scale 
+;                                 for the spacing used in constructing the wavelet
+;                                 scales.  This is also the smallest scale of the wavelet.
+;                                 [Default = 2*sample_period]
+;               NEW_NAME     :  Scalar string defining new TPLOT handle to use for 
+;                                 wavelet power spectrum
+;               KILL_CONE    :  If set, program kills all data outside of the cone of 
+;                                 influence determined by wavelet.pro
+;               SIGNIF       :  Set to a named variable to output significance 
+;                                 levels as a function of PERIOD
+;               PERIOD       :  Set to a named variable to output the vector of 
+;                                 "Fourier" periods (in time units) that corresponds
+;                                 to the SCALEs.
+;               FFT_THEOR    :  Set to a named variable to output theoretical 
+;                                 background spectrum (smoothed by the wavelet function),
+;                                 as a function of PERIOD.
+;               MOTHER       :  A scalar string defining the mother wavelet to use.
+;                                 Currently, 'Morlet','Paul','DOG' (derivative of 
+;                                 Gaussian) are available. 
+;                                 [Default = 'Morlet'.]
+;               SCALES       :  Set to a named variable to return the wavelet scales
+;               CONE         :  Set to a named variable to return the cone of influence
+;                                 array
+;               CONF_95LEV   :  Set to a named variable to return the 95% confidence
+;                                 confidence level to test the significance of the data
+;
+;=========================================================================================
+; Copyright (C) 1995-1998, Christopher Torrence and Gilbert P. Compo,
+; University of Colorado, Program in Atmospheric and Oceanic Sciences.
+; This software may be used, copied, or redistributed as long as it is not
+; sold and this copyright notice is reproduced on each copy made.  This
+; routine is provided as is without any express or implied warranties whatsoever.
+;
+; Notice: Please acknowledge the use of the above software in any publications:
+;    ``Wavelet software was provided by C. Torrence and G. Compo,
+;      and is available at URL: http://paos.colorado.edu/research/wavelets/''.
+;
+; Reference: Torrence, C. and G. P. Compo, 1998: A Practical Guide to
+;            Wavelet Analysis. <I>Bull. Amer. Meteor. Soc.</I>, 79, 61-78.
+;
+; Please send a copy of such publications to either C. Torrence or G. Compo:
+;  Dr. Christopher Torrence               Dr. Gilbert P. Compo
+;  Advanced Study Program                 NOAA/CIRES Climate Diagnostics Center
+;  National Center for Atmos. Research    Campus Box 216
+;  P.O. Box 3000                          University of Colorado
+;  Boulder CO 80307--3000, USA.           Boulder CO 80309-0216, USA.
+;  E-mail: torrence@ucar.edu              E-mail: gpc@cdc.noaa.gov
+;=========================================================================================
+;
+;   NOTES:
+;             1)  It's probably wise to set the KILL_CONE to avoid analysis based upon
+;                   artificial data.
+;             2)  Note that the input time must be in Unix times but the array of data
+;                   can be in any units one wishes
+;             3)  Anything over 40,000 points will take a while on most machines so be
+;                   patient...
+;                    _________________________________________________________________
+;                   |Note:  For a Morlet wavelet, scales = 1.03 T, where T = Fourier  |
+;                   |        period.                                                  |
+;                   |_________________________________________________________________|
+;
+;   CHANGED:  1)  Added Z-Axis tick label options                 [08/13/2009   v1.0.1]
+;             2)  Updated man page                                [09/10/2009   v1.0.2]
+;             3)  Corrected frequency calculation to account for the non-equivalent
+;                   relationship between Fourier periods and wavelet periods
+;                   and added keywords:  SIGNIF, PERIOD, FFT_THEOR, and MOTHER
+;                                                                 [09/11/2009   v1.0.3]
+;             4)  Changed handling of the ORDER keyword
+;                   and added keywords:  SCALES and CONE          [09/11/2009   v1.0.4]
+;             5)  Added keyword:  CONF_95LEV
+;                   and now program sends COI and 95% CL to TPLOT [09/13/2009   v1.0.5]
+;             6)  Changed some minor syntax [no functionality changes]
+;                                                                 [10/01/2009   v1.0.6]
+;             7)  Changed program called when using a Morlet wavelet to wavelet2d.pro
+;                   for faster calculations                       [12/07/2009   v1.1.0]
+;             8)  When arrays get too large, the 2D vectorized method runs into issues
+;                   with memory, so it will not be used           [12/08/2009   v1.1.1]
+;             9)  Now routine returns physical units [e.g. units^2/Hz]
+;                                                                 [05/05/2011   v1.1.2]
+;            10)  Changed when program normalizes by N to avoid issues with significance
+;                   level calculations                            [05/11/2011   v1.1.3]
+;            11)  Fixed conversion to physical units [e.g. units^2/Hz]
+;                                                                 [06/28/2011   v1.1.4]
+;            12)  Fixed conversion to physical units [e.g. units^2/Hz]
+;                                                                 [06/29/2011   v1.1.5]
+;
+;   CREATED:  08/12/2009
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  06/29/2011   v1.1.5
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO wavelet_to_tplot,tt,dd,ORDER=order,DSCALE=dscale,NSCALE=nscale,START_SCALE=sscale,$
+                           NEW_NAME=new_name,KILL_CONE=kill_cone,SIGNIF=signif,       $
+                           PERIOD=period,FFT_THEOR=fft_theor,MOTHER=mother,           $
+                           SCALES=scales,CONE=cone,CONF_95LEV=conf_95lev
+
+;-----------------------------------------------------------------------------------------
+; => Create Dummy Variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+;-----------------------------------------------------------------------------------------
+; => Define sample rate and period
+;-----------------------------------------------------------------------------------------
+nsams  = N_ELEMENTS(REFORM(tt))
+times  = REFORM(tt)
+data   = REFORM(dd)
+
+event_length  = MAX(times,/NAN) - MIN(times,/NAN)       ; => Total event time (s)
+sample_rate   = (nsams - 1L)/event_length               ; => Sample Rate (samples/s)
+sample_period = 1d0/sample_rate                         ; => Sample Period (s)
+; => Define dummy array of frequencies for optional Y-Axis range later
+freq_bins     = DINDGEN(nsams/2L)*(sample_rate/(nsams - 1L))
+gfreq         = WHERE(freq_bins GT 0,gfr)
+freq_bins     = freq_bins[gfreq]
+;-----------------------------------------------------------------------------------------
+; => Define optional parameters
+;-----------------------------------------------------------------------------------------
+IF NOT KEYWORD_SET(dscale) THEN dd0 = 0.125 ELSE dd0 = dscale[0]
+IF NOT KEYWORD_SET(sscale) THEN ss0 = 2*sample_period ELSE ss0 = sscale[0]
+IF KEYWORD_SET(nscale) THEN BEGIN
+  jscale = nscale[0] - 1L
+ENDIF ELSE BEGIN
+  jscale = (ALOG10(nsams/2)/ ALOG10(2))/dd0
+ENDELSE
+
+; => Determine mother wavelet function to use
+;IF NOT KEYWORD_SET(mother) THEN mother = 'Morlet2d'
+IF NOT KEYWORD_SET(mother) THEN mother = 'Morlet'
+CASE STRLOWCASE(mother) OF
+;  'morlet2d' : BEGIN
+  'morlet' : BEGIN
+    mother  = 'Morlet'
+;    mother  = 'Morlet2d'
+;    wavefun = 'wavelet2d'
+    wavefun = 'wavelet'
+    IF NOT KEYWORD_SET(order) THEN order = 6
+    CASE order[0] OF
+      6    : kk0 = 6
+      24   : kk0 = 24
+      3    : kk0 = 3
+      ELSE : kk0 = 6    ; => Default for Morlet
+    ENDCASE
+  END
+  'paul'   : BEGIN
+    mother  = 'Paul'
+    kk0     = 4
+    wavefun = 'wavelet'
+  END
+  'dog'    : BEGIN
+    mother  = 'DOG'
+    kk0     = 2
+    wavefun = 'wavelet'
+  END
+  ELSE     : BEGIN
+    ; => Use default values
+;    mother  = 'Morlet2d'
+    mother  = 'Morlet'
+    kk0     = 6
+;    wavefun = 'wavelet2d'
+    wavefun = 'wavelet'
+  END
+ENDCASE
+;-----------------------------------------------------------------------------------------
+; => Calculate Morlet wavelet
+;-----------------------------------------------------------------------------------------
+test_wavelet = CALL_FUNCTION(wavefun,data,sample_period,S0=ss0,DJ=dd0,J=jscale,/PAD, $
+                             PERIOD=period,SCALE=scales,PARAM=kk0,MOTHER=mother,     $
+                             COI=cone,SIGNIF=signif,FFT_THEOR=fft_theor)
+;-----------------------------------------------------------------------------------------
+; => Calculate wavelet power spectrum
+;-----------------------------------------------------------------------------------------
+wv_power     = ABS(test_wavelet)^2      ; => wavelet power spectrum [Eq. 4 squared]
+wv_freqs     = REPLICATE(1d0,nsams) # 1d0/period
+IF NOT KEYWORD_SET(new_name) THEN new_name = 'wavelet_power_spec'
+; => check TPLOT for a reoccurrence of new_name
+testns = tnames()
+badns  = WHERE(testns EQ new_name,bdn)
+IF (bdn GT 0) THEN bad = 1 ELSE bad = 0
+jj = 0L
+WHILE(bad) DO BEGIN
+  jstr = STRTRIM(STRING(FORMAT='(I)',jj),2)
+  IF (bdn GT 0) THEN new_name += '_'+jstr
+  badns  = WHERE(testns EQ new_name,bdn)
+  IF (bdn GT 0) THEN bad = 1 ELSE bad = 0
+  IF (bad) THEN jj += 1L
+ENDWHILE
+; => Determine frequency range
+gcone = WHERE(cone GT 0d0,gco)
+IF (gco GT 0) THEN BEGIN
+  gfrqs = 1d0/cone[gcone]
+  yra   = [MIN(gfrqs,/NAN),sample_rate/2d0]
+ENDIF ELSE BEGIN
+  yra   = [MIN(freq_bins,/NAN),sample_rate/2d0]
+ENDELSE
+; => Decide whether to eliminate data below cone of influence (COI keyword)
+IF KEYWORD_SET(kill_cone) THEN BEGIN
+  gcone = WHERE(cone GT 0d0,gco)
+  IF (gco GT 0) THEN BEGIN
+    gfrqs         = 1d0/cone[gcone]
+    tempfqs       = 1d0/scales[gcone]
+    temp_dat      = wv_power
+    x             = [0,nsams - 1L]
+    temp_dat[x,*] = d
+    j_00          = gcone[0]      ; => offset element
+    FOR j=0L, gco - 1L DO BEGIN
+      bad_coi = WHERE(tempfqs LT gfrqs[j],bd_c)
+      IF (bd_c GT 0) THEN BEGIN
+        kk                   = j_00 + j
+        temp_dat[kk,bad_coi] = d
+      ENDIF
+    ENDFOR
+    wv_power = temp_dat
+  ENDIF
+ENDIF
+;-----------------------------------------------------------------------------------------
+; => Calculate wavelet chi-squared test for 95% confidence levels
+;-----------------------------------------------------------------------------------------
+num_scl    = N_ELEMENTS(scales)
+chitest    = wave_signif(data,sample_period,scales,0)         ; => Chi-Squared Test
+siglevl    = REBIN(TRANSPOSE(chitest),nsams,num_scl)
+conf_95lev = wv_power/siglevl
+; => Normalize wavelet power spectrum to get physical units [units^2/Hz]
+;wv_power   = wv_power/nsams     ; => LBW III 06/28/2011
+;wv_power   = wv_power*(2d0*nsams[0]/sample_rate[0])     ; => LBW III 06/29/2011
+wv_power  *= (2d0/(SQRT(!DPI)*sample_rate[0]))
+
+;-----------------------------------------------------------------------------------------
+; => send to TPLOT
+;-----------------------------------------------------------------------------------------
+yttl   = 'Frequency (Hz)'
+zttl   = 'Wavelet Power'
+zticks = 3L
+lim1   = {YLOG:1,ZLOG:1,YSTYLE:1,PANEL_SIZE:2,XMINOR:5,XTICKLEN:0.04,YRANGE:yra,$
+          YTITLE:yttl,ZTITLE:zttl,ZTICKS:zticks,ZSTYLE:1}
+store_data,new_name,DATA={X:times,Y:wv_power,V:wv_freqs,SPEC:1},LIMIT=lim1
+
+op_names = new_name+'_Conf_Level_95'
+store_data,op_names,DATA={X:times,Y:conf_95lev,V:1d0/period,SPEC:1}
+options,op_names,'LEVEL',1.0
+options,op_names,'C_ANNOTATION','95%'
+options,op_names,'ZRANGE',[5e-1,1e0]
+options,op_names,'YTITLE','95% Confidence Level'+'!C'+'(anything > 1.0)'
+store_data,new_name+'_Cone_of_Influence',DATA={X:times,Y:1d0/cone}
+op_names = [new_name+'_Conf_Level_95',new_name+'_Cone_of_Influence']
+options,op_names,'YLOG',1
+options,op_names,'YRANGE',yra
+
+nnw = tnames([new_name,op_names])
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+RETURN
+END

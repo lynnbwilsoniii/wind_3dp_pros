@@ -1,0 +1,154 @@
+;+
+;FUNCTION:	mom3d,data
+;INPUT:	
+;	data:	structure,	3d data structure.  (i.e. see "GET_EL")
+;	erange:	
+;PURPOSE:
+;       Returns all useful moments as a structure
+;KEYWORDS:
+;
+;These optional keywords control calculations:
+;
+;CREATED BY:    Davin Larson    
+;LAST MODIFICATION: %E%
+;-
+function mom3d ,data, $
+   sc_pot=sc_pot,  $
+   magdir=magdir, $
+   pardens = pardens, $
+   sumtens = sum, $
+   ERANGE=er, $
+   format=momformat,  $
+;   BINS=bins,   $ 
+   valid = valid
+
+f = !values.f_nan
+f3 = [f,f,f]
+f6 = [f,f,f,f,f,f]
+f10 = replicate(f,10)
+d = !values.d_nan
+
+if data_type(momformat) ne 8 then $
+   momformat = {time:d, sc_pot:f,  magf:f3, density:f, $
+     velocity:f3, $
+     avgtemp:f, vthermal:f, $
+     Ptens:f6,              ptot:f,   $ 
+     Qtens:f10,             qvec:f3, skewness:f,  $ ; q_ang:f, $
+     Rtens:replicate(f,15), Rtot:f, excess:f  ,  $
+     magt3:f3,   $
+     trat:f,  $
+     t3:f3, symm:f3, $
+;     symm_theta:f, symm_phi:f, $
+     symm_ang:f, $
+     erange:[f,f], $
+     valid:0} 
+
+mom=momformat
+
+mom.valid = 0
+valid = 0
+
+if n_params() eq 1 then begin
+  sum = mom_sum(data,sc_pot=sc_pot,pardens=pardens,erange=er)   ;,bins=bins)
+  mom.time = data.time
+endif
+
+
+if data_type(sum) ne 8 then return,mom
+
+
+mass = sum.mass
+charge = sum.charge
+
+norm = sqrt(abs(2*charge/mass))  ; km/s/eV^.5
+
+mom.magf = sum.magf
+mom.sc_pot = sum.sc_pot
+mom.erange = sum.erange
+
+;Density calculation:
+mom.density = sum.n / norm  ; 1/cm^3
+
+;Velocity calculation
+mom.velocity = sum.nv /mom.density ; Units: km/s
+
+
+
+;VELOCITY FLUX:
+sumt   = mom_translate(sum)
+ptens  =  mass * norm * sumt.nvv
+pt3x3  = ptens[sumt.map_r2]   ; units:   eV/cc
+t3x3   = pt3x3/mom.density
+
+mom.avgtemp = (t3x3[0] + t3x3[4] + t3x3[8] )/3.  ; trace/3
+mom.vthermal = sqrt(2.* mom.avgtemp/mass)
+sigma = mom.vthermal/sqrt(2.)
+mom.ptot =    (pt3x3[0] + pt3x3[4] + pt3x3[8] )/3.  ; trace/3
+
+
+good = finite(mom.density)
+if (not good) or mom.density le 0 then return,mom
+t3evec = t3x3
+
+trired,t3evec,t3,dummy
+triql,t3,dummy,t3evec
+
+;print,t3evec
+
+if n_elements(magdir) ne 3 then magdir=[-1.,1.,0.]
+magfn = magdir/sqrt(total(magdir^2)) 
+s = sort(t3)
+if t3[s[1]] lt .5*(t3[s[0]] + t3[s[2]]) then num=s[2] else num=s[0]
+
+shft = ([-1,1,0])[num] 
+t3 = shift(t3,shft)
+t3evec = shift(t3evec,0,shft)
+dot =  total( magfn * t3evec[*,2] )
+
+bmag = sqrt(total(mom.magf^2))
+if finite(bmag) then begin
+   magfn = mom.magf/bmag
+   
+   b_dot_s = total( (magfn # [1,1,1]) * t3evec , 1)
+   dummy = max(abs(b_dot_s),num)
+
+   rot = rot_mat(mom.magf)
+   trsum = mom_rotate(sumt,rot)
+   mom.ptens =  mass * norm * trsum.nvv 
+   mom.magt3 = mom.ptens[0:2]/mom.density
+   mom.trat = mom.magt3[2]*2/(mom.magt3[0]+mom.magt3[1])
+   dot =  total( magfn * t3evec[*,2] )
+   mom.symm_ang = acos(abs(dot)) * !radeg
+   
+   mom.qtens = mass *norm*norm * trsum.nvvv
+   i3 = [[0,4,8],[9,13,17],[18,22,26]]
+   mom.qvec = total( (trsum.nvvv[trsum.map_r3])(i3), 1)
+;   mom.qtot = total(mom.qtens[0:2])
+;   qvec = [total(mom.qtens[[3,6,7]]),total(mom.qtens[[5,4,8]]),mom.qtot]
+;   mom.q_ang = !radeg * acos(mom.qtot/sqrt(total(qvec^2)))
+   mom.skewness = (mom.qvec[2]/mass/mom.density) / sigma^3
+   
+   mom.rtens = mass*mass *norm^3 * trsum.nvvvv
+   mom.rtot = total(mom.rtens[0:2])+ 2.*total(mom.rtens[3:5])
+;  m4 = sumt.map_r4
+;  i4  = [[[m4[*,*,0,0]]],[[m4[*,*,1,1]]],[[m4[*,*,2,2]]]]
+;  mom.r2 = total(mom.rtens[i4],3)
+
+   mom.excess = (mom.rtot/mass/mass/mom.density/15)/sigma^4
+endif
+
+if dot lt 0 then t3evec = -t3evec
+mom.symm = t3evec[*,2]
+
+magdir = mom.symm
+   
+;xyz_to_polar,mom.symm,theta=symm_theta,phi=symm_phi,/ph_0_360
+;mom.symm_theta = symm_theta
+;mom.symm_phi = symm_phi
+mom.t3 = t3
+
+mom.valid=1
+valid = 1
+return,mom
+end
+
