@@ -1,0 +1,252 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_get_mva_inds_iterate_mva.pro
+;  PURPOSE  :   This is a wrapping routine for temp_get_def_keywords_iterate_mva.pro and
+;                 it defines the start/end indices for the MVA subintervals.
+;
+;  CALLED BY:   
+;               temp_iterate_mva_over_interval.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;               temp_get_def_keywords_iterate_mva.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               UNIXT          :  [N]-Element [double] array of Unix times defined by
+;                                   the calling/wrapping routine
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               struc = temp_get_mva_inds_iterate_mva( unixt [,TRANGE=trange]           $
+;                                     [,PRECISION=prec] [,LOW_FREQ=low_freq]            $
+;                                     [,HIGHFREQ=highfreq] [,NSHIFT=nshift]             $
+;                                     [,NSUBINT=nsubint] [,NTWINDS=ntwinds]             $
+;                                     [,DNWINDS=dnwinds] )
+;
+;  KEYWORDS:    
+;               ****************
+;               ***  INPUTS  ***
+;               ****************
+;               TRANGE         :  [2]-Element [double] array specifying the Unix time
+;                                   range for which to limit the data in DATA
+;                                   [Default = prompted by get_valid_trange.pro]
+;               PRECISION      :  Scalar [long] defining precision of the string output:
+;                                   = -5  :  Year only
+;                                   = -4  :  Year, month
+;                                   = -3  :  Year, month, date
+;                                   = -2  :  Year, month, date, hour
+;                                   = -1  :  Year, month, date, hour, minute
+;                                   = 0   :  Year, month, date, hour, minute, sec
+;                                   = >0  :  fractional seconds
+;                                   [Default = 0]
+;               LOW_FREQ       :  Scalar [numeric] defining the lower frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = 0.0]
+;               HIGHFREQ       :  Scalar [numeric] defining the upper frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = (sample rate)]
+;               NSHIFT         :  Scalar [long] defining the index shift for each new
+;                                   time window set (i.e., each subinterval) such that
+;                                   the following constraint is met:
+;                                     ((Nmax + NSUBINT*NSHIFT) MOD Nint) = 0
+;                                   where Nmax is the maximum # of time steps in each
+;                                   subinterval and Nint is the # of time steps within
+;                                   the range defined by TRANGE
+;                                   [Default = 1]
+;               NSUBINT        :  Scalar [long] defining the number of subintervals that
+;                                   each contain NTWINDS time windows
+;                                   [Default = 5]
+;               NTWINDS        :  Scalar [long] defining the number of time windows to
+;                                   use between Nmin and Nmax (i.e., each subinterval)
+;                                   before shifting by NSHIFT
+;                                   [Default = 4]
+;               DNWINDS        :  Scalar [long] defining the integer # of time steps by
+;                                   which to increase each time window such that there
+;                                   are an integer number of window, NTWINDS, within the
+;                                   range between Nmin and Nmax such that:
+;                                     Nmax = Nmin + (NTWINDS - 1)*DNWINDS
+;                                   [Default = (Nmax - Nmin)/(NTWINDS - 1)]
+;               NTMIN          :  Scalar [long] defining the minimum integer # of time
+;                                   steps to use when defining the time windows within
+;                                   each subinterval
+;                                   [Default = 7 > (Sr*Co/HIGHFREQ)]
+;               NTMAX          :  Scalar [long] defining the maximum integer # of time
+;                                   steps to use when defining the time windows within
+;                                   each subinterval
+;                                   [Default = N_MIN + (NTWINDS - 1)*DNWINDS]
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [05/26/2016   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [05/26/2016   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [05/26/2016   v1.0.0]
+;
+;   NOTES:      
+;               1)  The routine uses the following picture:
+;
+;        i_s                                   N_INT                                  i_e
+;         |<-------------------------------------------------------------------------->|
+;              ∂N                                  N_MAX                               
+;         |<------->|<---------------------------------------------------------------->|
+;                         N_MIN         ∆N
+;                   |<-------------->|<---->|                                          |
+;                  l_s             U_0,s  U_1,s                                   U_(Nw-1),s
+;
+;               where the variables are defined as:
+;                     l_s   = s * ∂N                     = start index of s-th subinterval
+;                     U_w,w = l_s + w * ∆N + (N_MIN - 1) = end " "
+;                     i_s   = start index of interval defined by TRANGE keyword
+;                     i_e   = end   index of interval defined by TRANGE keyword
+;                     [U_(Nw-1),s      - l_s] = (N_MAX - 1)
+;                     [U_0,s           - l_s] = (N_MIN - 1)
+;                     [U_(Nw-1),(Ns-1) - l_0] = (N_INT - 1)
+;
+;                     N_INT = # of time steps in interval defined by TRANGE keyword
+;                     ∆N    = value of DNWINDS keyword
+;                     ∂N    = value of NSHIFT keyword
+;                     N_MIN = value of NTMIN keyword
+;                     N_MAX = value of NTMAX keyword
+;                     Ns    = value of NSUBINT keyword
+;                     Nw    = value of NTWINDS keyword
+;
+;               and we have defined the following constraints:
+;                     a) N_INT ≥ 50
+;                     b) Ns ≥ 1  &  Nw ≥ 1
+;                     c) ∆N ≥ 0  &  ∂N ≥ 0
+;                     d) N_MIN ≥ 7
+;                     e) N_MIN ≤ N_MAX ≤ N_INT
+;                     f) IF ( N_MAX = N_MIN || ∂N = 0 ) THEN
+;                          Ns = 1
+;                        ENDIF ELSE
+;                          IF ( Nw = 1 || N_MAX = N_MIN || ∆N = 0 ) THEN
+;                            Ns = 1 + (N_INT - N_MIN)/∂N
+;                          ENDIF ELSE
+;                            Ns = 1 + (N_INT - N_MAX)/∂N
+;                          ENDELSE
+;                        ENDELSE
+;                     g) IF ( N_MAX = N_MIN || ∆N = 0 ) THEN
+;                          Nw = 1
+;                        ENDIF ELSE
+;                          IF ( Ns = 1 || N_MAX = N_MIN || ∂N = 0 ) THEN
+;                            Nw = 1 + (N_INT - N_MIN)/∆N
+;                          ENDIF ELSE
+;                            Nw = 1 + (N_MAX - N_MIN)/∆N
+;                          ENDELSE
+;                        ENDELSE
+;                     h) N_MAX = N_MIN + (Nw - 1)*∆N
+;                     i) N_INT = N_MIN + (Nw - 1)*∆N + (Ns - 1)*∂N
+;                              = N_MAX + (Ns - 1)*∂N
+;               2)  See NOTES section in temp_get_def_keywords_iterate_mva.pro as well
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  05/26/2016
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/26/2016   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION temp_get_mva_inds_iterate_mva,unixt,TRANGE=trange,PRECISION=prec,            $   ;;  Inputs
+                                             LOW_FREQ=low_freq,HIGHFREQ=highfreq,     $
+                                             NSHIFT=nshift,NSUBINT=nsubint,           $
+                                             NTWINDS=ntwinds,DNWINDS=dnwinds,         $
+                                             NTMIN=ntmin,NTMAX=ntmax
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply an array of Unix times...'
+baddfor_msg    = 'Incorrect input format:  STRUC must be an IDL TPLOT structure'
+bad_tra_msg    = 'Could not define proper time range... Using entire data interval...'
+nod_tra_msg    = 'No data within user specified TRANGE... Exiting without computation...'
+notenpt_msg    = 'Not enough time steps in entire time series.  Must supply at least 100 time steps...'
+notenit_msg    = 'Not enough time steps in interval defined by TRANGE.  Must contain at least 50 time steps...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (is_a_number(unixt,/NOMSSG) EQ 0) OR $
+                 (N_ELEMENTS(unixt) LT 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define some parameters
+;;----------------------------------------------------------------------------------------
+unix           = REFORM(unixt)
+n_tot          = N_ELEMENTS(unix)            ;;  Total # of time steps in input
+;;----------------------------------------------------------------------------------------
+;;  Get keyword values
+;;----------------------------------------------------------------------------------------
+temp_get_def_keywords_iterate_mva,unix,TRANGE=trange,PRECISION=prec,              $   ;;  Inputs
+                                       LOW_FREQ=low_freq,HIGHFREQ=highfreq,       $
+                                       NSHIFT=nshift,NSUBINT=nsubint,             $
+                                       NTWINDS=ntwinds,DNWINDS=dnwinds,           $
+                                       NTMIN=ntmin,NTMAX=ntmax,                   $
+                                       N_MIN=n_min,N_MAX=n_max,N_SUB=n_sub,       $   ;;  Outputs
+                                       N_SFT=n_sft,N_WIN=n_win,D__NW=d__nw,       $
+                                       N_INT=n_int,GIND_SE=gind_se,FRANGE=frange, $
+                                       LOGIC_OUT=logic_out
+;;  Make sure valid outputs were returned
+test           = (N_ELEMENTS(n_min) EQ 0)   OR (N_ELEMENTS(n_max) EQ 0)  OR $
+                 (N_ELEMENTS(n_sub) EQ 0)   OR (N_ELEMENTS(n_sft) EQ 0)  OR $
+                 (N_ELEMENTS(n_win) EQ 0)   OR (N_ELEMENTS(d__nw) EQ 0)  OR $
+                 (N_ELEMENTS(n_int) EQ 0)                                OR $
+                 (N_ELEMENTS(gind_se) LT 2) OR (N_ELEMENTS(frange) LT 2) OR $
+                 (N_ELEMENTS(logic_out) LT 8)
+IF (test[0]) THEN BEGIN
+  ;;  Not enough time steps in entire input time series
+  MESSAGE,"Exiting without computation...",/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define start/end indices of intervals
+;;----------------------------------------------------------------------------------------
+ind_max        = (n_int[0] - 1L)
+;;  Start of subintervals
+ind_off        = LINDGEN(n_sub[0])*n_sft[0]
+;;  Width of time windows within subintervals
+wind_width     = LINDGEN(n_win[0])*d__nw[0] + n_min[0]
+;;  Start/End elements of every window
+ind_st         = LONARR(n_sub[0],n_win[0])
+ind_en         = LONARR(n_sub[0],n_win[0])
+FOR j=0L, n_win[0] - 1L DO BEGIN
+  ind_st[*,j] = ind_off > 0L
+  ind_en[*,j] = (ind_off + wind_width[j]) < ind_max[0]
+  bad         = WHERE((ind_off + wind_width[j]) GT ind_max[0],bd)
+  IF (bd[0] GT 1) THEN BEGIN
+    ;;  There were multiple intervals that are too long
+    bind = bad[1L:(bd[0] - 1L)]
+    ;;  Prevent multiple overlaps
+    ind_st[bind,j] = -1L
+    ind_en[bind,j] = -1L
+  ENDIF
+;  ind_en[*,j] = ((ind_off + wind_width[j]) - 1L)
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+n_vals         = [n_min[0],n_max[0],n_sub[0],n_sft[0],n_win[0],d__nw[0],n_int[0]]
+tags           = ['INDW_START','INDW___END','TW_IND_SE','FREQ_RANGE','N_VALS','TRANGE',$
+                  'LOGIC_INFO']
+struc          = CREATE_STRUCT(tags,ind_st,ind_en,gind_se,frange,n_vals,trange,logic_out)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END

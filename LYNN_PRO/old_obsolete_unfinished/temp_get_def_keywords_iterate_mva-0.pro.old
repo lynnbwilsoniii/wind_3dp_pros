@@ -1,0 +1,481 @@
+;*****************************************************************************************
+;
+;  PROCEDURE:   temp_get_def_keywords_iterate_mva.pro
+;  PURPOSE  :   This routine tests and constrains the interval and subinterval keywords
+;                 to prevent code breaking and conflicts/issues.
+;
+;  CALLED BY:   
+;               temp_iterate_mva_over_interval.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               UNIXT          :  [N]-Element [double] array of Unix times defined by
+;                                   the calling/wrapping routine
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               ****************
+;               ***  INPUTS  ***
+;               ****************
+;               TRANGE         :  [2]-Element [double] array specifying the Unix time
+;                                   range for which to limit the data in DATA
+;                                   [Default = prompted by get_valid_trange.pro]
+;               PRECISION      :  Scalar [long] defining precision of the string output:
+;                                   = -5  :  Year only
+;                                   = -4  :  Year, month
+;                                   = -3  :  Year, month, date
+;                                   = -2  :  Year, month, date, hour
+;                                   = -1  :  Year, month, date, hour, minute
+;                                   = 0   :  Year, month, date, hour, minute, sec
+;                                   = >0  :  fractional seconds
+;                                   [Default = 0]
+;               LOW_FREQ       :  Scalar [numeric] defining the lower frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = 0.0]
+;               HIGHFREQ       :  Scalar [numeric] defining the upper frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = (sample rate)]
+;               NSHIFT         :  Scalar [long] defining the index shift for each new
+;                                   time window set (i.e., each subinterval) such that
+;                                   the following constraint is met:
+;                                     ((Nmax + NSUBINT*NSHIFT) MOD Nint) = 0
+;                                   where Nmax is the maximum # of time steps in each
+;                                   subinterval and Nint is the # of time steps within
+;                                   the range defined by TRANGE
+;                                   [Default = 1]
+;               NSUBINT        :  Scalar [long] defining the number of subintervals that
+;                                   each contain NTWINDS time windows
+;                                   [Default = 5]
+;               NTWINDS        :  Scalar [long] defining the number of time windows to
+;                                   use between Nmin and Nmax (i.e., each subinterval)
+;                                   before shifting by NSHIFT
+;                                   [Default = 4]
+;               DNWINDS        :  Scalar [long] defining the integer # of time steps by
+;                                   which to increase each time window such that there
+;                                   are an integer number of window, NTWINDS, within the
+;                                   range between Nmin and Nmax such that:
+;                                     Nmax = Nmin + (NTWINDS - 1)*DNWINDS
+;                                   [Default = (Nmax - Nmin)/(NTWINDS - 1)]
+;               *****************
+;               ***  OUTPUTS  ***
+;               *****************
+;               TRANGE         :  On output, routine returns the validated unix time
+;                                   range as a [2]-element [double] array
+;               FRANGE         :  Set to a named variable to return the frequency [Hz]
+;                                   range as a [2]-element [double] array
+;               N_MIN          :  Set to a named variable to return the minimum # of
+;                                   time steps in each subinterval
+;                                   [integer/long]
+;               N_MAX          :  Set to a named variable to return the maximum # of
+;                                   time steps in each subinterval
+;                                   [integer/long]
+;               N_SUB          :  Set to a named variable to return the # of subintervals
+;                                   within the interval defined by TRANGE
+;                                   [integer/long]
+;               N_SFT          :  Set to a named variable to return the # of time
+;                                   steps by which to shift after each subinterval
+;                                   [integer/long]
+;               N_WIN          :  Set to a named variable to return the # of time
+;                                   windows within each subinterval
+;                                   [integer/long]
+;               D__NW          :  Set to a named variable to return the # of time steps
+;                                   between each time window within each subinterval
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  We define the following constraints assuming the following:
+;                     a) N_INT ≥ 50
+;                     b) N_SFT ≥ 0
+;                     c) 
+;                       i )  N_MIN ≤ N_MAX ≤ N_INT
+;                       ii)  N_MIN ≥ 7
+;                     b) N_SUB ≥ 1
+;
+;                   for the following cases:
+;
+;                     N_SUB = 1:
+;                          A:
+;                            N_MAX = N_MIN = N_INT
+;                            N_WIN = 1
+;                            D__NW ≥ 0
+;                          B:
+;                            N_MAX = N_INT
+;                            N_MIN = N_INT - D__NW (N_WIN - 1)
+;                            N_WIN ≥ 2
+;                            0 ≤ D__NW ≤ (N_INT - 7)/(N_WIN - 1)
+;
+;                     N_SUB ≥ 2:
+;                          A:
+;                            N_MAX = N_INT - N_SFT (N_SUB - 1)
+;                            0 ≤ N_SFT < (N_INT - 7)/(N_SUB - 1)
+;                              i :
+;                                 N_MIN = N_INT - N_SFT (N_SUB - 1)
+;                                 N_WIN = 1
+;                                 D__NW ≥ 0
+;                              ii:
+;                                 N_MIN = N_INT - N_SFT (N_SUB - 1) - D__NW (N_WIN - 1)
+;                                 N_WIN ≥ 2
+;                                 0 ≤ D__NW ≤ [(N_INT - 7) - N_SFT (N_SUB - 1)]/(N_WIN - 1)
+;                          B:
+;                            N_MAX = N_MIN = 7
+;                            N_SFT = (N_INT - 7)/(N_SUB - 1)
+;                              i :
+;                                 *** Conflicting definitions ***
+;                                 D__NW = 0
+;                                 N_WIN ≥ 2
+;                              ii:
+;                                 N_WIN = 1
+;                                 D__NW ≥ 0
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  05/25/2016
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/25/2016   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+PRO temp_get_def_keywords_iterate_mva,unixt,TRANGE=trange,PRECISION=prec,            $   ;;  Inputs
+                                            LOW_FREQ=low_freq,HIGHFREQ=highfreq,     $
+                                            NSHIFT=nshift,NSUBINT=nsubint,           $
+                                            NTWINDS=ntwinds,DNWINDS=dnwinds,         $
+                                            N_MIN=n_min,N_MAX=n_max,N_SUB=n_sub,     $   ;;  Outputs
+                                            N_SFT=n_sft,N_WIN=n_win,D__NW=d__nw
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply an array of Unix times...'
+baddfor_msg    = 'Incorrect input format:  STRUC must be an IDL TPLOT structure'
+bad_tra_msg    = 'Could not define proper time range... Using entire data interval...'
+nod_tra_msg    = 'No data within user specified TRANGE... Exiting without computation...'
+notenpt_msg    = 'Not enough time steps in entire time series.  Must supply at least 100 time steps...'
+notenit_msg    = 'Not enough time steps in interval defined by TRANGE.  Must contain at least 50 time steps...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (is_a_number(unixt,/NOMSSG) EQ 0) OR $
+                 (N_ELEMENTS(unixt) LT 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define some parameters
+;;----------------------------------------------------------------------------------------
+unix           = REFORM(unixt)
+n_tot          = N_ELEMENTS(unix)            ;;  Total # of time steps in input
+;;  Determine sample rate [sps]
+srate          = sample_rate(unix,/AVERAGE,OUT_MED_AVG=medavg)
+;;  Define positive FFT frequencies [Hz]
+n_fft          = n_tot[0]/2L                 ;;  # of frequency bins in FFT
+fft_fbins      = DINDGEN(n_fft[0])*srate[0]/(n_fft[0] - 1L)
+;;----------------------------------------------------------------------------------------
+;;  Define # of time steps in interval
+;;----------------------------------------------------------------------------------------
+;;  Check TRANGE and PRECISION
+tra_struc      = get_valid_trange(TRANGE=trange,PRECISION=prec)
+tran           = tra_struc.UNIX_TRANGE
+test           = (TOTAL(FINITE(tran)) LT 2)
+IF (test[0]) THEN BEGIN
+  MESSAGE,bad_tra_msg,/INFORMATIONAL,/CONTINUE
+  ;;  Define entire data interval
+  tran           = [MIN(unix,/NAN),MAX(unix,/NAN)]
+ENDIF
+test           = (unix LE tran[1]) AND (unix GE tran[0])
+good           = WHERE(test,gd)
+IF (gd EQ 0) THEN BEGIN
+  ;;  No data between specified time range limits
+  MESSAGE,nod_tra_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Define interval parameters
+n_int          = gd[0]                       ;;  # of time steps in time interval defined by TRANGE
+dt_int         = (tran[1] - tran[0])         ;;  duration [s] of time interval defined by TRANGE
+test           = (n_int[0] LT 50)
+IF (test[0]) THEN BEGIN
+  ;;  Not enough time steps in interval defined by TRANGE
+  MESSAGE,notenit_msg,/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Define TRANGE output
+trange         = tran
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Check HIGHFREQ
+test           = (N_ELEMENTS(highfreq) EQ 1) AND is_a_number(highfreq,/NOMSSG)
+IF (test[0]) THEN highf = (highfreq[0] < srate[0]) ELSE highf = srate[0]
+good_hf        = WHERE(fft_fbins LT highf[0],gd_hf)
+IF (gd_hf[0] LE 3) THEN BEGIN
+  ;;  resort to default in event of negative input
+  highf          = srate[0]
+  good_hf        = WHERE(fft_fbins LT highf[0],gd_hf)
+ENDIF
+def_lf_ind     = (MAX(good_hf) - 3L) > 0L
+def_lf_upp     = fft_fbins[def_lf_ind[0]]                 ;;  Upper bound on LOW_FREQ in case improperly set
+;;  Check LOW_FREQ
+test           = (N_ELEMENTS(low_freq) EQ 1) AND is_a_number(low_freq,/NOMSSG)
+IF (test[0]) THEN lowf = (low_freq[0] < def_lf_upp[0]) ELSE lowf = 0d0
+good_lf        = WHERE(fft_fbins GT lowf[0],gd_lf)
+IF (gd_lf[0] LE 3) THEN BEGIN
+  ;;  resort to default in event of negative input
+  lowf           = 0d0
+  good_lf        = WHERE(fft_fbins GT lowf[0],gd_lf)
+ENDIF
+;;  Define subinterval time ranges allowed for later
+IF (highf[0] GE srate[0]/2d0) THEN uppf = highf[0]/4d0 ELSE uppf = highf[0]
+dt_min         = 1.25d0/uppf[0]                           ;;  lower bound --> window width ≥ 125% of shortest periods
+IF (lowf[0] EQ 0) THEN BEGIN
+  dt_max         = dt_int[0]
+ENDIF ELSE BEGIN
+  dt_max         = 1d0/lowf[0]
+ENDELSE
+;;  Define FRANGE output
+frange         = [lowf[0],highf[0]]
+;;----------------------------------------------------------------------------------------
+;;  Check subinterval keywords
+;;    --> Define initial settings and/or defaults
+;;----------------------------------------------------------------------------------------
+;;  Check NSUBINT
+test           = (N_ELEMENTS(nsubint) EQ 1) AND is_a_number(nsubint,/NOMSSG)
+IF (test[0]) THEN ns = 1L > LONG(nsubint[0]) ELSE ns = 5L
+IF (ns[0] EQ 1) THEN sfac = 1L ELSE sfac = (ns[0] - 1L)
+;;  Check NSHIFT
+test_nshft     = (N_ELEMENTS(nshift) EQ 1) AND is_a_number(nshift,/NOMSSG)
+IF (test_nshft[0]) THEN nshft = 1L > (LONG(nshift[0]) < FLOOR(n_int[0]/2L)) ELSE nshft = 1L
+;;  Check NTWINDS
+test           = (N_ELEMENTS(ntwinds) EQ 1) AND is_a_number(ntwinds,/NOMSSG)
+IF (test[0]) THEN ntw = 1L > LONG(ntwinds[0]) ELSE ntw = 4L
+;;  Check DNWINDS
+test_dnw       = (N_ELEMENTS(dnwinds) EQ 1) AND is_a_number(dnwinds,/NOMSSG)
+IF (test_dnw[0]) THEN dntw = 1L > LONG(dnwinds[0]) ELSE dntw = 1L
+;IF (test[0]) THEN dntw = 1L > LONG(dnwinds[0]) ELSE dntw = 1L > ((n__max[0] - n__min[0])/(ntw[0] - 1L))
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Constrain parameters
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define subinterval index ranges allowed for later based upon input frequencies
+;;    Nmin  :  Min. # of points allowed for any subinterval (must be at least 7 points)
+;;    Nmax  :  Max. # of points allowed for any subinterval (must not exceed # in time interval)
+nf_min         = CEIL(srate[0]*dt_min[0]) > 7L
+nf_max         = FLOOR(srate[0]*dt_max[0]) < n_int[0]
+CASE 1b OF
+  (ns[0] EQ 1) : BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  N_SUB = 1
+    ;;------------------------------------------------------------------------------------
+    n_win = LONG(ntw[0])
+    n_sft = 0L
+    n_sub = LONG(ns[0])
+    ;;####################################################################################
+    ;;####################################################################################
+    CASE 1b OF
+      (n_win[0] EQ 1) : BEGIN
+        ;;--------------------------------------------------------------------------------
+        ;;  N_WIN = 1
+        ;;--------------------------------------------------------------------------------
+        n_max = n_int[0]
+        n_min = n_int[0]
+        d__nw = 0L
+        STOP
+      END
+      (n_win[0] GE 2) : BEGIN
+        ;;--------------------------------------------------------------------------------
+        ;;  N_WIN ≥ 2
+        ;;--------------------------------------------------------------------------------
+        n_max = n_int[0]
+        rat   = ((n_int[0] - 7L)/(n_win[0] - 1L) - 1L)
+        test  = 1b
+        ;;  Initialize D__NW
+        IF (test_dnw[0]) THEN dnw_0 = (LONG(dntw[0]) > rat[0]) > 0L ELSE dnw_0 = rat[0]
+;        dnw_0 = (LONG(dntw[0]) < rat[0])
+        cc    = 0L
+        STOP
+        WHILE (test[0]) DO BEGIN
+          ;;  Iterate until ( D__NW - [(N_MAX - N_MIN)/(N_WIN - 1)] ) = 0
+          nmn_0  = n_int[0] - dnw_0[0]*(n_win[0] - 1L)
+          df_nn  = (n_max[0] - nmn_0[0])
+          dratn  = LONG(1d0*df_nn[0]/(1d0*n_win[0] - 1d0))
+;          dratn  = df_nn[0]/(n_win[0] - 1L)
+          remdr  = (dnw_0[0] MOD dratn[0])
+          test   = (remdr[0] NE 0)
+          dnw_0  = (dnw_0[0] - LONG(test[0]*remdr[0])) > 0L
+          cc    += LONG(test[0])
+          IF (cc[0] GT 100) THEN STOP    ;;  Debug
+        ENDWHILE
+        d__nw = dnw_0[0]
+        n_min = n_int[0] - d__nw[0]*(n_win[0] - 1L)
+        STOP
+      END
+    ENDCASE
+    ;;####################################################################################
+    ;;####################################################################################
+  END
+  (ns[0] GE 2) : BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  N_SUB ≥ 2
+    ;;------------------------------------------------------------------------------------
+    n_sub = LONG(ns[0])
+    ;;####################################################################################
+    ;;####################################################################################
+    CASE 1b OF
+      (nf_min[0] EQ nf_max[0]) : BEGIN
+        ;;--------------------------------------------------------------------------------
+        ;;  N_MAX = N_MIN
+        ;;--------------------------------------------------------------------------------
+        n_min = nf_min[0]
+        n_max = n_min[0]
+        n_sft = (n_int[0] - 7L)/(n_sub[0] - 1L)
+        n_win = 1L    ;;  Force
+        d__nw = 0L
+        STOP
+      END
+      ELSE                     : BEGIN
+        ;;--------------------------------------------------------------------------------
+        ;;  N_MAX ≠ N_MIN
+        ;;--------------------------------------------------------------------------------
+        n_win = LONG(ntw[0])
+        rat   = ((n_int[0] - 7L)/(n_sub[0] - 1L) - 1L) > 1L
+;        nsf_0 = (LONG(nshft[0]) > rat[0]) > 0L
+        ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        CASE 1b OF
+          (n_win[0] EQ 1) : BEGIN
+            ;;----------------------------------------------------------------------------
+            ;;  N_WIN = 1
+            ;;----------------------------------------------------------------------------
+            n_win = 1L    ;;  Force
+            d__nw = 0L
+            cc    = 0L
+            test  = 1b
+            ;;  Initialize N_SFT
+            IF (test_nshft[0]) THEN nsf_0 = (LONG(nshft[0]) < rat[0]) > 0L ELSE nsf_0 = rat[0]
+;            STOP
+            WHILE (test[0]) DO BEGIN
+              ;;  Iterate until
+              ;;    ( N_SFT - [(N_INT - N_MIN)/(N_SUB - 1)] ) = 0
+;              ;;    ( N_SFT - [(N_INT)/(N_SUB - 1)] ) = 0
+              nmn_0  = n_int[0] - nsf_0[0]*(n_sub[0] - 1L)
+;              df_nn  = (n_int[0] - nmn_0[0])
+              df_nn  = n_int[0]
+              dratn  =  (1d0*df_nn[0]/(1d0*n_sub[0] - 1d0))
+;              dratn  =  LONG(1d0*df_nn[0]/(1d0*n_sub[0] - 1d0))
+;              dratn  = df_nn[0]/(n_sub[0] - 1L)
+;              remdr  = (nsf_0[0] MOD dratn[0])
+;              remdr  = (n_int[0] MOD nmn_0[0])
+;              remdr  = (n_int[0] MOD (nsf_0[0]*(n_sub[0] - 1L)))
+              remdr  = (dratn[0] MOD 1L)
+              test   = (remdr[0] GT 1)
+;              test   = (remdr[0] NE 0)
+;              nsf_0  = (nsf_0[0] + LONG(test[0])) > 0L
+;              n_sub -= LONG(test[0])
+;              nsf_0  = (nsf_0[0] - LONG(test[0])) > 0L
+;              nsf_0  = LONG(nsf_0[0] - (test[0]*remdr[0])) > 0L
+              nsf_0  = CEIL(nsf_0[0] - (test[0]*remdr[0])) > 0L
+;              nsf_0  = (nsf_0[0] - LONG(test[0]*remdr[0])) > 0L
+              cc    += LONG(test[0])
+              IF (cc[0] GT 100) THEN STOP    ;;  Debug
+            ENDWHILE
+            n_sft = nsf_0[0]
+            n_min = n_int[0] - n_sft[0]*(n_sub[0] - 1L)
+            n_max = n_min[0]
+            STOP
+          END
+          (n_win[0] GE 2) : BEGIN
+            ;;----------------------------------------------------------------------------
+            ;;  N_WIN ≥ 2
+            ;;----------------------------------------------------------------------------
+            IF (test_nshft[0]) THEN n_sft = (LONG(nshft[0]) < rat[0]) > 0L ELSE n_sft = 1L
+;            n_sft = (LONG(nshft[0]) < rat[0]) > 0L
+            n_max = n_int[0] - n_sft[0]*(n_sub[0] - 1L)
+;            rat2  = ((n_int[0] - 7L) - n_sft[0]*(n_sub[0] - 1L))/(n_win[0] - 1L)
+            rat2  = (((n_int[0] - 7L) - n_sft[0]*(n_sub[0] - 1L))/(n_win[0] - 1L) - 1L) > 0L
+            ;;  Initialize D__NW
+            dnw_0 = (LONG(dntw[0]) > rat2[0])
+            cc    = 0L
+            test  = 1b
+;            STOP
+            WHILE (test[0]) DO BEGIN
+              ;;  Iterate until
+              ;;    ( D__NW - [(N_INT - N_MIN) - N_SFT (N_SUB - 1)]/(N_WIN - 1) ) = 0
+              nmn_0  = n_max[0] - dnw_0[0]*(n_win[0] - 1L)
+              df_nn  = (n_max[0] - nmn_0[0])
+;              nmn_0  = n_int[0] - n_sft[0]*(n_sub[0] - 1L) - dnw_0[0]*(n_win[0] - 1L)
+;              df_nn  = (n_int[0] - nmn_0[0]) - n_sft[0]*(n_sub[0] - 1L)
+;              dratn  = df_nn[0]/(n_win[0] - 1L)
+              dratn  = LONG(1d0*df_nn[0]/(1d0*n_win[0] - 1d0))
+              remdr  = (dnw_0[0] MOD dratn[0])
+              test   = (remdr[0] NE 0)
+              dnw_0  = (dnw_0[0] - LONG(test[0]*remdr[0])) > 0L
+              cc    += LONG(test[0])
+              IF (cc[0] GT 100) THEN STOP    ;;  Debug
+            ENDWHILE
+            d__nw = dnw_0[0]
+            n_min = n_max[0] - d__nw[0]*(n_win[0] - 1L)
+;            STOP
+          END
+        ENDCASE
+        ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+      END
+    ENDCASE
+    ;;####################################################################################
+    ;;####################################################################################
+  END
+ENDCASE
+
+STOP
+
+
+
+
+
+
+
+
+
+
+
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+

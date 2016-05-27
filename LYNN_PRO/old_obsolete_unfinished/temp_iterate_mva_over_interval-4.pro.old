@@ -1,0 +1,235 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_iterate_mva_over_interval.pro
+;  PURPOSE  :   
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               STRUC          :  Scalar [structure] defining a valid TPLOT structure
+;                                   the the user wishes to clip (in time) in order to
+;                                   examine only data between the limits defined by the
+;                                   TRANGE keyword and then perform MVA on subintervals.
+;
+;                                   The required structure tags for STRUC are:
+;                                     X  :  [N]-Element array of Unix times
+;                                     Y  :  [N,3]-Element array of 3-vectors
+;
+;                                   If the TSHIFT tag is present, the routine will assume
+;                                   that DATA.X is seconds from DATA.TSHIFT[0].
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               TRANGE         :  [2]-Element [double] array specifying the Unix time
+;                                   range for which to limit the data in DATA
+;                                   [Default = prompted by get_valid_trange.pro]
+;               PRECISION      :  Scalar [long] defining precision of the string output:
+;                                   = -5  :  Year only
+;                                   = -4  :  Year, month
+;                                   = -3  :  Year, month, date
+;                                   = -2  :  Year, month, date, hour
+;                                   = -1  :  Year, month, date, hour, minute
+;                                   = 0   :  Year, month, date, hour, minute, sec
+;                                   = >0  :  fractional seconds
+;                                   [Default = 0]
+;               LOW_FREQ       :  Scalar [numeric] defining the lower frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = 0.0]
+;               HIGHFREQ       :  Scalar [numeric] defining the upper frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = (sample rate)]
+;               NSHIFT         :  Scalar [long] defining the index shift for each new
+;                                   time window set (i.e., each subinterval) such that
+;                                   the following constraint is met:
+;                                     ((Nmax + NSUBINT*NSHIFT) MOD Nint) = 0
+;                                   where Nmax is the maximum # of time steps in each
+;                                   subinterval and Nint is the # of time steps within
+;                                   the range defined by TRANGE
+;                                   [Default = 1]
+;               NSUBINT        :  Scalar [long] defining the number of subintervals that
+;                                   each contain NTWINDS time windows
+;                                   [Default = 5]
+;               NTWINDS        :  Scalar [long] defining the number of time windows to
+;                                   use between Nmin and Nmax (i.e., each subinterval)
+;                                   before shifting by NSHIFT
+;                                   [Default = 4]
+;               DNWINDS        :  Scalar [long] defining the integer # of time steps by
+;                                   which to increase each time window such that there
+;                                   are an integer number of window, NTWINDS, within the
+;                                   range between Nmin and Nmax such that:
+;                                     Nmax = Nmin + (NTWINDS - 1)*DNWINDS
+;                                   [Default = (Nmax - Nmin)/(NTWINDS - 1)]
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [05/25/2016   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [05/25/2016   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [05/25/2016   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [05/25/2016   v1.0.0]
+;
+;   NOTES:      
+;               1)  General notes for TPLOT structures:
+;                       The minimum required structure tags for a TPLOT structure are
+;                       as follows:
+;                         X  :  [N]-Element array of Unix times
+;                         Y  :  [N,?]-Element array of data, where ? can be
+;                                 up to two additional dimensions
+;                                 [e.g., pitch-angle and energy bins]
+;                       additional potential tags are:
+;                         V  :  [N,E]-Element array of Y-Axis values
+;                                 [e.g., energy bin values]
+;                       or in the special case of particle data:
+;                         V1 :  [N,E]-Element array of energy bin values
+;                         V2 :  [N,A]-Element array of pitch-angle bins
+;                       If V1 AND V2 are present, then Y must be an [N,E,A]-element
+;                       array.  If only V is present, then Y must be an [N,E]-element
+;                       array, where E is either the 1st dimension of V [if 1D array]
+;                       or the 2nd dimension of V [if 2D array].
+;
+;                       If the TSHIFT tag is present, the routine will assume
+;                       that NEW_T is a Unix time and DATA.X is seconds from
+;                       DATA.TSHIFT[0].
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  05/24/2016
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/25/2016   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION temp_iterate_mva_over_interval,struc,TRANGE=trange,PRECISION=prec,            $
+                                              LOW_FREQ=low_freq,HIGHFREQ=highfreq,     $
+                                              NSHIFT=nshift,NSUBINT=nsubint,           $
+                                              NTWINDS=ntwinds,DNWINDS=dnwinds
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply an IDL structure...'
+baddfor_msg    = 'Incorrect input format:  STRUC must be an IDL TPLOT structure'
+bad_tra_msg    = 'Could not define proper time range... Using entire data interval...'
+nod_tra_msg    = 'No data within user specified TRANGE... Exiting without computation...'
+notenpt_msg    = 'Not enough time steps in entire time series.  Must supply at least 100 time steps...'
+notenit_msg    = 'Not enough time steps in interval defined by TRANGE.  Must contain at least 50 time steps...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (SIZE(struc,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check if TPLOT structure
+test           = tplot_struct_format_test(struc,/YVECT,/NOMSSG)
+IF (test[0] EQ 0) THEN BEGIN
+  MESSAGE,baddfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define some parameters
+;;----------------------------------------------------------------------------------------
+time           = struc.X                     ;;  [N]-Element array of Unix times
+t_offset       = struct_value(struc,'TSHIFT',DEFAULT=0d0)
+unix           = time + t_offset[0]
+n_tot          = N_ELEMENTS(struc.X)         ;;  Total # of time steps in input
+test           = (n_tot[0] LT 100)
+IF (test[0]) THEN BEGIN
+  ;;  Not enough time steps in entire input time series
+  MESSAGE,notenpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Determine sample rate [sps]
+srate          = sample_rate(unix,/AVERAGE,OUT_MED_AVG=medavg)
+;;  Define positive FFT frequencies [Hz]
+n_fft          = n_tot[0]/2L                 ;;  # of frequency bins in FFT
+fft_fbins      = DINDGEN(n_fft[0])*srate[0]/(n_fft[0] - 1L)
+;;----------------------------------------------------------------------------------------
+;;  Get keyword values
+;;----------------------------------------------------------------------------------------
+temp_get_def_keywords_iterate_mva,unix,TRANGE=trange,PRECISION=prec,            $   ;;  Inputs
+                                       LOW_FREQ=low_freq,HIGHFREQ=highfreq,     $
+                                       NSHIFT=nshift,NSUBINT=nsubint,           $
+                                       NTWINDS=ntwinds,DNWINDS=dnwinds,         $
+                                       N_MIN=n_min,N_MAX=n_max,N_SUB=n_sub,     $   ;;  Outputs
+                                       N_SFT=n_sft,N_WIN=n_win,D__NW=d__nw
+
+;;  Things to do:
+;;    -- want integer # of subintervals for different time step window lengths
+;;    -- want integer # of different time step window lengths between N_min and N_max
+;;    -- Need to fix the default NSHIFT calculation above
+
+
+
+STOP
+
+
+
+
+END
+
+
+
+
+
+
+
+
+
+
+
+
+;WHILE (test[0]) DO BEGIN
+;  test0          = (n_tot[0] MOD ((n__min[0] + def_nshft[0])*ns[0])) NE 0
+;  test1          = (n_tot[0] GT  ((n__min[0] + def_nshft[0])*ns[0]))
+;  dn0            = LONG( 1d0*(n_tot[0] - ((n__min[0] + def_nshft[0])*ns[0]))/(1d0*ns[0]) )
+;  test           = (test0[0] AND test1[0] AND (dn0[0] GT 0)) AND (cc[0] LT 100L)
+;  check_dn       = (LONG(n_tot[0]/((n__min[0] + def_nshft[0]))) GE 5L)
+;  IF (check_dn[0]) THEN dn = LONG(test[0]*dn0[0]) $
+;                   ELSE dn = LONG(test[0])
+;  def_nshft     += dn[0]
+;  cc            += LONG(test[0])
+;  IF (cc[0] MOD 20) THEN PRINT,';; cc = ',cc[0],', nshft = ',def_nshft[0]
+;ENDWHILE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

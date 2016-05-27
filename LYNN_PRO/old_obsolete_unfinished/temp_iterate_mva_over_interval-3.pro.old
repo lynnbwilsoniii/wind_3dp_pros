@@ -1,0 +1,502 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_iterate_mva_over_interval.pro
+;  PURPOSE  :   
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               STRUC          :  Scalar [structure] defining a valid TPLOT structure
+;                                   the the user wishes to clip (in time) in order to
+;                                   examine only data between the limits defined by the
+;                                   TRANGE keyword and then perform MVA on subintervals.
+;
+;                                   The required structure tags for STRUC are:
+;                                     X  :  [N]-Element array of Unix times
+;                                     Y  :  [N,3]-Element array of 3-vectors
+;
+;                                   If the TSHIFT tag is present, the routine will assume
+;                                   that DATA.X is seconds from DATA.TSHIFT[0].
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               TRANGE         :  [2]-Element [double] array specifying the Unix time
+;                                   range for which to limit the data in DATA
+;                                   [Default = prompted by get_valid_trange.pro]
+;               PRECISION      :  Scalar [long] defining precision of the string output:
+;                                   = -5  :  Year only
+;                                   = -4  :  Year, month
+;                                   = -3  :  Year, month, date
+;                                   = -2  :  Year, month, date, hour
+;                                   = -1  :  Year, month, date, hour, minute
+;                                   = 0   :  Year, month, date, hour, minute, sec
+;                                   = >0  :  fractional seconds
+;                                   [Default = 0]
+;               LOW_FREQ       :  Scalar [numeric] defining the lower frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = 0.0]
+;               HIGHFREQ       :  Scalar [numeric] defining the upper frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = (sample rate)]
+;               NSHIFT         :  Scalar [long] defining the index shift for each new
+;                                   time window set (i.e., each subinterval) such that
+;                                   the following constraint is met:
+;                                     ((Nmax + NSUBINT*NSHIFT) MOD Nint) = 0
+;                                   where Nmax is the maximum # of time steps in each
+;                                   subinterval and Nint is the # of time steps within
+;                                   the range defined by TRANGE
+;                                   [Default = 1]
+;               NSUBINT        :  Scalar [long] defining the number of subintervals that
+;                                   each contain NTWINDS time windows
+;                                   [Default = 5]
+;               NTWINDS        :  Scalar [long] defining the number of time windows to
+;                                   use between Nmin and Nmax (i.e., each subinterval)
+;                                   before shifting by NSHIFT
+;                                   [Default = 4]
+;               DNWINDS        :  Scalar [long] defining the integer # of time steps by
+;                                   which to increase each time window such that there
+;                                   are an integer number of window, NTWINDS, within the
+;                                   range between Nmin and Nmax such that:
+;                                     Nmax = Nmin + (NTWINDS - 1)*DNWINDS
+;                                   [Default = (Nmax - Nmin)/(NTWINDS - 1)]
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [05/25/2016   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [05/25/2016   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [05/25/2016   v1.0.0]
+;
+;   NOTES:      
+;               1)  General notes for TPLOT structures:
+;                       The minimum required structure tags for a TPLOT structure are
+;                       as follows:
+;                         X  :  [N]-Element array of Unix times
+;                         Y  :  [N,?]-Element array of data, where ? can be
+;                                 up to two additional dimensions
+;                                 [e.g., pitch-angle and energy bins]
+;                       additional potential tags are:
+;                         V  :  [N,E]-Element array of Y-Axis values
+;                                 [e.g., energy bin values]
+;                       or in the special case of particle data:
+;                         V1 :  [N,E]-Element array of energy bin values
+;                         V2 :  [N,A]-Element array of pitch-angle bins
+;                       If V1 AND V2 are present, then Y must be an [N,E,A]-element
+;                       array.  If only V is present, then Y must be an [N,E]-element
+;                       array, where E is either the 1st dimension of V [if 1D array]
+;                       or the 2nd dimension of V [if 2D array].
+;
+;                       If the TSHIFT tag is present, the routine will assume
+;                       that NEW_T is a Unix time and DATA.X is seconds from
+;                       DATA.TSHIFT[0].
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  05/24/2016
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/25/2016   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION temp_iterate_mva_over_interval,struc,TRANGE=trange,PRECISION=prec,            $
+                                              LOW_FREQ=low_freq,HIGHFREQ=highfreq,     $
+                                              NSHIFT=nshift,NSUBINT=nsubint,           $
+                                              NTWINDS=ntwinds,DNWINDS=dnwinds
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply an IDL structure...'
+baddfor_msg    = 'Incorrect input format:  STRUC must be an IDL TPLOT structure'
+bad_tra_msg    = 'Could not define proper time range... Using entire data interval...'
+nod_tra_msg    = 'No data within user specified TRANGE... Exiting without computation...'
+notenpt_msg    = 'Not enough time steps in entire time series.  Must supply at least 100 time steps...'
+notenit_msg    = 'Not enough time steps in interval defined by TRANGE.  Must contain at least 50 time steps...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (SIZE(struc,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check if TPLOT structure
+test           = tplot_struct_format_test(struc,/YVECT,/NOMSSG)
+IF (test[0] EQ 0) THEN BEGIN
+  MESSAGE,baddfor_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define some parameters
+;;----------------------------------------------------------------------------------------
+time           = struc.X                     ;;  [N]-Element array of Unix times
+t_offset       = struct_value(struc,'TSHIFT',DEFAULT=0d0)
+unix           = time + t_offset[0]
+n_tot          = N_ELEMENTS(struc.X)         ;;  Total # of time steps in input
+test           = (n_tot[0] LT 100)
+IF (test[0] EQ 0) THEN BEGIN
+  ;;  Not enough time steps in entire input time series
+  MESSAGE,notenpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Determine sample rate [sps]
+srate          = sample_rate(unix,/AVERAGE,OUT_MED_AVG=medavg)
+;;  Define positive FFT frequencies [Hz]
+n_fft          = n_tot[0]/2L                 ;;  # of frequency bins in FFT
+fft_fbins      = DINDGEN(n_fft[0])*srate[0]/(n_fft[0] - 1L)
+;;----------------------------------------------------------------------------------------
+;;  Get keyword values
+;;----------------------------------------------------------------------------------------
+temp_get_def_keywords_iterate_mva,unixt,TRANGE=trange,PRECISION=prec,            $   ;;  Inputs
+                                        LOW_FREQ=low_freq,HIGHFREQ=highfreq,     $
+                                        NSHIFT=nshift,NSUBINT=nsubint,           $
+                                        NTWINDS=ntwinds,DNWINDS=dnwinds,         $
+                                        N_MIN=n_min,N_MAX=n_max,N_SUB=n_sub,     $   ;;  Outputs
+                                        N_SFT=n_sft,N_WIN=n_win,D__NW=d__nw
+
+
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check TRANGE and PRECISION
+tra_struc      = get_valid_trange(TRANGE=trange,PRECISION=prec)
+tran           = tra_struc.UNIX_TRANGE
+test           = (TOTAL(FINITE(tran)) LT 2)
+IF (test[0]) THEN BEGIN
+  MESSAGE,bad_tra_msg,/INFORMATIONAL,/CONTINUE
+  ;;  Define entire data interval
+  tran           = [MIN(unix,/NAN),MAX(unix,/NAN)]
+ENDIF
+test           = (unix LE tran[1]) AND (unix GE tran[0])
+good           = WHERE(test,gd)
+IF (gd EQ 0) THEN BEGIN
+  ;;  No data between specified time range limits
+  MESSAGE,nod_tra_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+n_int          = gd[0]                       ;;  # of time steps in time interval defined by TRANGE
+dt_int         = (tran[1] - tran[0])         ;;  duration [s] of time interval defined by TRANGE
+test           = (n_int[0] LT 50)
+IF (test[0] EQ 0) THEN BEGIN
+  ;;  Not enough time steps in interval defined by TRANGE
+  MESSAGE,notenit_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;--------------------------------------------
+;;  Check HIGHFREQ
+;;--------------------------------------------
+test           = (N_ELEMENTS(highfreq) EQ 1) AND is_a_number(highfreq,/NOMSSG)
+IF (test[0]) THEN highf = (highfreq[0] < srate[0]) ELSE highf = srate[0]
+good_hf        = WHERE(fft_fbins LT highf[0],gd_hf)
+IF (gd_hf[0] LE 3) THEN BEGIN
+  ;;  resort to default in event of negative input
+  highf          = srate[0]
+  good_hf        = WHERE(fft_fbins LT highf[0],gd_hf)
+ENDIF
+def_lf_ind     = (MAX(good_hf) - 3L) > 0L
+def_lf_upp     = fft_fbins[def_lf_ind[0]]                 ;;  Upper bound on LOW_FREQ in case improperly set
+;;--------------------------------------------
+;;  Check LOW_FREQ
+;;--------------------------------------------
+test           = (N_ELEMENTS(low_freq) EQ 1) AND is_a_number(low_freq,/NOMSSG)
+IF (test[0]) THEN lowf = (low_freq[0] < def_lf_upp[0]) ELSE lowf = 0d0
+good_lf        = WHERE(fft_fbins GT lowf[0],gd_lf)
+IF (gd_lf[0] LE 3) THEN BEGIN
+  ;;  resort to default in event of negative input
+  lowf           = 0d0
+  good_lf        = WHERE(fft_fbins GT lowf[0],gd_lf)
+ENDIF
+;;  Define subinterval time ranges allowed for later
+IF (highf[0] GE srate[0]/2d0) THEN uppf = highf[0]/4d0 ELSE uppf = highf[0]
+dt_min         = 1.25d0/uppf[0]                           ;;  lower bound --> window width ≥ 125% of shortest periods
+IF (lowf[0] EQ 0) THEN BEGIN
+  dt_max         = dt_int[0]
+ENDIF ELSE BEGIN
+  dt_max         = 1d0/lowf[0]
+ENDELSE
+;;  Define subinterval index ranges allowed for later
+;;    Nmin  :  Min. # of points allowed for any subinterval (must be at least 7 points)
+;;    Nmax  :  Max. # of points allowed for any subinterval (must not exceed # in time interval)
+n__min         = CEIL(srate[0]*dt_min[0]) > 7L
+n__max         = FLOOR(srate[0]*dt_max[0]) < n_int[0]
+;;--------------------------------------------
+;;  Check NSUBINT
+;;--------------------------------------------
+test           = (N_ELEMENTS(nsubint) EQ 1) AND is_a_number(nsubint,/NOMSSG)
+IF (test[0]) THEN ns = 1L > LONG(nsubint[0]) ELSE ns = 5L
+IF (ns[0] EQ 1) THEN sfac = 1L ELSE sfac = (ns[0] - 1L)
+;;--------------------------------------------
+;;  Check NSHIFT
+;;--------------------------------------------
+test           = (N_ELEMENTS(nshift) EQ 1) AND is_a_number(nshift,/NOMSSG)
+IF (test[0]) THEN nshft = 1L > (LONG(nshift[0]) < FLOOR(n_int[0]/2L)) ELSE nshft = 1L
+;;  Constrain Nmax
+n_offset       = (n__max[0] + nshft[0])
+dnmax          = (n_offset[0] - (n_int[0]/sfac[0])); > 0L
+
+
+;;--------------------------------------------
+;;  Check NTWINDS
+;;--------------------------------------------
+test           = (N_ELEMENTS(ntwinds) EQ 1) AND is_a_number(ntwinds,/NOMSSG)
+IF (test[0]) THEN ntw = 1L > LONG(ntwinds[0]) ELSE ntw = 4L
+;;--------------------------------------------
+;;  Check DNWINDS
+;;--------------------------------------------
+test           = (N_ELEMENTS(dnwinds) EQ 1) AND is_a_number(dnwinds,/NOMSSG)
+IF (test[0]) THEN dntw = 1L > LONG(dnwinds[0]) ELSE dntw = 1L > ((n__max[0] - n__min[0])/(ntw[0] - 1L))
+;;----------------------------------------------------------------------------------------
+;;  Define and constrain subinterval parameters
+;;----------------------------------------------------------------------------------------
+;;  Make sure Nmax ≠ Nmin
+test           = (n__max[0] LE n__min[0])
+;;  Redefine Nmax
+;;    Nmax = Nmin + (NTWINDS - 1)*DNWINDS
+IF (test[0]) THEN n__max = n__min[0] ELSE n__max = (n__min[0] + (ntw[0] - 1L)*dntw[0])
+del_n          = (n__max[0] - n__min[0])      ;;  # of time steps between Nmin and Nmax
+IF (test[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Force to only 1 subinterval and time window due to overlapping Nmin and Nmax
+  ;;--------------------------------------------------------------------------------------
+  ns             = 1L
+  ntw            = 1L
+  dntw           = 0L
+  nshft          = 0L
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check constraints
+  ;;--------------------------------------------------------------------------------------
+  n_offset       = (n__max[0] + nshft[0])
+;  n_asubs        = ((ns[0] - 1L)*n_offset[0]) > n_offset[0]
+  n_asubs        = sfac[0]*n_offset[0]
+  diff           = (n_asubs[0] - n_int[0])
+  test_1sub      = (ABS(diff[0]) GT n_offset[0])
+  test           = (diff[0] GT 0)
+  IF (ns[0] EQ 1) THEN decr_both = 0b ELSE decr_both = 1b   ;;  TRUE --> can decrease both Nmax and NSUBINT
+  IF (test[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Nint < (NSUBINT - 1) * (Nmax + NSHIFT)
+    ;;------------------------------------------------------------------------------------
+    ;;    Decrease Nmax and/or NSUBINT until it satisfies the following constraint:
+    ;;      Nint ≥ (NSUBINT - 1) * (Nmax + NSHIFT)
+    dnmax          = (n_offset[0] - (n_int[0]/sfac[0])) > 0L
+    IF (test_1sub[0]) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  TRUE --> decrease NSUBINT if possible
+      ;;----------------------------------------------------------------------------------
+      IF (decr_both[0]) THEN BEGIN
+        ;;  decrease NSUBINT
+        ns            -= 1L
+        IF (ns[0] EQ 1) THEN sfac = 1L ELSE sfac = (ns[0] - 1L)
+      ENDIF ELSE BEGIN
+        ;;  decrease Nmax if possible
+        n__max        -= dnmax[0]
+        del_n          = (n__max[0] - n__min[0])
+        IF (del_n[0] LE 0) THEN BEGIN
+          ;;  Decrease makes window too small --> use only one window
+          n__max         = n__min[0]
+          ns             = 1L
+          ntw            = 1L
+          dntw           = 0L
+          nshft          = 0L
+          sfac           = 1L
+        ENDIF
+        ;;  redefine terms
+        n_offset       = (n__max[0] + nshft[0])
+      ENDELSE
+    ENDIF ELSE BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  FALSE --> decrease Nmax if possible
+      ;;----------------------------------------------------------------------------------
+      n__max        -= dnmax[0]
+      del_n          = (n__max[0] - n__min[0])
+      IF (del_n[0] LE 0) THEN BEGIN
+        ;;  Decrease makes window too small --> use only one window
+        n__max         = n__min[0]
+        ns             = 1L
+        ntw            = 1L
+        dntw           = 0L
+        nshft          = 0L
+        sfac           = 1L
+      ENDIF
+      ;;  redefine terms
+      n_offset       = (n__max[0] + nshft[0])
+    ENDELSE
+    n_asubs        = sfac[0]*n_offset[0]
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;    Nint ≥ (NSUBINT - 1) * (Nmax + NSHIFT)
+    ;;------------------------------------------------------------------------------------
+    test           = (diff[0] LT 0)
+    IF (test[0]) THEN BEGIN
+      ;;  Increase Nmax and/or NSUBINT until it satisfies the following constraint:
+      ;;      Nint = (NSUBINT - 1) * (Nmax + NSHIFT)
+      IF (test_1sub[0]) THEN ns_new = (ns[0] + 1L) ELSE ns_new = ns[0]
+      IF (ns_new[0] EQ 1) THEN sfac_new = 1L ELSE sfac_new = (ns_new[0] - 1L)
+      dnmax          = (n_offset[0] - (n_int[0]/sfac_new[0])) > 0L
+      IF (test_1sub[0]) THEN nmax_new = n__max[0] ELSE nmax_new = (n__max[0] + dnmax[0])
+      del_n_new      = (nmax_new[0] - n__min[0])
+      IF (del_n_new[0] LE 0) THEN BEGIN
+        ;;  TRUE --> window too small --> use only one window
+        n__max         = n__min[0]
+        ns             = 1L
+        ntw            = 1L
+        dntw           = 0L
+        nshft          = 0L
+        sfac           = 1L
+      ENDIF ELSE BEGIN
+        ;;  FALSE --> redefine params
+        n__max         = nmax_new[0]
+        ns             = ns_new[0]
+        sfac           = sfac_new[0]
+      ENDELSE
+      n_offset       = (n__max[0] + nshft[0])
+      n_asubs        = sfac[0]*n_offset[0]
+    ENDIF
+  ENDELSE
+  
+
+
+
+    
+    
+    
+    term0          = sfac[0]*(n_offset[0] - 1L)
+    IF (decr_both[0]) THEN term1 = (sfac[0] - 1L)*n_offset[0] ELSE term1 = n_asubs[0]
+    test           = (term0[0] LE term1[0])
+  ;;  Check result
+  tests          = [(n__max[0] GE n_int[0]),((n_offset[0] MOD n_int[0]) NE 0),$
+                    ((n_asubs[0] - n_int[0]) NE 0)]
+  
+  
+  
+  ;;  Decrease Nmax and/or NSUBINT until it satisfies the following constraint:
+  ;;    Nint = NSUBINT * (Nmax + NSHIFT)
+  del_n          = (n_offset[0] MOD n_int[0])
+  test           = ((n_offset[0] - del_n[0]) GE n__min[0])
+  IF (test[0]) THEN BEGIN
+    ;;  Redefine Nmax and other parameters as necessary
+    n__max        -= del_n[0]
+    ;;  Redefine other parameters if necessary
+    del_n          = (n__max[0] - n__min[0])
+    test           = (del_n[0] LT (ntw[0] - 1L)) OR ((del_n[0] MOD (ntw[0] - 1L)) NE 0)
+    IF (test[0]) THEN BEGIN
+      ;;  Need to adjust NTWINDS and DNWINDS
+    ENDIF ELSE BEGIN
+    ENDELSE
+    
+  ENDIF ELSE BEGIN
+  ENDELSE
+ENDELSE
+
+n_offset       = (n__max[0] + def_nshft[0])
+del_n          = (n_offset[0] MOD n_int[0])
+nsmax          = (n_offset[0] - del_n[0])/n_int[0]        ;;  Max # of subintervals within time interval defined by TRANGE
+d_ns           = ((n_offset[0]*ns[0]) MOD n_int[0])
+
+
+n_sub          = ns[0] < nsmax[0]                         ;;  Constrain # of subintervals
+
+
+def_nshft      = 0L                                       ;;  Default value for NSHIFT
+cc             = 0L                                       ;;  counter for loop
+test           = 1b
+WHILE (test[0]) DO BEGIN
+  test0          = (n_tot[0] MOD ((n__min[0] + def_nshft[0])*ns[0])) NE 0
+
+
+  test0          = (n_tot[0] MOD ((n__min[0] + def_nshft[0])*ns[0])) NE 0
+  test1          = (n_tot[0] GT  ((n__min[0] + def_nshft[0])*ns[0]))
+  dn0            = LONG( 1d0*(n_tot[0] - ((n__min[0] + def_nshft[0])*ns[0]))/(1d0*ns[0]) )
+  test           = (test0[0] AND test1[0] AND (dn0[0] GT 0)) AND (cc[0] LT 100L)
+  check_dn       = (LONG(n_tot[0]/((n__min[0] + def_nshft[0]))) GE 5L)
+  IF (check_dn[0]) THEN dn = LONG(test[0]*dn0[0]) $
+                   ELSE dn = LONG(test[0])
+;  def_nshft     += LONG(test[0])
+  def_nshft     += dn[0]
+  cc            += LONG(test[0])
+  IF (cc[0] MOD 20) THEN PRINT,';; cc = ',cc[0],', nshft = ',def_nshft[0]
+ENDWHILE
+;;--------------------------------------------
+;;  Check NSHIFT
+;;--------------------------------------------
+test           = (N_ELEMENTS(nshift) EQ 1) AND is_a_number(nshift,/NOMSSG)
+IF (test[0]) THEN n_sft = 1L > (nshift[0] < FLOOR(n_int[0]/2L)) ELSE n_sft = def_nshft[0]
+
+;;  Things to do:
+;;    -- want integer # of subintervals for different time step window lengths
+;;    -- want integer # of different time step window lengths between N_min and N_max
+;;    -- Need to fix the default NSHIFT calculation above
+
+
+
+STOP
+
+
+
+
+END
+
+
+
+
+
+
+
+
+
+
+
+
+;WHILE (test[0]) DO BEGIN
+;  test0          = (n_tot[0] MOD ((n__min[0] + def_nshft[0])*ns[0])) NE 0
+;  test1          = (n_tot[0] GT  ((n__min[0] + def_nshft[0])*ns[0]))
+;  dn0            = LONG( 1d0*(n_tot[0] - ((n__min[0] + def_nshft[0])*ns[0]))/(1d0*ns[0]) )
+;  test           = (test0[0] AND test1[0] AND (dn0[0] GT 0)) AND (cc[0] LT 100L)
+;  check_dn       = (LONG(n_tot[0]/((n__min[0] + def_nshft[0]))) GE 5L)
+;  IF (check_dn[0]) THEN dn = LONG(test[0]*dn0[0]) $
+;                   ELSE dn = LONG(test[0])
+;  def_nshft     += dn[0]
+;  cc            += LONG(test[0])
+;  IF (cc[0] MOD 20) THEN PRINT,';; cc = ',cc[0],', nshft = ',def_nshft[0]
+;ENDWHILE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
