@@ -9,11 +9,7 @@
 ;  CALLED BY:   
 ;               NA
 ;
-;  INCLUDES:
-;               NA
-;
 ;  CALLS:
-;               is_a_number.pro
 ;               sample_rate.pro
 ;               fft_power_calc.pro
 ;               partition_data.pro
@@ -29,16 +25,8 @@
 ;                            vector field component for each timestamp in TIME
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               fran_peak = find_freq_range_psd_peak(time, field [,FREQRA=freqra]        $
-;                                                    [,FPKMIN=fpkmin] [,FPKMAX=fpkmax]   $
-;                                                    [,ALPHA=alpha] [,/SYMMETRY]         $
-;                                                    [,SYMM_THRESH=symm_thresh]          $
-;                                                    [,LENGTH=length] [,OFFSET=offset]   $
-;                                                    [,OUTPUT=wav_struc]                 )
-;
 ;               ;;  Find spectral peak frequency range between 1 Hz and 10 kHz
-;               fran_peak = find_freq_range_psd_peak(time,field,FREQRA=[1d0,1d4])
+;               fran_peak = temp_find_wave_freq_peak(time,field,FREQRA=[1d0,1d4])
 ;
 ;  KEYWORDS:    
 ;               **********************************
@@ -177,14 +165,10 @@
 ;             8)  Added keywords:  LENGTH and OFFSET
 ;                   and now calls is_a_number.pro
 ;                                                                   [04/28/2015   v1.1.0]
-;             9)  Updated Man. page and now allows OFFSET to be as small as
-;                   LENGTH/2
-;                                                                   [06/03/2016   v1.2.0]
 ;
 ;   NOTES:      
 ;               1)  The routine requires that N ≥ 64, which would correspond to only
 ;                     32 frequencies in the resulting FFT
-;               2)  Routine constrains the following:  OFFSET ≥ MAX([LENGTH/2,2])
 ;
 ;  REFERENCES:  
 ;               1)  Harris, F.J. "On the Use of Windows for Harmonic Analysis with the
@@ -193,7 +177,7 @@
 ;
 ;   CREATED:  01/25/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/03/2016   v1.2.0
+;    LAST MODIFIED:  04/28/2015   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -357,9 +341,7 @@ nlen           = nlen[0] > 4L             ;;  Make sure LENGTH is at least 4
 ;;  Check OFFSET
 test           = (N_ELEMENTS(offset) EQ 1) AND is_a_number(offset,/NOMSSG)
 IF (test[0]) THEN nshft = (offset[0] < (nt[0]/4L)) ELSE nshft = 4L
-;;    --> LBW III  06/03/2016   v1.2.0
-;nshft          = nshft[0] > nlen[0]       ;;  Make sure OFFSET is at least LENGTH
-nshft          = nshft[0] > ((nlen[0]/2L) > 2L)  ;;  Make sure OFFSET is at least LENGTH/2
+nshft          = nshft[0] > nlen[0]       ;;  Make sure OFFSET is at least LENGTH
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate power spectrum [use Hanning window]
 ;;----------------------------------------------------------------------------------------
@@ -380,7 +362,7 @@ fmnmx          = [MIN(fft_freqs[1:*],/NAN),MAX(fft_freqs[1:*],/NAN)]
 ;;    Note:  return value has [NN, MM, LL]-Elements where
 ;;             NN = # of elements in LENGTH
 ;;             MM = # of divisions = K/NN, where K = # of points in input array
-;;             LL = 2  -->  0 = X, 1 = Y
+;;             LL = 2 => 0 = X, 1 = Y
 ;;----------------------------------------------------------------------------------------
 ;;    --> LBW III  04/28/2015   v1.1.0
 ;nlen           = 4L  ;;  --> LENGTH
@@ -389,22 +371,13 @@ envelope_x     = partition_data(fft_freqs,nlen[0],nshft[0],YY=fft_power)
 n_envel        = N_ELEMENTS(envelope_x[0,*,0])
 env_xx         = REPLICATE(d,n_envel[0])
 env_yy         = REPLICATE(d,n_envel[0],2L)
-tempx          = TOTAL(REFORM(envelope_x[*,*,0]),1,/NAN,/DOUBLE)
-tempf          = TOTAL(FINITE(REFORM(envelope_x[*,*,0])),1,/NAN,/DOUBLE)
-env_xx         = tempx/tempf        ;;  Avg. frequencies [Hz] of binned range
-tempy          = REFORM(envelope_x[*,*,1])
-tempyl         = MIN(tempy,/NAN,DIMENSION=1)
-tempyu         = MAX(tempy,/NAN,DIMENSION=1)
-env_yy[*,0]    = tempyl             ;;  Lower bound on PSD [units^2 Hz^(-1)] in binned range
-env_yy[*,1]    = tempyu             ;;  Upper bound on PSD [units^2 Hz^(-1)] in binned range
-;;    --> LBW III  06/03/2016   v1.2.0
-;FOR i=0L, n_envel[0] - 1L DO BEGIN
-;  tempx = REFORM(envelope_x[*,i,0])
-;  tempy = REFORM(envelope_x[*,i,1])
-;  env_xx[i]   = MEAN(tempx,/NAN)    ;;  Avg. frequency [Hz] of binned range
-;  env_yy[i,0] = MIN(tempy,/NAN)     ;;  Lower bound on PSD [units^2 Hz^(-1)] in binned range
-;  env_yy[i,1] = MAX(tempy,/NAN)     ;;  Upper bound on PSD [units^2 Hz^(-1)] in binned range
-;ENDFOR
+FOR i=0L, n_envel[0] - 1L DO BEGIN
+  tempx = REFORM(envelope_x[*,i,0])
+  tempy = REFORM(envelope_x[*,i,1])
+  env_xx[i]   = MEAN(tempx,/NAN)    ;;  Avg. frequency [Hz] of binned range
+  env_yy[i,0] = MIN(tempy,/NAN)     ;;  Lower bound on PSD [units^2 Hz^(-1)] in binned range
+  env_yy[i,1] = MAX(tempy,/NAN)     ;;  Upper bound on PSD [units^2 Hz^(-1)] in binned range
+ENDFOR
 ;;  Smooth envelope
 env_yy_sm      = env_yy
 env_yy_sm[*,0] = SMOOTH(env_yy[*,0],3L,/NAN)

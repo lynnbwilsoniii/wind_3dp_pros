@@ -51,8 +51,6 @@
 ;                                                                   [10/01/2015   v1.0.0]
 ;             3)  Fixed a bug that resulted in the routine ignoring the WIND_N keyword
 ;                                                                   [02/19/2016   v1.1.0]
-;             4)  Apparently routine still ignored WIND_N keyword --> fix
-;                                                                   [06/03/2016   v1.2.0]
 ;
 ;   NOTES:      
 ;               1)  This routine will open up a new window unless the window defined by
@@ -66,7 +64,7 @@
 ;
 ;   CREATED:  10/01/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/03/2016   v1.2.0
+;    LAST MODIFIED:  02/19/2016   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -115,12 +113,12 @@ test           = ((N_ELEMENTS(new_w) GE 1) AND KEYWORD_SET(new_w))
 IF (test[0]) THEN open_new = 1b ELSE open_new = 0b
 ;;  Check WIND_N
 test           = ((N_ELEMENTS(wind_n) GE 1) AND is_a_number(wind_n,/NOMSSG))
-IF (test[0]) THEN test = (wind_n[0] GE 0)
 IF (test[0]) THEN winn_on = 1b ELSE winn_on = 0b
 IF (winn_on[0]) THEN BEGIN
   windn          = LONG(wind_n[0])
   ;;  Check if user specified window is already open
   test_wopen     = (TOTAL(good_w EQ windn[0]) GT 0)     ;;  TRUE --> window already open
+;  test_wopen     = (TOTAL(good_w EQ windn[0]) EQ 0)
   ;;  Check if windows are open already and WIND_N within valid range
   test           = (n_win_open[0] EQ 0) OR (test_wopen[0] EQ 0)
   IF (test[0]) THEN win_on = 0b ELSE win_on = 1b
@@ -150,9 +148,9 @@ DEVICE,GET_SCREEN_SIZE=s_size
 wsz            = s_size*scfrac[0]
 wxysz          = wsz[0] > wsz[1]
 win_ttl        = 'Plots'
+;def_win_str    = {RETAIN:2,XSIZE:wxysz[0],YSIZE:wxysz[0],TITLE:win_ttl[0],XPOS:10,YPOS:10}
 def_win_str    = {RETAIN:2,XSIZE:wxysz[0],YSIZE:wxysz[0],TITLE:win_ttl[0],$
                   XPOS:cur_wpos[0],YPOS:cur_wpos[0]}
-;;  Extract user defined limits options if set
 IF (lim_on[0]) THEN BEGIN
   ;;  Get keywords specific to WINDOW.PRO only
   tags           = ['COLORS','FREE','PIXMAP','RETAIN','TITLE','XPOS','YPOS','XSIZE','YSIZE']
@@ -175,21 +173,14 @@ ENDELSE
 IF (test_xwin[0]) THEN BEGIN
   IF (win_on[0]) THEN BEGIN
     ;;  Open window (if not already open)
-    test          = (test_wopen[0] EQ 0) AND (windn[0] LE 31) AND open_new[0]
-;    test          = (test_wopen[0] EQ 0) AND (windn[0] LT 31) AND open_new[0]
+    test          = (test_wopen[0] EQ 0) AND (windn[0] LT 31) AND open_new[0]
 ;    test          = test_wopen[0] AND (windn[0] LT 31) AND open_new[0]
     IF (test[0]) THEN WINDOW,windn[0],_EXTRA=win_str
   ENDIF ELSE BEGIN
-    test          = (windn[0] GE 0) AND (windn[0] LE 31)
-    IF (test[0]) THEN BEGIN
-      ;;  Open user-defined window number
-      WINDOW,windn[0],_EXTRA=win_str
-    ENDIF ELSE BEGIN
-      ;;  Let IDL decide which window to use
-      WINDOW,/FREE,_EXTRA=win_str
-      ;;  Reset/Define window number being used
-      windn         = !D[0].WINDOW[0]
-    ENDELSE
+    ;;  Let IDL decide which window to use
+    WINDOW,/FREE,_EXTRA=win_str
+    ;;  Reset/Define window number being used
+    windn         = !D[0].WINDOW[0]
   ENDELSE
 ENDIF     ;;   ELSE : the device is set to PS or some other device (should not get here)
 ;;  Set and show window

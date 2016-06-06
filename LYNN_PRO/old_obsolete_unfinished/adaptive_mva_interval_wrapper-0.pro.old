@@ -40,7 +40,7 @@
 ;               ***  INPUTS  ***
 ;               ****************
 ;               TRANGE         :  [2]-Element [double] array specifying the Unix time
-;                                   range for which to limit the data in STRUC
+;                                   range for which to limit the data in DATA
 ;                                   [Default = prompted by get_valid_trange.pro]
 ;               PRECISION      :  Scalar [long] defining precision of the string output:
 ;                                   = -5  :  Year only
@@ -88,14 +88,6 @@
 ;                                   steps to use when defining the time windows within
 ;                                   each subinterval
 ;                                   [Default = N_MIN + (NTWINDS - 1)*DNWINDS]
-;               CONS_NSHFNMIN  :  If set, routine will force NSHIFT ≥ N_MIN/2
-;                                   (idea is to prevent too much overlap)
-;                                   [Default = FALSE]
-;               MIN_AMP_THRSH  :  Scalar [numeric] defining the minimum vector component
-;                                   peak-to-peak amplitude necessary for an interval
-;                                   to undergo minimum variance analysis.  The input must
-;                                   be positive definite.
-;                                   [Default = 0]
 ;               *****************
 ;               ***  OUTPUTS  ***
 ;               *****************
@@ -167,12 +159,6 @@
 ;                   temp_get_def_keywords_iterate_mva.pro to
 ;                   adaptive_mva_interval_get_def_keywords.pro
 ;                                                                   [05/27/2016   v1.0.0]
-;             7)  Changed default N_MIN setting
-;                                                                   [05/31/2016   v1.0.1]
-;             8)  Added keyword:  CONS_NSHFNMIN
-;                                                                   [05/31/2016   v1.1.0]
-;             9)  Added keyword:  MIN_AMP_THRSH
-;                                                                   [06/02/2016   v1.2.0]
 ;
 ;   NOTES:      
 ;               1)  We define the following constraints for the subinterval and windows:
@@ -230,7 +216,7 @@
 ;
 ;   CREATED:  05/25/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/02/2016   v1.2.0
+;    LAST MODIFIED:  05/27/2016   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -240,8 +226,6 @@ PRO adaptive_mva_interval_get_def_keywords,unixt,TRANGE=trange,PRECISION=prec,  
                                             NSHIFT=nshift,NSUBINT=nsubint,             $
                                             NTWINDS=ntwinds,DNWINDS=dnwinds,           $
                                             NTMIN=ntmin,NTMAX=ntmax,                   $
-                                            CONS_NSHFNMIN=cons_nshfnmin,               $
-                                            MIN_AMP_THRSH=min_amp_thrsh,               $
                                             N_MIN=n_min,N_MAX=n_max,N_SUB=n_sub,       $   ;;  Outputs
                                             N_SFT=n_sft,N_WIN=n_win,D__NW=d__nw,       $
                                             N_INT=n_int,GIND_SE=gind_se,FRANGE=frange, $
@@ -339,8 +323,7 @@ IF (gd_lf[0] LE 3) THEN BEGIN
 ENDIF
 ;;  Define subinterval time ranges allowed for later
 IF (highf[0] GE srate[0]/2d0) THEN uppf = highf[0]/4d0 ELSE uppf = highf[0]
-dt_min         = 2.00d0/uppf[0]                           ;;  lower bound --> window width ≥ 200% of shortest periods
-;dt_min         = 1.25d0/uppf[0]                           ;;  lower bound --> window width ≥ 125% of shortest periods
+dt_min         = 1.25d0/uppf[0]                           ;;  lower bound --> window width ≥ 125% of shortest periods
 IF (lowf[0] EQ 0) THEN BEGIN
   dt_max         = dt_int[0]
 ENDIF ELSE BEGIN
@@ -348,11 +331,6 @@ ENDIF ELSE BEGIN
 ENDELSE
 ;;  Define FRANGE output
 frange         = [lowf[0],highf[0]]
-;;  Check MIN_AMP_THRSH
-test_mat       = (N_ELEMENTS(min_amp_thrsh) GE 1) AND is_a_number(min_amp_thrsh,/NOMSSG)
-IF (test_mat[0]) THEN minamp = (DOUBLE(ABS(min_amp_thrsh[0])) > 0d0) ELSE minamp = 0d0
-;;  Define MIN_AMP_THRSH output
-min_amp_thrsh  = minamp[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Check subinterval keywords
 ;;    --> Define initial settings and/or defaults
@@ -366,32 +344,22 @@ IF (ns[0] EQ 1) THEN sfac = 1L ELSE sfac = (ns[0] - 1L)
 test_nshft     = (N_ELEMENTS(nshift) EQ 1) AND is_a_number(nshift,/NOMSSG)
 IF (test_nshft[0]) THEN test_nshft = (LONG(nshift[0])*sfac[0] LT FLOOR(75d-1*n_int[0])) AND (LONG(nshift[0]) GE 0L)
 IF (test_nshft[0]) THEN nshft = LONG(nshift[0]) ELSE nshft = 1L
-;;  Check NTMIN
-test_nmin      = (N_ELEMENTS(ntmin) EQ 1) AND is_a_number(ntmin,/NOMSSG)
-IF (test_nmin[0]) THEN test_nmin = (LONG(ntmin[0]) GE 7L) AND (LONG(ntmin[0]) LE n_int[0])  ;;  Check constrains --> turn on/off logic accordingly
-IF (test_nmin[0]) THEN nf_min = LONG(ntmin[0]) ELSE nf_min = CEIL(srate[0]*dt_min[0]) > 7L
-test_nmin      = (nf_min[0] GE CEIL(srate[0]*dt_min[0]))
-IF (~test_nmin[0]) THEN nf_min = CEIL(srate[0]*dt_min[0])    ;;  Prevent user from setting N_MIN too small
-;;  Check CONS_NSHFNMIN
-test_c_nshnmin = KEYWORD_SET(cons_nshfnmin)
-IF (test_c_nshnmin[0]) THEN BEGIN
-  IF (test_nshft[0]) THEN test_nshft = (nshft[0] GE nf_min[0])
-  IF (~test_nshft[0]) THEN BEGIN
-    nshft      = (nshft[0] > (nf_min[0]/2L))
-;    test_nshft = 1b
-  ENDIF
-;  IF (~test_nshft[0]) THEN nshft = (nshft[0] > (nf_min[0]/2L))
-;  IF (~test_nshft[0]) THEN nshft = (nshft[0] > nf_min[0])
-ENDIF
+;IF (test_nshft[0]) THEN nshft = 1L > (LONG(nshift[0]) < FLOOR(n_int[0]/2L)) ELSE nshft = 1L
 ;;  Check NTWINDS
 test_nw        = (N_ELEMENTS(ntwinds) EQ 1) AND is_a_number(ntwinds,/NOMSSG)
 IF (test_nw[0])  THEN test_nw = (LONG(ntwinds[0]) GE 1L) AND (LONG(ntwinds[0]) LT FLOOR(9d-1*(n_int[0] - nshft[0]*sfac[0])))
 IF (test_nw[0])  THEN ntw = LONG(ntwinds[0]) ELSE ntw = 4L
 IF (ntw[0] EQ 1) THEN wfac = 1L ELSE wfac = (ntw[0] - 1L)
+;IF (test_nw[0]) THEN ntw = 1L > LONG(ntwinds[0]) ELSE ntw = 4L
 ;;  Check DNWINDS
 test_dnw       = (N_ELEMENTS(dnwinds) EQ 1) AND is_a_number(dnwinds,/NOMSSG)
 IF (test_dnw[0]) THEN test_dnw = (LONG(dnwinds[0]) GE 0L) AND (LONG(dnwinds[0])*wfac[0] LE FLOOR(n_int[0] - nshft[0]*sfac[0]))
 IF (test_dnw[0]) THEN dntw = LONG(dnwinds[0]) ELSE dntw = 1L
+;IF (test_dnw[0]) THEN dntw = 1L > LONG(dnwinds[0]) ELSE dntw = 1L
+;;  Check NTMIN
+test_nmin      = (N_ELEMENTS(ntmin) EQ 1) AND is_a_number(ntmin,/NOMSSG)
+IF (test_nmin[0]) THEN test_nmin = (LONG(ntmin[0]) GE 7L) AND (LONG(ntmin[0]) LE n_int[0])  ;;  Check constrains --> turn on/off logic accordingly
+IF (test_nmin[0]) THEN nf_min = LONG(ntmin[0]) ELSE nf_min = CEIL(srate[0]*dt_min[0]) > 7L
 ;;  Check NTMAX
 test_nmax      = (N_ELEMENTS(ntmax) EQ 1) AND is_a_number(ntmax,/NOMSSG)
 IF (test_nmax[0]) THEN BEGIN
@@ -458,10 +426,8 @@ CASE const_lev1[0] OF
         IF (  test_dnw[0]) THEN IF ( dntw[0] NE 0) THEN test_dnw   = 0b  ;;  shut off logic
         n_min = nf_min[0]
         n_max = nf_min[0]
-;        IF (test_nshft[0]) THEN BEGIN
-;          ;;  User defined N_SFT
-        IF (test_nshft[0] OR test_c_nshnmin[0]) THEN BEGIN
-          ;;  User defined N_SFT or set CONS_NSHFNMIN keyword
+        IF (test_nshft[0]) THEN BEGIN
+          ;;  User defined N_SFT
           n_sft = nshft[0]
           IF (test_ns[0]) THEN BEGIN
             ;;  Constrain user defined value (N_SUB)
@@ -488,10 +454,8 @@ CASE const_lev1[0] OF
         ;;--------------------------------------------------------------------------------
         n_min = nf_min[0]
         n_max = nf_max[0]
-;        IF (test_nshft[0]) THEN BEGIN
-;          ;;  User defined N_SFT
-        IF (test_nshft[0] OR test_c_nshnmin[0]) THEN BEGIN
-          ;;  User defined N_SFT or set CONS_NSHFNMIN keyword
+        IF (test_nshft[0]) THEN BEGIN
+          ;;  User defined N_SFT
           n_sft = nshft[0]
           IF (test_ns[0]) THEN BEGIN
             ;;  Constrain user defined value (N_SUB)
@@ -639,7 +603,7 @@ END
 ;               ***  INPUTS  ***
 ;               ****************
 ;               TRANGE         :  [2]-Element [double] array specifying the Unix time
-;                                   range for which to limit the data in STRUC
+;                                   range for which to limit the data in DATA
 ;                                   [Default = prompted by get_valid_trange.pro]
 ;               PRECISION      :  Scalar [long] defining precision of the string output:
 ;                                   = -5  :  Year only
@@ -687,14 +651,6 @@ END
 ;                                   steps to use when defining the time windows within
 ;                                   each subinterval
 ;                                   [Default = N_MIN + (NTWINDS - 1)*DNWINDS]
-;               CONS_NSHFNMIN  :  If set, routine will force NSHIFT ≥ N_MIN/2
-;                                   (idea is to prevent too much overlap)
-;                                   [Default = FALSE]
-;               MIN_AMP_THRSH  :  Scalar [numeric] defining the minimum vector component
-;                                   peak-to-peak amplitude necessary for an interval
-;                                   to undergo minimum variance analysis.  The input must
-;                                   be positive definite.
-;                                   [Default = 0]
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [05/26/2016   v1.0.0]
@@ -709,13 +665,6 @@ END
 ;                   temp_get_mva_inds_iterate_mva.pro to
 ;                   adaptive_mva_interval_get_sub_inds.pro
 ;                                                                   [05/27/2016   v1.0.0]
-;             7)  Changed default N_MIN setting in
-;                   adaptive_mva_interval_get_def_keywords.pro
-;                                                                   [05/31/2016   v1.0.1]
-;             8)  Added keyword:  CONS_NSHFNMIN
-;                                                                   [05/31/2016   v1.1.0]
-;             9)  Added keyword:  MIN_AMP_THRSH
-;                                                                   [06/02/2016   v1.2.0]
 ;
 ;   NOTES:      
 ;               1)  The routine uses the following picture:
@@ -779,7 +728,7 @@ END
 ;
 ;   CREATED:  05/26/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/02/2016   v1.2.0
+;    LAST MODIFIED:  05/27/2016   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -788,9 +737,7 @@ FUNCTION adaptive_mva_interval_get_sub_inds,unixt,TRANGE=trange,PRECISION=prec, 
                                                   LOW_FREQ=low_freq,HIGHFREQ=highfreq, $
                                                   NSHIFT=nshift,NSUBINT=nsubint,       $
                                                   NTWINDS=ntwinds,DNWINDS=dnwinds,     $
-                                                  NTMIN=ntmin,NTMAX=ntmax,             $
-                                                  CONS_NSHFNMIN=cons_nshfnmin,         $
-                                                  MIN_AMP_THRSH=min_amp_thrsh
+                                                  NTMIN=ntmin,NTMAX=ntmax
 
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
@@ -826,8 +773,6 @@ adaptive_mva_interval_get_def_keywords,unix,TRANGE=trange,PRECISION=prec,       
                                             NSHIFT=nshift,NSUBINT=nsubint,             $
                                             NTWINDS=ntwinds,DNWINDS=dnwinds,           $
                                             NTMIN=ntmin,NTMAX=ntmax,                   $
-                                            CONS_NSHFNMIN=cons_nshfnmin,               $
-                                            MIN_AMP_THRSH=min_amp_thrsh,               $
                                             N_MIN=n_min,N_MAX=n_max,N_SUB=n_sub,       $   ;;  Outputs
                                             N_SFT=n_sft,N_WIN=n_win,D__NW=d__nw,       $
                                             N_INT=n_int,GIND_SE=gind_se,FRANGE=frange, $
@@ -922,7 +867,7 @@ END
 ;                                     Y  :  [N,3]-Element array of 3-vectors
 ;
 ;                                   If the TSHIFT tag is present, the routine will assume
-;                                   that STRUC.X is seconds from STRUC.TSHIFT[0].
+;                                   that DATA.X is seconds from DATA.TSHIFT[0].
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
@@ -935,7 +880,7 @@ END
 ;
 ;  KEYWORDS:    
 ;               TRANGE         :  [2]-Element [double] array specifying the Unix time
-;                                   range for which to limit the data in STRUC
+;                                   range for which to limit the data in DATA
 ;                                   [Default = prompted by get_valid_trange.pro]
 ;               PRECISION      :  Scalar [long] defining precision of the string output:
 ;                                   = -5  :  Year only
@@ -983,14 +928,6 @@ END
 ;                                   steps to use when defining the time windows within
 ;                                   each subinterval
 ;                                   [Default = N_MIN + (NTWINDS - 1)*DNWINDS]
-;               CONS_NSHFNMIN  :  If set, routine will force NSHIFT ≥ N_MIN/2
-;                                   (idea is to prevent too much overlap)
-;                                   [Default = FALSE]
-;               MIN_AMP_THRSH  :  Scalar [numeric] defining the minimum vector component
-;                                   peak-to-peak amplitude necessary for an interval
-;                                   to undergo minimum variance analysis.  The input must
-;                                   be positive definite.
-;                                   [Default = 0]
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [05/25/2016   v1.0.0]
@@ -1012,13 +949,6 @@ END
 ;                   temp_iterate_mva_over_interval.pro to
 ;                   adaptive_mva_interval_wrapper.pro
 ;                                                                   [05/27/2016   v1.0.0]
-;            10)  Changed default N_MIN setting in
-;                   adaptive_mva_interval_get_def_keywords.pro
-;                                                                   [05/31/2016   v1.0.1]
-;            11)  Added keyword:  CONS_NSHFNMIN
-;                                                                   [05/31/2016   v1.1.0]
-;            12)  Added keyword:  MIN_AMP_THRSH
-;                                                                   [06/02/2016   v1.2.0]
 ;
 ;   NOTES:      
 ;               0)  ***  STILL TESTING  ***
@@ -1041,8 +971,8 @@ END
 ;                       or the 2nd dimension of V [if 2D array].
 ;
 ;                       If the TSHIFT tag is present, the routine will assume
-;                       that NEW_T is a Unix time and STRUC.X is seconds from
-;                       STRUC.TSHIFT[0].
+;                       that NEW_T is a Unix time and DATA.X is seconds from
+;                       DATA.TSHIFT[0].
 ;               2)  For details of interval definitions, see NOTES section in
 ;                     adaptive_mva_interval_get_sub_inds.pro
 ;                     adaptive_mva_interval_get_def_keywords.pro
@@ -1066,7 +996,7 @@ END
 ;
 ;   CREATED:  05/24/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/02/2016   v1.2.0
+;    LAST MODIFIED:  05/27/2016   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -1076,9 +1006,7 @@ FUNCTION adaptive_mva_interval_wrapper,struc,TRANGE=trange,PRECISION=prec,      
                                              LOW_FREQ=low_freq,HIGHFREQ=highfreq,     $
                                              NSHIFT=nshift,NSUBINT=nsubint,           $
                                              NTWINDS=ntwinds,DNWINDS=dnwinds,         $
-                                             NTMIN=ntmin,NTMAX=ntmax,                 $
-                                             CONS_NSHFNMIN=cons_nshfnmin,             $
-                                             MIN_AMP_THRSH=min_amp_thrsh
+                                             NTMIN=ntmin,NTMAX=ntmax
 
 ;;****************************************************************************************
 ex_start = SYSTIME(1)
@@ -1131,9 +1059,7 @@ mva_struc      = adaptive_mva_interval_get_sub_inds(unix,TRANGE=trange,PRECISION
                                                     LOW_FREQ=low_freq,HIGHFREQ=highfreq, $
                                                     NSHIFT=nshift,NSUBINT=nsubint,       $
                                                     NTWINDS=ntwinds,DNWINDS=dnwinds,     $
-                                                    NTMIN=ntmin,NTMAX=ntmax,             $
-                                                    CONS_NSHFNMIN=cons_nshfnmin,         $
-                                                    MIN_AMP_THRSH=min_amp_thrsh          )
+                                                    NTMIN=ntmin,NTMAX=ntmax              )
 ;;  Make sure valid outputs were returned
 test           = (SIZE(mva_struc,/TYPE) NE 8)
 IF (test[0]) THEN BEGIN
@@ -1157,8 +1083,6 @@ n_vals         = mva_struc.N_VALS
 tran           = mva_struc.TRANGE
 ;;  Define logic information (TRUE/FALSE informing user of status of keyword settings)
 logic_out      = mva_struc.LOGIC_INFO
-;;  Define the minimum vector component pk-pk amplitude
-minamp         = min_amp_thrsh[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Perform simple box Fourier bandpass
 ;;    --> use entire time series to reduce edge effects and leakage
@@ -1199,21 +1123,12 @@ FOR s=0L, n_sub[0] - 1L DO BEGIN
   st         = REFORM(ind_st[s,*])
   en         = REFORM(ind_en[s,*])
   FOR w=0L, n_win[0] - 1L DO BEGIN
-    se        = [st[w],en[w]]
-    test      = (TOTAL(se LT 0) GT 0)               ;;  Check for negative indices
+    se       = [st[w],en[w]]
+    test     = (TOTAL(se LT 0) GT 0)                ;;  Check for negative indices
     IF (test[0]) THEN CONTINUE                      ;;  Jump to next iteration
-    t_vec     = REFORM(vec_fint[se[0]:se[1],*])
-    ;;  First check amplitude
-    pkpk_x    = DOUBLE(ABS(MAX(t_vec[*,0],/NAN) - MIN(t_vec[*,0],/NAN)))
-    pkpk_y    = DOUBLE(ABS(MAX(t_vec[*,1],/NAN) - MIN(t_vec[*,1],/NAN)))
-    pkpk_z    = DOUBLE(ABS(MAX(t_vec[*,2],/NAN) - MIN(t_vec[*,2],/NAN)))
-    test      = (pkpk_x[0] LE minamp[0]) AND (pkpk_y[0] LE minamp[0]) AND (pkpk_z[0] LE minamp[0])
-    IF (test[0]) THEN CONTINUE                      ;;  Jump to next iteration
-;    good_negx = WHERE(t_vec[*,0] LT 0,gd_negx,COMPLEMENT=good_posx,NCOMPLEMENT=gd_posx)
-;    good_negy = WHERE(t_vec[*,1] LT 0,gd_negy,COMPLEMENT=good_posy,NCOMPLEMENT=gd_posy)
-;    good_negz = WHERE(t_vec[*,2] LT 0,gd_negz,COMPLEMENT=good_posz,NCOMPLEMENT=gd_posz)
-    eigvecs   = lbw_minvar(t_vec[*,0],t_vec[*,1],t_vec[*,2],EIG_VALS=eigvals)
-    test      = (N_ELEMENTS(eigvecs) LT 9)
+    t_vec    = REFORM(vec_fint[se[0]:se[1],*])
+    eigvecs  = lbw_minvar(t_vec[*,0],t_vec[*,1],t_vec[*,2],EIG_VALS=eigvals)
+    test     = (N_ELEMENTS(eigvecs) LT 9)
     IF (test[0]) THEN CONTINUE                      ;;  Jump to next iteration
     ;;  Fill dummy arrays
     dumb_mnval[w]   = eigvals[0]
