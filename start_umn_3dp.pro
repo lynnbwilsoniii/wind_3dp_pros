@@ -70,6 +70,8 @@
 ;                                                                  [04/29/2015   v1.7.3]
 ;            20)  Cleaned up and now calls add_os_slash.pro
 ;                                                                  [08/20/2015   v1.8.0]
+;            21)  Moved some of the routines within ~/LYNN_PRO/
+;                                                                  [06/06/2016   v1.9.0]
 ;
 ;   NOTES:      
 ;               0)  Still in production...
@@ -107,7 +109,7 @@
 ;
 ;   CREATED:  09/16/2009
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/20/2015   v1.8.0
+;    LAST MODIFIED:  06/06/2016   v1.9.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -120,9 +122,12 @@ FORWARD_FUNCTION get_os_slash, add_os_slash
 ;;----------------------------------------------------------------------------------------
 ;;    --> LBW III  04/29/2015   v1.7.3
 CD,'wind_3dp_pros/'  ;;  Move into ~/wind_3dp_pros directory to compile routines
-.compile ./LYNN_PRO/get_os_slash.pro
-;;    --> LBW III  08/20/2015   v1.8.0
-.compile ./LYNN_PRO/add_os_slash.pro
+;.compile ./LYNN_PRO/get_os_slash.pro
+;;;    --> LBW III  08/20/2015   v1.8.0
+;.compile ./LYNN_PRO/add_os_slash.pro
+;;    --> LBW III  06/06/2016   v1.9.0
+.compile ./LYNN_PRO/string_routines/get_os_slash.pro
+.compile ./LYNN_PRO/string_routines/add_os_slash.pro
 CD,'..'             ;;  Return to current working directory
 slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
 
