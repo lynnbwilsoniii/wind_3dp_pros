@@ -1,7 +1,7 @@
 ;+
 ;*****************************************************************************************
 ;
-;  FUNCTION :   isLeft2d.pro
+;  FUNCTION :   isleft2d.pro
 ;  PURPOSE  :   This routine tests if an array of points are Left|On|Right of an
 ;                 infinite 2D line.  The i-th output is as follows:
 ;                   > 0  :  {PX[i],PY[i]} left of the line through P0 to P1
@@ -41,7 +41,7 @@
 ;               PRINT, FLOAT(px), FLOAT(py)
 ;                    -2.00000     0.183481     0.441949     -1.64878   -0.0838685
 ;                     1.20652      2.00000     -1.76505      1.79967      1.07329
-;               PRINT, isLeft2D(p0,p1,px,py) GT 0
+;               PRINT, isleft2d(p0,p1,px,py) GT 0
 ;                  1   0   1   0   0
 ;
 ;  KEYWORDS:    
@@ -49,6 +49,10 @@
 ;
 ;   CHANGED:  1)  Changed name so all letters are lower-case and updated Man. page
 ;                                                                   [05/15/2014   v1.1.0]
+;             2)  Changed name to all lower case letters
+;                   [I guess original edit was not implemented?]
+;                   and fixed sign of of cross-product
+;                                                                   [05/31/2016   v1.2.0]
 ;
 ;   NOTES:      
 ;               1)  This routine just calculates the cross-product between the lines
@@ -60,13 +64,13 @@
 ;
 ;   CREATED:  04/22/2014
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/15/2014   v1.1.0
+;    LAST MODIFIED:  05/31/2016   v1.2.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION isLeft2d,p0,p1,px,py
+FUNCTION isleft2d,p0,p1,px,py
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -114,7 +118,8 @@ ri0[*,1]       = REFORM(py) - p0[1]
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate Z-component of cross-product
 ;;----------------------------------------------------------------------------------------
-zcomp          = ri0[*,0]*r10[1] - ri0[*,1]*r10[0]
+zcomp          = ri0[*,1]*r10[0] - ri0[*,0]*r10[1]
+;zcomp          = ri0[*,0]*r10[1] - ri0[*,1]*r10[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

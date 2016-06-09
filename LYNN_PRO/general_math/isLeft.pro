@@ -1,7 +1,7 @@
 ;+
 ;*****************************************************************************************
 ;
-;  FUNCTION :   isLeft.pro
+;  FUNCTION :   isleft.pro
 ;  PURPOSE  :   This routine tests if a point is Left|On|Right of an infinite 2D line.
 ;                 The outputs are as follows:
 ;                   > 0  :  P2 left of the line through P0 to P1
@@ -52,24 +52,26 @@
 ;  KEYWORDS:    
 ;               NA
 ;
-;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
+;   CHANGED:  1)  Changed name to all lower case letters and fixed sign of
+;                   of cross-product
+;                                                                   [05/31/2016   v1.1.0]
 ;
 ;   NOTES:      
 ;               1)  This routine just calculates the cross-product between the lines
 ;                     from (P0 --> P2) and (P0 --> P1), taking only the z-component.
 ;
 ;  REFERENCES:  
-;               
+;               See Numerical Recipes on "winding number"
 ;
 ;   CREATED:  04/21/2014
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/21/2014   v1.0.0
+;    LAST MODIFIED:  05/31/2016   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION isLeft,p0,p1,p2
+FUNCTION isleft,p0,p1,p2
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -109,8 +111,8 @@ dy_20          = p2[1] - p0[1]
 ;;----------------------------------------------------------------------------------------
 ;;  Test point P2 (just Z-component of cross product)
 ;;----------------------------------------------------------------------------------------
-;test           = dx_10[0]*dy_20[0] - dx_20[0]*dy_10[0]
-test           = dx_20[0]*dy_10[0] - dx_10[0]*dy_20[0]
+test           = dx_10[0]*dy_20[0] - dx_20[0]*dy_10[0]
+;test           = dx_20[0]*dy_10[0] - dx_10[0]*dy_20[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
