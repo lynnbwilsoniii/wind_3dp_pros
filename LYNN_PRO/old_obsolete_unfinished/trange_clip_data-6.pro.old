@@ -17,11 +17,8 @@
 ;
 ;  CALLS:
 ;               tplot_struct_format_test.pro
-;               struct_value.pro
 ;               is_a_number.pro
 ;               get_valid_trange.pro
-;               str_element.pro
-;               extract_tags.pro
 ;
 ;  REQUIRES:    
 ;               1)  UMN Modified Wind/3DP IDL Libraries
@@ -178,9 +175,6 @@
 ;                                                                   [03/22/2016   v1.1.2]
 ;             6)  Routine can now handle TSHIFT structure tag for TPLOT structures
 ;                                                                   [04/21/2016   v1.2.0]
-;             7)  Cleaned up and now calls struct_value.pro and extract_tags.pro and
-;                   now handles structures with DY tag and other time-independent tags
-;                                                                   [06/15/2016   v1.3.0]
 ;
 ;   NOTES:      
 ;               1)  See also:  get_valid_trange.pro
@@ -190,7 +184,7 @@
 ;
 ;   CREATED:  10/05/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/15/2016   v1.3.0
+;    LAST MODIFIED:  04/21/2016   v1.2.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -210,8 +204,6 @@ test_vv        = 0b
 test_vv_2d     = 0b
 test_v1        = 0b
 test_v2        = 0b
-;;  Not extracted tags
-excpt_tags     = ['X','Y','V','V1','V2','DY','TSHIFT']
 ;;  Dummy error messages
 no_inpt_msg    = 'User must supply an IDL TPLOT structure...'
 baddfor_msg    = 'Incorrect input format:  DATA must be an IDL TPLOT structure'
@@ -227,9 +219,7 @@ IF (test[0]) THEN BEGIN
   RETURN,0b
 ENDIF
 ;;  Check if TPLOT structure
-test           = tplot_struct_format_test(data,TEST__V=test__v,TEST_V1_V2=test_v1_v2,$
-                                          TEST_DY=test_dy,/NOMSSG)
-;test           = tplot_struct_format_test(data,TEST__V=test__v,TEST_V1_V2=test_v1_v2,/NOMSSG)
+test           = tplot_struct_format_test(data,TEST__V=test__v,TEST_V1_V2=test_v1_v2,/NOMSSG)
 IF (test[0] EQ 0) THEN BEGIN
   MESSAGE,baddfor_msg,/INFORMATIONAL,/CONTINUE
   RETURN,0b
@@ -240,8 +230,7 @@ ENDIF
 nt             = N_TAGS(data)
 time           = data.X            ;;  [N]-Element array of Unix times
 dats           = data.Y            ;;  [N [,M , L]]-Element array of data
-;str_element,data,'TSHIFT',tshift
-tshift         = struct_value(data,'TSHIFT',DEFAULT=0d0)
+str_element,data,'TSHIFT',tshift
 szdt           = SIZE(time,/DIMENSIONS)
 szdd           = SIZE(dats,/DIMENSIONS)
 sznd           = SIZE(dats,/N_DIMENSIONS)
@@ -255,12 +244,6 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Check for other time-dependent structure tags
 ;;----------------------------------------------------------------------------------------
-;;  Check for DY
-IF (test_dy[0] GT 0) THEN BEGIN
-  uny        = data.DY
-  test_uy    = 1b
-ENDIF ELSE test_uy = 0b
-
 ;;  Check for V
 test_vv_2d     = (test__v[0] EQ 2)
 IF (test__v[0] GT 0) THEN BEGIN
@@ -286,8 +269,8 @@ IF (test[0]) THEN BEGIN
   RETURN,0b
 ENDIF
 ;;  Redefine TRANGE
-tra_off        = tra_unix - tshift[0]  ;;  Remove TSHIFT (if present)
-;IF (N_ELEMENTS(tshift) GT 0) THEN tra_off -= tshift[0]  ;;  Remove TSHIFT (if present)
+tra_off        = tra_unix
+IF (N_ELEMENTS(tshift) GT 0) THEN tra_off -= tshift[0]  ;;  Remove TSHIFT (if present)
 trange         = tra_unix
 ;;----------------------------------------------------------------------------------------
 ;;  Determine which elements are within TRANGE
@@ -307,21 +290,9 @@ ENDIF
 xx             = tt[good]
 sp2            = sp[good]         ;;  Define only the "good" sorted indices
 CASE sznd[0] OF
-  1    :  BEGIN
-    yy = dats[sp2]          ;;  [N]-Element array
-    IF (test_uy[0]) THEN dy = uny[sp2]
-  END
-  2    :  BEGIN
-    yy = dats[sp2,*]        ;;  [N,M]-Element array
-    IF (test_uy[0]) THEN dy = uny[sp2,*]
-  END
-  3    :  BEGIN
-    yy = dats[sp2,*,*]      ;;  [N,M,L]-Element array
-    IF (test_uy[0]) THEN dy = uny[sp2,*,*]
-  END
-;  1    :  yy = dats[sp2]          ;;  [N]-Element array
-;  2    :  yy = dats[sp2,*]        ;;  [N,M]-Element array
-;  3    :  yy = dats[sp2,*,*]      ;;  [N,M,L]-Element array
+  1    :  yy = dats[sp2]          ;;  [N]-Element array
+  2    :  yy = dats[sp2,*]        ;;  [N,M]-Element array
+  3    :  yy = dats[sp2,*,*]      ;;  [N,M,L]-Element array
   ELSE : STOP  ;;  What did you do?  --> debug
 ENDCASE
 ;;  Check for V or V1 AND V2
@@ -348,24 +319,17 @@ IF (test[0]) THEN BEGIN
   ;;  Either V or V1 AND V2 are present
   IF (v1_v2_on[0]) THEN BEGIN
     ;;  V1 AND V2 are present
-    struc          = {X:xx,Y:yy,V1:v1out,V2:v2out,TSHIFT:tshift[0]}
-;    struc          = {X:xx,Y:yy,V1:v1out,V2:v2out}
+    struc          = {X:xx,Y:yy,V1:v1out,V2:v2out}
   ENDIF ELSE BEGIN
     ;;  V is present
-    struc          = {X:xx,Y:yy,V:vvout,TSHIFT:tshift[0]}
-;    struc          = {X:xx,Y:yy,V:vvout}
+    struc          = {X:xx,Y:yy,V:vvout}
   ENDELSE
 ENDIF ELSE BEGIN
   ;;  Only X and Y tags are present or correctly set
-  struc          = {X:xx,Y:yy,TSHIFT:tshift[0]}
-;  struc          = {X:xx,Y:yy}
+  struc          = {X:xx,Y:yy}
 ENDELSE
-;;  Check for DY
-IF (test_uy[0]) THEN str_element,struc,'DY',dy,/ADD_REPLACE  ;;  Add DY (if present)
-;;  Add remaining time-independent tags
-extract_tags,struc,data,EXCEPT_TAGS=excpt_tags
-;;;  Check for TSHIFT
-;IF (N_ELEMENTS(tshift) GT 0) THEN str_element,struc,'TSHIFT',tshift[0],/ADD_REPLACE  ;;  Add TSHIFT (if present)
+;;  Check for TSHIFT
+IF (N_ELEMENTS(tshift) GT 0) THEN str_element,struc,'TSHIFT',tshift[0],/ADD_REPLACE  ;;  Add TSHIFT (if present)
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

@@ -1,0 +1,592 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   extract_good_mva_from_adapint.pro
+;  PURPOSE  :   This is a wrapping routine for adaptive_mva_interval_wrapper.pro that
+;                 extracts the good MVA intervals from the bad.  The output structure
+;                 contains all the MVA results and separate tags for the "good" and
+;                 "best" results.  The "good"/"best" results are defined as follows:
+;                   Let L_j be the jth eigenvalue, then we have:
+;                     good = ((L_mid/L_min ≥ 10) && (L_max/L_mid < 3)) || 
+;                             (L_mid/L_min)/(L_max/L_mid) > 3
+;                     best = the subintervals that satisfy both of the following:
+;                             Maximize  :  (L_mid/L_min - L_max/L_mid) && (L_mid/L_min)
+;                             Minimize  :  (L_max/L_mid)
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               adaptive_mva_interval_wrapper.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               STRUC          :  Scalar [structure] defining a valid TPLOT structure
+;                                   the the user wishes to clip (in time) in order to
+;                                   examine only data between the limits defined by the
+;                                   TRANGE keyword and then perform MVA on subintervals.
+;
+;                                   The required structure tags for STRUC are:
+;                                     X  :  [N]-Element array of Unix times
+;                                     Y  :  [N,3]-Element array of 3-vectors
+;
+;                                   If the TSHIFT tag is present, the routine will assume
+;                                   that STRUC.X is seconds from STRUC.TSHIFT[0].
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               mva_out = adaptive_mva_interval_wrapper(struc [,TRANGE=trange]         $
+;                                       [,PRECISION=prec] [,LOW_FREQ=low_freq]         $
+;                                       [,HIGHFREQ=highfreq] [,NSHIFT=nshift]          $
+;                                       [,NSUBINT=nsubint] [,NTWINDS=ntwinds]          $
+;                                       [,DNWINDS=dnwinds] [,NTMIN=ntmin]              $
+;                                       [,NTMAX=ntmax] [,/CONS_NSHFNMIN]               $
+;                                       [,MIN_AMP_THRSH=min_amp_thrsh] [,/GOOD_10_3]   $
+;                                       [,BEST_NO_OVRLP=best_no_ovrlp]                 $
+;                                       [,MX_OVRLP_THSH=mx_ovrlp_thsh])
+;
+;  KEYWORDS:    
+;               TRANGE         :  [2]-Element [double] array specifying the Unix time
+;                                   range for which to limit the data in STRUC
+;                                   [Default = prompted by get_valid_trange.pro]
+;               PRECISION      :  Scalar [long] defining precision of the string output:
+;                                   = -5  :  Year only
+;                                   = -4  :  Year, month
+;                                   = -3  :  Year, month, date
+;                                   = -2  :  Year, month, date, hour
+;                                   = -1  :  Year, month, date, hour, minute
+;                                   = 0   :  Year, month, date, hour, minute, sec
+;                                   = >0  :  fractional seconds
+;                                   [Default = 0]
+;               LOW_FREQ       :  Scalar [numeric] defining the lower frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = 0.0]
+;               HIGHFREQ       :  Scalar [numeric] defining the upper frequency bound for
+;                                   a bandpass filter to be applied to the entire time
+;                                   series in STRUC prior to clipping and performing MVA
+;                                   [Default = (sample rate)]
+;               NSHIFT         :  Scalar [long] defining the index shift for each new
+;                                   time window set (i.e., each subinterval) such that
+;                                   the following constraint is met:
+;                                     ((Nmax + NSUBINT*NSHIFT) MOD Nint) = 0
+;                                   where Nmax is the maximum # of time steps in each
+;                                   subinterval and Nint is the # of time steps within
+;                                   the range defined by TRANGE
+;                                   [Default = 1]
+;               NSUBINT        :  Scalar [long] defining the number of subintervals that
+;                                   each contain NTWINDS time windows
+;                                   [Default = 5]
+;               NTWINDS        :  Scalar [long] defining the number of time windows to
+;                                   use between Nmin and Nmax (i.e., each subinterval)
+;                                   before shifting by NSHIFT
+;                                   [Default = 4]
+;               DNWINDS        :  Scalar [long] defining the integer # of time steps by
+;                                   which to increase each time window such that there
+;                                   are an integer number of window, NTWINDS, within the
+;                                   range between Nmin and Nmax such that:
+;                                     Nmax = Nmin + (NTWINDS - 1)*DNWINDS
+;                                   [Default = (Nmax - Nmin)/(NTWINDS - 1)]
+;               NTMIN          :  Scalar [long] defining the minimum integer # of time
+;                                   steps to use when defining the time windows within
+;                                   each subinterval
+;                                   [Default = 7 > (Sr*Co/HIGHFREQ)]
+;               NTMAX          :  Scalar [long] defining the maximum integer # of time
+;                                   steps to use when defining the time windows within
+;                                   each subinterval
+;                                   [Default = N_MIN + (NTWINDS - 1)*DNWINDS]
+;               CONS_NSHFNMIN  :  If set, routine will force NSHIFT ≥ N_MIN/2
+;                                   (idea is to prevent too much overlap)
+;                                   [Default = FALSE]
+;               MIN_AMP_THRSH  :  Scalar [numeric] defining the minimum vector component
+;                                   peak-to-peak amplitude necessary for an interval
+;                                   to undergo minimum variance analysis.  The input must
+;                                   be positive definite.
+;                                   [Default = 0]
+;               GOOD_10_3      :  If set, routine redefines "good" as satisfying the
+;                                   following:
+;                                     good = ((L_mid/L_min ≥ 10) && (L_max/L_mid < 3))
+;                                   [Default = FALSE]
+;               BEST_NO_OVRLP  :  Set to a named variable to return the "best"
+;                                   non-overlapping subinterval indices
+;               MX_OVRLP_THSH  :  Scalar [numeric] defining the minimum fraction
+;                                   to allow before considering two subintervals to
+;                                   be overlapping.  Value will be constrained to lie
+;                                   between 0.15-0.85.
+;                                   [Default = 0.5]
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [06/07/2016   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [06/07/2016   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [06/07/2016   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [06/07/2016   v1.0.0]
+;             5)  Continued to write routine
+;                                                                   [06/07/2016   v1.0.0]
+;             6)  Finished writing routine
+;                                                                   [06/08/2016   v1.0.0]
+;             7)  Now forces constraints of GOOD_10_3 keyword on BEST_NO_OVRLP if both
+;                   are set
+;                                                                   [06/08/2016   v1.1.0]
+;             8)  Cleaned up and moved to ~/LYNN_PRO/Minimum_Variance_Analysis/
+;                                                                   [06/08/2016   v1.1.1]
+;             9)  Changed how constraints of GOOD_10_3 keyword are used in conjunction
+;                   with BEST_NO_OVRLP keyword
+;                                                                   [06/09/2016   v1.2.0]
+;            10)  Fixed a bug that occurred when no finite eigenvalues were found
+;                                                                   [06/10/2016   v1.2.1]
+;            11)  Fixed an issue when both GOOD_10_3 and BEST_NO_OVRLP keywords are set
+;                                                                   [06/11/2016   v1.2.2]
+;
+;   NOTES:      
+;               1)  See Man. pages from adaptive_mva_interval_wrapper.pro
+;               2)  Assume one called this routine with the output result defined
+;                     as MVA_OUT and the keyword BEST_NO_OVRLP set to a named variable.
+;
+;                     To get the "best" non-overlapping subinterval indices, use
+;                     the following:
+;                       sind    :  [S]-Element array of all subinterval (SI) indices
+;                       wind    :  [W]-Element array of all time window (TW) indices
+;                       good    :  [J]-Element array of "best" non-overlapping SI
+;                       j       :  j-th "best" non-overlapping SI index
+;                       k       :  TW index for j-th SI
+;                       sis[j]  :  Start indices w/rt to beginning of j-th SI
+;                       sie[j]  :  End indices w/rt to beginning of j-th SI
+;                       mvs[j]  :  j-th good MVA SI index = good[j]
+;                       mvw[j]  :  j-th good MVA TW index = wind[good[j]]
+;
+;                     Then one can define the following:
+;                       sis = best_no_ovrlp.SE_IND[*,0]
+;                       sie = best_no_ovrlp.SE_IND[*,1]
+;                       mvs = best_no_ovrlp.MVA_SIND
+;                       mvw = best_no_ovrlp.MVA_WIND
+;
+;                     To get the indices w/rt to the entire input array (i.e., STRUC),
+;                     use the following:
+;                       st  :  Start index w/rt 0th element of STRUC.X defined by TRANGE
+;                       en  :  End index w/rt 0th element of STRUC.X defined by TRANGE
+;
+;                     Then one can define the following:
+;                       st = mva_out.ALL_MVA_RESULTS.MVA_INT_STR.TW_IND_SE[0]
+;                       en = mva_out.ALL_MVA_RESULTS.MVA_INT_STR.TW_IND_SE[1]
+;
+;  REFERENCES:  
+;               1)  G. Paschmann and P.W. Daly "Analysis Methods for Multi-Spacecraft
+;                     Data," ISSI Scientific Report, Noordwijk, The Netherlands.,
+;                     Int. Space Sci. Inst., 1998.
+;               2)  J.C. Samson and J.V. Olson, "Some Comments on the Descriptions of
+;                      the Polarization States of Waves," Geophys. J. Astr. Soc. 61,
+;                      pp. 115-129, 1980.
+;               3)  J.D. Means, "Use of the Three-Dimensional Covariance Matrix in
+;                      Analyzing the Polarization Properties of Plane Waves,"
+;                      J. Geophys. Res. 77(28), pg 5551-5559, 1972.
+;               4)  H. Kawano and T. Higuchi "The bootstrap method in space physics:
+;                     Error estimation for the minimum variance analysis," Geophys.
+;                     Res. Lett. 22(3), pp. 307-310, 1995.
+;               5)  A.V. Khrabrov and B.U.Ö Sonnerup "Error estimates for minimum
+;                     variance analysis," J. Geophys. Res. 103(A4), pp. 6641-6651,
+;                     1998.
+;
+;   CREATED:  06/07/2016
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  06/11/2016   v1.2.2
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION extract_good_mva_from_adapint,struc,TRANGE=trange,PRECISION=prec,            $
+                                             LOW_FREQ=low_freq,HIGHFREQ=highfreq,     $
+                                             NSHIFT=nshift,NSUBINT=nsubint,           $
+                                             NTWINDS=ntwinds,DNWINDS=dnwinds,         $
+                                             NTMIN=ntmin,NTMAX=ntmax,                 $
+                                             CONS_NSHFNMIN=cons_nshfnmin,             $
+                                             MIN_AMP_THRSH=min_amp_thrsh,             $
+                                             GOOD_10_3=good_10_3,                     $
+                                             BEST_NO_OVRLP=best_no_ovrlp,             $
+                                             MX_OVRLP_THSH=mx_ovrlp_thsh
+
+;;****************************************************************************************
+ex_start = SYSTIME(1)
+;;****************************************************************************************
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+mnmx_thsh      = [0.15,0.85]
+;;----------------------------------------------------------------------------------------
+;;  Get MVA intervals and other parameters
+;;----------------------------------------------------------------------------------------
+mva_struc      = adaptive_mva_interval_wrapper(struc,TRANGE=trange,PRECISION=prec,      $
+                                               LOW_FREQ=low_freq,HIGHFREQ=highfreq,     $
+                                               NSHIFT=nshift,NSUBINT=nsubint,           $
+                                               NTWINDS=ntwinds,DNWINDS=dnwinds,         $
+                                               NTMIN=ntmin,NTMAX=ntmax,                 $
+                                               CONS_NSHFNMIN=cons_nshfnmin,             $
+                                               MIN_AMP_THRSH=min_amp_thrsh              )
+;;  Make sure valid outputs were returned
+test           = (SIZE(mva_struc,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  ;;  Not enough time steps in entire input time series
+  MESSAGE,"Adaptive interval routine failure:  Exiting without computation...",/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check GOOD_10_3
+test           = KEYWORD_SET(good_10_3) AND (N_ELEMENTS(good_10_3) GT 0)
+IF (test[0]) THEN gd103_on = 1b ELSE gd103_on = 0b
+;;  Check BEST_NO_OVRLP
+test           = KEYWORD_SET(best_no_ovrlp) OR (N_ELEMENTS(best_no_ovrlp) GT 0)
+IF (test[0]) THEN no_ovrlp = 1b ELSE no_ovrlp = 0b
+;;  Check MX_OVRLP_THSH
+test           = (N_ELEMENTS(mx_ovrlp_thsh) GT 0) AND is_a_number(mx_ovrlp_thsh,/NOMSSG)
+IF (test[0]) THEN test = (mx_ovrlp_thsh[0] LT mnmx_thsh[1]) AND (mx_ovrlp_thsh[0] GT mnmx_thsh[0])
+IF (test[0]) THEN ovlp_thsh = DOUBLE(mx_ovrlp_thsh[0]) ELSE ovlp_thsh = 5d-1
+;;----------------------------------------------------------------------------------------
+;;  Define relevant parameters
+;;----------------------------------------------------------------------------------------
+;;    Definitions:
+;;      L_i  = i-th eigenvalue result from MVA, where i = min, mid, max
+;;      V_i  = i-th eigenvector result from MVA, where i = min, mid, max
+;;      SI   = subinterval (i.e., there should be N_SUB SIs)
+;;      OSI  = overlapping subinterval
+;;      TW   = time window within each SI (i.e., there should be N_WIN TWs in each SI)
+;;      [k]i = the [k] index w/rt start of interval defined by TRANGE
+;;             (e.g., si = start index, ei = end index)
+;;      [k]t = the [k] index w/rt start of entire time series defined by STRUC.X
+int_struc      = mva_struc.MVA_INT_STR
+;;  Define start/end indices of subintervals
+ind_st         = int_struc.INDW_START     ;;  si
+ind_en         = int_struc.INDW___END     ;;  ei
+;;  Define start/end indices of time interval defined by TRANGE
+gind_se        = int_struc.TW_IND_SE      ;;  [st,et]
+;;  Define "good" and "best" arrays
+gind_mva_1d    = mva_struc.GOOD_MVA_INDS
+best_mva_sub   = mva_struc.BEST_UNQ_INDS
+gind_mva_sub   = WHERE(best_mva_sub GE 0,gd_mva_sub)
+;;  Define N_MIN, N_MAX, N_INT, N_SUB, N_SFT, N_WIN, D__NW
+n_min          = int_struc.N_VALS[0]    ;;  N_MIN = Min. # of points for any TW in each SI
+n_max          = int_struc.N_VALS[1]    ;;  N_MAX = Max. # of points for any TW in each SI
+n_sub          = int_struc.N_VALS[2]    ;;  N_SUB = # of SIs in interval defined by TRANGE
+n_sft          = int_struc.N_VALS[3]    ;;  N_SFT = # of elements shifted btwn each SI
+n_win          = int_struc.N_VALS[4]    ;;  N_WIN = # of TWs in each SI
+d__nw          = int_struc.N_VALS[5]    ;;  D__NW = # of elements each successive TW is expanded from previous
+n_int          = int_struc.N_VALS[6]    ;;  N_INT = # of time steps within interval defined by TRANGE
+;;  Define eigenvalues and eigenvectors
+eigval_str     = mva_struc.ALL_EIGVALS
+eigvec_str     = mva_struc.ALL_EIGVECS
+eigval_min     = eigval_str.MIN_VAR     ;;  [N_SUB,N_WIN]-Element array for L_min
+eigval_mid     = eigval_str.MID_VAR     ;;  [N_SUB,N_WIN]-Element array for L_mid
+eigval_max     = eigval_str.MAX_VAR     ;;  [N_SUB,N_WIN]-Element array for L_max
+eigvec_min     = eigvec_str.MIN_VAR     ;;  [N_SUB,N_WIN,3]-Element array for V_min
+eigvec_mid     = eigvec_str.MID_VAR     ;;  [N_SUB,N_WIN,3]-Element array for V_mid
+eigvec_max     = eigvec_str.MAX_VAR     ;;  [N_SUB,N_WIN,3]-Element array for V_max
+;;----------------------------------------------------------------------------------------
+;;  Find "good" eigenvalues and eigenvectors
+;;----------------------------------------------------------------------------------------
+;;    Definitions:
+;;      R_d2n  = L_mid/L_min
+;;      R_x2d  = L_max/L_mid
+;;      ∆R     = (R_d2n - R_x2d)
+;;      <R>    = (R_d2n + R_x2d)/2
+;;      "good" = (R_d2n ≥ 10 && R_x2d < 3) || (R_d2n/R_x2d > 3)
+;;      "best" = ∆R*R_d2n/R_x2d
+dumb_val       = REPLICATE(d,n_sub[0],n_win[0])
+dumb_vec       = REPLICATE(d,n_sub[0],n_win[0],3L)
+min_eval       = dumb_val               ;;  Array for "good" L_min
+mid_eval       = dumb_val               ;;  Array for "good" L_mid
+max_eval       = dumb_val               ;;  Array for "good" L_max
+min_evec       = dumb_vec               ;;  Array for "good" V_min
+mid_evec       = dumb_vec               ;;  Array for "good" V_mid
+max_evec       = dumb_vec               ;;  Array for "good" V_max
+;;  Fill eigenvalue arrays
+min_eval[gind_mva_1d] = eigval_min[gind_mva_1d]
+mid_eval[gind_mva_1d] = eigval_mid[gind_mva_1d]
+max_eval[gind_mva_1d] = eigval_max[gind_mva_1d]
+;;  Fill eigenvector arrays
+FOR k=0L, 2L DO BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Create dummy arrays
+  ;;--------------------------------------------------------------------------------------
+  tempmin              = eigvec_min[*,*,k]
+  tempmid              = eigvec_mid[*,*,k]
+  tempmax              = eigvec_max[*,*,k]
+  new_min              = dumb_val
+  new_mid              = dumb_val
+  new_max              = dumb_val
+  ;;--------------------------------------------------------------------------------------
+  ;;  Fill dummy arrays
+  ;;--------------------------------------------------------------------------------------
+  new_min[gind_mva_1d] = tempmin[gind_mva_1d]
+  new_mid[gind_mva_1d] = tempmid[gind_mva_1d]
+  new_max[gind_mva_1d] = tempmax[gind_mva_1d]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Fill output arrays
+  ;;--------------------------------------------------------------------------------------
+  min_evec[*,*,k]      = new_min
+  mid_evec[*,*,k]      = new_mid
+  max_evec[*,*,k]      = new_max
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Check if we need to redefine "good"
+;;----------------------------------------------------------------------------------------
+IF (gd103_on[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Require:  ((L_mid/L_min ≥ 10) && (L_max/L_mid < 3))
+  ;;--------------------------------------------------------------------------------------
+  d2n_rat = mid_eval/min_eval
+  x2d_rat = max_eval/mid_eval
+  test    = (d2n_rat GE 10) AND (x2d_rat LT 3) AND FINITE(d2n_rat) AND FINITE(x2d_rat)
+  good    = WHERE(test,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+  IF (bd[0] GT 0) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  At least one element failed --> set to NaNs
+    ;;------------------------------------------------------------------------------------
+    min_eval[bad] = d
+    mid_eval[bad] = d
+    max_eval[bad] = d
+    FOR k=0L, 2L DO BEGIN
+      tempmin              = min_evec[*,*,k]
+      tempmid              = mid_evec[*,*,k]
+      tempmax              = max_evec[*,*,k]
+      tempmin[bad]         = d
+      tempmid[bad]         = d
+      tempmax[bad]         = d
+      min_evec[*,*,k]      = tempmin
+      mid_evec[*,*,k]      = tempmid
+      max_evec[*,*,k]      = tempmax
+    ENDFOR
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check if user wants the "best" (of the "best") subintervals with no overlap
+;;----------------------------------------------------------------------------------------
+IF (no_ovrlp[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;    Definitions:
+  ;;      L_i    = i-th eigenvalue result from MVA, where i = min, mid, max
+  ;;      V_i    = i-th eigenvector result from MVA, where i = min, mid, max
+  ;;      SI     = subinterval (i.e., there should be N_SUB SIs)
+  ;;      OSI    = overlapping subinterval
+  ;;      TW     = time window within each SI (i.e., there should be N_WIN TWs in each SI)
+  ;;      s      = index of SI
+  ;;      w      = index of TW
+  ;;      [k]i   = the [k] index w/rt start of interval defined by TRANGE
+  ;;               (e.g., si = start index, ei = end index)
+  ;;      [k]t   = the [k] index w/rt start of entire time series defined by STRUC.X
+  ;;      R_d2n  = L_mid/L_min
+  ;;      R_x2d  = L_max/L_mid
+  ;;      ∆R     = (R_d2n - R_x2d)
+  ;;      <R>    = (R_d2n + R_x2d)/2
+  ;;--------------------------------------------------------------------------------------
+  d2n_rat     = eigval_mid/eigval_min         ;;  R_d2n = L_mid/L_min
+  x2d_rat     = eigval_max/eigval_mid         ;;  R_x2d = L_max/L_mid
+  del_rat     = (d2n_rat - x2d_rat)           ;;  ∆R    = (R_d2n - R_x2d)
+  avg_rat     = (d2n_rat + x2d_rat)/2d0       ;;  <R>   = (R_d2n + R_x2d)/2
+  rat0        = del_rat/avg_rat               ;;  ∆R/<R>
+  IF (gd103_on[0]) THEN BEGIN
+    ;;  GOOD_10_3 Set --> make sure ((R_d2n ≥ 10) && (R_x2d < 3)) is satisfied otherwise toss
+    rat         = rat0
+    test03      = (x2d_rat LT  3) AND (x2d_rat GT 0) AND FINITE(x2d_rat)
+    test10      = (d2n_rat GE 10) AND FINITE(d2n_rat)
+    test        = test03 AND test10
+    good        = WHERE(test,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+    IF (bd[0] GT 0) THEN rat[bad]  = d
+;    test3       = (x2d_rat LT  3) AND (x2d_rat GT 0) AND FINITE(x2d_rat)
+;    good3       = WHERE( test3, gd3, COMPLEMENT=bad3, NCOMPLEMENT=bd3)
+;    good10      = WHERE(test10,gd10,COMPLEMENT=bad10,NCOMPLEMENT=bd10)
+;    IF (bd3[0]  GT 0) THEN rat[bad3]  = d
+;    IF (bd10[0] GT 0) THEN rat[bad10] = d
+  ENDIF ELSE BEGIN
+    rat         = rat0
+  ENDELSE
+  mx_d2n_rat  = MAX(rat,lxr,/NAN,DIMENSION=2)
+  lxr_2d      = ARRAY_INDICES(d2n_rat,lxr)    ;;  result[0,j] = s[j], result[1,j] = w[j]
+  win_nx      = REFORM(lxr_2d[1,*])           ;;  TW indices that maximized ∆R/<R>
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define all si's/ei's of each SI that maximized ∆R/<R>
+  ;;--------------------------------------------------------------------------------------
+  FOR s=0L, n_sub[0] - 1L DO BEGIN
+    wx                = win_nx[s[0]]          ;;  w[s] that maximized ∆R/<R>
+    mxr               = mx_d2n_rat[s[0]]      ;;  Max(∆R/<R>) for s-th SI
+    rrt               = rat[s[0],wx[0]]
+    test              = FINITE(mxr[0]) AND (mxr[0] GT 0) AND FINITE(rrt[0])
+    IF (test[0]) THEN BEGIN
+;    IF (FINITE(mxr[0]) AND mxr[0] GT 0) THEN BEGIN
+      stx0              = ind_st[s[0],wx[0]]    ;;  = si[s,w] = start index of s-th SI and w-th TW that maximized ∆R/<R>
+      enx0              = ind_en[s[0],wx[0]]    ;;  = ei[s,w] = end " "
+    ENDIF ELSE BEGIN
+      stx0              = -1
+      enx0              = -1
+    ENDELSE
+    IF (N_ELEMENTS(st) EQ 0) THEN st = stx0[0] ELSE st = [st,stx0[0]]
+    IF (N_ELEMENTS(en) EQ 0) THEN en = enx0[0] ELSE en = [en,enx0[0]]
+  ENDFOR
+  diff_int    = (en - st) + 1L                ;;  # of elements in each SI for the TW that maximized ∆R/<R>
+  sind        = fill_range(MIN(st),MAX(en),DIND=1L)
+  stc         = st                            ;;  copies
+  enc         = en                            ;;  copies
+  gind        = REPLICATE(0b,n_sub[0])        ;;  Array defining which intervals to keep
+  ;;--------------------------------------------------------------------------------------
+  ;;  Keep only the unique si's/ei's of each SI that maximized ∆R/<R>
+  ;;--------------------------------------------------------------------------------------
+  FOR s=0L, n_sub[0] - 1L DO BEGIN
+    test        = (stc[s[0]] LT 0) OR (enc[s[0]] LT 0)
+    IF (test[0]) THEN CONTINUE                ;;  TRUE --> Already "shut off" this SI
+    ;;------------------------------------------------------------------------------------
+    ;;  This SI is still "on" --> check for overlap
+    ;;------------------------------------------------------------------------------------
+    wx          = win_nx[s[0]]                ;;  w[s] that maximized ∆R/<R>
+;    rrt         = rat[s[0],wx[0]]
+    sc          = stc[s[0]]                   ;;  = si[s]
+    ec          = enc[s[0]]                   ;;  = ei[s]
+    dc          = DOUBLE(diff_int[s[0]])      ;;  N[s] = # of elements in the s-th SI
+    diff_st     = DOUBLE(sc[0] - st)
+    diff_en     = DOUBLE(en - ec[0])
+    diff_rs     = dc[0]/diff_st
+    diff_re     = dc[0]/diff_en
+    test        = (diff_rs GE ovlp_thsh[0]) OR (diff_re GE ovlp_thsh[0])
+    good        = WHERE(test,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+    IF (gd GT 0) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  Multiple OSIs --> pick "best" (i.e., one that maximizes ∆R/<R>)
+      ;;----------------------------------------------------------------------------------
+      gdarr           = [s[0],good]
+      mxr_arr         = mx_d2n_rat[gdarr]      ;;  Max(∆R/<R>) for OSIs
+      bst_mxr         = MAX(mxr_arr,lx,/NAN)   ;;  Max(Max(∆R/<R>)) of OSIs
+      gg              = gdarr[lx[0]]           ;;  Index of goi that maximized ∆R/<R> for OSIs
+      gind[gg]        = 1b                     ;;  Define good subinterval
+      ;;----------------------------------------------------------------------------------
+      ;;  Shut off ALL tested intervals [regardless of constraint results]
+      ;;----------------------------------------------------------------------------------
+      stc[gdarr]  = -1
+      enc[gdarr]  = -1
+    ENDIF ELSE BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  No overlapping arrays --> check current
+      ;;----------------------------------------------------------------------------------
+      test_rat    = 1b
+      IF (test_rat[0]) THEN BEGIN
+        ;;  No overlapping arrays --> use current
+        gind[s[0]]  = 1b
+      ENDIF
+      ;;  Shut off ALL tested intervals [regardless of constraint results]
+      stc[s[0]]   = -1
+      enc[s[0]]   = -1
+    ENDELSE
+  ENDFOR
+  ;;--------------------------------------------------------------------------------------
+  ;;  Determine which subintervals are "best" and non-overlapping
+  ;;--------------------------------------------------------------------------------------
+  good        = WHERE(gind,gd)
+  IF (gd GT 0) THEN BEGIN
+    ;;  Good intervals found
+    sing          = st[good]
+    eing          = en[good]
+    ;;  Tag Definitions
+    ;;    SE_IND[j,*]    :  [Start,End] indices w/rt to beginning of j-th subinterval
+    ;;    MVA_SIND[j]    :  jth element of good MVA subinterval indices
+    ;;    MVA_WIND[j]    :  jth element of good MVA time window indices
+    best_no_ovrlp = {SE_IND:[[sing],[eing]],MVA_SIND:good,MVA_WIND:win_nx[good]}     ;;  Define output to return to user
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Find MVA results satisfying "good" and are the unique "best"
+;;----------------------------------------------------------------------------------------
+dumb_1d        = REPLICATE(d,n_sub[0])
+dumb_2d        = REPLICATE(d,n_sub[0],3L)
+dumb_l11d      = REPLICATE(-1L,n_sub[0])
+dumb_l12d      = REPLICATE(-1L,n_sub[0],2L)
+best_min_val   = dumb_1d           ;;  [N_SUB]-Element array for the "best" "good" Min.   Var. eigenvalue
+best_mid_val   = dumb_1d           ;;  " " Inter. Var. eigenvalue
+best_max_val   = dumb_1d           ;;  " " Max.   Var. eigenvalue
+best_min_vec   = dumb_2d           ;;  [N_SUB,3]-Element array for the "best" "good" Min.   Var. eigenvector
+best_mid_vec   = dumb_2d           ;;  " " Inter. Var. eigenvector
+best_max_vec   = dumb_2d           ;;  " " Max.   Var. eigenvector
+b_sw_ind       = dumb_l12d         ;;  [N_SUB,2]-Element array of the "best" "good" [S,W] indices
+b_st_ind       = dumb_l11d         ;;  [N_SUB]-Element array of the "best" "good" interval start indices
+b_en_ind       = dumb_l11d         ;;  " " end indices
+
+FOR s=0L, n_sub[0] - 1L DO BEGIN
+  w                 = best_mva_sub[s]
+  IF (w[0] LT 0) THEN CONTINUE     ;;  TRUE --> invalid window, skip to next iteration
+  best_min_val[s]   = min_eval[s[0],w[0]]
+  best_mid_val[s]   = mid_eval[s[0],w[0]]
+  best_max_val[s]   = max_eval[s[0],w[0]]
+  best_min_vec[s,*] = min_evec[s[0],w[0],*]
+  best_mid_vec[s,*] = mid_evec[s[0],w[0],*]
+  best_max_vec[s,*] = max_evec[s[0],w[0],*]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check indices
+  ;;--------------------------------------------------------------------------------------
+  test              = FINITE(min_eval[s[0],w[0]]) AND FINITE(mid_eval[s[0],w[0]]) AND $
+                      FINITE(max_eval[s[0],w[0]])
+  IF (~test[0]) THEN CONTINUE     ;;  TRUE --> None of the eigenvalues are finite, skip to next iteration
+  ;;--------------------------------------------------------------------------------------
+  ;;  Okay --> Define indices
+  ;;--------------------------------------------------------------------------------------
+  sw0               = TRANSPOSE([s[0],w[0]])
+  st0               = ind_st[s[0],w[0]]
+  en0               = ind_en[s[0],w[0]]
+  b_sw_ind[s,*]     = sw0
+  b_st_ind[s]       = st0
+  b_en_ind[s]       = en0
+;  IF (SIZE(b_sw_ind,/TYPE) EQ 0) THEN b_sw_ind = sw0 ELSE b_sw_ind = [b_sw_ind,sw0]
+;  IF (SIZE(b_st_ind,/TYPE) EQ 0) THEN b_st_ind = st0 ELSE b_st_ind = [b_st_ind,st0]
+;  IF (SIZE(b_en_ind,/TYPE) EQ 0) THEN b_en_ind = en0 ELSE b_en_ind = [b_en_ind,en0]
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define rotation matrices from ICB to MVA
+;;
+;;    Definitions:
+;;      ICB   = input coordinate basis
+;;      MVA   = minimum variance analysis coordinate basis
+;;      vec   = [N_SUB,3]-Element array of 3-vectors in ICB
+;;      rmat  = [N_SUB,3,3]-Element array of 3x3 rotation matrices
+;;            { = out_struc.BEST_ROT_ICB2MVA }
+;;      rvec  = [N_SUB,3]-Element array of 3-vectors in MVA
+;;
+;;    Vectorized Usage (1000x's faster than looping through N_SUB rotation matrices):
+;;      ns     = N_ELEMENTS(vec[*,0])
+;;      vec_3d = REBIN(vec,ns[0],3L,3L)     ;;  this just expands to a 3D array by copying last dimension
+;;      ;;  Apply rotation
+;;      rvec   = TOTAL(rmat*vec_3d,2L,/NAN)
+;;----------------------------------------------------------------------------------------
+bg_r_icb2mva   = [[[best_min_vec]],[[best_mid_vec]],[[best_max_vec]]]
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+tags           = ['MIN_VAR','MID_VAR','MAX_VAR']
+eigval_good    = CREATE_STRUCT(tags,min_eval,mid_eval,max_eval)
+eigval_best    = CREATE_STRUCT(tags,best_min_val,best_mid_val,best_max_val)
+eigvec_good    = CREATE_STRUCT(tags,min_evec,mid_evec,max_evec)
+eigvec_best    = CREATE_STRUCT(tags,best_min_vec,best_mid_vec,best_max_vec)
+tags           = ['BEST_IND_SW','BEST_ST_SIND','BEST_EN_SIND']
+best_ind_str   = CREATE_STRUCT(tags,b_sw_ind,b_st_ind,b_en_ind)
+tags           = ['ALL_MVA_RESULTS','GOOD_EIGVALS','GOOD_EIGVECS','BEST_EIGVALS',$
+                  'BEST_EIGVECS','BEST_ROT_ICB2MVA','BEST_IND_STRUC']
+out_struc      = CREATE_STRUCT(tags,mva_struc,eigval_good,eigvec_good,eigval_best,$
+                               eigvec_best,bg_r_icb2mva,best_ind_str)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+;;****************************************************************************************
+ex_time        = SYSTIME(1) - ex_start[0]
+MESSAGE,'Execution Time: '+STRING(ex_time)+' seconds',/INFORMATIONAL,/CONTINUE
+;;****************************************************************************************
+
+RETURN,out_struc
+END
+
+
+

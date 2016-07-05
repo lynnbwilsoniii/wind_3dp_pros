@@ -11,30 +11,24 @@
 ;               time_struct.pro
 ;               time_ticks.pro
 ;
-;  INCLUDES:
-;               NA
-;
 ;  CALLS:
-;               time_struct.pro
 ;               time_double.pro
-;               add_tt2000_offset.pro
+;               time_struct.pro
 ;               time_string.pro
+;               add_tt2000_offset.pro
 ;
 ;  REQUIRES:    
-;               1)  SPEDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;               1)  THEMIS TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
 ;
 ;  INPUT:
 ;               TIME           :  Scalar or array of one of the following types:
-;                                   1)  DOUBLE     :  Unix time(s) [s]
+;                                   1)  DOUBLE     :  Unix time (s)
 ;                                   2)  STRING     :  YYYY-MM-DD/hh:mm:ss.xxx
 ;                                   3)  STRUCTURE  :  Format returned by time_struct.pro
 ;                                   4)  LONG ARRAY :  2-Dimensional PB5 time (CDF files)
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               unix = time_double( time [,/EPOCH] [,DIM=dim] [,/PB5] [,MMDDYYYY=mmddyyyy] $
-;                                  [,TIMEZONE=timezone] [,IS_LOCAL_TIME=is_local_time]     $
-;                                  [,/TT2000] [,TFORMAT=tformat] )
+;               
 ;
 ;  KEYWORDS:    
 ;               EPOCH          :  If set, implies the input, TIME, is a double precision
@@ -49,78 +43,47 @@
 ;               TT2000         :  If set, it implies that the input is a 64 bit
 ;                                   signed integer, TT2000 time: leaped nanoseconds
 ;                                   since J2000
-;               TFORMAT        :  Specify a custom format for string to double conversion:
-;                                   Format string such as "YYYY-MM-DD/hh:mm:ss" [Default]
-;                                   the following tokens are recognized:
-;                                     YYYY  - 4 digit year
-;                                     yy    - 2 digit year (00-69 assumed to be 2000-2069,
-;                                               70-99 assumed to be 1970-1999)
-;                                     MM    - 2 digit month
-;                                     DD    - 2 digit date
-;                                     hh    - 2 digit hour
-;                                     mm    - 2 digit minute
-;                                     ss    - 2 digit seconds
-;                                     .fff  - fractional seconds (can be repeated,
-;                                               e.g., .f,.ff,.fff,.ffff, etc., are all
-;                                               acceptable codes)
-;                                     MTH   - 3 character month
-;                                     DOY   - 3 character Day of Year
-;                                     TDIFF - 5 character, +hhmm or -hhmm different from
-;                                               UTC (sign required)
 ;
-;                                   *** Inputs are case sensitive ***
-;
-;   CHANGED:  1)  Davin Larson changed something...
-;                                                                   [07/12/2001   v1.0.9]
-;             2)  Re-wrote and cleaned up
-;                                                                   [06/23/2009   v1.1.0]
+;   CHANGED:  1)  Davin Larson changed something...                [07/12/2001   v1.0.9]
+;             2)  Re-wrote and cleaned up                          [06/23/2009   v1.1.0]
 ;             3)  Fixed typo which seemed to only affect long (> 1 month) time
-;                   ranges
-;                                                                   [03/16/2010   v1.2.0]
+;                   ranges                                         [03/16/2010   v1.2.0]
 ;             4)  Updated to be in accordance with newest version of time_double.pro
 ;                   in TDAS IDL libraries
 ;                   A)  Cleaned up and added some comments
 ;                   B)  no longer calls pb5_to_time.pro
 ;                   C)  new keywords:  MMDDYYYY, TIMEZONE, and IS_LOCAL_TIME
-;                                                                   [04/04/2012   v1.3.0]
+;                                                                  [04/04/2012   v1.3.0]
 ;             5)  Updated to be in accordance with newest version of time_double.pro
 ;                   in TDAS IDL libraries [thmsw_r10908_2012-09-10]
 ;                   A)  new keywords:  TT2000
-;                                                                   [09/12/2012   v1.4.0]
-;             6)  Updated to be in accordance with newest version of time_double.pro
-;                   in SPEDAS IDL libraries [v2.0.0]
-;                   A)  new keywords:  TFORMAT
-;                                                                   [06/13/2016   v1.5.0]
+;                                                                  [09/12/2012   v1.4.0]
 ;
 ;   NOTES:      
 ;               1)  See also:  time_string.pro and time_struct.pro
 ;
-;  REFERENCES:  
-;               NA
-;
 ;   CREATED:  October, 1996
 ;   CREATED BY:  Davin Larson
-;    LAST MODIFIED:  06/13/2016   v1.5.0
+;    LAST MODIFIED:  09/12/2012   v1.4.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION time_double,time,EPOCH=epoch,DIM=dim,PB5=pb5,MMDDYYYY=mmddyyyy,         $
-                     TIMEZONE=timezone,IS_LOCAL_TIME=is_local_time,TT2000=tt2000,$
-                     TFORMAT=tformat
+FUNCTION time_double,time,EPOCH=epoch,DIM=dim,PB5=pb5,MMDDYYYY=mmddyyyy,$
+                     TIMEZONE=timezone,IS_LOCAL_TIME=is_local_time,TT2000=tt2000
 
 ;;----------------------------------------------------------------------------------------
-;;  Determine type of input
+;; => Determine type of input
 ;;----------------------------------------------------------------------------------------
 ntyp0 = (SIZE(time,/TYPE))[0]
 CASE ntyp0 OF
   8   : BEGIN
     ;;------------------------------------------------------------------------------------
-    ;;  Structure Input
+    ;; => Structure Input
     ;;------------------------------------------------------------------------------------
-    ;;  Day number of 1970-01-01 = 719162L
-    dn1970  = 1969L*365L + 1969L/4 - 1969L/100 + 1969L/400  ;;  Day number of 1970-1-1
+    ; => Day number of 1970-01-01 = 719162L
+    dn1970  = 1969L*365L + 1969L/4 - 1969L/100 + 1969L/400  ; => Day number of 1970-1-1
     mdt     = [[0, 31,  59,  90, 120, 151, 181, 212, 243, 273, 304, 334, 365], $
                [0, 31,  60,  91, 121, 152, 182, 213, 244, 274, 305, 335, 366]]
     month   = time.MONTH - 1
@@ -141,19 +104,17 @@ CASE ntyp0 OF
   END
   7   : BEGIN
     ;;------------------------------------------------------------------------------------
-    ;;  String Input
+    ;; => String Input
     ;;------------------------------------------------------------------------------------
     dims = SIZE(time,/DIMENSIONS)
-;    temp = time_struct(time,/NO_CLEAN,MMDDYYYY=mmddyyyy,TIMEZONE=timezone,IS_LOCAL_TIME=is_local_time)
-;    LBW III  06/13/2016   v1.5.0
-    temp = time_struct(time,/NO_CLEAN,MMDDYYYY=mmddyyyy,TIMEZONE=timezone,IS_LOCAL_TIME=is_local_time,TFORMAT=tformat)
+    temp = time_struct(time,/NO_CLEAN,MMDDYYYY=mmddyyyy,TIMEZONE=timezone,IS_LOCAL_TIME=is_local_time)
 ;  TDAS Update
 ;    RETURN,time_double(time_struct(time,/NO_CLEAN),DIM=dims)
     RETURN,time_double(temp,DIM=dims[0])
   END
   5   : BEGIN
     ;;------------------------------------------------------------------------------------
-    ;;  Double Precision Input
+    ;; => Double Precision Input
     ;;------------------------------------------------------------------------------------
     IF KEYWORD_SET(epoch) THEN RETURN, time/1d3 - 719528d0*24d0*36d2
     RETURN,time
@@ -161,7 +122,7 @@ CASE ntyp0 OF
 ;  TDAS Update
   9   : BEGIN
     ;;------------------------------------------------------------------------------------
-    ;;  handle CDF_EPOCH16
+    ;; => handle CDF_EPOCH16
     ;;------------------------------------------------------------------------------------
     IF KEYWORD_SET(epoch) THEN BEGIN
       temp = REAL_PART(time) - 719528d0*24d0*36d2 + IMAGINARY(time)*1d-12
@@ -169,7 +130,7 @@ CASE ntyp0 OF
     ENDIF
     MESSAGE,'Improper time input',/INFORMATIONAL
   END
-  4   : RETURN,DOUBLE(time)     ;;  Floating Point Input
+  4   : RETURN,DOUBLE(time)     ; => Floating Point Input
   14  : BEGIN
 ;  TDAS Update
     IF KEYWORD_SET(tt2000) THEN BEGIN
@@ -177,20 +138,20 @@ CASE ntyp0 OF
       ;;   TAI - historical skew between TAI & TT epochs - leap seconds since J2000.0
       RETURN,add_tt2000_offset(DOUBLE(time)/1d9 + time_double('2000-01-01/12:00:00'),/SUBTRACT)
     ENDIF ELSE BEGIN
-      RETURN,DOUBLE(time)     ;;  64 Bit Long Integer Input
+      RETURN,DOUBLE(time)     ; => 64 Bit Long Integer Input
     ENDELSE
   END
 ;  TDAS Update
-  2   : RETURN,DOUBLE(time)     ;;  Integer Integer Input
+  2   : RETURN,DOUBLE(time)     ; => Integer Integer Input
   3   : BEGIN
 ;  TDAS Update
 ;    IF KEYWORD_SET(pb5) THEN RETURN, pb5_to_time(time)
-    RETURN,DOUBLE(time)         ;;  Long Integer Input
+    RETURN,DOUBLE(time)         ; => Long Integer Input
   END
-  0   : RETURN,time_double(time_string(time,PREC=6))    ;;  Undefined Input
+  0   : RETURN,time_double(time_string(time,PREC=6))    ; => Undefined Input
   ELSE : BEGIN
     ;;------------------------------------------------------------------------------------
-    ;;  bad input
+    ;; => bad input
     ;;------------------------------------------------------------------------------------
     MESSAGE,'Improper time input',/INFORMATIONAL
   END

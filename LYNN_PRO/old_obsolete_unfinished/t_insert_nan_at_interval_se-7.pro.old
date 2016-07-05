@@ -19,11 +19,8 @@
 ;               tnames.pro
 ;               get_data.pro
 ;               tplot_struct_format_test.pro
-;               struct_value.pro
 ;               sample_rate.pro
 ;               t_interval_find.pro
-;               str_element.pro
-;               extract_tags.pro
 ;               store_data.pro
 ;
 ;  REQUIRES:    
@@ -76,9 +73,6 @@
 ;                                                                   [11/28/2015   v1.4.1]
 ;             7)  Routine can now handle TSHIFT structure tag for TPLOT structures
 ;                                                                   [04/21/2016   v1.5.0]
-;             8)  Cleaned up and now calls struct_value.pro and extract_tags.pro and
-;                   now handles structures with DY tag and other time-independent tags
-;                                                                   [06/15/2016   v1.6.0]
 ;
 ;   NOTES:      
 ;               1)  See also:  store_data.pro, get_data.pro, tnames.pro
@@ -88,7 +82,7 @@
 ;
 ;   CREATED:  08/07/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/15/2016   v1.6.0
+;    LAST MODIFIED:  04/21/2016   v1.5.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -104,8 +98,6 @@ FORWARD_FUNCTION is_a_number, tnames, tplot_struct_format_test, sample_rate, $
 ;;----------------------------------------------------------------------------------------
 f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
-;;  Not extracted tags
-excpt_tags     = ['X','Y','V','V1','V2','DY','TSHIFT']
 ;;  Error messages
 noinput_mssg   = 'No or incorrect input was supplied...'
 no_tpns_mssg   = 'No TPLOT handles match TPNAME input...'
@@ -151,9 +143,7 @@ FOR k=0L, n_tpns[0] - 1L DO BEGIN                                       ;;  TPLO
   ;;  Get data
   ;;--------------------------------------------------------------------------------------
   get_data,g_tpns[k],DATA=temp,DLIM=dlim,LIM=lim
-  test           = tplot_struct_format_test(temp,TEST__V=test__v,TEST_V1_V2=test_v1_v2,$
-                                            TEST_DY=test_dy,/NOMSSG)
-;  test           = tplot_struct_format_test(temp,TEST__V=test__v,TEST_V1_V2=test_v1_v2,/NOMSSG)
+  test           = tplot_struct_format_test(temp,TEST__V=test__v,TEST_V1_V2=test_v1_v2,/NOMSSG)
   kstr           = STRTRIM(STRING(k[0],FORMAT='(I)'),2L)
   IF (test[0] EQ 0) THEN PRINT,';;  Not a structure --> skipping TPNAME['+kstr[0]+']'
   IF (test[0] EQ 0) THEN CONTINUE
@@ -161,12 +151,13 @@ FOR k=0L, n_tpns[0] - 1L DO BEGIN                                       ;;  TPLO
   yy             = temp.Y
   szdt           = SIZE(xx,/DIMENSIONS)
   szdd           = SIZE(yy,/DIMENSIONS)
-  ;str_element,temp,'TSHIFT',tshift
-  tshift         = struct_value(temp,'TSHIFT',DEFAULT=0d0)
+  str_element,temp,'TSHIFT',tshift
+;  IF (N_ELEMENTS(tshift) GT 0) THEN xx += tshift[0]    ;;  offset by TSHIFT (if present)
   ;;--------------------------------------------------------------------------------------
   ;;  Determine sample rate [samples per second]
   ;;--------------------------------------------------------------------------------------
   srate          = sample_rate(xx,GAP_THRESH=gap_thsh[0],/AVE,OUT_MED_AVG=sr_medavg)
+;  srate          = sample_rate(temp.X,GAP_THRESH=gap_thsh[0],/AVE,OUT_MED_AVG=sr_medavg)
   test           = (srate[0] LE 0) OR (FINITE(srate[0]) EQ 0) OR (N_ELEMENTS(sr_medavg) LT 2)
   IF (test[0]) THEN PRINT,';;  Bad sample rate estimate --> skipping TPNAME['+kstr[0]+']'
   IF (test[0]) THEN CONTINUE
@@ -176,6 +167,7 @@ FOR k=0L, n_tpns[0] - 1L DO BEGIN                                       ;;  TPLO
   ;;  Find intervals (if present) [corresponding start/end indices]
   ;;--------------------------------------------------------------------------------------
   se_int         = t_interval_find(xx,GAP_THRESH=2d0*med_dt[0],/NAN)
+;  se_int         = t_interval_find(temp.X,GAP_THRESH=2d0*med_dt[0],/NAN)
   test           = (se_int[0] LT 0) OR (N_ELEMENTS(se_int) LT 2)
   IF (test[0]) THEN PRINT,';;  No subintervals found --> skipping TPNAME['+kstr[0]+']'
   IF (test[0]) THEN CONTINUE
@@ -212,11 +204,6 @@ FOR k=0L, n_tpns[0] - 1L DO BEGIN                                       ;;  TPLO
   ;;--------------------------------------------------------------------------------------
   ;;  Check for V or V1 and V2
   ;;--------------------------------------------------------------------------------------
-  ;;  Check for DY
-  IF (test_dy[0] GT 0) THEN BEGIN
-    uny        = temp.DY
-    test_uy    = 1b
-  ENDIF ELSE test_uy = 0b
   ;;  Check for V
   vv_1d_on       = (test__v[0] EQ 1)                ;;  TRUE : IFF V is 1D
   vv_2d_on       = (test__v[0] EQ 2)                ;;  TRUE : IFF V is 2D
@@ -253,12 +240,10 @@ FOR k=0L, n_tpns[0] - 1L DO BEGIN                                       ;;  TPLO
       1 : BEGIN
         temp_y1  = yy[se[0]:se[1]]
         up_dn_yy = f
-        IF (test_uy[0]) THEN temp_dy1 = dy[se[0]:se[1]]
       END
       2 : BEGIN
         temp_y1  = yy[se[0]:se[1],*]
         up_dn_yy = REPLICATE(f,1,szyd[1])
-        IF (test_uy[0]) THEN temp_dy1 = dy[se[0]:se[1],*]
         IF (vv_2d_on[0]) THEN BEGIN
           temp_vv  = vv[se[0]:se[1],*]
           up_dn_vv = REFORM(temp_vv[0,*],1,szdvv[1])
@@ -269,7 +254,6 @@ FOR k=0L, n_tpns[0] - 1L DO BEGIN                                       ;;  TPLO
       3 : BEGIN
         temp_y1  = yy[se[0]:se[1],*,*]
         up_dn_yy = REPLICATE(f,1,szyd[1],szyd[2])
-        IF (test_uy[0]) THEN temp_dy1 = dy[se[0]:se[1],*,*]
         IF (v1_v2_on[0]) THEN BEGIN
           temp_v1  = v1[se[0]:se[1],*]
           temp_v2  = v2[se[0]:se[1],*]
@@ -283,11 +267,6 @@ FOR k=0L, n_tpns[0] - 1L DO BEGIN                                       ;;  TPLO
     ;;  Expand Y
     ;;------------------------------------------------------------------------------------
     temp_yy  = [up_dn_yy,temp_y1,up_dn_yy]
-    IF (test_uy[0]) THEN BEGIN
-      ;;  Expand DY
-      temp_dy = [up_dn_yy,temp_dy1,up_dn_yy]
-      IF (j EQ 0) THEN new_dy = temp_dy ELSE new_dy = [new_dy,temp_dy]
-    ENDIF
     ;;  Add to new output arrays
     IF (j EQ 0) THEN BEGIN
       new_xx = temp_xx
@@ -322,19 +301,15 @@ FOR k=0L, n_tpns[0] - 1L DO BEGIN                                       ;;  TPLO
   ;;  Return data back to TPLOT
   IF (v1_v2_on[0] OR (vv_1d_on[0] OR vv_2d_on[0])) THEN BEGIN
     IF (vv_1d_on[0] OR vv_2d_on[0]) THEN BEGIN
-      new_struc = {X:new_xx,Y:new_yy,V:new_vv,TSHIFT:tshift[0]}
+      new_struc = {X:new_xx,Y:new_yy,V:new_vv}
     ENDIF ELSE BEGIN
-      new_struc = {X:new_xx,Y:new_yy,V1:new_v1,V2:new_v2,TSHIFT:tshift[0]}
+      new_struc = {X:new_xx,Y:new_yy,V1:new_v1,V2:new_v2}
     ENDELSE
   ENDIF ELSE BEGIN
-    new_struc = {X:new_xx,Y:new_yy,TSHIFT:tshift[0]}
+    new_struc = {X:new_xx,Y:new_yy}
   ENDELSE
-  ;;  Check for DY
-  IF (test_uy[0]) THEN str_element,new_struc,'DY',new_dy,/ADD_REPLACE  ;;  Add DY (if present)
-  ;;  Add remaining time-independent tags
-  extract_tags,new_struc,temp,EXCEPT_TAGS=excpt_tags
-;  ;;  Check for TSHIFT
-;  IF (N_ELEMENTS(tshift) GT 0) THEN str_element,new_struc,'TSHIFT',tshift[0],/ADD_REPLACE  ;;  Add TSHIFT (if present)
+  ;;  Check for TSHIFT
+  IF (N_ELEMENTS(tshift) GT 0) THEN str_element,new_struc,'TSHIFT',tshift[0],/ADD_REPLACE  ;;  Add TSHIFT (if present)
   store_data,g_tpns[k],DATA=new_struc,DLIM=dlim,LIM=lim
 ENDFOR                                                                  ;;  TPLOT handle FOR loop
 ;;----------------------------------------------------------------------------------------

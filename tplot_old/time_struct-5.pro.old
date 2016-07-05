@@ -21,20 +21,16 @@
 ;               doy_to_month_date.pro
 ;
 ;  REQUIRES:    
-;               1)  SPEDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;               1)  THEMIS SPEDAS/TDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
 ;
 ;  INPUT:
-;               TIME           :  Scalar or array of one of the following types:
-;                                   1)  DOUBLE     :  Unix time(s) [s]
-;                                   2)  STRING     :  YYYY-MM-DD/hh:mm:ss.xxx
-;                                   3)  STRUCTURE  :  Format returned by time_struct.pro
+;               TIME           :  Scalar or [N]-Element array with the following formats:
+;                                   Input time which can have the form of a double
+;                                   (Unix times), a string (YYYY-MM-DD/hh:mm:ss), or
+;                                   a structure of the same format as the return
+;                                   structure format.
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               struc = time_struct( time [,/EPOCH] [,/NO_CLEAN] [,/MMDDYYYY]           $
-;                                   [,TIMEZONE=timezone] [,IS_LOCAL_TIME=is_local_time] $
-;                                   [,/LOCAL_TIME] [,TFORMAT=tformat] [,TDIFF=tdiff]    )
-;
 ;               test = time_struct(time)
 ;               HELP, test
 ;** Structure TIME_STRUCT, 11 tags, length=40:
@@ -57,64 +53,34 @@
 ;               MMDDYYYY       :  If set, changes order of date output
 ;               TIMEZONE       :  Keyword used by isdaylightsavingtime.pro
 ;               LOCAL_TIME     :  If set, then local time is displayed
-;               INFORMAT       :  ** Obsolete **
+;               INFORMAT       :  ** not implemented yet **
 ;               IS_LOCAL_TIME  :  ** not working correctly yet **
-;               TFORMAT        :  Specify a custom format for string to double conversion:
-;                                   Format string such as "YYYY-MM-DD/hh:mm:ss" [Default]
-;                                   the following tokens are recognized:
-;                                     YYYY  - 4 digit year
-;                                     yy    - 2 digit year (00-69 assumed to be 2000-2069,
-;                                               70-99 assumed to be 1970-1999)
-;                                     MM    - 2 digit month
-;                                     DD    - 2 digit date
-;                                     hh    - 2 digit hour
-;                                     mm    - 2 digit minute
-;                                     ss    - 2 digit seconds
-;                                     .fff  - fractional seconds (can be repeated,
-;                                               e.g., .f,.ff,.fff,.ffff, etc., are all
-;                                               acceptable codes)
-;                                     MTH   - 3 character month
-;                                     DOY   - 3 character Day of Year
-;                                     TDIFF - 5 character, +hhmm or -hhmm different from
-;                                               UTC (sign required)
 ;
-;                                   *** Inputs are case sensitive ***
-;               TDIFF          :  ?? [currently not used]
-;
-;   CHANGED:  1)  Davin Larson changed something...
-;                                                                   [11/01/2002   v1.0.15]
-;             2)  Re-wrote and cleaned up
-;                                                                   [04/20/2009   v1.1.0]
-;             3)  Updated man page
-;                                                                   [06/17/2009   v1.1.1]
+;   CHANGED:  1)  Davin Larson changed something...                [11/01/2002   v1.0.15]
+;             2)  Re-wrote and cleaned up                          [04/20/2009   v1.1.0]
+;             3)  Updated man page                                 [06/17/2009   v1.1.1]
 ;             4)  THEMIS software update includes:
 ;                 a)  Multiple syntax changes
 ;                 b)  Now calls:  dprint.pro and isdaylightsavingtime.pro
 ;                 c)  Added keywords:  MMDDYYYY, TIMEZONE, LOCAL_TIME, and IS_LOCAL_TIME
 ;                 d)  Changed return structure format
-;                                                                   [09/08/2009   v1.2.0]
-;             5)  Minor superficial changes
-;                                                                   [03/16/2010   v1.3.0]
+;                                                                  [09/08/2009   v1.2.0]
+;             5)  Minor superficial changes                        [03/16/2010   v1.3.0]
 ;             6)  Updated to be in accordance with newest version of time_struct.pro
 ;                   in TDAS IDL libraries
 ;                   A)  Cleaned up and added some comments
 ;                   B)  new keyword:  INFORMAT
-;                                                                   [04/04/2012   v1.4.0]
+;                                                                  [04/04/2012   v1.4.0]
 ;             6)  Updated to be in accordance with newest version of time_struct.pro
 ;                   in TDAS IDL libraries [thmsw_r10908_2012-09-10]
 ;                   A)  Removed usage of dprint.pro
-;                                                                   [09/12/2012   v1.5.0]
+;                                                                  [09/12/2012   v1.5.0]
 ;             7)  If the input value was a scalar integer, the routine would get caught
 ;                   in an infinite loop, now this shouldn't happen
-;                                                                   [10/26/2012   v1.5.1]
+;                                                                  [10/26/2012   v1.5.1]
 ;             8)  Updated Man. page and removed limit on time resolution for numeric
 ;                   input
-;                                                                   [09/23/2015   v1.5.2]
-;             6)  Updated to be in accordance with newest version of time_double.pro
-;                   in SPEDAS IDL libraries [v2.0.0]
-;                   A)  new keywords:  TFORMAT, TDIFF
-;                   B)  now calls:  time_parse.pro
-;                                                                   [06/13/2016   v1.6.0]
+;                                                                  [09/23/2015   v1.5.2]
 ;
 ;   NOTES:      
 ;               1)  This routine works on vectors and is designed to be fast.
@@ -126,19 +92,19 @@
 ;
 ;   CREATED:  Oct, 1996
 ;   CREATED BY:  Davin Larson
-;    LAST MODIFIED:  06/13/2016   v1.6.0
+;    LAST MODIFIED:  09/23/2015   v1.5.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION time_struct,time,EPOCH=epoch,NO_CLEAN=no_clean,MMDDYYYY=mmddyyyy,        $
-                          TIMEZONE=timezone,LOCAL_TIME=local_time,                $
-                          INFORMAT=informat,IS_LOCAL_TIME=is_local_time,          $
-                          TFORMAT=tformat,TDIFF=tdiff
+FUNCTION time_struct,time,EPOCH=epoch,NO_CLEAN=no_clean,MMDDYYYY=mmddyyyy, $
+                          TIMEZONE=timezone,LOCAL_TIME=local_time,         $
+                          INFORMAT=informat,                               $
+                          IS_LOCAL_TIME=is_local_time
 
 ;;----------------------------------------------------------------------------------------
-;;  Check for time zone setting
+;;  
 ;;----------------------------------------------------------------------------------------
 ;  TDAS Update
 ;dprint,DLEVEL=9,time[0]
@@ -167,20 +133,13 @@ tst_t = ['YEAR','MONTH','DATE','HOUR','MIN','SEC','FSEC','DAYNUM','DOY','DOW','S
          'DST','TZONE','TDIFF']
 tst0  = CREATE_STRUCT(tst_t,1970,1,1,0,0,0,d,0L,0,0,d,0,0,0,NAME='TIME_STRUCTR')
 ;;----------------------------------------------------------------------------------------
-;;  Check input
+;;  Determine size and type of variable time
 ;;----------------------------------------------------------------------------------------
 dim  = SIZE(time,/DIMENSIONS)
 ndim = SIZE(time,/N_DIMENSIONS)
 
 IF (ndim[0] EQ 0) THEN tsts = tst0 ELSE tsts = MAKE_ARRAY(VALUE=tst0,DIM=dim)
 
-IF KEYWORD_SET(epoch) THEN BEGIN
-  ;;  EPOCH is set
-  RETURN,time_struct(time_double(time,EPOCH=epoch),TIMEZONE=timezone)
-ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Determine size and type of variable time
-;;----------------------------------------------------------------------------------------
 CASE dt[0] OF
   7L   : BEGIN  ;;  Input is a string
     stris = 1
@@ -215,13 +174,11 @@ CASE dt[0] OF
     ENDELSE
   END
 ENDCASE
-;    LBW III  06/13/2016   v1.6.0
-;IF KEYWORD_SET(epoch) THEN BEGIN
-;  RETURN,time_struct(time_double(time,EPOCH=epoch),TIMEZONE=timezone)
-;ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Call type-specific routine(s) and return result
-;;----------------------------------------------------------------------------------------
+
+IF KEYWORD_SET(epoch) THEN BEGIN
+  RETURN,time_struct(time_double(time,EPOCH=epoch),TIMEZONE=timezone)
+ENDIF
+
 check = [stris,dobll,struc,undef]
 gchck = WHERE(check GT 0,gch)
 IF (gch GT 0) THEN BEGIN
@@ -230,16 +187,56 @@ IF (gch GT 0) THEN BEGIN
       ;;----------------------------------------------------------------------------------
       ;;  Input is a string
       ;;----------------------------------------------------------------------------------
-;    LBW III  06/13/2016   v1.6.0
-      ;;  parsing abstracted in separate routine
-      tsts = time_parse(time,TFORMAT=tformat,MMDDYYYY=MMDDYYYY)
+      bt                = BINDGEN(256)
+      ;;  Create new ascii set where common separators are replaced with spaces
+      bt[BYTE(':_-/,')] = 32
+      year = 0L & month = 0 & date = 0 & hour = 0 & min = 0 & fsec = 0d0
+      FOR i=0L, N_ELEMENTS(time) - 1L DO BEGIN
+        tst = tst0
+        str = STRING(bt[BYTE(time[i])])+' 0 0 0 0 0 0'    ;;  Remove separators
+        ;;  get Year, Month, Day, Hour, Minute, and Seconds out of STR
+        IF KEYWORD_SET(mmddyyyy) THEN BEGIN
+          READS,str,month,date,year,hour,min,fsec
+        ENDIF ELSE BEGIN
+          READS,str,year,month,date,hour,min,fsec
+        ENDELSE
+        ;;  check for unphysically large year number
+        IF (year GT 10000000L) THEN BEGIN
+          hour  = month
+          date  = year MOD 100
+          year  = year/100
+          month = year MOD 100
+          year  = year/100
+          min   = hour MOD 100
+          hour  = hour/100
+        ENDIF
+        IF (year LT 70L ) THEN year = year + 2000L
+        IF (year LT 200L) THEN year = year + 1900L
+        ;;  make sure month and date are at least 1
+        month     = month > 1
+        date      = date  > 1
+        ;;  define structure tag values
+        tst.YEAR  = year
+        tst.MONTH = month
+        tst.DATE  = date
+        tst.HOUR  = hour
+        tst.MIN   = min
+        ;;  Separate seconds and fractional seconds
+        tst.SEC   = FIX(fsec)
+        tst.FSEC  = (DOUBLE(fsec) MOD 1d0)
+;        tst.FSEC  = fsec
+;        IF (tst.FSEC[0] LT 0) THEN STOP   ;;  figure out where things go wrong...
+        ;;  define new element in structure array
+        tsts[i]   = tst
+      ENDFOR 
       IF KEYWORD_SET(no_clean) THEN BEGIN
         ;;  Return to user
         RETURN,tsts
       ENDIF ELSE BEGIN
-        ;;  get Unix time
-        t = time_double(tsts)
+        t = time_double(tsts)  ;;  get Unix time
         IF KEYWORD_SET(is_local_time) THEN BEGIN
+;  TDAS Update
+;          dprint,DLEVEL=9,'is_local_time'
           ;;  ??  input was local time, not UTC  ??
           dst = isdaylightsavingtime(t,tzone)
           t  -= (dst + tzone)*3600
@@ -272,9 +269,9 @@ IF (gch GT 0) THEN BEGIN
         fsec   = fsec - min*6d1                ;;  fractional seconds of minute
         sec    = FLOOR(fsec)                   ;;  rounded seconds of minute
         fsec   = fsec - sec                    ;;  fractional seconds
-        ;;  convert Julian day number -> year and DOY (day of year)
+        ;;  convert Julian day number -> year and (day of year)
         day_to_year_doy,daynum,year,doy
-        ;;  convert year and DOY (day of year) -> month and date
+        ;;  convert year and (day of year) -> month and date
         doy_to_month_date,year,doy,month,date
         ;;  replace structure elements
         tsts[good].MONTH  = month
