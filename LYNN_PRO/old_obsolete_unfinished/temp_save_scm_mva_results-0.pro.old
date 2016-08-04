@@ -1,0 +1,294 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_save_scm_mva_results.pro
+;  PURPOSE  :   
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               STRUC          :  Scalar [structure] defining a valid TPLOT structure
+;                                   upon which the user wishes to perform minimum
+;                                   variance analysis (MVA).  The data structure should
+;                                   be clipped to contain only data from a single
+;                                   burst interval (i.e., no significant data gaps).
+;
+;                                   The required structure tags for STRUC are:
+;                                     X  :  [N]-Element array of Unix times
+;                                     Y  :  [N,3]-Element array of 3-vectors
+;
+;                                   If the TSHIFT tag is present, the routine will assume
+;                                   that STRUC.X is seconds from STRUC.TSHIFT[0].
+;
+;  EXAMPLES:    
+;               
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***      REQUIRED  INPUTS      ***
+;               **********************************
+;               INTS_TRANGE  :  [I,2]-Element [numeric] array defining the Unix start/end
+;                                 times of each interval within STRUC
+;               FLOW_SUBINT  :  Scalar [structure] containing I-tags with arrays of the
+;                                 lower bound frequencies [Hz] for the bandpass filters, 
+;                                 where the i-th tag corresponds to i-th interval in
+;                                 INTS_TRANGE
+;               FHIGHSUBINT  :  Scalar [structure] containing I-tags with arrays of the
+;                                 upper bound frequencies [Hz] for the bandpass filters, 
+;                                 where the i-th tag corresponds to i-th interval in
+;                                 INTS_TRANGE
+;               **********************************
+;               ***      OPTIONAL  INPUTS      ***
+;               **********************************
+;               BAD_INTS     :  [K]-Element [numeric] array defining the intervals within
+;                                 the time range of STRUC to avoid performing MVA.
+;                                 [Default = -1]
+;               BAD_FLOW     :  [K]-Element [numeric] array defining the low frequency
+;                                 bound corresponding to the BAD_INTS in the event that
+;                                 the same interval has good frequency ranges on which to
+;                                 perform MVA.
+;                                 [Default = NaN]
+;               BEST_SUBINT  :  Scalar [structure] containing multiple tags corresponding
+;                                 to analysis on multiple intervals from the output of
+;                                 the BEST_NO_OVRLP keyword in the routine
+;                                 extract_good_mva_from_adapint.pro
+;                                 [Default = (defined on output)]
+;               MVA_RESULTS  :  Scalar [structure] containing multiple tags corresponding
+;                                 to analysis on multiple intervals from the output of
+;                                 the routine extract_good_mva_from_adapint.pro
+;                                 [Default = (defined on output)]
+;               **********************************
+;               ***           OUTPUTS          ***
+;               **********************************
+;               BEST_SUBINT  :  Set to a named variable to return a scalar [structure]
+;                                 containing multiple tags corresponding to analysis on
+;                                 multiple intervals from the output of the BEST_NO_OVRLP
+;                                 keyword in the routine extract_good_mva_from_adapint.pro
+;               MVA_RESULTS  :  Set to a named variable to return a scalar [structure]
+;                                 containing multiple tags corresponding to analysis on
+;                                 multiple intervals from the output of the routine
+;                                 extract_good_mva_from_adapint.pro
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  08/01/2016
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/01/2016   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION temp_save_scm_mva_results,struc,INTS_TRANGE=ints_trange,                      $
+                                       FLOW_SUBINT=flow_subint,FHIGHSUBINT=fhighsubint,$
+                                       BAD_INTS=bad_ints,BAD_FLOW=bad_flow,            $
+                                       SCPREF=scpref,                                  $
+                                       BEST_SUBINT=best_subint,MVA_RESULTS=mva_results
+
+;;----------------------------------------------------------------------------------------
+;;  Constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply at least one valid TPLOT structure...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (tplot_struct_format_test(struc,/YVECT,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Calculate sample rates [sps] and periods [s]
+unix           = t_get_struc_unix(struc)
+srate_db0      = sample_rate(unix,/AVERAGE)
+srate_db       = DOUBLE(ROUND(srate_db0[0]))       ;;  Sample rate [sps]
+speri_db       = 1d0/srate_db[0]                   ;;  Sample period [s]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check BAD_INTS and BAD_FLOW
+test           = (N_ELEMENTS(bad_ints) EQ 0) OR (N_ELEMENTS(bad_flow) EQ 0)
+IF (test[0]) THEN bad_ints = [-1L]
+IF (test[0]) THEN bad_flow = [f]
+;;  Check INTS_TRANGE
+test           = (N_ELEMENTS(ints_trange) LT 2) OR (is_a_number(ints_trange,/NOMSSG) EQ 0)
+IF (test[0]) THEN RETURN     ;;  Required input keyword missing --> exit
+st_td          = REFORM(ints_trange[*,0])
+en_td          = REFORM(ints_trange[*,1])
+nt             = N_ELEMENTS(st_td)         ;;  # of intervals within burst time range
+;;  Check FLOW_SUBINT and FHIGHSUBINT
+test           = (SIZE(flow_subint,/TYPE) NE 8) OR (SIZE(fhighsubint,/TYPE) NE 8)
+IF (test[0]) THEN RETURN     ;;  Required input keyword missing --> exit
+test           = (N_TAGS(flow_subint) NE nt[0]) OR (N_TAGS(fhighsubint) NE nt[0])
+IF (test[0]) THEN RETURN     ;;  Required input keyword missing --> exit
+flow_ww_str    = flow_subint
+fhig_ww_str    = fhighsubint
+;;  Check SCPREF
+test           = (SIZE(scpref,/TYPE) NE 7)
+IF (test[0]) THEN scpref = 'sc_' ELSE scpref = scpref[0]
+;;----------------------------------------------------------------------------------------
+;;  Define interval stuff
+;;----------------------------------------------------------------------------------------
+;;  stuff related to INTS_TRANGE keyword
+int_strs       = num2int_str(LINDGEN(nt[0]),NUM_CHAR=3,/ZERO_PAD)
+tags           = 'INT_'+int_strs
+;;----------------------------------------------------------------------------------------
+;;  Define file name prefix
+;;----------------------------------------------------------------------------------------
+tr_brst_int    = minmax(unix)
+fnm            = file_name_times(tr_brst_int,PREC=3L)
+fn_suffx       = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)
+fname_pref     = STRUPCASE(scpref[0])+fn_suffx[0]+'_'             ;;  e.g., 'MMS3_2015-10-16_1305x23.799-1307x47.598_'
+;;----------------------------------------------------------------------------------------
+;;  Define N_INT values for each interval within the burst interval
+;;----------------------------------------------------------------------------------------
+FOR k=0L, nt[0] - 1L DO BEGIN
+  trange    = [st_td[k[0]],en_td[k[0]]]             ;;  [start,end] time [Unix] of interval
+  dt_int    = MAX(trange,/NAN) - MIN(trange,/NAN)   ;;  duration of interval [s]
+  n_int     = ROUND(dt_int[0]*srate_db[0])          ;;  # of time steps within each interval
+  PRINT,';;  Int: ',k[0],', N_int  = ',n_int[0],', ∆t_int  = ',dt_int[0]
+  IF (k EQ 0) THEN n_int_all = n_int ELSE n_int_all = [n_int_all,n_int]
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Determine N_min parameters
+;;----------------------------------------------------------------------------------------
+;;  stuff related to FLOW_SUBINT and FHIGHSUBINT keywords
+l10f_facts     = ALOG10(1d0/mult_facts)
+dumb           = TEMPORARY(freq_str_str)
+dumb           = TEMPORARY(freq_ysub_str)
+dumb           = TEMPORARY(nmin_filt_str)
+FOR k=0L, nt[0] - 1L DO BEGIN  ;;  Iterate over intervals
+  ;;  Define interval-specific parameters
+  n_int     = n_int_all[k[0]]
+  flow_ww   = flow_ww_str.(k)     ;;  Array of lower frequency bounds for bandpass filters
+  fhig_ww   = fhig_ww_str.(k)     ;;  Array of upper frequency bounds for bandpass filters
+  test      = (TOTAL(FINITE(flow_ww)) EQ 0) OR (TOTAL(FINITE(fhig_ww)) EQ 0)
+  IF (test[0]) THEN BEGIN
+    str_element,freq_str_str,tags[k],'',/ADD_REPLACE
+    str_element,freq_ysub_str,tags[k],'',/ADD_REPLACE
+    str_element,nmin_filt_str,tags[k],d,/ADD_REPLACE
+    ;;  jump to next interval
+    CONTINUE
+  ENDIF
+  l10flow   = ALOG10(flow_ww)
+  l10fhig   = ALOG10(fhig_ww)
+  badf      = WHERE(flow_ww LE 0,bdf)
+  IF (bdf GT 0) THEN l10flow[badf] = -30d0
+  badf      = WHERE(fhig_ww LE 0,bdf)
+  IF (bdf GT 0) THEN l10fhig[badf] =  30d0
+  nf        = N_ELEMENTS(flow_ww)
+  funits    = STRARR(nf[0])       ;;  UNITS used for file names and plot titles
+  f_fact    = DBLARR(nf[0])       ;;  Multiplication factor from Hz to UNITS
+  FOR ff=0L, nf[0] - 1L DO BEGIN  ;;  Iterate over filter frequencies
+    test       = (l10flow[ff] GE l10f_facts) OR (l10fhig[ff] LT l10f_facts)
+    badf       = WHERE(test,bdf,COMPLEMENT=goodf,NCOMPLEMENT=gdf)
+    IF (gdf GT 0) THEN funits0 = fran_units[MAX(goodf)] ELSE funits0 = 'Hz'
+    IF (gdf GT 0) THEN f_fact0 = mult_facts[MAX(goodf)] ELSE f_fact0 = 1d0 
+    funits[ff] = funits0[0]
+    f_fact[ff] = f_fact0[0]
+  ENDFOR
+  ;;  Define file name suffixes
+  lowf_str  = STRTRIM(STRING(flow_ww*f_fact,FORMAT='(f15.3)'),2L)
+  higf_str  = STRTRIM(STRING(fhig_ww*f_fact,FORMAT='(f15.3)'),2L)
+  freq_mid0 = 'Filt_'+lowf_str+'-'+higf_str+funits
+  str_element,freq_str_str,tags[k],freq_mid0,/ADD_REPLACE
+  ;;  Define YSUBTITLEs for plots
+  freq_mid0 = '[Filt: '+lowf_str+'-'+higf_str+' '+funits+']'
+  str_element,freq_ysub_str,tags[k],freq_mid0,/ADD_REPLACE
+  dumb      = REPLICATE(d,nf[0])
+  favg      = (fhig_ww + flow_ww)/2d0
+  fdiff     = (fhig_ww - flow_ww)
+  frat      = fdiff/favg
+  dtlow     = 2d0/fhig_ww
+  dthig     = 2d0/flow_ww
+  nminl     = ROUND(dtlow*srate_db[0])
+  nminh     = ROUND(dthig*srate_db[0])
+  nminarr   = [[nminl],[nminh]]
+  goodmx    = WHERE(frat GE 8d-1,gdmx,COMPLEMENT=goodmn,NCOMPLEMENT=gdmn)
+  IF (gdmx GT 0) THEN dumb[goodmx] = MAX(nminarr[goodmx,*],/NAN,DIMENSION=2)
+  IF (gdmn GT 0) THEN dumb[goodmn] = MIN(nminarr[goodmn,*]*3/2,/NAN,DIMENSION=2)
+  dumb      = dumb < (n_int[0]/6L)
+  PRINT,';;  Int: ',k[0],', N_min  = ',LONG(dumb)
+  ;;  Create structure of N_MIN values for each interval and frequency filter
+  str_element,nmin_filt_str,tags[k],dumb,/ADD_REPLACE
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define MVA interval stuff
+;;----------------------------------------------------------------------------------------
+min_thrsh      = 4d-3                ;;  use 4 pT as the minimum threshold allowed for MVA
+d__nw          = 2L                  ;;  # of points btwn size of each time window within in subinterval
+d__ns          = 8L                  ;;  # of points to shift btwn each subinterval
+n_win          = 200L                ;;  # of time windows within each subinterval
+mxovr          = 75d-2               ;;  require 75% overlap for two subintervals to be considered the "same"
+;;  Perform MVA on each subinterval and time window
+test_struc     = (SIZE(best_subint,/TYPE) NE 8) OR (SIZE(mva_results,/TYPE) NE 8)
+IF (test_struc[0]) THEN BEGIN
+  ;;  User did not supply MVA results structures --> create now
+  FOR int=0L, nt[0] - 1L DO BEGIN  ;;  Iterate over intervals
+    ;;  Define interval time range
+    trange         = [st_td[int[0]],en_td[int[0]]]
+    low_freqs      = flow_ww_str.(int[0])
+    hig_freqs      = fhig_ww_str.(int[0])
+    nfrq           = N_ELEMENTS(low_freqs)
+    n_min_int      = nmin_filt_str.(int[0])
+    ;;  Define structure tags for frequency filters
+    ftags          = 'FR_'+num2int_str(LINDGEN(nfrq[0]),NUM_CHAR=2,/ZERO_PAD)
+    mva_0          = 0
+    bind0          = 0
+    b_int          = (TOTAL(int[0] EQ bad_ints) GT 0)
+    FOR ff=0L, nfrq[0] - 1L DO BEGIN
+      low_f          = low_freqs[ff]
+      highf          = hig_freqs[ff]
+      n_min          = n_min_int[ff]
+      ratio          = (low_f[0]/bad_flow) - 1d0
+      b_flow         = (TOTAL(ABS(ratio) LE 1e-6) GT 0) AND b_int[0]
+      IF (b_flow[0]) THEN BEGIN
+        ;;  User defined "bad" interval or frequency filter --> skip
+        str_element,mva_0,ftags[ff],0,/ADD_REPLACE
+        str_element,bind0,ftags[ff],0,/ADD_REPLACE
+        CONTINUE
+      ENDIF
+      bindovr        = 1            ;;  Dummy value that will be replaced on output by a structure
+      fwws_mva       = extract_good_mva_from_adapint(struc,TRANGE=trange,DNWINDS=d__nw[0],          $
+                                                     NSHIFT=d__ns[0],NTMIN=n_min[0],NTWINDS=n_win,  $
+                                                     LOW_FREQ=low_f[0],HIGHFREQ=highf[0],           $
+                                                     /CONS_NSHFNMIN,MIN_AMP_THRSH=min_thrsh[0],     $
+                                                     /GOOD_10_3,BEST_NO_OVRLP=bindovr,              $
+                                                     MX_OVRLP_THSH=mxovr[0])
+      str_element,mva_0,ftags[ff],fwws_mva,/ADD_REPLACE
+      str_element,bind0,ftags[ff],bindovr,/ADD_REPLACE
+    ENDFOR
+    str_element,best_subint,tags[int],bind0,/ADD_REPLACE
+    str_element,mva_results,tags[int],mva_0,/ADD_REPLACE
+  ENDFOR
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Save MVA results [if user did not define beforehand]
+;;----------------------------------------------------------------------------------------
+IF (test_struc[0]) THEN fname          = fname_pref[0]+'Filtered_SCM_MVA_Results.sav'
+IF (test_struc[0]) THEN SAVE,best_subint,mva_results,FILENAME=fname[0]
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,1b
+END

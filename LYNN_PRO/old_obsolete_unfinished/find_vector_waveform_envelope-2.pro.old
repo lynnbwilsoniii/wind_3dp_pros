@@ -20,10 +20,10 @@
 ;               1)  UMN Modified Wind/3DP IDL Libraries
 ;
 ;  INPUT:
-;               TIME        :  [N]-Element [double] array of time [s] abscissa points for
-;                                each field vector component in FIELD
-;               VECTOR      :  [N,3]-Element [float/double] array of data points defining
-;                                the 3-vectors for each timestamp in TIME
+;               TIME      :  [N]-Element [double] array of time [s] abscissa points for
+;                              each field vector component in FIELD
+;               VECTOR    :  [N,3]-Element [float/double] array of data points defining
+;                              the vectors (i.e., V^3) for each timestamp in TIME
 ;
 ;  EXAMPLES:    
 ;               test = find_vector_waveform_envelope(time,vector,SM_WIDTH=sm_width,  $
@@ -31,37 +31,31 @@
 ;                                                    OFFSET=offset)
 ;
 ;  KEYWORDS:    
-;               SM_WIDTH    :  Scalar [long] defining the width (i.e., # of elements)
-;                                to use for smoothing the lower and upper bounds of the
-;                                waveform envelope
-;                                [Default = 3]
-;               RM_EDGES    :  If set, routine sets the start and end envelope values to
-;                                NaNs.  This is useful for filtered data that has
-;                                artificial divergences at the start/end of the time
-;                                series due to the filtering.
-;                                [Default = FALSE]
-;               NO_LIM_OFF  :  If set, routine will allow the user to define
-;                                (OFFSET < LENGTH), whereas the default limits the
-;                                values to (OFFSET > LENGTH)
-;                                [Default = FALSE]
+;               SM_WIDTH  :  Scalar [long] defining the width (i.e., # of array elements)
+;                              to use for smoothing the lower and upper bounds of the
+;                              waveform envelope
+;                              [Default = 3]
+;               RM_EDGES  :  If set, routine sets the start and end envelope values to
+;                              NaNs.  This is useful for filtered data that has
+;                              artificial divergences at the start/end of the time
+;                              series due to the filtering.
+;                              [Default = FALSE]
 ;               *********************************************
 ;               ***  keywords used by partition_data.pro  ***
 ;               *********************************************
-;               LENGTH      :  Scalar [long] defining the # of elements to use when
-;                                defining the time ranges for partitioning the data to
-;                                find the envelope around the waveform
-;                                [Default = 4]
-;               OFFSET      :  Scalar [long] defining the # of elements to shift from the
-;                                start of each time stamp
-;                                [Default = 4]
+;               LENGTH    :  Scalar [long] defining the # of elements to use when
+;                              defining the time ranges for partitioning the data to
+;                              find the envelope around the waveform
+;                              [Default = 4]
+;               OFFSET    :  Scalar [long] defining the # of elements to shift from the
+;                              start of each time stamp
+;                              [Default = 4]
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [08/11/2015   v1.0.0]
 ;             2)  Now returns envelopes for each component in addition to an overall
 ;                   envelope for the waveform
 ;                                                                   [08/11/2015   v1.1.0]
-;             3)  Added keyword:  NO_LIM_OFF
-;                                                                   [07/25/2016   v1.2.0]
 ;
 ;   NOTES:      
 ;               1)  The routine requires that N ≥ 64
@@ -72,14 +66,14 @@
 ;
 ;   CREATED:  08/10/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/25/2016   v1.2.0
+;    LAST MODIFIED:  08/11/2015   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
 FUNCTION find_vector_waveform_envelope,time,vector,SM_WIDTH=sm_width,RM_EDGES=rm_edges,$
-                                       NO_LIM_OFF=no_lim_off,LENGTH=length,OFFSET=offset
+                                       LENGTH=length,OFFSET=offset
 
 ;;  Let IDL know that the following are functions
 FORWARD_FUNCTION is_a_number, format_2d_vec, partition_data
@@ -140,9 +134,6 @@ smwd           = smwd[0] > def_smwd[0]            ;;  Make sure SM_WIDTH is at l
 ;;  Check RM_EDGES
 test           = (N_ELEMENTS(rm_edges) GT 0) AND KEYWORD_SET(rm_edges)
 IF (test[0]) THEN kill_edge = 1b ELSE kill_edge = 0b
-;;  Check NO_LIM_OFF
-test           = (N_ELEMENTS(no_lim_off) GT 0) AND KEYWORD_SET(no_lim_off)
-IF (test[0]) THEN yes_limit = 0b ELSE yes_limit = 1b
 ;;  Check LENGTH
 test           = (N_ELEMENTS(length) EQ 1) AND is_a_number(length,/NOMSSG)
 IF (test[0]) THEN nlen = (length[0] < (nt[0]/def_len[0])) ELSE nlen = def_len[0]
@@ -150,10 +141,7 @@ nlen           = nlen[0] > def_len[0]             ;;  Make sure LENGTH is at lea
 ;;  Check OFFSET
 test           = (N_ELEMENTS(offset) EQ 1) AND is_a_number(offset,/NOMSSG)
 IF (test[0]) THEN nshft = (offset[0] < (nt[0]/def_off[0])) ELSE nshft = def_off[0]
-IF (yes_limit[0]) THEN off_low = nlen[0] ELSE off_low = def_off[0]
-nshft          = nshft[0] > off_low[0]            ;;  Make sure OFFSET is at least LENGTH
-;    LBW III  07/25/2016   v1.2.0
-;nshft          = nshft[0] > nlen[0]               ;;  Make sure OFFSET is at least LENGTH
+nshft          = nshft[0] > nlen[0]               ;;  Make sure OFFSET is at least LENGTH
 ;;----------------------------------------------------------------------------------------
 ;;  Find envelope around waveform (i.e., high/low values for each time range)
 ;;

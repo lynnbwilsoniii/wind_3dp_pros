@@ -1,3 +1,133 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   merge_adjacent_int.pro
+;  PURPOSE  :   This routine merges adjacent intervals that are separated by ≤ 1
+;                 element.
+;
+;  CALLED BY:   
+;               t_interval_find.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               SE_INT     :  [N,2]-Element [integer] array from t_interval_find.pro
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               se_mrg = merge_adjacent_int(se_int [,THR_MERGE=merge_thr])
+;
+;  KEYWORDS:    
+;               THR_MERGE  :  Scalar [numeric] defining the gap threshold # of elements
+;                               between intervals to allow before merging
+;                                [Default = 1]
+;
+;   CHANGED:  1)  Added keyword:  THR_MERGE
+;                                                                   [09/10/2013   v1.1.0]
+;             2)  Updated Man. page and main routine
+;                                                                   [11/28/2015   v1.1.1]
+;
+;   NOTES:      
+;               1)  User should not call this routine
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  09/09/2013
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  11/28/2015   v1.1.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION merge_adjacent_int,se_int,THR_MERGE=merge_thr
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 1) THEN RETURN,-1
+test           = (N_ELEMENTS(se_int) LE 2)
+IF (test) THEN RETURN,se_int
+;;----------------------------------------------------------------------------------------
+;;  Define Parameters
+;;----------------------------------------------------------------------------------------
+start          = se_int[*,0]
+stops          = se_int[*,1]
+thick          = stops - start
+wint           = N_ELEMENTS(start)
+
+test           = (N_ELEMENTS(merge_thr) GT 0)
+IF (test) THEN BEGIN
+  ;;  THR_MERGE keyword set
+  m_thresh = (merge_thr[0] > 1) < (wint[0]/10L)
+ENDIF ELSE BEGIN
+  ;;  Use default
+  m_thresh = 1L
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Check intervals
+;;----------------------------------------------------------------------------------------
+test           = (thick LE (m_thresh[0] - 1L))
+badn           = WHERE(test,bdn)
+test0          = (bdn GT 0) AND (badn[0] NE 0)
+test1          = (bdn GT 0) AND (badn[0] EQ 0) AND (MAX(badn) NE wint)
+test2          = (test0 OR test1)
+
+test           = (bdn GT 0)
+IF (test) THEN BEGIN
+  ;;  adjacent intervals exist
+  merge      = REPLICATE(0L,bdn,2)
+  nmer       = bdn
+  ;;  fill values
+  IF (test0) THEN BEGIN
+    merge = ([[badn - 1L],[badn]]) > 0L
+  ENDIF ELSE BEGIN
+    merge = ([[badn],[badn + 1L]]) < (wint - 1L)
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;;  all intervals are at least 2 elements long
+  out_se     = se_int
+  nmer       = 0
+  merge      = 0
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Merge intervals if necessary
+;;----------------------------------------------------------------------------------------
+IF (nmer GT 0) THEN BEGIN
+  se_nint = se_int
+  FOR j=0L, nmer - 1L DO BEGIN
+    bels            = REFORM(merge[j,*])
+    lels            = se_nint[bels[0],0]
+    hels            = se_nint[bels[1],1]
+    se_nint[bels,0] = lels
+    se_nint[bels,1] = hels
+  ENDFOR
+  ;;  Determine unique elements
+  unql    = UNIQ(se_nint[*,0],SORT(se_nint[*,0]))
+  sp      = SORT(unql)
+  unql    = unql[sp]
+  ;;  Redefine intervals
+  out_se  = se_nint[unql,*]
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,out_se
+END
+
+
 ;+
 ;*****************************************************************************************
 ;
@@ -41,10 +171,9 @@
 ;                                start and end elements equals zero.  This keyword is
 ;                                useful when the NAN keyword is set.
 ;                                [Default = 0]
-;               THR_MERGE   :  Scalar [numeric] defining the maximum gap threshold below
-;                                which intervals are merged
-;                                (i.e., GAP_THRSH keyword in merge_overlap_int.pro)
-;                                [Default = 0]
+;               THR_MERGE   :  Scalar [numeric] defining the gap threshold # of elements
+;                                between intervals to allow before merging
+;                                [Default = 1]
 ;
 ;   CHANGED:  1)  Continued writing routine
 ;                   --> Fixed an issue with element definitions
@@ -57,9 +186,6 @@
 ;             4)  Updated Man. page and now ensures that start and end points are
 ;                   part of the return array set and now calls is_a_number.pro
 ;                                                                   [11/28/2015   v1.3.0]
-;             5)  No longer includes merge_adjacent_int.pro, rather now calls
-;                   merge_overlap_int.pro and cleaned up a little
-;                                                                   [07/26/2016   v2.0.0]
 ;
 ;   NOTES:      
 ;               1)  The output is a [K,2]-element array of [start,end] elements
@@ -72,14 +198,14 @@
 ;
 ;   CREATED:  07/16/2012
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/26/2016   v2.0.0
+;    LAST MODIFIED:  11/28/2015   v1.3.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION t_interval_find,time,GAP_THRESH=gap_thresh,NAN=nan,MERGE=merge,$
-                              THR_MERGE=merge_thr
+FUNCTION t_interval_find,time,GAP_THRESH=gap_thresh,NAN=nan,$
+                              MERGE=merge,THR_MERGE=merge_thr
 
 ;;  Let IDL know that the following are functions
 FORWARD_FUNCTION is_a_number, sample_rate, merge_adjacent_int
@@ -141,6 +267,7 @@ ENDIF ELSE BEGIN
     mx_gap = 4d0/srate[0]
   ENDIF
 ENDELSE
+
 ;;  Check if user wants to include NaNs as gaps
 test           = (N_ELEMENTS(nan) EQ 0) OR ~KEYWORD_SET(nan)
 IF (test) THEN use_nans = 0 ELSE use_nans = 1
@@ -172,10 +299,9 @@ ENDELSE
 ;;  Check if user wishes to merge adjacent intervals
 ;;----------------------------------------------------------------------------------------
 se_int         = [[gel_sta],[gel_end]]
-test           = (N_ELEMENTS(merge) GT 0) AND KEYWORD_SET(merge)
-;test           = (N_ELEMENTS(merge) NE 0)
-;IF (test) THEN test   = (merge[0] NE 0)
-IF (test) THEN out_int = merge_overlap_int(se_int,GAP_THRSH=merge_thr) ELSE out_int = se_int
+test           = (N_ELEMENTS(merge) NE 0)
+IF (test) THEN test   = (merge[0] NE 0)
+IF (test) THEN out_int = merge_adjacent_int(se_int,THR_MERGE=merge_thr) ELSE out_int = se_int
 ;;----------------------------------------------------------------------------------------
 ;;  Make sure intervals contain the 1st and last elements
 ;;----------------------------------------------------------------------------------------
