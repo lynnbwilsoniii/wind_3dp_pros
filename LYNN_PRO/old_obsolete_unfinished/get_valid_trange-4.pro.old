@@ -52,9 +52,6 @@
 ;             4)  Added NOMSSG keyword to test_tdate_format.pro to reduce unnecessary
 ;                   and/or redundant output messages
 ;                                                                   [11/02/2015   v1.0.3]
-;             5)  Fixed bug when NO_CLEAN keyword is set in call to time_struct.pro
-;                   [bug only affected day of year output]
-;                                                                   [09/08/2016   v1.1.0]
 ;
 ;   NOTES:      
 ;               1)  If no keywords are given, the routine will prompt the user for a
@@ -66,7 +63,7 @@
 ;
 ;   CREATED:  09/23/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  09/08/2016   v1.1.0
+;    LAST MODIFIED:  11/02/2015   v1.0.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -78,8 +75,8 @@ FUNCTION get_valid_trange,TDATE=tdate,TRANGE=trange,PRECISION=prec
 ;;  Define some defaults
 ;;----------------------------------------------------------------------------------------
 ;;  Default time-related values
-start_of_day   = '00:00:00.000000'
-end___of_day   = '23:59:59.999999'
+start_of_day   = '00:00:00.000000000000000'
+end___of_day   = '23:59:59.999999999999999'
 ;;  Define the DOY values at the start of each month for non-leap and leap years
 mdt            = [[0, 31,  59,  90, 120, 151, 181, 212, 243, 273, 304, 334, 365], $
                   [0, 31,  60,  91, 121, 152, 182, 213, 244, 274, 305, 335, 366]]
@@ -102,11 +99,13 @@ prompt_dd      = "Please enter a day between 1 and 31:"     ;;  this will change
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
 ;;  Check TDATE
+;test           = (N_ELEMENTS(tdate) LT 1) OR (test_tdate_format(tdate) EQ 0)
 test           = (N_ELEMENTS(tdate) LT 1) OR (test_tdate_format(tdate,/NOMSSG) EQ 0)
 IF (test[0]) THEN tdate_on = 0b ELSE tdate_on = 1b
 ;;  Check TRANGE
 test           = (N_ELEMENTS(trange) GE 2) AND is_a_number(trange,/NOMSSG)
 IF (test[0]) THEN BEGIN
+;  test = ((TOTAL(trange GT unix_min[0]) LT 2) OR (TOTAL(trange LT unix_max[0]) LT 2)) AND $
   test = ((TOTAL(trange GT unix_min[0]) EQ 2) OR (TOTAL(trange LT unix_max[0]) EQ 2)) AND $
           (trange[0] NE trange[1])
 ENDIF
@@ -145,6 +144,7 @@ IF (test[0]) THEN BEGIN
   ;;  Define month [force long integer format too]
   month          = (LONG(STRING(val__out[0],FORMAT='(I2.2)')))[0]
   ;;  Define the max number of days in this month
+;  max_nd         = dom_ny[(month[0] - 1L),leap[0]]
   max_nd         = nd_per_mon[month[0],leap[0]]
   ;;  Re-define the day prompt
   prompt_dd      = "Please enter a day between 1 and "+STRING(max_nd[0],FORMAT='(I2.2)')+":"
@@ -219,8 +219,7 @@ ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Determine day of year (DOY) range
 ;;----------------------------------------------------------------------------------------
-tstruc         = time_struct(tra_t)
-;tstruc         = time_struct(tra_t,/NO_CLEAN)
+tstruc         = time_struct(tra_t,/NO_CLEAN)
 test           = (SIZE(tstruc,/TYPE) EQ 8)
 IF (test[0]) THEN doy_ra = tstruc.DOY ELSE doy_ra = REPLICATE(-1,2L)
 ;;----------------------------------------------------------------------------------------
