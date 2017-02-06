@@ -325,18 +325,18 @@ bt3_avg_sm     = SMOOTH(bt3_avg,wd[0],/NAN,/EDGE_TRUNCATE)  ;;  Smoothed [Daily]
 ;;    Battery Volt --> after Jan. 1, 2005
 
 ;;  Trends [use]
-;;    Solar Arrays --> after Jan. 1, 2005 to Jan. 1, 2014
-;;    Battery Temp --> after Jan. 1, 2013 to Jan. 1, 2015
-;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2015 [Battery 1]
-;;    Battery Volt --> after Jan. 1, 2005 to Jan. 1, 2015 [Battery 2]
-;;    Battery Volt --> after Jan. 1, 2008 to Jan. 1, 2015 [Battery 3]
+;;    Solar Arrays --> after Jan. 1, 2005 to Jan. 1, 2017
+;;    Battery Temp --> after Sep. 1, 2016 to Jan. 1, 2017
+;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2017 [Battery 1]
+;;    Battery Volt --> after Jan. 1, 2005 to Jan. 1, 2017 [Battery 2]
+;;    Battery Volt --> after Jan. 1, 2008 to Jan. 1, 2017 [Battery 3]
 
 zero_t         = '00:00:00.000'
-tra__sa        = time_double(['2005','2014']+'-01-01/'+zero_t[0])
-tra_bv1        = time_double(['2013','2015']+'-01-01/'+zero_t[0])
-tra_bv2        = time_double(['2005','2015']+'-01-01/'+zero_t[0])
-tra_bv3        = time_double(['2008','2015']+'-01-01/'+zero_t[0])
-tra_bt1        = time_double(['2013','2015']+'-01-01/'+zero_t[0])
+tra__sa        = time_double(['2005','2017']+'-01-01/'+zero_t[0])
+tra_bv1        = time_double(['2013','2017']+'-01-01/'+zero_t[0])
+tra_bv2        = time_double(['2005','2017']+'-01-01/'+zero_t[0])
+tra_bv3        = time_double(['2008','2017']+'-01-01/'+zero_t[0])
+tra_bt1        = time_double(['2016-09','2017-01']+'-01/'+zero_t[0])
 good__sa       = WHERE(unix GE tra__sa[0] AND unix LE tra__sa[1],gd__sa)
 good_bv1       = WHERE(unix GE tra_bv1[0] AND unix LE tra_bv1[1],gd_bv1)
 good_bv2       = WHERE(unix GE tra_bv2[0] AND unix LE tra_bv2[1],gd_bv2)
@@ -424,7 +424,8 @@ find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int__sa_sm_2
 yy2            = dumb__sa_sm_3
 find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int__sa_sm_3
 PRINT,';;  ', time_string([xy_int__sa_sm_1[0],xy_int__sa_sm_2[0],xy_int__sa_sm_3[0]],PREC=3)
-;;   2018-05-29/18:46:21.082 2042-09-06/08:42:29.514 2055-06-25/09:38:26.444
+;;  *** Old ***   2018-05-29/18:46:21.082 2042-09-06/08:42:29.514 2055-06-25/09:38:26.444
+;;   2017-12-06/21:04:35.645 2041-12-02/03:03:51.806 2059-07-07/16:30:55.441
 
 ;;  Battery Voltages
 yy1            = ls_volt_yvs
@@ -435,7 +436,8 @@ find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int_bv2_sm_2
 yy2            = dumb_bv3_sm_3
 find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int_bv3_sm_3
 PRINT,';;  ', time_string([xy_int_bv1_sm_1[0],xy_int_bv2_sm_2[0],xy_int_bv3_sm_3[0]],PREC=3)
-;;   2025-04-05/19:53:32.713 2025-06-02/14:39:00.790 2020-09-18/00:23:03.579
+;;  *** Old ***   2025-04-05/19:53:32.713 2025-06-02/14:39:00.790 2020-09-18/00:23:03.579
+;;   2027-04-26/02:46:17.187 2025-11-02/14:53:47.881 2021-12-18/09:21:41.164
 
 ;;  Battery Temperatures
 yy1            = bt_cent_yvs
@@ -446,7 +448,8 @@ find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int_bt2_sm_2
 yy2            = dumb_bt3_sm_3
 find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int_bt3_sm_3
 PRINT,';;  ', time_string([xy_int_bt1_sm_1[0],xy_int_bt2_sm_2[0],xy_int_bt3_sm_3[0]],PREC=3)
-;;   2017-04-21/00:39:01.349 2017-04-13/20:16:53.985 2015-07-09/21:14:31.626
+;;  *** Old ***   2017-04-21/00:39:01.349 2017-04-13/20:16:53.985 2015-07-09/21:14:31.626
+;;   2023-02-07/00:22:24.315 2022-02-20/03:27:05.576 2020-11-01/10:26:32.179
 
 
 
@@ -461,7 +464,8 @@ WINDOW,2,RETAIN=2,XSIZE=1200,YSIZE=775
 ;; Define extended X-Axis ticks for plots
 xtn_ex         = ['1994','1995','1996','1997','1998','1999','2000','2001','2002','2003',$
                   '2004','2005','2006','2007','2008','2009','2010','2011','2012','2013',$
-                  '2014','2015','2016','2017','2018','2019','2020','2021','2022','2023']
+                  '2014','2015','2016','2017','2018','2019','2020','2021','2022','2023',$
+                  '2024','2025','2026','2027','2028','2029']
 xtn_dates_ex   = xtn_ex+'-01-01/00:00:00.000'
 xtv_ex         = time_double(xtn_dates_ex)
 xts_ex         = N_ELEMENTS(xtv_ex) - 1L
