@@ -99,9 +99,6 @@
 ;             4)  Updated Man. page and cleaned up and
 ;                   now calls is_a_number.pro, is_a_3_vector.pro
 ;                                                                   [12/04/2015   v3.0.0]
-;             5)  Fixed a potential issue if user defined a frequency range with no
-;                   excluded bins, the routine could break but now will not
-;                                                                   [04/06/2017   v3.0.1]
 ;
 ;   NOTES:      
 ;               1)  The input units for SR, LF, and HF do not matter so long as they are
@@ -140,7 +137,7 @@
 ;
 ;   CREATED:  12/30/2009
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/06/2017   v3.0.1
+;    LAST MODIFIED:  12/04/2015   v2.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -227,15 +224,9 @@ fft_freq       = fft_freq*(sr[0]/nd[0])
 ;;----------------------------------------------------------------------------------------
 lfc1           = 1d0*lf[0]
 hfc1           = 1d0*hf[0]
-good_low       = (ABS(fft_freq) LE lfc1[0]) AND (ABS(fft_freq) GT 0d0)
-good_mid       = (ABS(fft_freq) GT lfc1[0]) AND (ABS(fft_freq) LE hfc1[0])
-good_upp       = (ABS(fft_freq) GT hfc1[0])
-lowf1          = WHERE(good_low,lf1,COMPLEMENT=other_mh,NCOMPLEMENT=bd_oth_mh)
-midf1          = WHERE(good_mid,mf1,COMPLEMENT=other_lh,NCOMPLEMENT=bd_oth_lh)
-highf1         = WHERE(good_upp,hf1,COMPLEMENT=other_lm,NCOMPLEMENT=bd_oth_lm)
-;lowf1          = WHERE(ABS(fft_freq) LE lfc1[0] AND ABS(fft_freq) GT 0d0,lf1,COMPLEMENT=other_mh)
-;midf1          = WHERE(ABS(fft_freq) GT lfc1[0] AND ABS(fft_freq) LE hfc1[0],mf1,COMPLEMENT=other_lh)
-;highf1         = WHERE(ABS(fft_freq) GT hfc1[0],hf1,COMPLEMENT=other_lm)
+lowf1          = WHERE(ABS(fft_freq) LE lfc1[0] AND ABS(fft_freq) GT 0d0,lf1,COMPLEMENT=other_mh)
+midf1          = WHERE(ABS(fft_freq) GT lfc1[0] AND ABS(fft_freq) LE hfc1[0],mf1,COMPLEMENT=other_lh)
+highf1         = WHERE(ABS(fft_freq) GT hfc1[0],hf1,COMPLEMENT=other_lm)
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
@@ -246,18 +237,13 @@ check          = [KEYWORD_SET(lowf1),KEYWORD_SET(midf1),KEYWORD_SET(highf1)]
 gcheck         = WHERE(check GT 0,gch,COMPLEMENT=bcheck,NCOMPLEMENT=bch)
 ;;  Determine which filter to use
 gelems         = {T0:other_mh,T1:other_lh,T2:other_lm}
-gelnum         = {T0:bd_oth_mh,T1:bd_oth_lh,T2:bd_oth_lm}
 IF (gch EQ 1L) THEN BEGIN
   ;;  Define elements to eliminate in frequency space
   other = gelems.(gcheck[0])
-  nbad  = gelnum.(gcheck[0])
 ENDIF ELSE BEGIN ;;  Default setting b/c user entered too many keywords
   ;;  Default = bandpass
   other = other_lh
-  nbad  = bd_oth_lh[0]
 ENDELSE
-;;  Check if filter even needs to be done
-IF (nbad[0] EQ 0) THEN RETURN,dat     ;;  return input array without doing anything
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate FFT
 ;;----------------------------------------------------------------------------------------
@@ -287,6 +273,7 @@ rplz           = REAL_PART(FFT(templz,1,/DOUBLE))
 lower          = 0L
 upper          = (no[0] - 1L)
 filtered       = [[rplx[lower[0]:upper[0]]],[rply[lower[0]:upper[0]]],[rplz[lower[0]:upper[0]]]]
+;filtered       = [[rplx[0:(no-1L)]],[rply[0:(no-1L)]],[rplz[0:(no-1L)]]]
 ;;----------------------------------------------------------------------------------------
 ;;  Return NaNs to arrays if they were present on input
 ;;----------------------------------------------------------------------------------------
