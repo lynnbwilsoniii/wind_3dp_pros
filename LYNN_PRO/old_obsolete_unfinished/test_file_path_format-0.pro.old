@@ -1,0 +1,158 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   test_file_path_format.pro
+;  PURPOSE  :   This routine tests to make sure an input string or array of strings
+;                 have the correct format to be valid file paths.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               get_os_slash.pro
+;               add_os_slash.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               PATH       :  Scalar [string] file path whose format is to be tested
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               test = test_file_path_format(path [,EXISTS=exists] [,DIR_OUT=dir_out])
+;
+;  KEYWORDS:    
+;               EXISTS     :  Set to a named variable that defines whether the directory
+;                               at the end of the input file path currently exists
+;               DIR_OUT    :  Set to a named variable to return a properly formatted
+;                               version of PATH that has the expected file path format
+;                               and is fully expanded
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Need to clean up a lot and test a lot more...
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  05/22/2017
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/22/2017   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION test_file_path_format,path,EXISTS=exists,DIR_OUT=dir_out
+
+;;----------------------------------------------------------------------------------------
+;;  Constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Initialize outputs
+dir_out        = ''
+value_out      = 0b
+exists         = 0b
+;;  Define the current working directory character
+;;    e.g., './' [for unix and linux] otherwise guess './' or '.\'
+slash          = get_os_slash()                    ;;  '/' for Unix-like, '\' for Windows
+;;  Dummy error messages
+notstr_msg     = 'User must input PATH as a scalar [string]...'
+badtyp_msg     = 'PATH must be of string type...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+;;  Check for an input
+test           = (N_ELEMENTS(path) EQ 0) OR (N_PARAMS() NE 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,value_out[0]
+ENDIF
+;;  Check input type
+str            = path[0]
+test           = (SIZE(str,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badtyp_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,value_out[0]
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Determine form of PATH
+;;----------------------------------------------------------------------------------------
+dirname        = path[0]
+test           = (STRPOS(dirname[0],slash[0]) GE 0)
+IF (test[0]) THEN BEGIN
+  ;;  Input has file path separators  -->  break up and test each part of path
+  subels         = STRSPLIT(dirname[0],slash[0],/EXTRACT)
+  nsub           = N_ELEMENTS(subels)
+  tests          = (IDL_VALIDNAME(subels,/CONVERT_ALL) NE '')
+  test           = (TOTAL(tests) EQ nsub[0])
+  ;;  Check if sub-parts make any sense
+  IF (test[0]) THEN BEGIN
+    tests          = REPLICATE(0b,nsub[0])
+    sub            = slash[0]
+    FOR j=0L, nsub[0] - 1L DO BEGIN
+      sub            = add_os_slash(sub[0]+subels[j])
+      ;;  Look for $ in sub elements
+      test_ds        = (STRPOS(subels[j],'$') GE 0)
+      IF (test_ds[0]) THEN BEGIN
+        IF (j EQ 0) THEN BEGIN
+          RETURN,test_file_path_format(EXPAND_PATH(dirname[0]),EXISTS=exists,DIR_OUT=dir_out)
+;          sub0 = FILE_SEARCH(subels[j],/EXPAND_ENVIRONMENT,/EXPAND_TILDE,/MARK_DIRECTORY)
+        ENDIF ELSE BEGIN
+          sub0 = FILE_SEARCH(sub[0],/EXPAND_ENVIRONMENT,/EXPAND_TILDE,/MARK_DIRECTORY)
+        ENDELSE
+        sub  = sub0[0]
+      ENDIF
+;      good_ds        = WHERE(test_ds,gd_ds)
+;      IF (gd_ds[0] GT 0) THEN BEGIN
+;        dumb = FILE_SEARCH(dirname[0],/EXPAND_ENVIRONMENT,/EXPAND_TILDE)
+;        RETURN,
+;        
+;        FOR j=0L, gd_ds[0] - 1L DO subels[j] = FILE_SEARCH(subels[j],/EXPAND_ENVIRONMENT,/EXPAND_TILDE)
+;      ENDIF
+      tests[j]       = ((FILE_SEARCH(sub[0],/MARK_DIRECTORY))[0] NE '')
+    ENDFOR
+  ENDIF
+ENDIF ELSE BEGIN
+  ;;  Input has no path separators  -->  Check value as scalar input
+  subels         = dirname[0]
+  nsub           = N_ELEMENTS(subels)
+  tests          = (IDL_VALIDNAME(dirname[0],/CONVERT_ALL) NE '')
+;  ;;  Check if sub-parts make any sense
+;  IF (test[0]) THEN BEGIN
+;    sub            = add_os_slash(slash[0]+dirname[0])
+;    test           = ((FILE_SEARCH(sub[0],/MARK_DIRECTORY))[0] NE '')
+;  ENDIF
+ENDELSE
+test           = (TOTAL(tests) GT 0)
+;;  Define logic test for output
+IF (test[0]) THEN value_out = 1b ELSE value_out = 0b
+;;----------------------------------------------------------------------------------------
+;;  Check if PATH currently exists
+;;----------------------------------------------------------------------------------------
+test0          = FILE_TEST(dirname[0],/DIRECTORY)
+test1          = ((FILE_SEARCH(dirname[0],/TEST_DIRECTORY))[0] NE '')
+test           = test0[0] AND test1[0]
+IF (test[0]) THEN exists = 1b ELSE exists = 0b
+;;----------------------------------------------------------------------------------------
+;;  Define output formatted PATH
+;;----------------------------------------------------------------------------------------
+IF (exists[0]) THEN BEGIN
+  dir_out        = (FILE_SEARCH(dirname[0],/MARK_DIRECTORY))[0]
+ENDIF ELSE BEGIN
+  IF (value_out[0]) THEN dir_out = (add_os_slash(dirname[0]))[0] ELSE dir_out = ''
+;  IF (value_out[0]) THEN dir_out = (add_os_slash(dirname[0]))[0] ELSE dir_out = ''
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,value_out[0]
+END

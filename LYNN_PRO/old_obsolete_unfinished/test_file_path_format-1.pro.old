@@ -1,0 +1,245 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   test_file_path_format.pro
+;  PURPOSE  :   This routine tests to make sure an input string or array of strings
+;                 have the correct format to be valid file paths.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               get_os_slash.pro
+;               add_os_slash.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               PATH       :  Scalar [string] file path whose format is to be tested.
+;                               If BASE_DIR is properly set, then PATH is assumed to be
+;                               a subdirectory of BASE_DIR.
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               test = test_file_path_format(path [,BASE_DIR=direc0] [,EXISTS=exists] $
+;                                            [,DIR_OUT=dir_out]                       )
+;
+;  KEYWORDS:    
+;               BASE_DIR   :  Scalar [string] defining the full path to the directory of
+;                               interest.  If set, then the PATH input is treated as
+;                               just the directory name located within BASE_DIR.
+;                               [Default = FALSE]
+;               EXISTS     :  Set to a named variable that defines whether the directory
+;                               at the end of the input file path currently exists
+;               DIR_OUT    :  Set to a named variable to return a properly formatted
+;                               version of PATH that has the expected file path format
+;                               and is fully expanded
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [05/24/2017   v1.0.0]
+;
+;   NOTES:      
+;               1)  Need to clean up a lot and test a lot more...
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  05/22/2017
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/24/2017   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION test_file_path_format,path,BASE_DIR=direc0,EXISTS=exists,DIR_OUT=dir_out
+
+;;----------------------------------------------------------------------------------------
+;;  Constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Initialize outputs
+dir_out        = ''
+value_out      = 0b
+exists         = 0b
+;;  Define OS- and IDL-dependent version variables
+ver_os         = !VERSION.OS                           ;;  'linux' or 'darwin' or 'Win32' or 'sunos' or 'vms' or 'hp-ux' or 'IRIX' or 'AIX' or 'ultrix' or 'DG/UX'
+verosn         = !VERSION.OS_NAME                      ;;  'Mac OS X' ('MacOS' pre-2001) or 'linux' or 'Microsoft Windows' or 'Solaris'
+ver_ar         = !VERSION.ARCH                         ;;  'sparc' or 'i386' or 'x86' or 'x86_64' or 'vax' or 'alpha' or 'mipsel'
+vers           = !VERSION.OS_FAMILY                    ;;  'unix' or 'Windows'
+vern           = !VERSION.RELEASE                      ;;  e.g., '7.1.1'
+slash          = get_os_slash()                        ;;  '/' for Unix-like, '\' for Windows
+windows        = (STRLOWCASE(vers[0]) EQ 'windows')    ;;  logic test for Windows-like OS
+unix           = (STRLOWCASE(vers[0]) EQ 'unix')       ;;  logic test for Unix-like OS
+;;  Define the current working directory character
+;;    e.g., './' [for unix and linux] otherwise guess './' or '.\'
+test           = (vern[0] GE '6.0')
+IF (test[0]) THEN cwd_char0 = FILE_DIRNAME('',/MARK_DIRECTORY) ELSE cwd_char0 = '.'+slash[0]
+;;  Expand to a fully qualified path
+cwd_char       = FILE_SEARCH(cwd_char0[0],/FULLY_QUALIFY_PATH,/MARK_DIRECTORY)
+;;  Dummy error messages
+notstr_msg     = 'User must input PATH as a scalar [string]...'
+badtyp_msg     = 'PATH must be of string type...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+;;  Check for an input
+test           = (N_ELEMENTS(path) EQ 0) OR (N_PARAMS() NE 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,value_out[0]
+ENDIF
+;;  Check input type
+str            = path[0]
+test           = (SIZE(str,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badtyp_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,value_out[0]
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Setup error handling
+;;----------------------------------------------------------------------------------------
+error          = 0
+CATCH, error
+IF (error[0] NE 0) THEN BEGIN
+ CATCH,/CANCEL
+ RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check BASE_DIR
+base_dir       = ''
+test           = (N_ELEMENTS(direc0) GT 0) AND (SIZE(direc0,/TYPE) EQ 7)
+IF (test[0]) THEN BEGIN
+  test           = FILE_TEST(direc0[0],/DIRECTORY)
+  IF (test[0]) THEN BEGIN
+    base_dir = (FILE_SEARCH(direc0[0],/FULLY_QUALIFY_PATH,/MARK_DIRECTORY))[0]
+  ENDIF
+ENDIF
+;;  If BASE_DIR set --> add PATH onto it
+test           = (base_dir[0] NE '')
+IF (test[0]) THEN BEGIN
+  ;;  Check for a leading file path separator
+  test           = (STRMID(path[0],0,1) EQ slash[0])
+  IF (test[0]) THEN dir0 = STRMID(path[0],1) ELSE dir0 = path[0]      ;;  Could be an issue for \\host\share\... directories on Windows machines
+  dirname        = add_os_slash(base_dir[0]+dir0[0])
+ENDIF ELSE BEGIN
+  dirname        = add_os_slash(path[0])
+  ;;  Check for a base directory
+  base_dir       = FILE_DIRNAME(dirname[0],/MARK_DIRECTORY)
+ENDELSE
+PRINT,';;  Check Point 1'
+;;----------------------------------------------------------------------------------------
+;;  Check if PATH currently exists
+;;----------------------------------------------------------------------------------------
+test0          = FILE_TEST(dirname[0],/DIRECTORY)
+test1          = ((FILE_SEARCH(dirname[0],/FULLY_QUALIFY_PATH,/TEST_DIRECTORY))[0] NE '')
+test           = test0[0] AND test1[0]
+IF (test[0]) THEN exists = 1b ELSE exists = 0b
+IF (exists[0]) THEN BEGIN
+  dir_out        = (FILE_SEARCH(dirname[0],/FULLY_QUALIFY_PATH,/MARK_DIRECTORY))[0]
+  RETURN,1b
+ENDIF
+PRINT,';;  Check Point 2'
+;;----------------------------------------------------------------------------------------
+;;  Check for environment or system variables (e.g., '$' or '.')
+;;----------------------------------------------------------------------------------------
+gpos_d         = STRPOS(base_dir[0],'$')
+gpos_p         = STRPOS(base_dir[0],'.')
+test           = (gpos_d[0] GE 0) OR (gpos_p[0] GE 0)
+IF (test[0]) THEN BEGIN
+  basedir = (FILE_SEARCH(base_dir[0],/FULLY_QUALIFY_PATH,/MARK_DIRECTORY))[0]
+ENDIF ELSE basedir = add_os_slash(base_dir[0])
+;;  Get the subdirectory name
+sub_dir        = FILE_BASENAME(dirname[0])
+;;  Define the output
+dirname        = add_os_slash(basedir[0]+sub_dir[0])
+PRINT,';;  Check Point 3'
+;;----------------------------------------------------------------------------------------
+;;  Create dummy directory to determine if name is valid
+;;----------------------------------------------------------------------------------------
+;;  Note:  If directory already exists, nothing to do here bc it's already valid (see above)
+;;           Assume paths have already been expanded
+FILE_MKDIR,dirname[0],/NOEXPAND_PATH  ;;  Go to CATCH if fails
+;;  If still alive --> Clean up by removing dummy directory
+;;  Define output keyword
+dir_out        = (FILE_SEARCH(dirname[0],/FULLY_QUALIFY_PATH,/MARK_DIRECTORY))[0]
+PRINT,';;  Check Point 4'
+FILE_DELETE,dirname[0],/ALLOW_NONEXISTENT,/NOEXPAND_PATH,/QUIET
+PRINT,';;  Check Point 5'
+;;----------------------------------------------------------------------------------------
+;;  Check in case FILE_MKDIR.PRO worked but should not have
+;;----------------------------------------------------------------------------------------
+;;  Define output
+value_out      = (dir_out[0] NE '')
+;;;----------------------------------------------------------------------------------------
+;;;  Determine form of PATH
+;;;----------------------------------------------------------------------------------------
+;test           = (STRPOS(dirname[0],slash[0]) GE 0)
+;IF (test[0]) THEN BEGIN
+;  ;;  Input has file path separators  -->  break up and test each part of path
+;  subels         = STRSPLIT(dirname[0],slash[0],/EXTRACT)
+;  nsub           = N_ELEMENTS(subels)
+;  tests          = (IDL_VALIDNAME(subels,/CONVERT_ALL) NE '')
+;  test           = (TOTAL(tests) EQ nsub[0])
+;  ;;  Check if sub-parts make any sense
+;  IF (test[0]) THEN BEGIN
+;    tests          = REPLICATE(0b,nsub[0])
+;    sub            = slash[0]
+;    FOR j=0L, nsub[0] - 1L DO BEGIN
+;      sub            = add_os_slash(sub[0]+subels[j])
+;      ;;  Look for $ in sub elements
+;      test_ds        = (STRPOS(subels[j],'$') GE 0)
+;      IF (test_ds[0]) THEN BEGIN
+;        IF (j EQ 0) THEN BEGIN
+;          RETURN,test_file_path_format(EXPAND_PATH(dirname[0]),EXISTS=exists,DIR_OUT=dir_out)
+;        ENDIF ELSE BEGIN
+;          sub0 = FILE_SEARCH(sub[0],/EXPAND_ENVIRONMENT,/EXPAND_TILDE,/MARK_DIRECTORY)
+;        ENDELSE
+;        sub  = sub0[0]
+;      ENDIF
+;      tests[j]       = ((FILE_SEARCH(sub[0],/MARK_DIRECTORY))[0] NE '')
+;    ENDFOR
+;  ENDIF
+;ENDIF ELSE BEGIN
+;  ;;  Input has no path separators  -->  Check value as scalar input
+;  subels         = dirname[0]
+;  nsub           = N_ELEMENTS(subels)
+;  tests          = (IDL_VALIDNAME(dirname[0],/CONVERT_ALL) NE '')
+;;  ;;  Check if sub-parts make any sense
+;;  IF (test[0]) THEN BEGIN
+;;    sub            = add_os_slash(slash[0]+dirname[0])
+;;    test           = ((FILE_SEARCH(sub[0],/MARK_DIRECTORY))[0] NE '')
+;;  ENDIF
+;ENDELSE
+;test           = (TOTAL(tests) GT 0)
+;;;  Define logic test for output
+;IF (test[0]) THEN value_out = 1b ELSE value_out = 0b
+;;;----------------------------------------------------------------------------------------
+;;;  Check if PATH currently exists
+;;;----------------------------------------------------------------------------------------
+;test0          = FILE_TEST(dirname[0],/DIRECTORY)
+;test1          = ((FILE_SEARCH(dirname[0],/TEST_DIRECTORY))[0] NE '')
+;test           = test0[0] AND test1[0]
+;IF (test[0]) THEN exists = 1b ELSE exists = 0b
+;;;----------------------------------------------------------------------------------------
+;;;  Define output formatted PATH
+;;;----------------------------------------------------------------------------------------
+;IF (exists[0]) THEN BEGIN
+;  dir_out        = (FILE_SEARCH(dirname[0],/MARK_DIRECTORY))[0]
+;ENDIF ELSE BEGIN
+;  IF (value_out[0]) THEN dir_out = (add_os_slash(dirname[0]))[0] ELSE dir_out = ''
+;;  IF (value_out[0]) THEN dir_out = (add_os_slash(dirname[0]))[0] ELSE dir_out = ''
+;ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,value_out[0]
+END

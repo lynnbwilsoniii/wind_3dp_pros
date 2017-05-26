@@ -13,7 +13,6 @@
 ;               NA
 ;
 ;  CALLS:
-;               get_zeros_mins_maxs_type.pro
 ;               is_a_number.pro
 ;
 ;  REQUIRES:    
@@ -46,7 +45,7 @@
 ;                                    SI  = signed integer
 ;                               Possible values include:
 ;                                  1  :  BYTE     [8-bit UI]
-;                                  2  :  FIX      [16-bit SI]
+;                                  2  :  INT      [16-bit SI]
 ;                                  3  :  LONG     [32-bit SI]
 ;                                  4  :  FLOAT    [32-bit, SP, FPN]
 ;                                  5  :  DOUBLE   [64-bit, DP, FPN]
@@ -63,8 +62,6 @@
 ;                                                                   [04/29/2015   v1.0.0]
 ;             2)  Fixed a bug in type determining case statement and updated Man. page
 ;                                                                   [09/08/2016   v1.1.0]
-;             3)  Fixed a bug in type function and now calls get_zeros_mins_maxs_type.pro
-;                                                                   [05/18/2017   v1.2.0]
 ;
 ;   NOTES:      
 ;               1)  See IDL documentation for SIZE.PRO for possible type codes
@@ -75,7 +72,7 @@
 ;
 ;   CREATED:  04/28/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/18/2017   v1.2.0
+;    LAST MODIFIED:  09/08/2016   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -97,13 +94,8 @@ str_ers        = "&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>&>
 str_ere        = "<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&<&"
 ;;  Define separators for instructions
 str_pro        = "-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|"
-;;  Define allowed types
-all_type_str   = get_zeros_mins_maxs_type()     ;;  Get all type info for system
-allowed_types  = all_type_str.TYPES             ;;  Array of allowed type code values
-all_ok_zero    = all_type_str.ZEROS             ;;  Structure containing type-dependent zeros
-all_ok_func    = all_type_str.FUNCS             ;;  Structure containing type-dependent conversion function names
-;;;  Define allowed type codes
-;allowed_types  = [ 1, 2, 3, 4, 5, 6, 7, 9,12,13,14,15]
+;;  Define allowed type codes
+allowed_types  = [ 1, 2, 3, 4, 5, 6, 7, 9,12,13,14,15]
 ;;  Define default prompt output
 def_prompt_pre = "Please enter the desired value [with type code ="
 def_prompt_suf = "]:  "
@@ -114,7 +106,7 @@ test_key       = ~KEYWORD_SET(str_out) AND ~KEYWORD_SET(pro_out) AND $
                  ~KEYWORD_SET(errmsg)
 IF (N_PARAMS() NE 1) THEN BEGIN
   ;;  Nothing is set --> return nothing
-  IF (test_key[0]) THEN RETURN,0b
+  IF (test_key) THEN RETURN,0b
 ENDIF ELSE BEGIN
   ;;  User set input --> use to define output format
   test           = (N_ELEMENTS(test_in) GT 0)
@@ -124,13 +116,13 @@ ENDELSE
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
 test           = (N_ELEMENTS(form_out) EQ 0) OR (is_a_number(form_out,/NOMSSG) EQ 0)
-IF (test[0]) THEN BEGIN
+IF (test) THEN BEGIN
   ;;  Use default = string
   type_out = 7
 ENDIF ELSE BEGIN
   f0       = FIX(form_out[0])
   test     = (TOTAL(f0[0] EQ allowed_types) GT 0)
-  IF (test[0]) THEN type_out = f0[0] ELSE type_out = 7
+  IF (test) THEN type_out = f0[0] ELSE type_out = 7
 ENDELSE
 ;;  Define default prompt if necessary
 type_out_str   = STRTRIM(STRING(type_out[0],FORMAT='(I)'),2L)
@@ -139,18 +131,75 @@ IF (test_key) THEN str_out = def_prompt[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Define functions and intialize output
 ;;----------------------------------------------------------------------------------------
-good           = WHERE(allowed_types EQ type_out[0],gd)
-IF (gd[0] GT 0) THEN BEGIN
-  ;;  Define type-dependent zero and function name
-  read_out       = all_ok_zero.(good[0])
-  func           = all_ok_func.(good[0])
-  IF (type_out[0] EQ 7) THEN func = 'STRLOWCASE'
-ENDIF ELSE BEGIN
-  ;;  Default to string type
-  read_out       = ''
-  func           = 'STRLOWCASE'
-  type_out       = 7
-ENDELSE
+CASE type_out[0] OF
+;CASE form_out OF
+   1    :  BEGIN
+    ;;   1  :  BYTE     [8-bit UI]
+    read_out       = 0B
+    func           = 'BYTE'
+  END
+  2    :  BEGIN
+    ;;   2  :  INT      [16-bit SI]
+    read_out       = 0S
+    func           = 'INT'
+  END
+  3    :  BEGIN
+    ;;   3  :  LONG     [32-bit SI]
+    read_out       = 0L
+    func           = 'LONG'
+  END
+  4    :  BEGIN
+    ;;   4  :  FLOAT    [32-bit, SP, FPN]
+    read_out       = 0e0
+    func           = 'FLOAT'
+  END
+  5    :  BEGIN
+    ;;   5  :  DOUBLE   [64-bit, DP, FPN]
+    read_out       = 0d0
+    func           = 'DOUBLE'
+  END
+  6    :  BEGIN
+    ;;   6  :  COMPLEX  [32-bit, SP, FPN for Real and Imaginary]
+    func           = 'COMPLEX'
+    read_out       = CALL_FUNCTION(func[0],0e0,0e0)
+  END
+  7    :  BEGIN
+    ;;   7  :  STRING   [0 to 2147483647 characters]
+    read_out       = ''
+    func           = 'STRLOWCASE'
+  END
+  9    :  BEGIN
+    ;;   9  :  DCOMPLEX [64-bit, DP, FPN for Real and Imaginary]
+    func           = 'DCOMPLEX'
+    read_out       = CALL_FUNCTION(func[0],0d0,0d0)
+  END
+  12    :  BEGIN
+    ;;  12  :  UINT     [16-bit UI]
+    read_out       = 0U
+    func           = 'UINT'
+  END
+  13    :  BEGIN
+    ;;  13  :  ULONG    [32-bit UI]
+    read_out       = 0UL
+    func           = 'ULONG'
+  END
+  14    :  BEGIN
+    ;;  14  :  LONG64   [64-bit SI]
+    read_out       = 0LL
+    func           = 'LONG64'
+  END
+  15    :  BEGIN
+    ;;  15  :  ULONG64  [64-bit UI]
+    read_out       = 0ULL
+    func           = 'ULONG64'
+  END
+  ELSE  :  BEGIN
+     ;;                           String
+     read_out       = ''
+     func           = 'STRLOWCASE'
+     type_out       = 7
+  END
+ENDCASE
 ;;----------------------------------------------------------------------------------------
 ;;  Define error handling
 ;;----------------------------------------------------------------------------------------

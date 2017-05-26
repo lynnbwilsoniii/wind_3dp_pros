@@ -117,8 +117,6 @@
 ;                                                                  [05/17/2016   v1.0.2]
 ;             3)  Added keyword C_LOG to main routine
 ;                                                                  [05/26/2017   v1.0.3]
-;             4)  Cleaned up
-;                                                                  [05/26/2017   v1.0.4]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -134,7 +132,7 @@
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/26/2017   v1.0.4
+;    LAST MODIFIED:  05/26/2017   v1.0.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -509,8 +507,6 @@ END
 ;                                                                  [05/17/2016   v1.0.2]
 ;             3)  Added keyword: C_LOG
 ;                                                                  [05/26/2017   v1.0.3]
-;             4)  Cleaned up
-;                                                                  [05/26/2017   v1.0.4]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -526,7 +522,7 @@ END
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/26/2017   v1.0.4
+;    LAST MODIFIED:  05/26/2017   v1.0.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -825,8 +821,9 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 circs_on       = (SIZE(circle_str,/TYPE) EQ 8)
 IF (circs_on[0]) THEN BEGIN
-  ;;  User wants to overplot circles of constant energy
   n_circs    = N_ELEMENTS(circle_str)
+;  dumb       = {VRAD:d,VOX:d,VOY:d}
+;  circle_scl = REPLICATE(dumb[0],n_circs[0])
   nn         = 100L
   thetas     = DINDGEN(nn[0])*2d0*!DPI/(nn[0] - 1L)
   vc_lx      = DBLARR(n_circs[0])             ;;  Min. X-Location of circle in cut plot
@@ -842,6 +839,9 @@ IF (circs_on[0]) THEN BEGIN
     vc_y[*,j] = trad[0]*SIN(thetas) + tvoy[0]
     vc_lx[j]  = MIN(vc_x[*,j],/NAN)
     vc_xx[j]  = MAX(vc_x[*,j],/NAN)
+;    circle_scl[j].VRAD = trad[0]
+;    circle_scl[j].VOX  = tvox[0]
+;    circle_scl[j].VOY  = tvoy[0]
   ENDFOR
 ENDIF
 ;;----------------------------------------------------------------------------------------
@@ -857,6 +857,8 @@ IF (tran_on[0]) THEN BEGIN
   ;;  Define string for bulk flow velocity and quasi-static magnetic field outputs
   vbulk          = format_vector_string(tran_info[0].VSW,PREC=2)+' [km/s]'
   magf           = format_vector_string(tran_info[0].MAGF,PREC=2)+' [nT]'
+;  v__out_str     = 'Vbulk    :  '+v_out[0]
+;  b__out_str     = 'Bo       :  '+b_out[0]
   v__out_str     = 'Vbulk    :  '+vbulk[0]
   b__out_str     = 'Bo       :  '+magf[0]
 ENDIF
@@ -864,9 +866,12 @@ ENDIF
 ;;  Define contour levels
 ;;----------------------------------------------------------------------------------------
 df_ran         = dfrao
+;df_ran         = dfra
+;range          = ALOG10(df_ran)          ;;  Make levels evenly spaced in log base-10 space
 IF (clog_on[0]) THEN range = df_ran ELSE range = ALOG10(df_ran) ;;  Make levels evenly spaced in log base-10 space
 log10levs      = DINDGEN(nlev[0])*(range[1] - range[0])/(nlev[0] - 1L) + range[0]
 IF (clog_on[0]) THEN levels = log10levs ELSE levels = 1d1^log10levs ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
+;levels         = 1d1^log10levs           ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
 ;;  Define colors for contour levels
 minclr         = 30L
 c_cols         = minclr[0] + LINDGEN(nlev[0])*(250L - minclr[0])/(nlev[0] - 1L)
@@ -878,8 +883,10 @@ ENDIF ELSE BEGIN
   df2d01         = REFORM(df2d,N_ELEMENTS(df2d))
   tick_str       = log10_tickmarks(df2d01,RANGE=df_ran,/FORCE_RA)
 ENDELSE
-;;  Define the tick names, values, and number of ticks
+;df2d01         = REFORM(df2d,N_ELEMENTS(df2d))
+;tick_str       = log10_tickmarks(df2d01,RANGE=df_ran,/FORCE_RA)
 cut_ytn        = tick_str.TICKNAME
+;cut_ytv        = tick_str.TICKV
 cut_yts        = tick_str.TICKS
 IF (clog_on[0]) THEN cut_ytv = ALOG10(tick_str.TICKV) ELSE cut_ytv = tick_str.TICKV
 ;;----------------------------------------------------------------------------------------
@@ -926,7 +933,7 @@ ENDIF ELSE BEGIN
                     YTICKV:cut_ytv,YTICKNAME:cut_ytn}
 ENDELSE
 ;;  Define routine version
-vers           = routine_version('general_vdf_contour_plot.pro')
+vers           = routine_version('general_vdf_contour_plot_2.pro')
 ;;  Set up plot stuff
 !P.MULTI       = [0,1,2]
 IF (STRLOWCASE(!D.NAME) EQ 'ps') THEN l_thick  = 3 ELSE l_thick  = 2
@@ -1034,6 +1041,45 @@ XYOUTS,0.795,0.06,vers[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.
 
 RETURN
 END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

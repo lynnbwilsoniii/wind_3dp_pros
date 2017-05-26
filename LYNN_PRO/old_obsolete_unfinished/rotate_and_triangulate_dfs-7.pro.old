@@ -54,8 +54,7 @@
 ;               NA
 ;
 ;  CALLS:
-;               is_a_number.pro
-;               is_a_3_vector.pro
+;               NA
 ;
 ;  REQUIRES:    
 ;               NA
@@ -84,11 +83,6 @@
 ;                               actual rotated velocities producing a slice through
 ;                               the planes of projection.
 ;                               [Default = TRUE]
-;               C_LOG      :  If set, routine assumes input DATA is in logarithmic
-;                               instead of linear space, which really only changes
-;                               some testing/error handling for TRIANGULATE.PRO and
-;                               TRIGRID.PRO
-;                               [Default = FALSE]
 ;
 ;   CHANGED:  1)  Continued writing routine                        [08/08/2012   v1.0.0]
 ;             2)  Original version added NaNs to end of arrays, but now we keep track
@@ -108,9 +102,6 @@
 ;                                                                  [04/08/2016   v1.5.0]
 ;             7)  Fixed a bug when no finite Z data case occurs
 ;                                                                  [05/15/2016   v1.5.1]
-;             8)  Added keyword: C_LOG and
-;                   now calls is_a_3_vector.pro and is_a_number.pro
-;                                                                  [05/26/2017   v1.6.0]
 ;
 ;   NOTES:      
 ;               1)  User should not call this routine
@@ -120,14 +111,13 @@
 ;
 ;   CREATED:  08/07/2012
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/26/2017   v1.6.0
+;    LAST MODIFIED:  05/15/2016   v1.5.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION rotate_and_triangulate_dfs,vels,data,rotmxy,rotmzy,VLIM=vlim,PROJECT=project,$
-                                    C_LOG=c_log
+FUNCTION rotate_and_triangulate_dfs,vels,data,rotmxy,rotmzy,VLIM=vlim,PROJECT=project
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -138,14 +128,8 @@ d              = !VALUES.D_NAN
 ;;  Check input structure format
 ;;----------------------------------------------------------------------------------------
 IF (N_PARAMS() NE 4) THEN RETURN,0b
-;;----------------------------------------------------------------------------------------
-;;  Check inputs
-;;----------------------------------------------------------------------------------------
-test           = (is_a_3_vector(vels,V_OUT=swfv,/NOMSSG) EQ 0) OR                          $
-                 (is_a_number(data,/NOMSSG) EQ 0) OR (is_a_number(rotmxy,/NOMSSG) EQ 0) OR $
-                 (is_a_number(rotmzy,/NOMSSG) EQ 0)
-IF (test[0]) THEN RETURN,0b
-;swfv           = vels                        ;;  [K,3]-Element array
+
+swfv           = vels                        ;;  [K,3]-Element array
 szv            = SIZE(swfv,/DIMENSIONS)
 kk             = szv[0]                      ;;  # of vectors
 dat_1d         = data                        ;;  [K]-Element array
@@ -154,20 +138,13 @@ rotz           = rotmzy                      ;;  [K,3,3]-Element array
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
-;;  Check VLIM
 IF NOT KEYWORD_SET(vlim) THEN BEGIN
   vlim = MAX(SQRT(TOTAL(swfv^2,2L,/NAN)),/NAN)
 ENDIF ELSE BEGIN
   vlim = FLOAT(vlim[0])
 ENDELSE
-;;  Check PROJECT
 IF (N_ELEMENTS(project) EQ 0) THEN proj = 1 ELSE proj = 0
-;;  Check C_LOG
-test           = (N_ELEMENTS(c_log) EQ 1) AND KEYWORD_SET(c_log)
-IF (test[0]) THEN clog_on = 1b ELSE clog_on = 0b
-;;----------------------------------------------------------------------------------------
-;;  Define regularly gridded velocities
-;;----------------------------------------------------------------------------------------
+
 dgs            = vlim[0]/5e1
 gs             = [dgs,dgs]               ;;  grid spacing for triangulation used later
 xylim          = [-1*vlim[0],-1*vlim[0],vlim[0],vlim[0]]
@@ -226,8 +203,9 @@ vz2d_yz       = REPLICATE(d,kk)
 ;;  MISSING keyword in TRIGRID.PRO allows for non-finite input
 ;;      However, TRIANGULATE.PRO does not allow for non-finite inputs
 ;;----------------------------------------------------------------------------------------
-IF (clog_on[0]) THEN testf = FINITE(dat_1d) ELSE testf = FINITE(dat_1d) AND (dat_1d GE 0.)
-;testf          = FINITE(dat_1d) AND (dat_1d GE 0.)
+testf          = FINITE(dat_1d) AND (dat_1d GE 0.)
+;testf          = (FINITE(dat_1d) EQ 1) AND (dat_1d GE 0.)
+;testv          = (FINITE(vel2dx) EQ 1) AND (FINITE(vel2dy) EQ 1) AND (FINITE(vel2dz) EQ 1)
 testv          = FINITE(vel2dx) AND FINITE(vel2dy) AND FINITE(vel2dz)
 indx           = WHERE(testv,cnt,COMPLEMENT=bad,NCOMPLEMENT=bd)
 IF (cnt GT 0L) THEN BEGIN
@@ -241,13 +219,15 @@ IF (cnt GT 0L) THEN BEGIN
   ;;    --> [(V1 x V2) x V1] vs. [V1]
   ;;--------------------------------------------------------------------------------------
   toler          = 1d-6*MAX(ABS([vel2dx_2,vel2dy_2]),/NAN)
-  ;;  Add small variation about actual values to avoid colinear points error
   vx             = vel2dx_2 + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
   vy             = vel2dy_2 + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
   TRIANGULATE,vx,vy,tr_xy,REPEATS=rep_xy
   df2d_xy        = TRIGRID(vx,vy,dat_1d2,tr_xy,gs,xylim,MISSING=f,$
                            XGRID=vxgrid_xy,YGRID=vygrid_xy)
-  ;;  Define data point locations
+;  TRIANGULATE,vel2dx_2,vel2dy_2,tr_xy,REPEATS=rep_xy,TOLERANCE=toler[0]
+  ;;  put DF on regular grid
+;  df2d_xy        = TRIGRID(vel2dx_2,vel2dy_2,dat_1d2,tr_xy,gs,xylim,MISSING=f,$
+;                           XGRID=vxgrid_xy,YGRID=vygrid_xy)
   vx2d_xy[indx]  = vel2dx_2
   vy2d_xy[indx]  = vel2dy_2
   vz2d_xy[indx]  = vel2dz_2
@@ -256,13 +236,15 @@ IF (cnt GT 0L) THEN BEGIN
   ;;    --> [V1] vs. [(V1 x V2)]
   ;;--------------------------------------------------------------------------------------
   toler          = 1d-5*MAX(ABS([vel2dz_2,vel2dx_2]),/NAN)
-  ;;  Add small variation about actual values to avoid colinear points error
   vz             = vel2dz_2 + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
   vx             = vel2dx_2 + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
   TRIANGULATE,vz,vx,tr_xz,REPEATS=rep_xz
   df2d_xz        = TRIGRID(vz,vx,dat_1d2,tr_xz,gs,xylim,MISSING=f,$
                            XGRID=vxgrid_xz,YGRID=vygrid_xz)
-  ;;  Define data point locations
+;  TRIANGULATE,vel2dz_2,vel2dx_2,tr_xz,REPEATS=rep_xz,TOLERANCE=toler[0]
+  ;;  put DF on regular grid
+;  df2d_xz        = TRIGRID(vel2dz_2,vel2dx_2,dat_1d2,tr_xz,gs,xylim,MISSING=f,$
+;                           XGRID=vxgrid_xz,YGRID=vygrid_xz)
   vx2d_xz[indx]  = vel2dz_2
   vy2d_xz[indx]  = vel2dx_2
   vz2d_xz[indx]  = vel2dy_2
@@ -290,9 +272,10 @@ ENDIF ELSE BEGIN
   gind_xy        = -1
 ENDELSE
 
-IF (clog_on[0]) THEN testf = FINITE(dat_1d) ELSE testf = FINITE(dat_1d) AND (dat_1d GE 0.)
-;testf      = FINITE(dat_1d) AND (dat_1d GE 0.)
+;testf      = (FINITE(dat_1d) EQ 1) AND (dat_1d GE 0.)
+testf      = FINITE(dat_1d) AND (dat_1d GE 0.)
 testv      = FINITE(vel2dx_z) AND FINITE(vel2dy_z) AND FINITE(vel2dz_z)
+;testv      = (FINITE(vel2dx_z) EQ 1) AND (FINITE(vel2dy_z) EQ 1) AND (FINITE(vel2dz_z) EQ 1)
 indx       = WHERE(testv,cnt,COMPLEMENT=bad,NCOMPLEMENT=bd)
 IF (cnt GT 0L) THEN BEGIN
   ;;  Finite values found --> Triangulate
@@ -305,13 +288,14 @@ IF (cnt GT 0L) THEN BEGIN
   ;;    --> [(V1 x V2)] vs. [(V1 x V2) x V1]
   ;;--------------------------------------------------------------------------------------
   toler          = 1d-5*MAX(ABS([vel2dx_z,vel2dy_z]),/NAN)
-  ;;  Add small variation about actual values to avoid colinear points error
   vx             = vel2dx_z + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
   vy             = vel2dy_z + 2d0*(RANDOMU(seed,cnt[0],/DOUBLE) - 5d-1)*toler[0]
   TRIANGULATE,vx,vy,tr_yz,REPEATS=rep_yz
   df2d_yz        = TRIGRID(vx,vy,dat_1dz,tr_yz,gs,xylim,MISSING=f,$
                            XGRID=vxgrid_yz,YGRID=vygrid_yz)
-  ;;  Define data point locations
+;  TRIANGULATE,vel2dx_z,vel2dy_z,tr_yz,REPEATS=rep_yz,TOLERANCE=toler[0]
+;  df2d_yz        = TRIGRID(vel2dx_z,vel2dy_z,dat_1dz,tr_yz,gs,xylim,MISSING=f,$
+;                           XGRID=vxgrid_yz,YGRID=vygrid_yz)
   vx2d_yz[indx]  = vel2dx_z
   vy2d_yz[indx]  = vel2dy_z
   vz2d_yz[indx]  = vel2dz_z

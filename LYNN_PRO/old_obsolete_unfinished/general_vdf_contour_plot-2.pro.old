@@ -115,10 +115,6 @@
 ;                                                                  [05/16/2016   v1.0.1]
 ;             2)  Fixed a bug that occurs when user sets the EX_INFO keyword
 ;                                                                  [05/17/2016   v1.0.2]
-;             3)  Added keyword C_LOG to main routine
-;                                                                  [05/26/2017   v1.0.3]
-;             4)  Cleaned up
-;                                                                  [05/26/2017   v1.0.4]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -134,7 +130,7 @@
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/26/2017   v1.0.4
+;    LAST MODIFIED:  05/17/2016   v1.0.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -499,18 +495,11 @@ END
 ;                               MAGF   :  [3]-Element [numeric] array defining to the
 ;                                           quasi-static magnetic field [nT] 3-vector at
 ;                                           the time of the VDF
-;               C_LOG    :  If set, routine will compute and plot VDF in logarithmic
-;                             instead of linear space (good for sparse data)
-;                             [Default = FALSE]
 ;
 ;   CHANGED:  1)  Fixed a bug that occurs when VDF input contains zeros
 ;                                                                  [05/16/2016   v1.0.1]
 ;             2)  Fixed a bug that occurs when user sets the EX_INFO keyword
 ;                                                                  [05/17/2016   v1.0.2]
-;             3)  Added keyword: C_LOG
-;                                                                  [05/26/2017   v1.0.3]
-;             4)  Cleaned up
-;                                                                  [05/26/2017   v1.0.4]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -526,7 +515,7 @@ END
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/26/2017   v1.0.4
+;    LAST MODIFIED:  05/17/2016   v1.0.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -536,7 +525,7 @@ PRO general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=v
                              NLEV=nlev,XNAME=xname,YNAME=yname,SM_CUTS=sm_cuts,       $
                              SM_CONT=sm_cont,NSMCUT=nsmcut,NSMCON=nsmcon,PLANE=plane, $
                              DFMIN=dfmin,DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,   $
-                             CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info,C_LOG=c_log
+                             CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range,              $
                  defaults_vdf_contour_plot, rot_matrix_array_dfs, rel_lorentz_trans_3vec, $
@@ -613,18 +602,6 @@ IF (test[0]) THEN RETURN      ;;  Something failed --> exit without plotting
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords without default options
 ;;----------------------------------------------------------------------------------------
-;;  Check C_LOG
-test           = (N_ELEMENTS(c_log) GE 1) AND KEYWORD_SET(c_log)
-IF (test[0]) THEN BEGIN
-  ;;  User wants to plot in log-space, not linear space
-  df1do   = ALOG10(df1d)
-  dfrao   = ALOG10(dfra)
-  clog_on = 1b
-ENDIF ELSE BEGIN
-  df1do   = df1d
-  dfrao   = dfra
-  clog_on = 0b
-ENDELSE
 ;;  Check CIRCS
 test           = (SIZE(circs,/TYPE) EQ 8)
 IF (test[0]) THEN BEGIN
@@ -673,7 +650,7 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define rotation matrices
 ;;----------------------------------------------------------------------------------------
-kk             = N_ELEMENTS(df1do)                      ;;  # of phase space density values
+kk             = N_ELEMENTS(df1d)                      ;;  # of phase space density values
 ;;  Expand to make [K,3]-element arrays
 v1             = REPLICATE(1d0,kk[0]) # vec1           ;; [K,3]-Element array
 v2             = REPLICATE(1d0,kk[0]) # vec2           ;; [K,3]-Element array
@@ -696,7 +673,7 @@ vtrxyz         = rel_lorentz_trans_3vec(vxyz,vframe)
 ;;----------------------------------------------------------------------------------------
 ;;  Rotate velocities and VDF into new coordinate basis and triangulate
 ;;----------------------------------------------------------------------------------------
-r_vels         = rotate_and_triangulate_dfs(FLOAT(vtrxyz),df1do,rotm,rotz,VLIM=vlim[0],C_LOG=clog_on)
+r_vels         = rotate_and_triangulate_dfs(FLOAT(vtrxyz),df1d,rotm,rotz,VLIM=vlim[0])
 ;;----------------------------------------------------------------------------------------
 ;;  Define parameters for contour plots
 ;;----------------------------------------------------------------------------------------
@@ -825,8 +802,9 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 circs_on       = (SIZE(circle_str,/TYPE) EQ 8)
 IF (circs_on[0]) THEN BEGIN
-  ;;  User wants to overplot circles of constant energy
   n_circs    = N_ELEMENTS(circle_str)
+;  dumb       = {VRAD:d,VOX:d,VOY:d}
+;  circle_scl = REPLICATE(dumb[0],n_circs[0])
   nn         = 100L
   thetas     = DINDGEN(nn[0])*2d0*!DPI/(nn[0] - 1L)
   vc_lx      = DBLARR(n_circs[0])             ;;  Min. X-Location of circle in cut plot
@@ -842,6 +820,9 @@ IF (circs_on[0]) THEN BEGIN
     vc_y[*,j] = trad[0]*SIN(thetas) + tvoy[0]
     vc_lx[j]  = MIN(vc_x[*,j],/NAN)
     vc_xx[j]  = MAX(vc_x[*,j],/NAN)
+;    circle_scl[j].VRAD = trad[0]
+;    circle_scl[j].VOX  = tvox[0]
+;    circle_scl[j].VOY  = tvoy[0]
   ENDFOR
 ENDIF
 ;;----------------------------------------------------------------------------------------
@@ -857,31 +838,27 @@ IF (tran_on[0]) THEN BEGIN
   ;;  Define string for bulk flow velocity and quasi-static magnetic field outputs
   vbulk          = format_vector_string(tran_info[0].VSW,PREC=2)+' [km/s]'
   magf           = format_vector_string(tran_info[0].MAGF,PREC=2)+' [nT]'
+;  v__out_str     = 'Vbulk    :  '+v_out[0]
+;  b__out_str     = 'Bo       :  '+b_out[0]
   v__out_str     = 'Vbulk    :  '+vbulk[0]
   b__out_str     = 'Bo       :  '+magf[0]
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define contour levels
 ;;----------------------------------------------------------------------------------------
-df_ran         = dfrao
-IF (clog_on[0]) THEN range = df_ran ELSE range = ALOG10(df_ran) ;;  Make levels evenly spaced in log base-10 space
+df_ran         = dfra
+range          = ALOG10(df_ran)          ;;  Make levels evenly spaced in log base-10 space
 log10levs      = DINDGEN(nlev[0])*(range[1] - range[0])/(nlev[0] - 1L) + range[0]
-IF (clog_on[0]) THEN levels = log10levs ELSE levels = 1d1^log10levs ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
+levels         = 1d1^log10levs           ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
 ;;  Define colors for contour levels
 minclr         = 30L
 c_cols         = minclr[0] + LINDGEN(nlev[0])*(250L - minclr[0])/(nlev[0] - 1L)
 ;;  Define Y-axis tick marks for cuts plot
-IF (clog_on[0]) THEN BEGIN
-  df2d01         = REFORM(1d1^df2d,N_ELEMENTS(df2d))
-  tick_str       = log10_tickmarks(df2d01,RANGE=1d1^df_ran,/FORCE_RA)
-ENDIF ELSE BEGIN
-  df2d01         = REFORM(df2d,N_ELEMENTS(df2d))
-  tick_str       = log10_tickmarks(df2d01,RANGE=df_ran,/FORCE_RA)
-ENDELSE
-;;  Define the tick names, values, and number of ticks
+df2d01         = REFORM(df2d,N_ELEMENTS(df2d))
+tick_str       = log10_tickmarks(df2d01,RANGE=df_ran,/FORCE_RA)
 cut_ytn        = tick_str.TICKNAME
+cut_ytv        = tick_str.TICKV
 cut_yts        = tick_str.TICKS
-IF (clog_on[0]) THEN cut_ytv = ALOG10(tick_str.TICKV) ELSE cut_ytv = tick_str.TICKV
 ;;----------------------------------------------------------------------------------------
 ;;  Smooth cuts and contour if desired [typically necessary for ions or noisy data]
 ;;----------------------------------------------------------------------------------------
@@ -914,17 +891,10 @@ base_lim_cn    = {XRANGE:con_xyran,XSTYLE:1,XLOG:0,XMINOR:10, $
 ;;  Structures for CONTOUR.PRO
 con_lim        = {OVERPLOT:1,LEVELS:levels,NLEVELS:nlev[0],C_COLORS:c_cols}      ;;  should be the same for all planes
 ;;  Define cut plot setup structures
-IF (clog_on[0]) THEN BEGIN
-  base_lim_ct    = {XRANGE:con_xyran,XSTYLE:1,XLOG:0,XTITLE:def_cut_xttl[0],XMINOR:10, $
-                    YRANGE:df_ran,   YSTYLE:1,YLOG:0,YTITLE:def_cut_yttl[0],YMINOR:9,  $
-                    POSITION:pos_0cut,TITLE:' ',NODATA:1,YTICKS:cut_yts[0],            $
-                    YTICKV:cut_ytv,YTICKNAME:cut_ytn}
-ENDIF ELSE BEGIN
-  base_lim_ct    = {XRANGE:con_xyran,XSTYLE:1,XLOG:0,XTITLE:def_cut_xttl[0],XMINOR:10, $
-                    YRANGE:df_ran,   YSTYLE:1,YLOG:1,YTITLE:def_cut_yttl[0],YMINOR:9,  $
-                    POSITION:pos_0cut,TITLE:' ',NODATA:1,YTICKS:cut_yts[0],            $
-                    YTICKV:cut_ytv,YTICKNAME:cut_ytn}
-ENDELSE
+base_lim_ct    = {XRANGE:con_xyran,XSTYLE:1,XLOG:0,XTITLE:def_cut_xttl[0],XMINOR:10, $
+                  YRANGE:df_ran,   YSTYLE:1,YLOG:1,YTITLE:def_cut_yttl[0],YMINOR:9,  $
+                  POSITION:pos_0cut,TITLE:' ',NODATA:1,YTICKS:cut_yts[0],            $
+                  YTICKV:cut_ytv,YTICKNAME:cut_ytn}
 ;;  Define routine version
 vers           = routine_version('general_vdf_contour_plot.pro')
 ;;  Set up plot stuff
@@ -1034,6 +1004,45 @@ XYOUTS,0.795,0.06,vers[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.
 
 RETURN
 END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

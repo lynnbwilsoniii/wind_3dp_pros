@@ -1,0 +1,356 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   structure_compare.pro
+;  PURPOSE  :   This routine takes two scalar input IDL structures and returns a scalar
+;                 value that defines whether the two inputs are exactly the same or
+;                 just share some similarities.  The following values are returned if
+;                 the following conditions are satisfied:
+;                     0 --> no overlap (i.e., structures match in no way)
+;                     1 --> At least one tag name matches
+;                     2 --> At least one tag name matches and the type is the same
+;                     3 --> MATCH_NT = TRUE
+;                     4 --> MATCH_NT = TRUE & MATCH_TG = TRUE
+;                     5 --> MATCH_NT = TRUE & MATCH_TG = TRUE & MATCH_TT = TRUE
+;                     6 --> EXACT = TRUE
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               tag_names_r.pro
+;               struct_value.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP or SPEDAS IDL Libraries
+;
+;  INPUT:
+;               STR0A      :  Scalar [structure] to test against STR0B
+;               STR0B      :  Scalar [structure] to test against STR0A
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               test = structure_compare(str0a, str0b [,EXACT=exact] [,MATCH_NT=match_nt] $
+;                                        [,MATCH_TG=match_tg] [,MATCH_TT=match_tt]        $
+;                                        [,NUMOVR_TG=numovr_tg] [,NUMOVR_TT=numovr_tt]    )
+;
+;               ;;****************************************************************
+;               ;;  Example Usage
+;               ;;****************************************************************
+;               ;;  Define some dummy arrays
+;               nn             = 100L
+;               cone           = COMPLEX(1e0,0e0)
+;               dumb1df        = FINDGEN(nn[0])
+;               dumb1dd        = DINDGEN(nn[0])
+;               dumb1dc        = CINDGEN(nn[0])
+;               dumb2df2       = dumb1df # REPLICATE(1e0,2L)
+;               dumb2df4       = dumb1df # REPLICATE(1e0,4L)
+;               dumb2dd2       = dumb1dd # REPLICATE(1d0,2L)
+;               dumb2dd4       = dumb1dd # REPLICATE(1d0,4L)
+;               dumb2dc2       = dumb1dc # REPLICATE(cone[0],2L)
+;               dumb2dc4       = dumb1dc # REPLICATE(cone[0],4L)
+;               ;;  Expected output
+;               ;;    0 --> no overlap (i.e., structures match in no way)
+;               ;;    1 --> At least one tag name matches
+;               ;;    2 --> At least one tag name matches and the type is the same
+;               ;;    3 --> MATCH_NT = TRUE
+;               ;;    4 --> MATCH_NT = TRUE & MATCH_TG = TRUE
+;               ;;    5 --> MATCH_NT = TRUE & MATCH_TG = TRUE & MATCH_TT = TRUE
+;               ;;    6 --> EXACT = TRUE
+;               
+;               ;;  Try valid input
+;               DELVAR,exact,match_nt,match_tg,match_tt,numovr_tg,numovr_tt
+;               str0a          = {X:dumb1dd,Y:dumb2df2}
+;               str0b          = {X:dumb1dd*2,Y:dumb2df2*3}
+;               test           = structure_compare(str0a,str0b,EXACT=exact,MATCH_NT=match_nt,       $
+;                                                  MATCH_TG=match_tg,MATCH_TT=match_tt,             $
+;                                                  NUMOVR_TG=numovr_tg,NUMOVR_TT=numovr_tt          )
+;               PRINT,';;  ',test[0],exact[0],match_nt[0],match_tg[0],match_tt[0],numovr_tg[0],numovr_tt[0]
+;               ;;     6   1   1   1   1           2           2
+;               
+;               ;;  Works for structures of structures too
+;               DELVAR,exact,match_nt,match_tg,match_tt,numovr_tg,numovr_tt
+;               str0a          = {X:dumb1dd,Y:dumb2df2,Z:{A:dumb1df,B:dumb1dc}}
+;               str0b          = {X:dumb1dd/2,Y:dumb2df2/3,Z:{A:dumb1df*10,B:dumb1dc*3}}
+;               test           = structure_compare(str0a,str0b,EXACT=exact,MATCH_NT=match_nt,       $
+;                                                  MATCH_TG=match_tg,MATCH_TT=match_tt,             $
+;                                                  NUMOVR_TG=numovr_tg,NUMOVR_TT=numovr_tt          )
+;               PRINT,';;  ',test[0],exact[0],match_nt[0],match_tg[0],match_tt[0],numovr_tg[0],numovr_tt[0]
+;               ;;     6   1   1   1   1           4           4
+;               
+;               
+;               ;;  Try overlapping, but not exact structures
+;               DELVAR,exact,match_nt,match_tg,match_tt,numovr_tg,numovr_tt
+;               str0a          = {X:dumb1dd,Y:dumb2df2}
+;               str0b          = {X:dumb1dd,Y:dumb2df2,Z:dumb1dc}
+;               test           = structure_compare(str0a,str0b,EXACT=exact,MATCH_NT=match_nt,       $
+;                                                  MATCH_TG=match_tg,MATCH_TT=match_tt,             $
+;                                                  NUMOVR_TG=numovr_tg,NUMOVR_TT=numovr_tt          )
+;               PRINT,';;  ',test[0],exact[0],match_nt[0],match_tg[0],match_tt[0],numovr_tg[0],numovr_tt[0]
+;               ;;     2   0   0   0   0           2           2
+;               
+;               
+;               ;;  Try same # of tags and tag names and types, but different dimensions
+;               DELVAR,exact,match_nt,match_tg,match_tt,numovr_tg,numovr_tt
+;               str0a          = {X:dumb1dd,Y:dumb2df2}
+;               str0b          = {X:dumb1dd,Y:dumb2df4}
+;               test           = structure_compare(str0a,str0b,EXACT=exact,MATCH_NT=match_nt,       $
+;                                                  MATCH_TG=match_tg,MATCH_TT=match_tt,             $
+;                                                  NUMOVR_TG=numovr_tg,NUMOVR_TT=numovr_tt          )
+;               PRINT,';;  ',test[0],exact[0],match_nt[0],match_tg[0],match_tt[0],numovr_tg[0],numovr_tt[0]
+;               ;;     5   0   1   1   1           2           2
+;               
+;               
+;               ;;  Try same # of tags and tag names, but different types
+;               DELVAR,exact,match_nt,match_tg,match_tt,numovr_tg,numovr_tt
+;               str0a          = {X:dumb1dd,Y:dumb2df2}
+;               str0b          = {X:dumb1dd,Y:dumb2dd2}
+;               test           = structure_compare(str0a,str0b,EXACT=exact,MATCH_NT=match_nt,       $
+;                                                  MATCH_TG=match_tg,MATCH_TT=match_tt,             $
+;                                                  NUMOVR_TG=numovr_tg,NUMOVR_TT=numovr_tt          )
+;               PRINT,';;  ',test[0],exact[0],match_nt[0],match_tg[0],match_tt[0],numovr_tg[0],numovr_tt[0]
+;               ;;     4   0   1   1   0           2           1
+;               
+;               
+;               ;;  Try same # of tags, but different names
+;               DELVAR,exact,match_nt,match_tg,match_tt,numovr_tg,numovr_tt
+;               str0a          = {X:dumb1dd,Y:dumb2df2}
+;               str0b          = {X:dumb1dd,Z:dumb2df2}
+;               test           = structure_compare(str0a,str0b,EXACT=exact,MATCH_NT=match_nt,       $
+;                                                  MATCH_TG=match_tg,MATCH_TT=match_tt,             $
+;                                                  NUMOVR_TG=numovr_tg,NUMOVR_TT=numovr_tt          )
+;               PRINT,';;  ',test[0],exact[0],match_nt[0],match_tg[0],match_tt[0],numovr_tg[0],numovr_tt[0]
+;               ;;     3   0   1   0   0           1           0
+;               
+;               ;;  Try bad structures of structures
+;               DELVAR,exact,match_nt,match_tg,match_tt,numovr_tg,numovr_tt
+;               str0a          = {X:dumb1dd,Y:dumb2df2,Z:{A:dumb1df,B:dumb1dd}}
+;               str0b          = {X:dumb1dd/2,Y:dumb2df2/3,Z:{A:dumb1df*10,B:dumb1dc*3}}
+;               test           = structure_compare(str0a,str0b,EXACT=exact,MATCH_NT=match_nt,       $
+;                                                  MATCH_TG=match_tg,MATCH_TT=match_tt,             $
+;                                                  NUMOVR_TG=numovr_tg,NUMOVR_TT=numovr_tt          )
+;               PRINT,';;  ',test[0],exact[0],match_nt[0],match_tg[0],match_tt[0],numovr_tg[0],numovr_tt[0]
+;               ;;     4   0   1   1   0           4           3
+;
+;  KEYWORDS:    
+;               EXACT      :  Set to a named variable that defines whether STR0A and
+;                               STR0B are exactly the same down to the dimensions,
+;                               types, tag names, etc.  A value of TRUE is returned
+;                               if all three MATCH_* keywords are TRUE and the dimensions
+;                               of each match as well.
+;               MATCH_NT   :  Set to a named variable that defines whether STR0A and
+;                               STR0B have the same number of tags
+;               MATCH_TG   :  Set to a named variable that defines whether STR0A and
+;                               STR0B have the same number of tags and tag names
+;               MATCH_TT   :  Set to a named variable that defines whether STR0A and
+;                               STR0B the same number of tags, tag names, and the
+;                               the types of each match as well
+;               NUMOVR_TG  :  Set to a named variable that defines the number of
+;                               overlapping/matching tag names
+;               NUMOVR_TT  :  Set to a named variable that defines the number of
+;                               overlapping/matching tag types
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [05/23/2017   v1.0.0]
+;
+;   NOTES:      
+;               1)  This routine will not try to "unscramble" structures.  Meaning,
+;                     if the two structures are identical except that the tag names
+;                     are out of order, then the routine will treat the inputs as if
+;                     they are different in every way except the number of matching
+;                     tag names.
+;               2)  See also:  tag_names_r.pro, struct_value.pro, str_element.pro
+;               3)  EXACT = TRUE does not mean that the values in each structure are
+;                     exactly the same, rather the format and types are the same.
+;                     Meaning, all the tags match in name, type, and dimensions.  If
+;                     they have the same values or not is not tested.
+;               4)  This routine will not test/compare structure names
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  05/23/2017
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/23/2017   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION structure_compare,str0a,str0b,EXACT=exact,MATCH_NT=match_nt,MATCH_TG=match_tg,$
+                                       MATCH_TT=match_tt,NUMOVR_TG=numovr_tg,          $
+                                       NUMOVR_TT=numovr_tt
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define main output
+;;    0 --> no overlap (i.e., structures match in no way)
+;;    1 --> At least one tag name matches
+;;    2 --> At least one tag name matches and the type is the same
+;;    3 --> MATCH_NT = TRUE
+;;    4 --> MATCH_NT = TRUE & MATCH_TG = TRUE
+;;    5 --> MATCH_NT = TRUE & MATCH_TG = TRUE & MATCH_TT = TRUE
+;;    6 --> EXACT = TRUE
+value_out      = 0b
+;;  Initialize outputs
+exact          = 0b               ;;  TRUE --> structures match exactly
+match_nt       = 0b               ;;  TRUE --> structures have the same # of tags
+match_tg       = 0b               ;;  TRUE --> structures have the same tag names
+match_tt       = 0b               ;;  TRUE --> structures have the same tag types
+numovr_tg      = 0L               ;;  # of overlapping/matching tag names
+numovr_tt      = 0L               ;;  # of overlapping/matching tag types
+;;  Dummy error messages
+notstr_msg     = 'User must input STR0A and STR0B as scalars [structure]...'
+badtyp_msg     = 'STR0A and STR0B must both be of structure type...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(str0a) EQ 0) OR (N_ELEMENTS(str0b) EQ 0) OR (N_PARAMS() NE 2)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,value_out[0]
+ENDIF
+;;  Check input type
+stra           = str0a[0]
+strb           = str0b[0]
+test           = (SIZE(stra,/TYPE) NE 8) OR (SIZE(strb,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,value_out[0]
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Examine inputs
+;;----------------------------------------------------------------------------------------
+tags_a         = tag_names_r(stra[0],TYPE=typ_a,COUNT=cnt_a)
+tags_b         = tag_names_r(strb[0],TYPE=typ_b,COUNT=cnt_b)
+;;  Check if inputs match exactly
+exact          = (cnt_a[0] EQ cnt_b[0])
+IF (exact[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Same number of tags --> check if names match
+  ;;--------------------------------------------------------------------------------------
+  match_nt       = 1b
+  count          = 0L
+  FOR j=0L, cnt_a[0] - 1L DO count += (STRLOWCASE(tags_a[j]) EQ STRLOWCASE(tags_b[j]))
+  ;;  Define:  NUMOVR_TG
+  numovr_tg      = LONG(count[0])
+  exact          = (count[0] EQ cnt_a[0])
+  IF (exact[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Same number and names of tags --> check types
+    ;;------------------------------------------------------------------------------------
+    count          = 0L
+    match_tg       = 1b
+    FOR j=0L, cnt_a[0] - 1L DO count += (LONG(typ_a[j]) EQ LONG(typ_b[j]))
+    ;;  Define:  NUMOVR_TT
+    numovr_tt      = LONG(count[0])
+    exact          = (count[0] EQ cnt_a[0])
+    IF (exact[0]) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  Same number and names of tags and same types --> check dimensions
+      ;;----------------------------------------------------------------------------------
+      count          = 0L
+      match_tt       = 1b
+      FOR j=0L, cnt_a[0] - 1L DO BEGIN
+        IF ~KEYWORD_SET(exact[0]) THEN CONTINUE             ;;  Something differed --> exit for loop
+        vala           = struct_value(stra[0],tags_a[j])
+        valb           = struct_value(strb[0],tags_b[j])
+        IF (typ_a[j] EQ 8) THEN BEGIN
+          ;;------------------------------------------------------------------------------
+          ;;  Structure tag values are structure type
+          ;;    Note:  tag_names_r.pro should actually handle this event so it should
+          ;;             not be an issue but I put it in, just in case...
+          ;;------------------------------------------------------------------------------
+          test            = structure_compare(vala,valb,EXACT=exact1,MATCH_NT=m_nt1,$
+                                              MATCH_TG=m_tg1,MATCH_TT=m_tt1,        $
+                                              NUMOVR_TG=n_tg1,NUMOVR_TT=n_tt1)
+          exact           = KEYWORD_SET(exact1[0])
+        ENDIF ELSE BEGIN
+          ;;------------------------------------------------------------------------------
+          ;;  Check dimensions
+          ;;------------------------------------------------------------------------------
+          szda           = SIZE(vala,/DIMENSIONS)
+          szdb           = SIZE(valb,/DIMENSIONS)
+          szna           = SIZE(vala,/N_DIMENSIONS)
+          sznb           = SIZE(valb,/N_DIMENSIONS)
+          exact          = (szna[0] EQ sznb[0])
+          IF (exact[0]) THEN BEGIN
+            ;;----------------------------------------------------------------------------
+            ;;  # of dimensions match --> Check # of elements in each dimension
+            ;;----------------------------------------------------------------------------
+            IF (szna[0] GT 1) THEN BEGIN
+              ;;  Multi-dimensional arrays
+              count          = 0L
+              FOR j=0L, szna[0] - 1L DO count += (szda[j] EQ szdb[j])
+              exact          = (count[0] EQ szna[0])
+            ENDIF ELSE BEGIN
+              ;;  Scalars or 1D arrays
+              exact          = (szda[0] EQ szdb[0])
+            ENDELSE
+          ENDIF
+        ENDELSE
+        ;;  If (exact = TRUE) --> routine will continue to check
+      ENDFOR
+      ;;----------------------------------------------------------------------------------
+      ;;  If exact --> Return 6b else --> Return 5b
+      ;;----------------------------------------------------------------------------------
+      IF (exact[0]) THEN value_out = 6b ELSE value_out = 5b
+    ENDIF ELSE value_out = 4b
+    ;;------------------------------------------------------------------------------------
+    ;;  (MATCH_NT = TRUE & MATCH_TG = TRUE) --> Return 4b
+    ;;------------------------------------------------------------------------------------
+  ENDIF ELSE value_out = 3b
+  ;;--------------------------------------------------------------------------------------
+  ;;  (MATCH_NT = TRUE) --> Return 3b
+  ;;--------------------------------------------------------------------------------------
+  RETURN,value_out
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Not exact match
+;;    --> Check for some similarities
+;;----------------------------------------------------------------------------------------
+cnt_sm         = (cnt_a[0] < cnt_b[0])       ;;  Get the smaller of the two
+gind           = REPLICATE(-1L,cnt_sm[0])    ;;  Dummy array of indices for overlapping tag names
+tind           = REPLICATE(-1L,cnt_sm[0])    ;;  Dummy array of data types " "
+IF (cnt_sm[0] EQ cnt_a[0]) THEN BEGIN
+  i_tags = tags_a     ;;  Tags to index
+  c_tags = tags_b     ;;  Tags with which to compare
+  i_typ  = typ_a      ;;  Data types to index
+  c_typ  = typ_b      ;;  Data types with which to compare
+ENDIF ELSE BEGIN
+  i_tags = tags_b
+  c_tags = tags_a
+  i_typ  = typ_b      ;;  Data types to index
+  c_typ  = typ_a      ;;  Data types with which to compare
+ENDELSE
+countg         = 0L
+countt         = 0L
+FOR j=0L, cnt_sm[0] - 1L DO BEGIN
+  goodtg         = WHERE(STRLOWCASE(i_tags[j]) EQ STRLOWCASE(c_tags),gdtg)
+  countg        += gdtg[0]
+  IF (gdtg[0] GT 0) THEN BEGIN
+    gind[j]        = goodtg[0]
+    ;;  Found matching tag names --> check if types match too
+    test           = (LONG(i_typ[j]) EQ LONG(c_typ[goodtg[0]]))
+    countt        += test[0]
+    IF (test[0]) THEN tind[j] = goodtg[0]
+  ENDIF
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define outputs
+;;----------------------------------------------------------------------------------------
+numovr_tg      = countg[0]
+numovr_tt      = countt[0]
+value_out      = (countg[0] GT 0) + (countt[0] GT 0)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,value_out
+END
