@@ -1,0 +1,223 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   convert_num_type.pro
+;  PURPOSE  :   This routine converts a numerical input from one to another type code.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               OLD_VAL   :  Scalar or [N]-element [numeric] array of input values of
+;                              input type
+;               NEW_TYPE  :  Scalar [numeric] value defining the new type code of the
+;                              output values.  Possible values include:
+;                                   1  :  BYTE     [8-bit UI]
+;                                   2  :  INT      [16-bit SI]
+;                                   3  :  LONG     [32-bit SI]
+;                                   4  :  FLOAT    [32-bit, SP, FPN]
+;                                   5  :  DOUBLE   [64-bit, DP, FPN]
+;                                   6  :  COMPLEX  [32-bit, SP, FPN for Real and Imaginary]
+;                                   9  :  DCOMPLEX [64-bit, DP, FPN for Real and Imaginary]
+;                                  12  :  UINT     [16-bit UI]
+;                                  13  :  ULONG    [32-bit UI]
+;                                  14  :  LONG64   [64-bit SI]
+;                                  15  :  ULONG64  [64-bit UI]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               new_val = convert_num_type( old_val, new_type [,NO_ARRAY=no_array])
+;
+;  KEYWORDS:    
+;               NO_ARRAY  :  If set, routine will convert a single-element array
+;                              into a scalar output.
+;                              [Default = FALSE]
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [05/18/2017   v1.0.0]
+;
+;   NOTES:      
+;               1)  Let us define the following:
+;                       FPN = floating-point #
+;                       SP  = single-precision
+;                       DP  = double-precision
+;                       UI  = unsigned integer
+;                       SI  = signed integer
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  05/17/2017
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/17/2017   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION convert_num_type,old_val,new_type,NO_ARRAY=no_array
+
+;;----------------------------------------------------------------------------------------
+;;  Constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define allowed number types
+all_num_type   = [1,2,3,4,5,6,9,12,13,14,15]
+;;  Define allowed types
+all_ok_type    = [1L,2L,3L,4L,5L,6L,7L,9L,12L,13L,14L,15L]
+all_type_str   = get_zeros_mins_maxs_type()     ;;  Get all type info for system
+;;  Dummy error messages
+notstr1msg     = 'User must define OLD_VAL and NEW_TYPE on input...'
+notstr2msg     = 'OLD_VAL and NEW_TYPE must both be numeric values...'
+notstr3msg     = 'OLD_VAL and NEW_TYPE must both be a valid IDL numeric type...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+;;  Check for an input
+test           = (N_ELEMENTS(old_val) EQ 0) OR (N_ELEMENTS(new_type) EQ 0) OR (N_PARAMS() NE 2)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notstr1msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test           = (is_a_number(old_val,/NOMSSG) EQ 0) OR (is_a_number(new_type,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notstr2msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check against available types
+old_t          = SIZE(old_val,/TYPE)
+type_out       = FIX(new_type[0])
+test           = (TOTAL(old_t[0] EQ all_num_type) EQ 0) OR (TOTAL(type_out[0] EQ all_num_type) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notstr3msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check NO_ARRAY
+test           = (N_ELEMENTS(no_array) GT 0) AND KEYWORD_SET(no_array)
+IF (test[0]) THEN array_off = 1b ELSE array_off = 0b
+;;----------------------------------------------------------------------------------------
+;;  Define functions and intialize output
+;;----------------------------------------------------------------------------------------
+complex_on     = 0b
+good           = WHERE(all_ok_type EQ type_out[0],gd)
+;;  Define zero and function name
+read_out       = all_type_str.ZEROS.(good[0])
+func           = all_type_str.FUNCS.(good[0])
+CASE type_out[0] OF
+  6L    :  complex_on     = 1b  ;;   6  :  COMPLEX  [32-bit, SP, FPN for Real and Imaginary]
+  9L    :  complex_on     = 1b  ;;   9  :  DCOMPLEX [64-bit, DP, FPN for Real and Imaginary]
+  ELSE  :  complex_on     = 0b
+ENDCASE
+
+;CASE type_out[0] OF
+;   1    :  BEGIN
+;    ;;   1  :  BYTE     [8-bit UI]
+;    read_out       = 0B
+;    func           = 'BYTE'
+;  END
+;  2    :  BEGIN
+;    ;;   2  :  INT      [16-bit SI]
+;    read_out       = 0S
+;    func           = 'FIX'
+;  END
+;  3    :  BEGIN
+;    ;;   3  :  LONG     [32-bit SI]
+;    read_out       = 0L
+;    func           = 'LONG'
+;  END
+;  4    :  BEGIN
+;    ;;   4  :  FLOAT    [32-bit, SP, FPN]
+;    read_out       = 0e0
+;    func           = 'FLOAT'
+;  END
+;  5    :  BEGIN
+;    ;;   5  :  DOUBLE   [64-bit, DP, FPN]
+;    read_out       = 0d0
+;    func           = 'DOUBLE'
+;  END
+;  6    :  BEGIN
+;    ;;   6  :  COMPLEX  [32-bit, SP, FPN for Real and Imaginary]
+;    func           = 'COMPLEX'
+;    read_out       = CALL_FUNCTION(func[0],0e0,0e0)
+;    complex_on     = 1b
+;  END
+;  9    :  BEGIN
+;    ;;   9  :  DCOMPLEX [64-bit, DP, FPN for Real and Imaginary]
+;    func           = 'DCOMPLEX'
+;    read_out       = CALL_FUNCTION(func[0],0d0,0d0)
+;    complex_on     = 1b
+;  END
+;  12    :  BEGIN
+;    ;;  12  :  UINT     [16-bit UI]
+;    read_out       = 0U
+;    func           = 'UINT'
+;  END
+;  13    :  BEGIN
+;    ;;  13  :  ULONG    [32-bit UI]
+;    read_out       = 0UL
+;    func           = 'ULONG'
+;  END
+;  14    :  BEGIN
+;    ;;  14  :  LONG64   [64-bit SI]
+;    read_out       = 0LL
+;    func           = 'LONG64'
+;  END
+;  15    :  BEGIN
+;    ;;  15  :  ULONG64  [64-bit UI]
+;    read_out       = 0ULL
+;    func           = 'ULONG64'
+;  END
+;  ELSE  :  BEGIN
+;     ;;  This should not happen --> debug
+;     STOP
+;  END
+;ENDCASE
+;;----------------------------------------------------------------------------------------
+;;  Define output
+;;----------------------------------------------------------------------------------------
+CASE old_t[0] OF
+  6    :  BEGIN
+    ;;   6  :  COMPLEX  [32-bit, SP, FPN for Real and Imaginary]
+    rp_oldv        = FLOAT(REAL_PART(old_val))
+    ip_oldv        = FLOAT(IMAGINARY(old_val))
+  END
+  9    :  BEGIN
+    ;;   9  :  DCOMPLEX [64-bit, DP, FPN for Real and Imaginary]
+    rp_oldv        = DOUBLE(REAL_PART(old_val))
+    ip_oldv        = DOUBLE(IMAGINARY(old_val))
+  END
+  ELSE  :  BEGIN
+    rp_oldv        = old_val
+    ip_oldv        = REPLICATE(read_out[0],N_ELEMENTS(old_val))
+  END
+ENDCASE
+IF (complex_on[0]) THEN BEGIN
+  ;;  Output type is complex
+  new_val0       = CALL_FUNCTION(func[0],rp_oldv,ip_oldv)
+ENDIF ELSE BEGIN
+  ;;  Output type is real
+  new_val0       = CALL_FUNCTION(func[0],rp_oldv)
+ENDELSE
+;;  Check NO_ARRAY settings
+test           = (N_ELEMENTS(new_val) EQ 1) AND array_off[0]
+IF (test[0]) THEN new_val = new_val0[0] ELSE new_val = new_val0
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,new_val
+END
+
