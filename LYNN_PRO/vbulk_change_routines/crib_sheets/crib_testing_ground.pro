@@ -13,8 +13,8 @@ wi,1
 ;;----------------------------------------------------------------------------------------
 ;;  Choose Date/Times/Probes
 ;;----------------------------------------------------------------------------------------
-date           = '021406'
-tdate          = '2006-02-14'
+date           = '020906'
+tdate          = '2006-02-09'
 ;;  Define spacecraft
 sc             = 'Wind'
 scpref         = sc[0]+'_'
@@ -27,25 +27,25 @@ lim0           = {XSTYLE:1,YSTYLE:1,XMINOR:9,YMINOR:9,XMARGIN:[10,10],YMARGIN:[5
 no_load_vdfs   = 0b                    ;;  --> do load particle VDFs
 ;;  Load data
 ex_start       = SYSTIME(1)            ;;  Time the execution of all events within
-@/Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/load_Wind_data_for_Vbulk_change_testing_batch.pro
+@/Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/crib_sheets/load_Wind_data_for_Vbulk_change_testing_batch.pro
 MESSAGE,STRING(SYSTIME(1) - ex_start[0])+' seconds execution time.',/INFORMATIONAL,/CONTINUE
 
 HELP,gapl_,gaplb,gaph_,gaphb,gael_,gaelb,gaeh_,gaehb,gasf_,gasfb,gaso_,gasob
 
 ;;  Compile necessary routines
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_get_default_struc.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_test_cont_str_form.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_test_plot_str_form.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_test_vdf_str_form.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_test_vdfinfo_str_form.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_test_windn.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_list_options.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_prompts.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_options.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_get_fname_ptitle.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_print_index_time.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_keywords_init.pro
-.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_change_parameter.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/testing_routines/vbulk_change_get_default_struc.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/testing_routines/vbulk_change_test_cont_str_form.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/testing_routines/vbulk_change_test_plot_str_form.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/testing_routines/vbulk_change_test_vdf_str_form.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/testing_routines/vbulk_change_test_vdfinfo_str_form.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/testing_routines/vbulk_change_test_windn.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/prompting_routines/vbulk_change_list_options.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/prompting_routines/vbulk_change_prompts.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/prompting_routines/vbulk_change_options.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/misc_routines/vbulk_change_get_fname_ptitle.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/misc_routines/vbulk_change_print_index_time.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/prompting_routines/vbulk_change_keywords_init.pro
+.compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/prompting_routines/vbulk_change_change_parameter.pro
 .compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/vbulk_change_vdf_plot_wrapper.pro
 .compile /Users/lbwilson/Desktop/temp_idl/temp_gen_change_vbulk/wrapper_vbulk_change_thm_wi.pro
 ;;  Define array of data structures
