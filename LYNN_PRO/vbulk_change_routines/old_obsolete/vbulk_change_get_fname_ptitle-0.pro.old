@@ -1,0 +1,187 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   vbulk_change_get_fname_ptitle.pro
+;  PURPOSE  :   This routine returns the file name and plot title for output
+;                 corresponding to the ith element of DATA defined by the INDEX keyword.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               vbulk_change_get_default_struc.pro
+;               num2int_str.pro
+;               vbulk_change_test_vdf_str_form.pro
+;               vbulk_change_test_cont_str_form.pro
+;               is_a_number.pro
+;               struct_value.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;               2)  Vbulk Change IDL Libraries
+;
+;  INPUT:
+;               DATA        :  [M]-Element [structure] array containing particle velocity
+;                                distribution functions (VDFs) each containing the
+;                                following structure tags:
+;                                  VDF     :  [N]-Element [float/double] array defining
+;                                               the VDF in units of phase space density
+;                                               [i.e., # s^(+3) km^(-3) cm^(-3)]
+;                                  VELXYZ  :  [N,3]-Element [float/double] array defining
+;                                               the particle velocity 3-vectors for each
+;                                               element of VDF
+;                                               [km/s]
+;               ALL_FPREFS  :  [M]-Element [string] array defining all the file prefixes
+;                                for the M VDFs in DATA
+;               ALL_PTTLS   :  [M]-Element [string] array defining all the plot titles
+;                                for the M VDFs in DATA
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               struc = vbulk_change_get_fname_ptitle(data, all_fprefs, all_pttls     $
+;                                          [,INDEX=index] [,CONT_STR=cont_str]        )
+;
+;  KEYWORDS:    
+;               ***  INPUT --> Param  ***
+;               INDEX      :  Scalar [long] defining the index of DATA to use when
+;                               changing/defining keywords (i.e., which VDF of the M-
+;                               element array of DATA)
+;                               [Default = 0]
+;               ***  INPUT --> Contour Plot  ***
+;               CONT_STR   :  Scalar [structure] containing tags defining all of the
+;                               current plot settings associated with all of the above
+;                               "INPUT --> Command to Change" keywords
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  This is meant to be called by other routines within the
+;                     Vbulk Change library of routines
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  07/25/2017
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/25/2017   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION vbulk_change_get_fname_ptitle,data,all_fprefs,all_pttls,                    $
+                                       INDEX=index,                                  $  ;;  ***  INPUT --> Param  ***
+                                       CONT_STR=cont_str0                               ;;  ***  INPUT --> Contour Plot  ***
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define some defaults
+def_contstr    = vbulk_change_get_default_struc()
+;;  Define parts of file names
+xyzvecf        = ['V1','V1xV2xV1','V1xV2']
+xy_suff        = xyzvecf[1]+'_vs_'+xyzvecf[0]+'_'
+xz_suff        = xyzvecf[0]+'_vs_'+xyzvecf[2]+'_'
+yz_suff        = xyzvecf[2]+'_vs_'+xyzvecf[1]+'_'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(data) EQ 0) OR (N_PARAMS() LT 1) OR (SIZE(data,/TYPE) NE 8)
+IF (test[0]) THEN RETURN,0b     ;; nothing supplied, so leave
+;;  Define dummy copy of DATA to avoid changing input
+dat            = data
+ndat           = N_ELEMENTS(dat)
+;;  Define parameters used in case statement
+inds           = LINDGEN(ndat)
+ind_ra         = [MIN(inds),MAX(inds)]
+sind_ra        = num2int_str(ind_ra,NUM_CHAR=4,/ZERO_PAD)
+;;  Check DATA
+test           = vbulk_change_test_vdf_str_form(dat[0])
+IF (test[0] EQ 0) THEN RETURN,0b
+;;  Check ALL_FPREFS
+n_fprf         = N_ELEMENTS(all_fprefs)
+test           = (SIZE(all_fprefs,/TYPE) NE 7) OR (n_fprf[0] NE ndat[0])
+IF (test[0] EQ 0) THEN RETURN,0b
+;;  Check ALL_PTTLS
+n_pttl         = N_ELEMENTS(all_pttls)
+test           = (SIZE(all_pttls,/TYPE) NE 7) OR (n_pttl[0] NE ndat[0])
+IF (test[0] EQ 0) THEN RETURN,0b
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check CONT_STR
+test           = vbulk_change_test_cont_str_form(cont_str0,DAT_OUT=cont_str)
+IF (test[0] EQ 0 OR SIZE(cont_str,/TYPE) NE 8) THEN cont_str = def_contstr
+;;  Check INDEX
+test           = (is_a_number(index,/NOMSSG) EQ 0) OR (N_ELEMENTS(index) LT 1)
+IF (test[0]) THEN ind0 = 0L ELSE ind0 = LONG(index[0])
+;;----------------------------------------------------------------------------------------
+;;  Define file prefix
+;;----------------------------------------------------------------------------------------
+nlevs          = struct_value(cont_str,'nlev',INDEX=dind)
+IF (dind[0] LT 0) THEN nlevs = def_contstr.NLEV
+def_val_str    = num2int_str(nlevs[0],NUM_CHAR=2)+'CLevels_'
+file_midf      = struct_value(cont_str,'file_midf',INDEX=dind)
+IF (dind[0] LT 0) THEN file_midf = xy_suff[0]+def_val_str[0]
+file_prefix    = all_fprefs[ind0]+file_midf[0]
+;;----------------------------------------------------------------------------------------
+;;  Define file suffix
+;;----------------------------------------------------------------------------------------
+;;  Define VRANGE contribution
+vlim           = struct_value(cont_str,'vlim',INDEX=dind)
+IF (dind[0] LT 0) THEN vlim = def_contstr.VLIM
+vlim_str       = num2int_str(vlim[0])+'km-s_'
+;;  Define SM_CUTS contribution
+sm_cuts        = struct_value(cont_str,'sm_cuts',INDEX=dind)
+IF (dind[0] LT 0) THEN sm_cuts = def_contstr.SM_CUTS
+IF (sm_cuts[0]) THEN BEGIN
+  nsmcut = struct_value(cont_str,'nsmcut',INDEX=dind)
+  IF (dind[0] LT 0) THEN nsmcut = def_contstr.NSMCUT
+  smcut_str = num2int_str(nsmcut[0],NUM_CHAR=2,/ZERO_PAD)+'pts-SM-Cuts_'
+ENDIF ELSE BEGIN
+  ;;  Not set --> 00pt smooth
+  smcut_str = '00pts-SM-Cuts_'
+ENDELSE
+;;  Define SM_CONT contribution
+sm_cont        = struct_value(cont_str,'sm_cont',INDEX=dind)
+IF (dind[0] LT 0) THEN sm_cont = def_contstr.SM_CUTS
+IF (sm_cont[0]) THEN BEGIN
+  nsmcon = struct_value(cont_str,'nsmcon',INDEX=dind)
+  IF (dind[0] LT 0) THEN nsmcon = def_contstr.NSMCUT
+  smcon_str = num2int_str(nsmcon[0],NUM_CHAR=2,/ZERO_PAD)+'pts-SM-Cont_'
+ENDIF ELSE BEGIN
+  ;;  Not set --> 00pt smooth
+  smcon_str = '00pts-SM-Cont_'
+ENDELSE
+;;  Define DFRA contribution
+dfra           = struct_value(cont_str,'dfra',INDEX=dind)
+IF (dind[0] LT 0) THEN dfra = def_contstr.DFRA
+dfra_str       = 'DFRA_'+STRTRIM(STRING(dfra,FORMAT='(e15.1)'),2L)
+;;  Define file suffix
+file_suffix    = vlim_str[0]+smcut_str[0]+smcon_str[0]+dfra_str[0]
+;;----------------------------------------------------------------------------------------
+;;  Define file name, plot title, and output structure
+;;----------------------------------------------------------------------------------------
+file_name      = file_prefix[0]+file_suffix[0]
+plot_ttle      = all_pttls[ind0]
+;;  Define output structure
+tags           = ['FILE_NAME','PLOT_TITLE']
+output         = CREATE_STRUCT(tags,file_name[0],plot_ttle[0])
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,output
+END
+
+
+
+
+
+

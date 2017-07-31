@@ -1,0 +1,752 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   vbulk_change_change_parameter.pro
+;  PURPOSE  :   This routine determines what, if any, parameters the user would like
+;                 to change and interactively re-plots after the introduction of each
+;                 new change.  This routine is periodically called in case the user
+;                 wants to change something they previously accepted.
+;
+;  CALLED BY:   
+;               vbulk_change_vdf_plot_wrapper.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               vbulk_change_get_default_struc.pro
+;               num2int_str.pro
+;               vbulk_change_test_vdf_str_form.pro
+;               vbulk_change_test_cont_str_form.pro
+;               vbulk_change_test_windn.pro
+;               vbulk_change_test_plot_str_form.pro
+;               is_a_number.pro
+;               vbulk_change_test_vdfinfo_str_form.pro
+;               extract_tags.pro
+;               structure_compare.pro
+;               is_a_3_vector.pro
+;               vbulk_change_get_fname_ptitle.pro
+;               struct_value.pro
+;               str_element.pro
+;               general_vdf_contour_plot.pro
+;               general_prompt_routine.pro
+;               vbulk_change_options.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;               2)  Vbulk Change IDL Libraries
+;
+;  INPUT:
+;               DATA       :  [M]-Element array of data structures containing particle
+;                               velocity distribution functions (VDFs) each containing
+;                               the following structure tags:
+;                                 VDF     :  [N]-Element [float/double] array defining
+;                                              the VDF in units of phase space density
+;                                              [i.e., # s^(+3) km^(-3) cm^(-3)]
+;                                 VELXYZ  :  [N,3]-Element [float/double] array defining
+;                                              the particle velocity 3-vectors for each
+;                                              element of VDF
+;                                              [km/s]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               vbulk_change_change_parameter, data [,INDEX=index] [,VDF_INFO=vdf_info]    $
+;                                              [,CONT_STR=cont_str] [,WINDN=windn]         $
+;                                              [,PLOT_STR=plot_str] [,VCIRC=vcirc]         $
+;                                              [,EX_VECN=ex_vecn]                          $
+;                                              [,ALL_FPREFS=all_fprefs]                    $
+;                                              [,ALL_PTTLS=all_pttls] [,READ_OUT=read_out] $
+;                                              [,DAT_PLOT=dat_plot]
+;
+;  KEYWORDS:    
+;               ***  INPUT --> Param  ***
+;               INDEX      :  Scalar [long] defining the index of DATA to use when
+;                               changing/defining keywords (i.e., which VDF of the M-
+;                               element array of DATA)
+;                               [Default = 0]
+;               VDF_INFO   :  [M]-Element [structure] array containing information
+;                               relevant to each VDF with the following format
+;                               [*** units and format matter here ***]:
+;                                 SE_T   :  [2]-Element [double] array defining to the
+;                                             start and end times [Unix] of the VDF
+;                                 SCFTN  :  Scalar [string] defining the spacecraft name
+;                                             [e.g., 'Wind' or 'THEMIS-B']
+;                                 INSTN  :  Scalar [string] defining the instrument name
+;                                             [e.g., '3DP' or 'ESA' or 'EESA' or 'SST']
+;                                 SCPOT  :  Scalar [float] defining the spacecraft
+;                                             electrostatic potential [eV] at the time of
+;                                             the VDF
+;                                 VSW    :  [3]-Element [float] array defining to the
+;                                             bulk flow velocity [km/s] 3-vector at the
+;                                             time of the VDF
+;                                 MAGF   :  [3]-Element [float] array defining to the
+;                                             quasi-static magnetic field [nT] 3-vector at
+;                                             the time of the VDF
+;               ***  INPUT --> Contour Plot  ***
+;               CONT_STR   :  Scalar [structure] containing tags defining all of the
+;                               current plot settings associated with all of the above
+;                               "INPUT --> Command to Change" keywords
+;               ***  INPUT --> System  ***
+;               WINDN      :  Scalar [long] defining the index of the window to use when
+;                               selecting the region of interest
+;                               [Default = !D.WINDOW]
+;               PLOT_STR   :  Scalar [structure] that defines the scaling factors for the
+;                               contour plot shown in window WINDN to be used by
+;                               general_cursor_select.pro
+;               ***  INPUT --> Circles for Contour Plot  ***
+;               VCIRC      :  [C]-Element [structure] array containing the center
+;                             locations and radii of circles the user wishes to
+;                             project onto the contour and cut plots, each with
+;                             the following format:
+;                               VRAD  :  Scalar defining the velocity radius of the
+;                                          circle to project centered at {VOX,VOY}
+;                               VOX   :  Scalar defining the velocity offset along
+;                                          X-Axis [Default = 0.0]
+;                               VOY   :  Scalar defining the velocity offset along
+;                                          Y-Axis [Default = 0.0]
+;               ***  INPUT --> Extras for Contour Plot  ***
+;               EX_VECN    :  [V]-Element [structure] array containing extra vectors the
+;                               user wishes to project onto the contour, each with
+;                               the following format:
+;                                 VEC   :  [3]-Element [numeric] array of 3-vectors in the
+;                                            same coordinate system as VELXYZ to be
+;                                            projected onto the contour plot
+;                                            [e.g. VEC[0] = along X-Axis]
+;                                 NAME  :  Scalar [string] used as a name for each VEC
+;                                            to output onto the contour plot
+;                                            [Default = 'Vec_j', j = index of EX_VECS]
+;               ***  INPUT --> Plotting  ***
+;               DAT_PLOT   :  Scalar [structure] corresponding to the particle
+;                               velocity distribution function you wish to plot
+;                               (will have the same format as DATA)
+;               ***  INPUT --> File and Plot Info  ***
+;               ALL_FPREFS  :  [M]-Element [string] array defining all the file prefixes
+;                                for the M VDFs in DATA
+;               ALL_PTTLS   :  [M]-Element [string] array defining all the plot titles
+;                                for the M VDFs in DATA
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               READ_OUT   :  Set to a named variable to return a string containing the
+;                               last command line input.  This is used by the overhead
+;                               routine to determine whether user left the program by
+;                               quitting or if the program finished
+;               DAT_PLOT   :  Scalar [structure] corresponding to the particle
+;                               velocity distribution function you wish to plot
+;                               (will have the same format as DATA)
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [07/25/2017   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [07/25/2017   v1.0.0]
+;             3)  Continued to write routine
+;                                                                   [07/26/2017   v1.0.0]
+;             4)  Continued to write routine
+;                                                                   [07/27/2017   v1.0.0]
+;             5)  Continued to write routine
+;                                                                   [07/28/2017   v1.0.0]
+;
+;   NOTES:      
+;               0)  User should not directly call this routine
+;               1)  See routines called by this wrapping program for more information
+;                     about their usage
+;
+;  REFERENCES:  
+;               NA
+;
+;   ADAPTED FROM:  beam_fit_change_parameter.pro [UMN 3DP library, beam fitting routines]
+;   CREATED:  07/24/2017
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/28/2017   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO vbulk_change_change_parameter,data,                                              $
+                                      INDEX=index,VDF_INFO=vdf_info0,                $  ;;  ***  INPUT --> Param  ***
+                                      CONT_STR=cont_str0,                            $  ;;  ***  INPUT --> Contour Plot  ***
+                                      WINDN=windn,PLOT_STR=plot_str0,                $  ;;  ***  INPUT --> System  ***
+                                      VCIRC=vcirc,                                   $  ;;  ***  INPUT --> Circles for Contour Plot  ***
+                                      EX_VECN=ex_vecn,                               $  ;;  ***  INPUT --> Extras for Contour Plot  ***
+                                      ALL_FPREFS=all_fprefs,ALL_PTTLS=all_pttls,     $  ;;  ***  INPUT --> File and Plot Info  ***
+                                      READ_OUT=read_out,DAT_PLOT=dat_plot               ;;  ***  OUTPUT  ***
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define some defaults
+def_contstr    = vbulk_change_get_default_struc()
+;;  Define parts of file names
+xyzvecf        = ['V1','V1xV2xV1','V1xV2']
+xy_suff        = xyzvecf[1]+'_vs_'+xyzvecf[0]+'_'
+xz_suff        = xyzvecf[0]+'_vs_'+xyzvecf[2]+'_'
+yz_suff        = xyzvecf[2]+'_vs_'+xyzvecf[1]+'_'
+;;  Default window numbers
+def_winn       = [4L,5L,6L]
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(data) EQ 0) OR (N_PARAMS() LT 1) OR (SIZE(data,/TYPE) NE 8)
+IF (test[0]) THEN RETURN     ;; nothing supplied, so leave
+;;  Define dummy copy of DATA to avoid changing input
+dat            = data
+ndat           = N_ELEMENTS(dat)
+;;  Define parameters used in case statement
+inds           = LINDGEN(ndat)
+ind_ra         = [MIN(inds),MAX(inds)]
+sind_ra        = num2int_str(ind_ra,NUM_CHAR=4,/ZERO_PAD)
+;;  Check DATA
+test           = vbulk_change_test_vdf_str_form(dat[0])
+IF (test[0] EQ 0) THEN RETURN
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check CONT_STR
+test           = vbulk_change_test_cont_str_form(cont_str0,DAT_OUT=cont_str)
+IF (test[0] EQ 0 OR SIZE(cont_str,/TYPE) NE 8) THEN cont_str = def_contstr
+;;  Check WINDN
+test           = vbulk_change_test_windn(windn,DAT_OUT=win)
+IF (test[0] EQ 0) THEN RETURN ELSE windn = win[0]
+;;  Check PLOT_STR
+;;    TRUE   -->  Allow use of general_cursor_select.pro routine
+;;    FALSE  -->  Command-line input only
+test_plt       = vbulk_change_test_plot_str_form(plot_str0,DAT_OUT=plot_str)
+;;  Check INDEX
+test           = (is_a_number(index,/NOMSSG) EQ 0) OR (N_ELEMENTS(index) LT 1)
+IF (test[0]) THEN ind0 = 0L ELSE ind0 = LONG(index[0])
+;;  Check VDF_INFO
+temp           = vbulk_change_test_vdfinfo_str_form(vdf_info0,DAT_OUT=vdf_info)
+n_vdfi         = N_ELEMENTS(vdf_info)
+test           = (temp[0] EQ 0) OR (n_vdfi[0] NE ndat[0])
+IF (test[0]) THEN STOP  ;;  Not properly set --> Output structure is null --> debug
+;;  Define EX_INFO
+extract_tags,dumb,vdf_info[0],TAGS=['SCPOT','VSW','MAGF']
+ex_infoa       = REPLICATE(dumb[0],ndat[0])
+ex_infoa.SCPOT = vdf_info.SCPOT
+ex_infoa.VSW   = vdf_info.VSW
+ex_infoa.MAGF  = vdf_info.MAGF
+;;  Check VC_XOFF and VC_YOFF
+test           = (is_a_number(vc_xoff,/NOMSSG) EQ 0) OR (N_ELEMENTS(vc_xoff) LT 1)
+IF (test[0]) THEN vcirc_xoff = 0d0 ELSE vcirc_xoff = DOUBLE(REFORM(vc_xoff))
+test           = (is_a_number(vc_yoff,/NOMSSG) EQ 0) OR (N_ELEMENTS(vc_yoff) LT 1)
+IF (test[0]) THEN vcirc_yoff = 0d0 ELSE vcirc_yoff = DOUBLE(REFORM(vc_yoff))
+nvcxo          = N_ELEMENTS(vcirc_xoff)
+nvcyo          = N_ELEMENTS(vcirc_yoff)
+;;  Check VCIRC
+test           = (SIZE(vcirc,/TYPE) EQ 8) AND (N_ELEMENTS(vcirc) GT 0)
+IF (test[0]) THEN BEGIN
+  circ_str = 0
+  ;;  Check format
+  dumb           = {VRAD:0d0,VOX:0d0,VOY:0d0}
+  temp           = structure_compare(vcirc,dumb,EXACT=exact,MATCH_NT=match_nt,$
+                                     MATCH_TG=match_tg,MATCH_TT=match_tt)
+  test           = (temp[0] LE 4) OR (~match_nt[0] OR ~match_tg[0])
+  IF (test[0]) THEN BEGIN
+    ;;  Bad format --> default to FALSE
+    circ_str = 0
+  ENDIF ELSE BEGIN
+    gtags    = TAG_NAMES(dumb)
+    ncirc    = N_ELEMENTS(vcirc)
+    dumb     = 0
+    extract_tags,dumb,vcirc[0],TAGS=gtags
+    circ_str = REPLICATE(dumb[0],ncirc[0])
+    ;;  Define tags
+    circ_str.VRAD = vcirc.VRAD
+    circ_str.VOX  = vcirc.VOX
+    circ_str.VOY  = vcirc.VOY
+  ENDELSE
+ENDIF ELSE BEGIN
+  circ_str = 0
+ENDELSE
+;;  Check EX_VECN
+test           = (SIZE(ex_vecn,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  ;;  Not structure --> default to FALSE
+  ex_vecs        = 0
+ENDIF ELSE BEGIN
+  ;;  Structure --> check format
+  dumb           = {VEC:REPLICATE(0d0,3L),NAME:''}
+  temp           = structure_compare(ex_vecn,dumb,EXACT=exact,MATCH_NT=match_nt,$
+                                     MATCH_TG=match_tg,MATCH_TT=match_tt)
+  test           = (temp[0] LE 4) OR (~match_nt[0] OR ~match_tg[0])
+  IF (test[0]) THEN BEGIN
+    ;;  Bad format --> default to FALSE
+    ex_vecs        = 0
+  ENDIF ELSE BEGIN
+    ;;  Check that VEC tags contain 3-vectors
+    test           = (is_a_3_vector(ex_vecn[0].VEC,V_OUT=v_out,/NOMSSG) EQ 0)
+    IF (test[0]) THEN BEGIN
+      ;;  Bad format --> default to FALSE
+      ex_vecs        = 0
+    ENDIF ELSE BEGIN
+      ;;  Get relevant values
+      nexv           = N_ELEMENTS(ex_vecn)
+      ex_tags        = TAG_NAMES(dumb)
+      extract_tags,dumb,ex_vecn[0],TAGS=ex_tags
+      ex_vecs        = REPLICATE(dumb[0],nexv[0])
+      ;;  Define tags
+      ex_vecs.VEC    = ex_vecn.VEC
+      ex_vecs.NAME   = ex_vecn.NAME
+    ENDELSE
+  ENDELSE
+ENDELSE
+;;  Check DAT_PLOT
+test           = (SIZE(dat_plot,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  ;;  Define dummy copy of new VDF to plot
+  dat_orig = dat[ind0]
+ENDIF ELSE BEGIN
+  ;;  Define dummy copy of last VDF plotted
+  test           = vbulk_change_test_vdf_str_form(dat_plot[0])
+  IF (test[0]) THEN BEGIN
+    dat_orig = dat[ind0]
+  ENDIF ELSE BEGIN
+    dat_orig = dat_plot[0]
+  ENDELSE
+ENDELSE
+;;  Define EX_INFO for plotting
+ex_info        = ex_infoa[ind0]
+;;  Define VDF params for plotting
+vdf            = dat_orig.VDF
+velxyz         = dat_orig.VELXYZ
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Plot loop
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Initialize outputs
+read_out       = ''
+value_out      = 0
+old_value      = 0
+new_value      = 0
+name_out       = ''
+data_out       = 0
+status         = 0b
+defined        = 0b
+true           = 1
+WHILE (true) DO BEGIN
+  ;; Reset inputs/outputs
+  dumb           = TEMPORARY(read_out)
+  dumb           = TEMPORARY(value_out)
+  dumb           = TEMPORARY(status)
+  dumb           = TEMPORARY(defined)
+  dumb           = TEMPORARY(old_value)
+  dumb           = TEMPORARY(new_value)
+  dumb           = TEMPORARY(name_out)
+  dumb           = TEMPORARY(data_out)
+  ;;  Define plot title and file name
+  struc          = vbulk_change_get_fname_ptitle(dat,all_fprefs,all_pttls,INDEX=ind0,CONT_STR=cont_str)
+  plot_title     = struc.PLOT_TITLE[0]
+  ;;  Update window to plot to
+  projxy         = struct_value(cont_str,'plane',INDEX=dind)
+  defined   = (dind[0] GE 0)
+  IF (defined EQ 0) THEN BEGIN
+    ;;  If not set, then use default
+    projxy    = 'xy'
+    ;;  Update COPY_STR
+    str_element,cont_str,'PLANE',projxy[0],/ADD_REPLACE
+  ENDIF
+  copy1 = cont_str
+  copy2 = cont_str
+  CASE projxy[0] OF
+    'xy'  :  BEGIN
+      windn = def_winn[0]
+      ;;  Define extra stuff for other windows to update
+      exwin = def_winn[[1,2]]
+      str_element,copy1,'PLANE','xz',/ADD_REPLACE
+      str_element,copy2,'PLANE','yz',/ADD_REPLACE
+    END
+    'xz'  :  BEGIN
+      windn = def_winn[1]
+      exwin = def_winn[[0,2]]
+      str_element,copy1,'PLANE','xy',/ADD_REPLACE
+      str_element,copy2,'PLANE','yz',/ADD_REPLACE
+    END
+    'yz'  :  BEGIN
+      windn = def_winn[2]
+      exwin = def_winn[[0,1]]
+      str_element,copy1,'PLANE','xy',/ADD_REPLACE
+      str_element,copy2,'PLANE','xz',/ADD_REPLACE
+    END
+  ENDCASE
+;  CASE projxy[0] OF
+;    'xy'  :  windn = def_winn[0]
+;    'xz'  :  windn = def_winn[1]
+;    'yz'  :  windn = def_winn[2]
+;  ENDCASE
+  dumb           = TEMPORARY(projxy)
+  dumb           = TEMPORARY(defined)
+  ;;--------------------------------------------------------------------------------------
+  ;;  Update plots not in focus
+  ;;--------------------------------------------------------------------------------------
+  struc1         = vbulk_change_get_fname_ptitle(dat,all_fprefs,all_pttls,INDEX=ind0,CONT_STR=copy1)
+  struc2         = vbulk_change_get_fname_ptitle(dat,all_fprefs,all_pttls,INDEX=ind0,CONT_STR=copy2)
+  copystrs       = {C1:copy1,C2:copy2}
+  pttles         = [struc1.PLOT_TITLE[0],struc2.PLOT_TITLE[0]]
+  FOR k=0L, 1L DO BEGIN
+    WSET,exwin[k]
+    general_vdf_contour_plot,vdf,velxyz,_EXTRA=copystrs.(k),CIRCS=circ_str,EX_VECS=ex_vecs, $
+                             EX_INFO=ex_info,/SLICE2D,P_TITLE=pttles[k]
+  ENDFOR
+  ;;--------------------------------------------------------------------------------------
+  ;;  Plot original DF
+  ;;--------------------------------------------------------------------------------------
+  WSET,windn[0]
+  WSHOW,windn[0]
+  general_vdf_contour_plot,vdf,velxyz,_EXTRA=cont_str,CIRCS=circ_str,EX_VECS=ex_vecs,     $
+                           EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user wants to change any of the plot ranges
+  ;;--------------------------------------------------------------------------------------
+  read_out       = ''    ;; output value of decision
+  pro_out        = ["[Type 'q' to leave this loop at any time]","",$
+                    "Do you wish to change any of the plot ranges or the VSW estimate?",$
+                    "     [e.g. VLIM, DFMIN, DFMAX, DFRA, VSW, etc.]"]
+  str_out        = "To change any of these type 'y', otherwise type 'n':  "
+  WHILE (read_out NE 'y' AND read_out NE 'n' AND read_out NE 'q') DO BEGIN
+    read_out = general_prompt_routine(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+    IF (read_out EQ 'debug') THEN STOP
+  ENDWHILE
+  ;;  Check if user wishes to quit loop
+  IF (read_out EQ 'q') THEN BEGIN
+    true = 0
+    GOTO,JUMP_END  ;; user wants to leave program
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  To change or not to change, that is the question...
+  ;;    ...whether 'tis nobler in the mind to suffer the slings and arrows of
+  ;;       outrageous GOTO statements...
+  ;;       Or to take arms against a sea of options...
+  ;;       And by opposing end them;  to fit, to plot, no more...
+  ;;--------------------------------------------------------------------------------------
+  IF (read_out EQ 'y') THEN BEGIN
+    ;; Reset input/output
+    dumb           = TEMPORARY(defined)
+    dumb           = TEMPORARY(old_value)
+    dumb           = TEMPORARY(new_value)
+    dumb           = TEMPORARY(name_out)
+    ;; Prompt options
+    vbulk_change_options,dat,read_in,INDEX=ind0,CONT_STR=cont_str,WINDN=windn,  $
+                                     VDF_INFO=vdf_info,                         $
+                                     PLOT_STR=plot_str,READ_OUT=name_out,       $
+                                     VALUE_OUT=new_value,OLD_VALUE=old_value
+    ;; Check old value
+    defined        = N_ELEMENTS(old_value)
+    IF (defined EQ 0) THEN BEGIN
+      ;; original not defined => undefine result
+      dumb           = TEMPORARY(defined)
+      dumb           = TEMPORARY(old_value)
+    ENDIF
+    ;;------------------------------------------------------------------------------------
+    ;; determine which variable user changed
+    ;;------------------------------------------------------------------------------------
+    IF (name_out[0] EQ 'q') THEN BEGIN
+      true     = 0
+      read_out = 'q'
+      GOTO,JUMP_END  ;; user wants to leave program
+    ENDIF ELSE BEGIN
+      ;; Make sure the change was not a switch of index
+      test           = (name_out[0] EQ 'next') OR (name_out[0] EQ 'prev') OR (name_out[0] EQ 'index')
+      IF (test[0]) THEN BEGIN
+        ;;  Delete output structure
+        dumb           = TEMPORARY(data_out)
+        ;;  Change index input and leave
+        index          = ind0
+        read_out       = name_out
+        ;;  Return
+        RETURN
+      ENDIF
+    ENDELSE
+    ;;  Check for save command
+    test            = (name_out[0] EQ 'save1') OR (name_out[0] EQ 'save3')
+    IF (test[0]) THEN BEGIN
+      true     = 0
+      read_out = name_out[0]
+      GOTO,JUMP_END  ;; user wants to leave program
+    ENDIF
+    ;;  Check for retry
+    IF (name_out[0] EQ '') THEN BEGIN
+      true = 1
+      GOTO,JUMP_SKIP_00  ;; user wants to try again
+    ENDIF
+    ;;------------------------------------------------------------------------------------
+    ;; Check if PLANE was changed
+    ;;------------------------------------------------------------------------------------
+    IF (name_out[0] EQ 'plane') THEN BEGIN
+      good_pl = WHERE(new_value EQ ['xy','xz','yz','zz'],gdpl)
+      IF (gdpl NE 1) THEN BEGIN
+        ;; something is wrong => go back to default
+        str_element,cont_str,'plane','xy',/ADD_REPLACE
+        new_value = 'xy'
+        ;; Reset/Fix file_midf
+        nlevs     = struct_value(cont_str,'nlev',INDEX=dind)
+        defined   = (dind[0] GE 0)
+        IF (defined EQ 0) THEN BEGIN
+          ;;  If not set, then get defaults
+          nlevs      = def_contstr.NLEV
+        ENDIF
+        def_val_str    = num2int_str(nlevs[0],NUM_CHAR=2)+'CLevels_'
+        projxy         = struct_value(cont_str,'plane',INDEX=dind)
+        defined   = (dind[0] GE 0)
+        IF (defined EQ 0) THEN BEGIN
+          ;;  If not set, then use default
+          projxy    = 'xy'
+        ENDIF
+        CASE projxy[0] OF
+          'xy'  :  file_midf = xy_suff[0]+def_val_str[0]
+          'xz'  :  file_midf = xz_suff[0]+def_val_str[0]
+          'yz'  :  file_midf = yz_suff[0]+def_val_str[0]
+        ENDCASE
+        str_element,cont_str,'file_midf',file_midf[0],/ADD_REPLACE
+      ENDIF ELSE BEGIN
+        ;; success!!
+        new_value = (['xy','xz','yz','zz'])[good_pl[0]]
+      ENDELSE
+    ENDIF
+    ;;------------------------------------------------------------------------------------
+    ;; Check if VFRAME was changed
+    ;;------------------------------------------------------------------------------------
+    IF (name_out[0] EQ 'vframe') THEN BEGIN
+      test = (is_a_3_vector(old_value,V_OUT=v_out,/NOMSSG) EQ 0)
+      IF (test[0]) THEN old_value = ex_info[0].VSW
+      ;;  Make sure new value is defined
+      test = is_a_3_vector(new_value,V_OUT=v_out,/NOMSSG)
+      IF (test[0]) THEN BEGIN
+        ;; Change only new one
+        cont_str[0].VFRAME = v_out
+      ENDIF ELSE BEGIN
+        ;; No change, try again
+        true           = 1
+        GOTO,JUMP_SKIP_00
+      ENDELSE
+    ENDIF
+    ;;  Update CONT_STR
+    copy_str       = cont_str
+    str_element,copy_str,name_out[0],new_value,/ADD_REPLACE
+    ;;  Define plot title and file name
+    struc          = vbulk_change_get_fname_ptitle(dat,all_fprefs,all_pttls,INDEX=ind0,CONT_STR=cont_str)
+    plot_title     = struc.PLOT_TITLE[0]
+    ;;  Update window to plot to
+    projxy         = struct_value(copy_str,'plane',INDEX=dind)
+    defined   = (dind[0] GE 0)
+    IF (defined EQ 0) THEN BEGIN
+      ;;  If not set, then use default
+      projxy    = 'xy'
+      ;;  Update COPY_STR
+      str_element,copy_str,'PLANE',projxy[0],/ADD_REPLACE
+    ENDIF
+    copy1 = copy_str
+    copy2 = copy_str
+    CASE projxy[0] OF
+      'xy'  :  BEGIN
+        windn = def_winn[0]
+        ;;  Define extra stuff for other windows to update
+        exwin = def_winn[[1,2]]
+        str_element,copy1,'PLANE','xz',/ADD_REPLACE
+        str_element,copy2,'PLANE','yz',/ADD_REPLACE
+      END
+      'xz'  :  BEGIN
+        windn = def_winn[1]
+        exwin = def_winn[[0,2]]
+        str_element,copy1,'PLANE','xy',/ADD_REPLACE
+        str_element,copy2,'PLANE','yz',/ADD_REPLACE
+      END
+      'yz'  :  BEGIN
+        windn = def_winn[2]
+        exwin = def_winn[[0,1]]
+        str_element,copy1,'PLANE','xy',/ADD_REPLACE
+        str_element,copy2,'PLANE','xz',/ADD_REPLACE
+      END
+    ENDCASE
+    dumb           = TEMPORARY(projxy)
+    dumb           = TEMPORARY(defined)
+    ;;------------------------------------------------------------------------------------
+    ;;  Update plots not in focus
+    ;;------------------------------------------------------------------------------------
+    struc1         = vbulk_change_get_fname_ptitle(dat,all_fprefs,all_pttls,INDEX=ind0,CONT_STR=copy1)
+    struc2         = vbulk_change_get_fname_ptitle(dat,all_fprefs,all_pttls,INDEX=ind0,CONT_STR=copy2)
+    copystrs       = {C1:copy1,C2:copy2}
+    pttles         = [struc1.PLOT_TITLE[0],struc2.PLOT_TITLE[0]]
+    FOR k=0L, 1L DO BEGIN
+      WSET,exwin[k]
+      general_vdf_contour_plot,vdf,velxyz,_EXTRA=copystrs.(k),CIRCS=circ_str,EX_VECS=ex_vecs, $
+                               EX_INFO=ex_info,/SLICE2D,P_TITLE=pttles[k]
+    ENDFOR
+    ;;------------------------------------------------------------------------------------
+    ;;  Replot and see if user likes changes
+    ;;------------------------------------------------------------------------------------
+    WSET,windn[0]
+    WSHOW,windn[0]
+    general_vdf_contour_plot,vdf,velxyz,_EXTRA=copy_str,CIRCS=circ_str,EX_VECS=ex_vecs,     $
+                             EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0]
+    ;;------------------------------------------------------------------------------------
+    ;; Check if user likes this setting
+    ;;------------------------------------------------------------------------------------
+    read_out       = ''    ;; output value of decision
+    str_out        = "To keep change type 'y', otherwise type 'n':  "
+    pro_out        = ["[Type 'q' to leave this loop at any time]","",$
+                      "Do you wish to keep this change?"]
+    WHILE (read_out NE 'y' AND read_out NE 'n' AND read_out NE 'q') DO BEGIN
+      read_out = general_prompt_routine(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+      IF (read_out EQ 'debug') THEN STOP
+    ENDWHILE
+    ;;  Check if user wishes to quit
+    IF (read_out EQ 'q') THEN BEGIN
+      true = 0
+      GOTO,JUMP_END  ;; user wants to leave program
+    ENDIF
+    ;;------------------------------------------------------------------------------------
+    ;;  Check if user wishes to keep setting
+    ;;------------------------------------------------------------------------------------
+    IF (read_out EQ 'y') THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;; Check if more than one element
+      ;;----------------------------------------------------------------------------------
+      test           = (N_ELEMENTS(name_out) EQ 1)
+      IF (test[0]) THEN BEGIN
+        ;; Only 1 element
+        ;;   => Use new variable
+        str_element,cont_str,name_out[0],new_value,/ADD_REPLACE
+        temp = struct_value(cont_str,name_out[0],INDEX=dind)
+        test = (dind[0] LT 0) OR (TOTAL(temp NE new_value) GT 0)
+        IF (test[0]) THEN BEGIN
+          bad_setcom = "Failed to change value associated with "+STRUPCASE(name_out)
+          MESSAGE,bad_setcom,/INFORMATIONAL,/CONTINUE
+          ;; Failed to set common block variable to NEW_VALUE => Undefine
+          dumb = TEMPORARY(name_out)
+        ENDIF ELSE BEGIN
+          ;; New variable set correctly, check if VFRAME
+          IF (STRLOWCASE(name_out) EQ 'vframe') THEN BEGIN
+            vsw            = struct_value(cont_str,'vframe',INDEX=dind)
+            defined        = (dind[0] GE 0)
+            IF (defined NE 0) THEN BEGIN
+              ;;  Change values in structure
+              cont_str[0].VFRAME = vsw
+            ENDIF
+          ENDIF
+        ENDELSE
+      ENDIF ELSE BEGIN
+        ;; More than 1 element
+        ;;   => V_BX and V_BY
+        test           = (N_ELEMENTS(name_out) NE N_ELEMENTS(new_value))
+        IF (test[0]) THEN BEGIN
+          ;;  bad, so try again
+          str_name   = STRUPCASE(name_out[0])+" and "+STRUPCASE(name_out[1])
+          bad_setcom = "Failed to change value(s) associated with "+str_name
+          MESSAGE,bad_setcom,/INFORMATIONAL,/CONTINUE
+          ;; Failed to set common block variable to NEW_VALUE => Undefine
+          dumb = TEMPORARY(name_out)
+        ENDIF ELSE BEGIN
+          ;;  good
+          FOR j=0L, N_ELEMENTS(name_out) - 1L DO BEGIN
+            str_element,cont_str,name_out[j],new_value[j],/ADD_REPLACE
+            temp = struct_value(cont_str,name_out[j],INDEX=dind)
+            test = (dind[0] LT 0) OR (temp[0] NE new_value[j])
+            IF (test[0]) THEN BEGIN
+              ;;  Failed
+              bad_setcom = "Failed to change value associated with "+STRUPCASE(name_out[j])
+              MESSAGE,bad_setcom,/INFORMATIONAL,/CONTINUE
+              ;; Failed to set common block variable to NEW_VALUE => Undefine
+              dumb = TEMPORARY(name_out)
+            ENDIF ELSE BEGIN
+              ;; success!!!
+              IF (STRLOWCASE(name_out[j]) EQ 'vframe') THEN BEGIN
+                vsw            = struct_value(cont_str,'vframe',INDEX=dind)
+                defined        = (dind[0] GE 0)
+                IF (defined NE 0) THEN BEGIN
+                  ;;  Change values in structure
+                  cont_str[0].VFRAME = vsw
+                ENDIF
+              ENDIF
+            ENDELSE
+          ENDFOR
+        ENDELSE
+      ENDELSE
+      ;; Try again
+      true           = 1
+    ENDIF ELSE BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;; Unset new variable
+      ;;----------------------------------------------------------------------------------
+      IF (N_ELEMENTS(old_value) NE 0) THEN BEGIN
+        ;; Use old variable
+        str_element,cont_str,name_out[0],old_value,/ADD_REPLACE
+        temp = struct_value(cont_str,name_out[0],INDEX=dind)
+        test = (dind[0] GE 0) AND (TOTAL(temp NE old_value) EQ 0)
+        IF (test[0]) THEN BEGIN
+          ;; success!!!
+          IF (STRLOWCASE(name_out) EQ 'vframe') THEN BEGIN
+            ;; Reset VSW to original value
+            cont_str[0].VFRAME = vsw
+          ENDIF
+          ;; Check if user altered PLANE
+          IF (STRLOWCASE(name_out) EQ 'plane') THEN BEGIN
+            ;; Reset/Fix file_midf
+            nlevs     = struct_value(cont_str,'nlev',INDEX=dind)
+            defined   = (dind[0] GE 0)
+            IF (defined EQ 0) THEN BEGIN
+              ;;  If not set, then get defaults
+              nlevs      = def_contstr.NLEV
+            ENDIF
+            def_val_str    = num2int_str(nlevs[0],NUM_CHAR=2)+'CLevels_'
+            projxy         = struct_value(cont_str,'plane',INDEX=dind)
+            defined        = (dind[0] GE 0)
+            IF (defined EQ 0) THEN BEGIN
+              ;;  If not set, then use default
+              projxy    = 'xy'
+            ENDIF
+            CASE projxy[0] OF
+              'xy'  :  file_midf = xy_suff[0]+def_val_str[0]
+              'xz'  :  file_midf = xz_suff[0]+def_val_str[0]
+              'yz'  :  file_midf = yz_suff[0]+def_val_str[0]
+            ENDCASE
+            str_element,cont_str,'file_midf',file_midf[0],/ADD_REPLACE
+          ENDIF
+        ENDIF ELSE BEGIN
+          ;; Failed to set common block variable to OLD_VALUE => Undefine
+          dumb = TEMPORARY(name_out)
+        ENDELSE
+      ENDIF
+      ;; Try again
+      true           = 1
+    ENDELSE
+    ;;====================================================================================
+    JUMP_SKIP_00:
+    ;;====================================================================================
+    test           = (read_out EQ 'q')
+    IF (test[0]) THEN BEGIN
+      str_out        = "Did you want to quit (type 'q') or just stop changing DF parameters (type 'n'):  "
+      ;;  Set/Reset outputs
+      read_out       = ''    ;; output value of decision
+      WHILE (read_out NE 'n' AND read_out NE 'q') DO BEGIN
+        read_out       = general_prompt_routine(STR_OUT=str_out,FORM_OUT=7)
+        IF (read_out EQ 'debug') THEN STOP
+      ENDWHILE
+      ;;  Check if user wishes to quit
+      IF (read_out EQ 'q') THEN GOTO,JUMP_END  ;; user wants to leave program
+    ENDIF
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;; everything is fine, so leave
+    ;;------------------------------------------------------------------------------------
+    true           = 0
+  ENDELSE
+ENDWHILE
+;;========================================================================================
+JUMP_END:
+;;========================================================================================
+
+;; Redefine input/output
+dat_plot       = dat_orig[0]
+;;----------------------------------------------------------------------------------------
+;;  Return to calling routine
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+

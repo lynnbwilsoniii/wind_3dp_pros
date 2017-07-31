@@ -79,6 +79,8 @@
 ;                   now calls sample_rate.pro and trange_clip_data.pro and
 ;                   can now handle TSHIFT structure tag for TPLOT structures
 ;                                                                   [04/21/2016   v2.1.0]
+;             4)  Fixed a bug in the handling of the NO_SWE_B keyword
+;                                                                   [07/18/2017   v2.1.1]
 
 ;
 ;   NOTES:      
@@ -90,8 +92,9 @@
 ;                     specify the full file path to the CDF files.
 ;               2)  The thermal speeds are "most probable speeds" speeds, not rms
 ;               3)  The velocity due to the Earth's orbit about the sun has been removed
-;                     from the bulk flow velocities.  This means that ~29.064 km/s has
+;                     from the bulk flow velocities.  This means that ~29.78 km/s has
 ;                     been subtracted from the Y-GSE component.
+;                     [Personal communication with Michael Stevens, July 18, 2017]
 ;               4)  The nonlinear fits provided in the H1 files do NOT contain the higher
 ;                     resolution calculations used in Maruca&Kasper, [2013].
 ;
@@ -110,7 +113,7 @@
 ;
 ;   CREATED:  01/24/2014
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/21/2016   v2.1.0
+;    LAST MODIFIED:  07/18/2017   v2.1.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -278,8 +281,10 @@ IF (test[0]) THEN pro_on = 0b ELSE pro_on = 1b
 test           = KEYWORD_SET(no_alphas) AND (N_ELEMENTS(no_alphas) GT 0)
 IF (test[0]) THEN alp_on = 0b ELSE alp_on = 1b
 ;;  Check NO_SWE_B
-test           = ~KEYWORD_SET(no_swe_b) AND (N_ELEMENTS(no_swe_b) GT 0)
-IF (test[0]) THEN mag_on = 1b ELSE mag_on = 0b
+test           = KEYWORD_SET(no_swe_b) AND (N_ELEMENTS(no_swe_b) GT 0)
+IF (test[0]) THEN mag_on = 0b ELSE mag_on = 1b
+;test           = ~KEYWORD_SET(no_swe_b) AND (N_ELEMENTS(no_swe_b) GT 0)
+;IF (test[0]) THEN mag_on = 1b ELSE mag_on = 0b
 ;;  Check LOAD_MOMS
 test           = (KEYWORD_SET(load_moms) AND (N_ELEMENTS(load_moms) GT 0)) AND pro_on[0]
 IF (test[0]) THEN mom_on = 1b ELSE mom_on = 0b

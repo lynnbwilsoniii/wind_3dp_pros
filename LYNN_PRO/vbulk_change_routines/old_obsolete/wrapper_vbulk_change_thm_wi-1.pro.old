@@ -1,0 +1,554 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   wrapper_vbulk_change_thm_wi.pro
+;  PURPOSE  :   This is a wrapping routine for the Vbulk Change IDL Libraries that takes
+;                 an array of particle velocity distribution functions (VDFs) from
+;                 either the Wind/3DP or THEMIS ESA experiments and allows the user
+;                 to dynamically and interactively change the reference frame used
+;                 for plotting contour plots in a user-defined coordinate basis.
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;               2)  Vbulk Change IDL Libraries
+;
+;  INPUT:
+;               DATA       :  [N]-Element [structure] array of particle velocity
+;                               distribution functions (VDFs) from either the Wind/3DP
+;                               instrument [use get_??.pro, ?? = e.g. phb]
+;                               or from the THEMIS ESA instruments.  Regardless, the
+;                               structures must satisfy the criteria needed to produce
+;                               a contour plot showing the phase (velocity) space density
+;                               of the VDF.  The structures must also have the following
+;                               three tags with finite values:
+;                                 VSW     :  [3]-Element [float] array for the bulk flow
+;                                              velocity [km/s] vector at time of VDF,
+;                                              most likely from level-2 velocity moments
+;                                 MAGF    :  [3]-Element [float] array for the quasi-static
+;                                              magnetic field [nT] vector at time of VDF,
+;                                              most likely from fluxgate magnetometer
+;                                 SC_POT  :  Scalar [float] for the spacecraft electric
+;                                              potential [eV] at time of VDF
+;
+;                               **********************************************************
+;                               Note:  The routine will check for the VELOCITY tag if the
+;                                        VSW tag is not found
+;                               **********************************************************
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               
+;
+;  KEYWORDS:    
+;               ***  INPUT  ***
+;               DFRA_IN    :  [2]-Element array [float/double] defining the DF range
+;                               [cm^(-3) km^(-3) s^(3)] that defines the minimum and
+;                               maximum value for both the contour levels and the
+;                               Y-Axis of the cuts plot
+;                               [Default = range of data]
+;               ***  INPUT --> Circles for Contour Plot  ***
+;               VCIRC      :  Scalar(or array) [float/double] defining the value(s) to
+;                               plot as a circle(s) of constant speed [km/s] on the
+;                               contour plot [e.g. gyrospeed of specularly reflected ion]
+;                               [Default = FALSE]
+;               VC_XOFF    :  Scalar(or array) [float/double] defining the center of the
+;                               circle(s) associated with VCIRC along the X-Axis
+;                               (horizontal)
+;                               [Default = 0.0]
+;               VC_YOFF    :  Scalar(or array) [float/double] defining the center of the
+;                               circle(s) associated with VCIRC along the Y-Axis
+;                               (vertical)
+;                               [Default = 0.0]
+;               ***  INPUT --> Extras for Contour Plot  ***
+;               EX_VECN    :  [V]-Element structure array containing extra vectors the
+;                               user wishes to project onto the contour, each with
+;                               the following format:
+;                                  VEC   :  [3]-Element vector in the same coordinate
+;                                             system as the bulk flow velocity etc.
+;                                             contour plot projection
+;                                             [e.g. VEC[0] = along X-GSE]
+;                                  NAME  :  Scalar [string] used as a name for VEC
+;                                             output onto the contour plot
+;                                             [Default = 'Vec_j', j = index of EX_VECS]
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               STRUC_OUT  :  Set to a named variable to return a structure containing
+;                               the relevant information associated with the plots,
+;                               plot analysis, and results for each VDF in DATA
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [07/26/2017   v1.0.0]
+;
+;   NOTES:      
+;               1)  Routine will limit the number of elements in DATA to 2000 to avoid
+;                     bogging down the routines and brevity
+;
+;  REFERENCES:  
+;               
+;
+;   ADAPTED FROM:  wrapper_beam_fit_array.pro [UMN 3DP library, beam fitting routines]
+;   CREATED:  07/25/2017
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/26/2017   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO wrapper_vbulk_change_thm_wi,data,                                              $
+                                     DFRA_IN=dfra_in,                              $
+                                     EX_VECN=ex_vecn,                              $  ;;  ***  INPUT --> Extras for Contour Plot  ***
+                                     VCIRC=vcirc,VC_XOFF=vc_xoff,VC_YOFF=vc_yoff,  $  ;;  ***  INPUT --> Circles for Contour Plot  ***
+                                     STRUC_OUT=struc_out                              ;;  ***  OUTPUT  ***
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Default file name middles
+xyzvecf        = ['V1','V1xV2xV1','V1xV2']
+xy_suff        = xyzvecf[1]+'_vs_'+xyzvecf[0]+'_'
+xz_suff        = xyzvecf[0]+'_vs_'+xyzvecf[2]+'_'
+yz_suff        = xyzvecf[2]+'_vs_'+xyzvecf[1]+'_'
+;;  Default plot window names
+xy_winn        = xyzvecf[1]+' vs '+xyzvecf[0]
+xz_winn        = xyzvecf[0]+' vs '+xyzvecf[2]
+yz_winn        = xyzvecf[2]+' vs '+xyzvecf[1]
+win_nms        = [xy_winn[0],xz_winn[0],yz_winn[0]]
+;;  Default window numbers
+def_winn       = [4L,5L,6L]
+;;  Define the current working directory character
+;;    e.g., './' [for unix and linux] otherwise guess './' or '.\'
+slash          = get_os_slash()                    ;;  '/' for Unix-like, '\' for Windows
+vers           = !VERSION.OS_FAMILY                ;;  e.g., 'unix'
+vern           = !VERSION.RELEASE                  ;;  e.g., '7.1.1'
+test           = (vern[0] GE '6.0')
+IF (test[0]) THEN cwd_char = FILE_DIRNAME('',/MARK_DIRECTORY) ELSE cwd_char = '.'+slash[0]
+;;  Dummy error messages
+noinpt_msg     = 'No input supplied...'
+notstr_msg     = 'DATA must be an IDL structure...'
+notvdf_msg     = 'DATA must be an array of IDL structures containing velocity distribution functions (VDFs)...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(data) LT 2) OR (N_PARAMS() LT 1) OR (SIZE(data,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Make sure user did not enter more than 2000 structures
+;;      => Define dummy copy of DATA to avoid changing input
+IF (N_ELEMENTS(data) GT 2000L) THEN dat = data[0L:1999L] ELSE dat = data
+ndat           = N_ELEMENTS(dat)
+ind_ra         = [0L,ndat[0] - 1L]
+sind_ra        = num2int_str(ind_ra,NUM_CHAR=4,/ZERO_PAD)
+;;  Check format of DATA --> Make sure its an array of valid 3DP or ESA structures
+dumb           = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(dat[0])
+test           = (SIZE(dumb,/TYPE) NE 8)
+IF (test[0]) THEN RETURN       ;;  Not valid input --> Leave
+;;----------------------------------------------------------------------------------------
+;;  Define instrument and spacecraft names, plot titles, etc.
+;;----------------------------------------------------------------------------------------
+test0          = test_wind_vs_themis_esa_struct(data,/NOM)
+IF (test0.(0)) THEN BEGIN
+  ;;-------------------------------------------
+  ;; Wind
+  ;;-------------------------------------------
+  ;;  Check which instrument is being used
+  strns          = dat_3dp_str_names(dat[0],/NOM)
+  scft_name      = 'Wind'
+  sn             = strns.SN                                ;;  e.g., 'el'
+  lc             = strns.LC                                ;;  e.g., 'Eesa Low'
+  eps_typ        = STRMID(sn[0],0,1)                       ;;  For Logic:  EESA, PESA, or SST
+  lhfo_typ       = STRMID(sn[0],1,1)                       ;;  For Logic:  Low, High, Foil, or Open
+  bt_typ         = STRMID(sn[0],2,1)                       ;;  For Logic:  '', 'Burst', or 'Thick'
+  itype          = (['EESA','PESA','SST'])[WHERE(eps_typ[0] EQ ['e','p','s'])]
+  entype         = (['Low','High','Foil','Open'])[WHERE(lhfo_typ[0] EQ ['l','h','f','o'])]
+  bttype         = (['','Burst','Thick'])[WHERE(bt_typ[0] EQ ['','b','t'])]
+  t_pref0        = scft_name[0]+'_'+itype[0]+'_'+entype[0] ;;  e.g., 'Wind_EESA_Low'
+  t_pref         = t_pref0[0]+'_'+bttype[0]+'_'            ;;  e.g., 'Wind_EESA_Low_Burst_'
+  inst_name      = lc[0]
+  pttl_pref0     = dat.PROJECT_NAME[0]                     ;;  e.g., 'Wind 3D Plasma'
+  pttl_pref      = STRTRIM(string_replace_char(pttl_pref0[0],'3D Plasma','3DP'),2L)
+ENDIF ELSE BEGIN
+  ;;-------------------------------------------
+  ;; THEMIS
+  ;;-------------------------------------------
+  strns          = dat_themis_esa_str_names(dat[0],/NOM)
+  scft_name      = dat[0].PROJECT_NAME[0]                  ;;  e.g., 'THEMIS-C'
+  sn             = strns.SN                                ;;  e.g., 'peib'
+  lc             = strns.LC                                ;;  e.g., 'IESA 3D Burst Distribution'
+  frb_typ        = STRMID(sn[0],3,1)                       ;;  For Logic:  Burst, Full, or Reduced
+  type           = (['Full','Reduced','Burst'])[WHERE(frb_typ[0] EQ ['f','r','b'])]
+  i_or_e         = STRMID(sn[0],2,1)                       ;;  For Logic:  Electron or Ion
+  s_or_e         = STRMID(sn[0],1,1)                       ;;  For Logic:  SST or ESA
+  iename         = (['E','I'])[i_or_e[0] EQ 'i']
+  IF (s_or_e[0] EQ 's') THEN instnm = iename[0]+'SST_' ELSE instnm = iename[0]+'ESA_'
+  t_pref         = scft_name[0]+'_'+instnm[0]+type[0]+'_'  ;;  e.g., 'THEMIS-C_IESA_Burst_'
+  inst_name      = lc[0]
+  pttl_pref      = dat.PROJECT_NAME[0]                     ;;  e.g., 'THEMIS-C'
+ENDELSE
+pttl_midf      = dat.DATA_NAME[0]
+s_unix         = dat.TIME                                  ;;  Unix time at start of VDF
+e_unix         = dat.END_TIME                              ;;  Unix time at end of VDF
+s_str          = time_string(s_unix)
+e_str          = time_string(e_unix)
+;;  Define plot titles
+pttl_all       = pttl_pref+pttl_midf+'!C'+s_str+' - '+STRMID(e_str,11)
+;;  Define file name prefixes
+fnm            = file_name_times(s_times,PREC=3)
+ftimes         = fnm.F_TIME                 ;; e.g., '1998-08-09_0801x09.494'
+file_prefs     = t_pref[0]+ftimes+'_'       ;; e.g., 'THEMIS-C_IESA_Burst_1998-08-09_0801x09.494_'
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define structures for subroutines
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;------------------------------------------------
+;;  Define VDF structures with the following tags:
+;;------------------------------------------------
+;;      VDF     :  [N]-Element [float/double] array defining
+;;                   the VDF in units of phase space density
+;;                   [i.e., # s^(+3) km^(-3) cm^(-3)]
+;;      VELXYZ  :  [N,3]-Element [float/double] array defining
+;;                   the particle velocity 3-vectors for each
+;;                   element of VDF
+;;                   [km/s]
+vdfarr         = REPLICATE(dumb[0],ndat[0])
+FOR j=1L, ndat[0] - 1L DO BEGIN
+  dumb           = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(dat[j])
+  vdfarr[j]      = dumb[0]
+ENDFOR
+;;-----------------------------------------------------
+;;  Define VDF_INFO structures with the following tags:
+;;-----------------------------------------------------
+;;      SE_T   :  [2]-Element [double] array defining to the
+;;                  start and end times [Unix] of the VDF
+;;      SCFTN  :  Scalar [string] defining the spacecraft name
+;;                  [e.g., 'Wind' or 'THEMIS-B']
+;;      INSTN  :  Scalar [string] defining the instrument name
+;;                  [e.g., '3DP' or 'ESA' or 'EESA' or 'SST']
+;;      SCPOT  :  Scalar [float] defining the spacecraft
+;;                  electrostatic potential [eV] at the time of
+;;                  the VDF
+;;      VSW    :  [3]-Element [float] array defining to the
+;;                  bulk flow velocity [km/s] 3-vector at the
+;;                  time of the VDF
+;;      MAGF   :  [3]-Element [float] array defining to the
+;;                  quasi-static magnetic field [nT] 3-vector at
+;;                  the time of the VDF
+def_tags       = ['se_t','scftn','instn','scpot','vsw','magf']
+dumb3d         = REPLICATE(0d0,3L)
+dumb2d         = dumb3d[0:1]
+dumb3f         = FLOAT(dumb3d)
+dumb           = CREATE_STRUCT(def_tags,dumb2d,'','',0e0,dumb3f,dumb3f)
+vdf_info       = REPLICATE(dumb[0],ndat[0])
+dim3v          = SIZE(vdf_info.VSW,/DIMENSIONS)
+;;  Determine whether structure uses VSW or VELOCITY tag
+vsw            = struct_value(dat[0],'VSW',INDEX=dind)
+IF (dind[0] LT 0) THEN BEGIN
+  vsw_tag = 0b
+  vsw     = struct_value(dat[0],'VELOCITY',INDEX=dind)
+  IF (dind[0] LT 0) THEN RETURN                              ;;  Failed!!! --> Exit
+  vel_tag = 1b
+ENDIF ELSE BEGIN
+  vsw_tag = 1b
+  vel_tag = 0b
+ENDELSE
+vbulk_tag         = (['vsw','velocity'])[(WHERE([vsw_tag[0],vel_tag[0]]))[0]]
+;;  Define tags
+vdf_info.SCFTN    = scft_name[0]                           ;;  e.g., 'THEMIS-C'
+vdf_info.INSTN    = inst_name[0]                           ;;  e.g., 'Eesa Low Burst'
+vdf_info.SE_T[0]  = s_unix
+vdf_info.SE_T[1]  = e_unix
+vdf_info.SCPOT[0] = REFORM(dat.SC_POT[0])
+vdf_info.MAGF     = REFORM(dat.MAGF,dim3v[0],dim3v[1])
+test              = (vbulk_tag[0] EQ 'vsw')
+IF (test[0]) THEN vbulk = REFORM(dat.VSW,dim3v[0],dim3v[1]) ELSE vbulk = REFORM(dat.VELOCITY,dim3v[0],dim3v[1])
+vdf_info.VSW      = vbulk
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check VCIRC
+test           = is_a_number(vcirc,/NOMSSG) AND (N_ELEMENTS(vcirc) GT 0)
+IF (test[0]) THEN BEGIN
+  vrad   = DOUBLE(ABS(REFORM(vcirc)))
+  nvr    = N_ELEMENTS(vrad)
+  ;;  VCIRC is set --> Check VC_XOFF and VC_YOFF
+  test   = (nvr[0] NE nvcxo[0]) OR (nvr[0] NE nvcyo[0])
+  IF (test[0]) THEN BEGIN
+    ;;  Bad format --> Use default offsets = 0.0 km/s
+    vcirc_xoff = REPLICATE(0d0,nvr[0])
+    vcirc_yoff = REPLICATE(0d0,nvr[0])
+  ENDIF
+  ;;  Define circle structure
+  dumb     = {VRAD:0d0,VOX:0d0,VOY:0d0}
+  circ_str = REPLICATE(dumb[0],nvr[0])
+  FOR j=0L, nvr[0] - 1L DO circ_str[j] = {VRAD:vrad[j],VOX:vcirc_xoff[j],VOY:vcirc_yoff[j]}
+ENDIF ELSE BEGIN
+  circ_str = 0
+ENDELSE
+;;  Check EX_VECN
+test           = (SIZE(ex_vecn,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  ;;  Not structure --> default to FALSE
+  ex_vecs        = 0
+ENDIF ELSE BEGIN
+  ;;  Structure --> check format
+  dumb           = {VEC:REPLICATE(0d0,3L),NAME:''}
+  temp           = structure_compare(ex_vecn,dumb,EXACT=exact,MATCH_NT=match_nt,$
+                                     MATCH_TG=match_tg,MATCH_TT=match_tt)
+  test           = (temp[0] LE 4) OR (~match_nt[0] OR ~match_tg[0])
+  IF (test[0]) THEN BEGIN
+    ;;  Bad format --> default to FALSE
+    ex_vecs        = 0
+  ENDIF ELSE BEGIN
+    ;;  Check that VEC tags contain 3-vectors
+    test           = (is_a_3_vector(ex_vecn[0].VEC,V_OUT=v_out,/NOMSSG) EQ 0)
+    IF (test[0]) THEN BEGIN
+      ;;  Bad format --> default to FALSE
+      ex_vecs        = 0
+    ENDIF ELSE BEGIN
+      ;;  Get relevant values
+      nexv           = N_ELEMENTS(ex_vecn)
+      ex_tags        = TAG_NAMES(dumb)
+      extract_tags,dumb,ex_vecn[0],TAGS=ex_tags
+      ex_vecs        = REPLICATE(dumb[0],nexv[0])
+      ;;  Define tags
+      ex_vecs.VEC    = ex_vecn.VEC
+      ex_vecs.NAME   = ex_vecn.NAME
+    ENDELSE
+  ENDELSE
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Initialize windows
+;;----------------------------------------------------------------------------------------
+;;  Make sure device set to 'X'
+IF (STRLOWCASE(!D.NAME) NE 'x') THEN SET_PLOT,'X'
+;;  Get the status of the current windows [1 = open, 0 = no associated window]
+DEVICE,WINDOW_STATE=wstate
+;;  Get screen size to scale and position windows
+DEVICE,GET_SCREEN_SIZE=scsize
+;;  Keep the same aspect ratio of plot windows regardless of screen size
+wdy            = 200L
+aspect         = 800d0/1100d0                    ;;  x/y
+ysize          = LONG(scsize[1] - wdy[0])        ;;  YSIZE keyword setting
+xsize          = LONG(ysize[0]*aspect[0])        ;;  XSIZE keyword setting
+wdx            = scsize[0] - (xsize[0] + 10)
+wypos          = [0d0,3d0*wdy[0]/2d0]
+wxpos          = [1d1,wdx[0]]
+;;  Define some structures for WINDOW.PRO
+wilim1         = {RETAIN:2,XSIZE:xsize[0],YSIZE:ysize[0],TITLE:xy_winn[0],XPOS:wxpos[0],YPOS:wypos[1]}
+wilim2         = {RETAIN:2,XSIZE:xsize[0],YSIZE:ysize[0],TITLE:xz_winn[0],XPOS:wxpos[0],YPOS:wypos[0]}
+wilim3         = {RETAIN:2,XSIZE:xsize[0],YSIZE:ysize[0],TITLE:yz_winn[0],XPOS:wxpos[1],YPOS:wypos[1]}
+wstruc         = {WIN1:wilim1,WIN2:wilim2,WIN3:wilim3}
+FOR j=0L, 2L DO BEGIN
+  winn           = def_winn[j]
+  wins           = wstruc.(j)
+  lbw_window,/NEW_W,WIND_N=winn[0],_EXTRA=wins[0]
+ENDFOR
+test           = vbulk_change_test_windn(def_winn[0],DAT_OUT=windn)
+IF (~test[0]) THEN STOP     ;;  Should not happen --> Debug
+;;----------------------------------------------------------------------------------------
+;;  Initialize first index
+;;----------------------------------------------------------------------------------------
+old_value      = 0L         ;;  start with first VDF as default
+old_strval     = num2int_str(old_value[0],NUM_CHAR=5,/ZERO_PAD)
+;;  Define instructions and info
+pro_out        = ["[Type 'q' to quit at any time]","",$
+                  "You can print the indices prior to choosing or enter the value",$
+                  "if you already know which distribution you want to examine.","",$
+                  "The default (and current) index is "+old_strval[0]]
+str_out        = "Do you wish to print the indices prior to choosing (y/n)?"
+read_out       = ''
+WHILE (read_out NE 'y' AND read_out NE 'n' AND read_out NE 'q') DO BEGIN
+  read_out = general_prompt_routine(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+  IF (read_out EQ 'debug') THEN STOP
+ENDWHILE
+;;  Check if user wishes to quit
+IF (read_out EQ 'q') THEN RETURN
+IF (read_out EQ 'y') THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Print out indices first
+  ;;--------------------------------------------------------------------------------------
+  s_times        = s_unix
+  e_times        = e_unix
+  PRINT,';;'
+  PRINT,';;  The list of available DF dates, start/end times, and associated index are:'
+  PRINT,';;'
+  vbulk_change_print_index_time,s_times,e_times
+ENDIF
+;;  Define prompt instructions
+str_out        = "Enter a value between "+sind_ra[0]+" and "+sind_ra[1]+":  "
+true           = 1
+WHILE (true[0]) DO BEGIN
+  temp           = general_prompt_routine(STR_OUT=str_out,FORM_OUT=3)
+  value_out      = LONG(ABS(temp[0]))
+  true           = (value_out[0] LT ind_ra[0]) OR (value_out[0] GT ind_ra[1])
+ENDWHILE
+;;  Define 1st index to plot
+index          = value_out[0]
+ind0           = index[0]
+;;  Initialize some keywords
+filepref       = file_prefs[ind0[0]]
+vframe         = vdf_info[ind0[0]].VSW
+vec1           = [1d0,0d0,0d0]
+vec2           = [0d0,1d0,0d0]
+;;----------------------------------------------------------------------------------------
+;;  Initialize keywords
+;;----------------------------------------------------------------------------------------
+vbulk_change_keywords_init,dat,SAVE_DIR=cwd_char,FILE_PREF=filepref[0],           $
+                               VFRAME=vframe,VEC1=vec1,VEC2=vec2,WINDN=windn,     $
+                               PLOT_STR=plot_str,CONT_STR=cont_str
+;;----------------------------------------------------------------------------------------
+;;  Start Loop
+;;----------------------------------------------------------------------------------------
+;; Define parameters and initializations
+true           = 1
+data_out       = 0b
+WHILE (true[0]) DO BEGIN
+  ;; Reset outputs
+  read_out       = ''
+  ps_fname       = ''
+  finished       = 0
+  keep_out       = 0
+  ;;  set file name variables
+  ind0           = index[0]
+  ;;--------------------------------------------------------------------------------------
+  ;; Plot and alter dynamically
+  ;;--------------------------------------------------------------------------------------
+  ;;  vbulk_change_vdf_plot_wrapper.pro
+  vbulk_change_vdf_plot_wrapper,dat,INDEX=index,VDF_INFO=vdf_info,CONT_STR=cont_str,    $
+                                    WINDN=windn,PLOT_STR=plot_str,                      $
+                                    EX_VECN=ex_vecs,VCIRC=circ_str,ALL_PTTLS=pttl_all,  $
+                                    ALL_FPREFS=file_prefs,                              $
+                                    DATA_OUT=data_out,READ_OUT=read_out,                $
+                                    PS_FNAME=ps_fname
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user quit
+  ;;--------------------------------------------------------------------------------------
+  IF (read_out[0] EQ 'q') THEN GOTO,JUMP_CHECK  ;; go to next iteration or quit
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user changed index
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check current index value
+  true           = (ind0[0] LE ndat[0] - 1L) AND (ind0[0] GE 0L)
+  test           = (read_out[0] EQ 'next') OR (read_out[0] EQ 'prev') OR (read_out[0] EQ 'index')
+  IF (test[0]) THEN BEGIN
+    ;;  user changed index, so check if index is valid
+    IF (true[0]) THEN index = ind0[0]
+    ;;  Jump back to end of loop
+    GOTO,JUMP_SKIP
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user finished
+  ;;--------------------------------------------------------------------------------------
+  IF (N_ELEMENTS(ps_fname) GT 1) THEN finished = 1b ELSE finished = 0b
+  IF (finished[0]) THEN BEGIN
+    str_out        = "Do you want to add results to output (type 'a') or just move on to another DF (type 'n'):  "
+    ;;  Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out[0] NE 'n' AND read_out[0] NE 'a' AND read_out[0] NE 'q') DO BEGIN
+      read_out       = general_prompt_routine(STR_OUT=str_out,FORM_OUT=7)
+      IF (read_out[0] EQ 'debug') THEN STOP
+    ENDWHILE
+    IF (read_out[0] EQ 'a') THEN keep_out = 1b ELSE keep_out = 0b
+    IF (read_out[0] EQ 'q') THEN GOTO,JUMP_END
+  ENDIF ELSE keep_out = 0
+  IF (~keep_out[0] OR SIZE(data_out,/TYPE) NE 8) THEN GOTO,JUMP_CHECK  ;; go to next iteration
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user quit
+  ;;--------------------------------------------------------------------------------------
+  ;;======================================================================================
+  JUMP_CHECK:
+  ;;======================================================================================
+  IF (N_ELEMENTS(read_out) EQ 0) THEN read_out = ''
+  test           = (read_out[0] EQ '') OR (read_out[0] EQ 'q')
+  IF (test[0]) THEN BEGIN
+    str_out        = "Did you want to quit (type 'q') or just move on to another DF (type 'n'):  "
+    ;;  Set/Reset outputs
+    read_out       = ''    ;; output value of decision
+    WHILE (read_out[0] NE 'n' AND read_out[0] NE 'q') DO BEGIN
+      read_out       = general_prompt_routine(STR_OUT=str_out,FORM_OUT=7)
+      IF (read_out[0] EQ 'debug') THEN STOP
+    ENDWHILE
+    ;;  Check if user wishes to quit
+    IF (read_out[0] EQ 'q') THEN GOTO,JUMP_END
+    ;;  user quit, so reset values and move to next index
+    index += true[0]
+    ;;  Jump back to end of loop
+    GOTO,JUMP_SKIP
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user wants to continue or quit
+  ;;--------------------------------------------------------------------------------------
+  ;;  Set/Reset outputs
+  read_out       = ''
+  str_out        = "Did you want to continue (type 'c') or quit (type 'q'):  "
+  pro_out        = ["[Type 'q' to quit at any time]"]
+  WHILE (read_out[0] NE 'c' AND read_out[0] NE 'q') DO BEGIN
+    read_out       = general_prompt_routine(STR_OUT=str_out,PRO_OUT=pro_out,FORM_OUT=7)
+    IF (read_out[0] EQ 'debug') THEN STOP
+  ENDWHILE
+  ;;  Check if user wishes to quit [leave everything print nothing]
+  IF (read_out[0] EQ 'q') THEN GOTO,JUMP_END
+  ;;  Check if user wishes to continue fitting
+  IF (read_out[0] EQ 'c') THEN true = 1b ELSE true = 0b
+  ;;  Check current index value
+  IF (index[0] EQ ind0[0])   THEN index += true[0]
+  ;;======================================================================================
+  JUMP_SKIP:
+  ;;======================================================================================
+ENDWHILE
+;;========================================================================================
+JUMP_END:
+;;========================================================================================
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

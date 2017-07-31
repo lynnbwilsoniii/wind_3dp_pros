@@ -119,6 +119,8 @@
 ;                                                                  [05/26/2017   v1.0.3]
 ;             4)  Cleaned up
 ;                                                                  [05/26/2017   v1.0.4]
+;             5)  Added keyword P_LOG to main routine
+;                                                                  [05/30/2017   v1.0.5]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -134,7 +136,7 @@
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/26/2017   v1.0.4
+;    LAST MODIFIED:  05/30/2017   v1.0.5
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -380,6 +382,7 @@ END
 ;                             [e.g., # s^(+3) km^(-3) cm^(-3)]
 ;               VELXYZ   :  [N,3]-Element [float/double] array defining the particle
 ;                             velocity 3-vectors for each element of VDF
+;                             [e.g., km/s]
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
@@ -389,8 +392,10 @@ END
 ;                                      [,SM_CONT=sm_cont] [,NSMCUT=nsmcut]               $
 ;                                      [,NSMCON=nsmcon] [,PLANE=plane] [,DFMIN=dfmin]    $
 ;                                      [,DFMAX=dfmax] [,DFRA=dfra] [,V_0X=v_0x]          $
-;                                      [,V_0Y=v_0y] [,CIRCS=circs] [,EX_VECS=ex_vecs]    $
-;                                      [,EX_INFO=ex_info]
+;                                      [,V_0Y=v_0y] [,C_LOG=c_log] [,NGRID=ngrid]        $
+;                                      [,SLICE2D=slice2d] [,CIRCS=circs] [,P_LOG=p_log]  $
+;                                      [,EX_VECS=ex_vecs] [,EX_INFO=ex_info]             $
+;                                      [,P_TITLE=p_title] [,DAT_OUT=dat_out]
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -465,6 +470,24 @@ END
 ;                             Y-Axis (vertical) to shift the location where the
 ;                             parallel (horizontal) cut of the DF will be performed
 ;                             [Default = 0.0]
+;               C_LOG    :  If set, routine will compute and plot VDF in logarithmic
+;                             instead of linear space (good for sparse data)
+;                             ***  Still Testing this keyword  ***
+;                             [Default = FALSE]
+;               NGRID    :  Scalar [numeric] defining the number of grid points in each
+;                             direction to use when triangulating the data.  The input
+;                             will be limited to values between 30 and 300.
+;                             [Default = 101]
+;               SLICE2D  :  If set, routine will return a 2D slice instead of a 3D
+;                             projection
+;                             [Default = FALSE]
+;               P_LOG    :  If set, routine will compute the VDF in linear space but
+;                             plot the base-10 log of the VDF.  If set, this keyword
+;                             supercedes the C_LOG keyword and shuts it off to avoid
+;                             infinite plot range errors, among other issues
+;                             [Default = FALSE]
+;               P_TITLE  :  Scalar [string] defining the plot title for the contour plot
+;                             [Default = 'Contours of constant PSD']
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [none of the following have default settings]  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -499,9 +522,12 @@ END
 ;                               MAGF   :  [3]-Element [numeric] array defining to the
 ;                                           quasi-static magnetic field [nT] 3-vector at
 ;                                           the time of the VDF
-;               C_LOG    :  If set, routine will compute and plot VDF in logarithmic
-;                             instead of linear space (good for sparse data)
-;                             [Default = FALSE]
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               DAT_OUT  :  Set to a named variable to return all the relevant data
+;                             used to create the contour plot and cuts of the VDF
 ;
 ;   CHANGED:  1)  Fixed a bug that occurs when VDF input contains zeros
 ;                                                                  [05/16/2016   v1.0.1]
@@ -511,6 +537,12 @@ END
 ;                                                                  [05/26/2017   v1.0.3]
 ;             4)  Cleaned up
 ;                                                                  [05/26/2017   v1.0.4]
+;             5)  Added keywords: SLICE2D and NGRID
+;                                                                  [05/27/2017   v1.1.0]
+;             6)  Added keyword: P_LOG
+;                                                                  [05/30/2017   v1.1.1]
+;             7)  Added keywords: P_TITLE and DAT_OUT
+;                                                                  [07/26/2017   v1.1.2]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -520,13 +552,17 @@ END
 ;                     plots, e.g., V_0X and V_0Y cannot fall outside 80% of VLIM
 ;               5)  There must be at least 10 finite VDF values with associated finite
 ;                     VELXYZ vector magnitudes and those ≥10 VDF values must be unique
+;               6)  Velocity and VDF units should be 'km/s' and 's^(3) cm^(-3) km^(-3)'
+;                     on input since output results and axes labels assume this
+;               7)  If set, P_LOG will supercede the C_LOG keyword settings
+;               8)  It is generally a good idea to set the SLICE2D keyword
 ;
 ;  REFERENCES:  
 ;               NA
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/26/2017   v1.0.4
+;    LAST MODIFIED:  07/26/2017   v1.1.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -536,7 +572,9 @@ PRO general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=v
                              NLEV=nlev,XNAME=xname,YNAME=yname,SM_CUTS=sm_cuts,       $
                              SM_CONT=sm_cont,NSMCUT=nsmcut,NSMCON=nsmcon,PLANE=plane, $
                              DFMIN=dfmin,DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,   $
-                             CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info,C_LOG=c_log
+                             C_LOG=c_log,NGRID=ngrid,SLICE2D=slice2d,P_LOG=p_log,     $
+                             P_TITLE=p_title,DAT_OUT=dat_out,                         $
+                             CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range,              $
                  defaults_vdf_contour_plot, rot_matrix_array_dfs, rel_lorentz_trans_3vec, $
@@ -549,10 +587,11 @@ f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
 vec_str        = ['x','y','z']
 vec_col        = [250,150,50]
-;;  Dummy plot labels
+;;  Dummy plot labels/titles
 def_units_vdf  = '[sec!U3!N km!U-3!N cm!U-3!N'+']'
 def_cut_yttl   = '1D VDF Cuts'+'!C'+def_units_vdf[0]
 def_cut_xttl   = 'Velocity [1000 km/sec]'
+def_con_pttl   = 'Contours of constant PSD'
 ;;  Position of contour plot [square]
 ;;               Xo    Yo    X1    Y1
 pos_0con       = [0.22941,0.515,0.77059,0.915]
@@ -610,21 +649,34 @@ tests          = defaults_vdf_contour_plot(df1d,vxyz,VFRAME=vframe,VEC1=vec1,VEC
                                            DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y)
 test           = (N_ELEMENTS(tests) EQ 1)
 IF (test[0]) THEN RETURN      ;;  Something failed --> exit without plotting
-;;----------------------------------------------------------------------------------------
-;;  Check keywords without default options
-;;----------------------------------------------------------------------------------------
+;;  Check P_LOG
+test           = (N_ELEMENTS(p_log) EQ 1) AND KEYWORD_SET(p_log)
+IF (test[0]) THEN plog_on = 1b ELSE plog_on = 0b
 ;;  Check C_LOG
-test           = (N_ELEMENTS(c_log) GE 1) AND KEYWORD_SET(c_log)
+test           = (N_ELEMENTS(c_log) GE 1) AND KEYWORD_SET(c_log) AND ~plog_on[0]
 IF (test[0]) THEN BEGIN
   ;;  User wants to plot in log-space, not linear space
   df1do   = ALOG10(df1d)
   dfrao   = ALOG10(dfra)
   clog_on = 1b
+  plog_on = 1b           ;;  Turn on logarithmic plotting
 ENDIF ELSE BEGIN
   df1do   = df1d
   dfrao   = dfra
   clog_on = 0b
 ENDELSE
+;;  Check NGRID
+test           = (N_ELEMENTS(ngrid) EQ 0) OR (is_a_number(ngrid,/NOMSSG) EQ 0)
+IF (test[0]) THEN nm = 101L ELSE nm = (LONG(ngrid[0]) > 30L) < 300L
+;;  Check SLICE2D
+test           = (N_ELEMENTS(slice2d) EQ 1) AND KEYWORD_SET(slice2d)
+IF (test[0]) THEN slice_on = 1b ELSE slice_on = 0b
+;;  Check P_TITLE
+test           = (SIZE(p_title,/TYPE) NE 7) OR (N_ELEMENTS(p_title) LT 1)
+IF (test[0]) THEN con_pttl = def_con_pttl[0] ELSE con_pttl = p_title[0]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords without default options
+;;----------------------------------------------------------------------------------------
 ;;  Check CIRCS
 test           = (SIZE(circs,/TYPE) EQ 8)
 IF (test[0]) THEN BEGIN
@@ -696,7 +748,10 @@ vtrxyz         = rel_lorentz_trans_3vec(vxyz,vframe)
 ;;----------------------------------------------------------------------------------------
 ;;  Rotate velocities and VDF into new coordinate basis and triangulate
 ;;----------------------------------------------------------------------------------------
-r_vels         = rotate_and_triangulate_dfs(FLOAT(vtrxyz),df1do,rotm,rotz,VLIM=vlim[0],C_LOG=clog_on)
+;r_vels         = rotate_and_triangulate_dfs(FLOAT(vtrxyz),df1do,rotm,rotz,VLIM=vlim[0],C_LOG=clog_on)
+r_vels         = rotate_and_triangulate_dfs(FLOAT(vtrxyz),df1do,rotm,rotz,VLIM=vlim[0],$
+                                            C_LOG=clog_on[0],NGRID=nm[0],              $
+                                            SLICE2D=slice_on[0]                        )
 ;;----------------------------------------------------------------------------------------
 ;;  Define parameters for contour plots
 ;;----------------------------------------------------------------------------------------
@@ -866,46 +921,72 @@ ENDIF
 df_ran         = dfrao
 IF (clog_on[0]) THEN range = df_ran ELSE range = ALOG10(df_ran) ;;  Make levels evenly spaced in log base-10 space
 log10levs      = DINDGEN(nlev[0])*(range[1] - range[0])/(nlev[0] - 1L) + range[0]
-IF (clog_on[0]) THEN levels = log10levs ELSE levels = 1d1^log10levs ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
+IF (plog_on[0]) THEN levels = log10levs ELSE levels = 1d1^log10levs ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
+;IF (clog_on[0]) THEN levels = log10levs ELSE levels = 1d1^log10levs ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
 ;;  Define colors for contour levels
 minclr         = 30L
 c_cols         = minclr[0] + LINDGEN(nlev[0])*(250L - minclr[0])/(nlev[0] - 1L)
-;;  Define Y-axis tick marks for cuts plot
+;;  Define inputs for log10_tickmarks.pro
 IF (clog_on[0]) THEN BEGIN
-  df2d01         = REFORM(1d1^df2d,N_ELEMENTS(df2d))
-  tick_str       = log10_tickmarks(df2d01,RANGE=1d1^df_ran,/FORCE_RA)
+  df2d01 = REFORM(1d1^df2d,N_ELEMENTS(df2d))
+  yrange = 1d1^df_ran
 ENDIF ELSE BEGIN
-  df2d01         = REFORM(df2d,N_ELEMENTS(df2d))
-  tick_str       = log10_tickmarks(df2d01,RANGE=df_ran,/FORCE_RA)
+  df2d01 = df2d
+  yrange = df_ran
+ENDELSE
+;;  Define Y-axis tick marks for cuts plot
+tick_str       = log10_tickmarks(df2d01,RANGE=yrange,/FORCE_RA)
+IF (plog_on[0]) THEN BEGIN
+;IF (clog_on[0]) THEN BEGIN
+;  df2d01         = REFORM(1d1^df2d,N_ELEMENTS(df2d))
+  ylog_cut       = 0b
+  ymin_cut       = 10
+ENDIF ELSE BEGIN
+  ylog_cut       = 1b
+  ymin_cut       = 9
 ENDELSE
 ;;  Define the tick names, values, and number of ticks
 cut_ytn        = tick_str.TICKNAME
 cut_yts        = tick_str.TICKS
-IF (clog_on[0]) THEN cut_ytv = ALOG10(tick_str.TICKV) ELSE cut_ytv = tick_str.TICKV
+IF (plog_on[0]) THEN cut_ytv = ALOG10(tick_str.TICKV) ELSE cut_ytv = tick_str.TICKV
+;IF (clog_on[0]) THEN cut_ytv = ALOG10(tick_str.TICKV) ELSE cut_ytv = tick_str.TICKV
 ;;----------------------------------------------------------------------------------------
 ;;  Smooth cuts and contour if desired [typically necessary for ions or noisy data]
 ;;----------------------------------------------------------------------------------------
 test           = KEYWORD_SET(sm_cuts)
 IF (test[0]) THEN BEGIN
   ;;  Smooth cuts
-  vdf_cut_para   = SMOOTH(vdf_para_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
-  vdf_cut_perp   = SMOOTH(vdf_perp_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
+  vdf_cut_para0  = SMOOTH(vdf_para_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
+  vdf_cut_perp0  = SMOOTH(vdf_perp_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
 ENDIF ELSE BEGIN
-  vdf_cut_para   = vdf_para_cut
-  vdf_cut_perp   = vdf_perp_cut
+  vdf_cut_para0  = vdf_para_cut
+  vdf_cut_perp0  = vdf_perp_cut
 ENDELSE
 test           = KEYWORD_SET(sm_cont)
 IF (test[0]) THEN BEGIN
   ;;  Smooth contour
-  df2ds = SMOOTH(df2d,nsmcon[0],/NAN,/EDGE_TRUNCATE)
+  df2ds0 = SMOOTH(df2d,nsmcon[0],/NAN,/EDGE_TRUNCATE)
 ENDIF ELSE BEGIN
-  df2ds = df2d
+  df2ds0 = df2d
+ENDELSE
+;;  Check if user wants to plot in logarithmic space but computed everything linearly
+test           = plog_on[0] AND ~clog_on[0]
+IF (test[0]) THEN BEGIN
+  df2ds          = ALOG10(df2ds0)
+  vdf_cut_para   = ALOG10(vdf_cut_para0)
+  vdf_cut_perp   = ALOG10(vdf_cut_perp0)
+  cut_yrange     = ALOG10(df_ran)
+ENDIF ELSE BEGIN
+  df2ds          = df2ds0
+  vdf_cut_para   = vdf_cut_para0
+  vdf_cut_perp   = vdf_cut_perp0
+  cut_yrange     = df_ran
 ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Define plot limits structures for contour and cuts plots
 ;;----------------------------------------------------------------------------------------
 con_xyran      = [-1d0,1d0]*vlim[0]*1d-3     ;;  km  -->  Mm  [just looks better when plotted]
-con_pttl       = 'Contours of constant PSD'  ;;  *** change later ***
+;con_pttl       = 'Contours of constant PSD'  ;;  *** change later ***
 ;;  Contour plot setup structure
 base_lim_cn    = {XRANGE:con_xyran,XSTYLE:1,XLOG:0,XMINOR:10, $
                   YRANGE:con_xyran,YSTYLE:1,YLOG:0,YMINOR:10, $
@@ -914,19 +995,13 @@ base_lim_cn    = {XRANGE:con_xyran,XSTYLE:1,XLOG:0,XMINOR:10, $
 ;;  Structures for CONTOUR.PRO
 con_lim        = {OVERPLOT:1,LEVELS:levels,NLEVELS:nlev[0],C_COLORS:c_cols}      ;;  should be the same for all planes
 ;;  Define cut plot setup structures
-IF (clog_on[0]) THEN BEGIN
-  base_lim_ct    = {XRANGE:con_xyran,XSTYLE:1,XLOG:0,XTITLE:def_cut_xttl[0],XMINOR:10, $
-                    YRANGE:df_ran,   YSTYLE:1,YLOG:0,YTITLE:def_cut_yttl[0],YMINOR:9,  $
-                    POSITION:pos_0cut,TITLE:' ',NODATA:1,YTICKS:cut_yts[0],            $
-                    YTICKV:cut_ytv,YTICKNAME:cut_ytn}
-ENDIF ELSE BEGIN
-  base_lim_ct    = {XRANGE:con_xyran,XSTYLE:1,XLOG:0,XTITLE:def_cut_xttl[0],XMINOR:10, $
-                    YRANGE:df_ran,   YSTYLE:1,YLOG:1,YTITLE:def_cut_yttl[0],YMINOR:9,  $
-                    POSITION:pos_0cut,TITLE:' ',NODATA:1,YTICKS:cut_yts[0],            $
-                    YTICKV:cut_ytv,YTICKNAME:cut_ytn}
-ENDELSE
+base_lim_ct    = {XRANGE:con_xyran, XSTYLE:1,XLOG:0,          XTITLE:def_cut_xttl[0],XMINOR:10,           $
+                  YRANGE:cut_yrange,YSTYLE:1,YLOG:ylog_cut[0],YTITLE:def_cut_yttl[0],YMINOR:ymin_cut[0],  $
+                  POSITION:pos_0cut,TITLE:' ',NODATA:1,YTICKS:cut_yts[0],                                $
+                  YTICKV:cut_ytv,YTICKNAME:cut_ytn}
 ;;  Define routine version
-vers           = routine_version('general_vdf_contour_plot.pro')
+IF (slice_on[0]) THEN vers_suffx = ';;  2D Slice' ELSE vers_suffx = ';;  3D Projection'
+vers           = routine_version('general_vdf_contour_plot.pro')+vers_suffx[0]
 ;;  Set up plot stuff
 !P.MULTI       = [0,1,2]
 IF (STRLOWCASE(!D.NAME) EQ 'ps') THEN l_thick  = 3 ELSE l_thick  = 2
@@ -1028,6 +1103,36 @@ ENDIF
 ;;  Output version # and date produced
 ;;----------------------------------------------------------------------------------------
 XYOUTS,0.795,0.06,vers[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.
+;;----------------------------------------------------------------------------------------
+;;  Define DAT_OUT output
+;;----------------------------------------------------------------------------------------
+;;  Define structures for contour of VDF
+tags           = ['VXPTS','VYPTS','VXGRID','VYGRID','VDF_2D','HORZ_CRSHRS','VERT_CRSHRS','BASE_LIM','CONT_LIM']
+con_struc      = CREATE_STRUCT(tags,vxpts*1d-3,vypts*1d-3,vx2d*1d-3,vy2d*1d-3,df2ds,   $
+                               hori_crsshair,vert_crsshair,base_lim_cn,con_lim)
+;;  Define structures for cuts of VDF
+tags           = ['VPARA','CUT_PAR','COLOR','PSYM','LINESTYLE']
+vdf_para       = CREATE_STRUCT(tags,vpara_cut,vdf_cut_para,250,4,0)
+tags           = ['VPERP','CUT_PER','COLOR','PSYM','LINESTYLE']
+vdf_perp       = CREATE_STRUCT(tags,vperp_cut,vdf_cut_perp, 50,5,0)
+tags           = ['PARA_CUT_STR','PERP_CUT_STR','CUT_LIM']
+cut_struc      = CREATE_STRUCT(tags,vdf_para,vdf_perp,base_lim_ct)
+;;  Define structures for XYOUTS info
+chsz           = 0.80
+yposi          = 0.20
+xposi          = 0.26
+tags_xy        = ['XYPOSI','XYLAB','COLOR','ORIENTATION','CHARSIZE','NORMAL','DATA']
+scpot_xy       = CREATE_STRUCT(tags_xy,[xposi[0],yposi[0]],sc_pot_str[0],30L,90,chsz[0],1b,0b)
+xposi         += 0.02
+vsw_xy         = CREATE_STRUCT(tags_xy,[xposi[0],yposi[0]],v__out_str[0],30L,90,chsz[0],1b,0b)
+xposi         += 0.02
+magf_xy        = CREATE_STRUCT(tags_xy,[xposi[0],yposi[0]],b__out_str[0],30L,90,chsz[0],1b,0b)
+vers_xy        = CREATE_STRUCT(tags_xy,[0.795,0.06],vers[0],-1,90,0.65,1b,0b)
+tags           = ['SCPOT_XY','VSW_XY','MAGF_XY','VERS_XY']
+xyouts_str     = CREATE_STRUCT(tags,scpot_xy,vsw_xy,magf_xy,vers_xy)
+;;  Define DAT_OUT
+tags           = ['CONT_DATA','CUTS_DATA','XYOUTS']
+dat_out        = CREATE_STRUCT(tags,con_struc,cut_struc,xyouts_str)
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

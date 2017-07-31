@@ -1,0 +1,180 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   conv_vdfidlstr_2_f_vs_vxyz_thm_wi.pro
+;  PURPOSE  :   This routine converts an input IDL structure containing the velocity
+;                 distribution function, measured by either the Wind/3DP or THEMIS ESA
+;                 instruments, to another structure with the following tag values:
+;                   VDF     :  [N]-Element [float/double] array defining the VDF in
+;                                units of phase space density
+;                                [i.e., # s^(+3) km^(-3) cm^(-3)]
+;                   VELXYZ  :  [N,3]-Element [float/double] array defining the particle
+;                                velocity 3-vectors for each element of the VDF
+;                                [km/s]
+;                 The routine is specific to the IDL structures for these two instrument
+;                 suites, thus should not be used for general purposes.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               test_wind_vs_themis_esa_struct.pro
+;               dat_3dp_str_names.pro
+;               convert_ph_units.pro
+;               conv_units.pro
+;               energy_angle_to_velocity.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DATA       :  Scalar [structure] associated with a known THEMIS ESA
+;                               data structure [see get_th?_peib.pro, ? = a-f]
+;                               or a Wind/3DP data structure
+;                               [see get_?.pro, ? = el, elb, pl, ph, eh, etc.]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               struc = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(data)
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [07/20/2017   v1.0.0]
+;             2)  Finished writing routine and moved to 3DP library
+;                                                                   [07/26/2017   v1.0.0]
+;
+;   NOTES:      
+;               1)  This routine is specific to the IDL structures for these two
+;                     instrument suites, thus should not be used for general purposes.
+;
+;  REFERENCES:  
+;               0)  Harten, R. and K. Clark "The Design Features of the GGS Wind and
+;                      Polar Spacecraft," Space Sci. Rev. Vol. 71, pp. 23--40, 1995.
+;               1)  Carlson et al., "An instrument for rapidly measuring plasma
+;                      distribution functions with high resolution," Adv. Space Res.
+;                      2, pp. 67--70, 1983.
+;               2)  Curtis et al., "On-board data analysis techniques for space plasma
+;                      particle instruments," Rev. Sci. Inst. 60, pp. 372--380, 1989.
+;               3)  Lin et al., "A Three-Dimensional Plasma and Energetic particle
+;                      investigation for the Wind spacecraft," Space Sci. Rev.
+;                      71, pp. 125--153, 1995.
+;               4)  Paschmann, G. and P.W. Daly "Analysis Methods for Multi-Spacecraft
+;                      Data," ISSI Scientific Report, Noordwijk, The Netherlands.,
+;                      Intl. Space Sci. Inst., 1998.
+;               5)  McFadden, J.P., C.W. Carlson, D. Larson, M. Ludlam, R. Abiad,
+;                      B. Elliot, P. Turin, M. Marckwordt, and V. Angelopoulos
+;                      "The THEMIS ESA Plasma Instrument and In-flight Calibration,"
+;                      Space Sci. Rev. 141, pp. 277--302, 2008.
+;               6)  McFadden, J.P., C.W. Carlson, D. Larson, J.W. Bonnell,
+;                      F.S. Mozer, V. Angelopoulos, K.-H. Glassmeier, U. Auster
+;                      "THEMIS ESA First Science Results and Performance Issues,"
+;                      Space Sci. Rev. 141, pp. 477--508, 2008.
+;               7)  Auster, H.U., K.-H. Glassmeier, W. Magnes, O. Aydogar, W. Baumjohann,
+;                      D. Constantinescu, D. Fischer, K.H. Fornacon, E. Georgescu,
+;                      P. Harvey, O. Hillenmaier, R. Kroth, M. Ludlam, Y. Narita,
+;                      R. Nakamura, K. Okrafka, F. Plaschke, I. Richter, H. Schwarzl,
+;                      B. Stoll, A. Valavanoglou, and M. Wiedemann "The THEMIS Fluxgate
+;                      Magnetometer," Space Sci. Rev. 141, pp. 235--264, 2008.
+;               8)  Angelopoulos, V. "The THEMIS Mission," Space Sci. Rev. 141,
+;                      pp. 5--34, 2008.
+;               9)  Ipavich, F.M. "The Compton-Getting effect for low energy particles,"
+;                      Geophys. Res. Lett. 1(4), pp. 149--152, 1974.
+;
+;   CREATED:  07/19/2017
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  07/26/2017   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION conv_vdfidlstr_2_f_vs_vxyz_thm_wi,data
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+def_uconv_r_th = ['thm_convert_esa_units_lbwiii','thm_convert_sst_units_lbwiii']
+;;  Dummy error messages
+notstr_msg     = 'Must be an IDL structure...'
+badstr_mssg    = 'Not an appropriate 3DP structure...'
+badthm_msg     = 'If THEMIS ESA structures used, then they must be modified using modify_themis_esa_struc.pro'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (N_ELEMENTS(data) EQ 0) OR (SIZE(data,/TYPE) NE 8)
+IF (test[0]) THEN RETURN,0b
+;;  Check DAT structure format
+test0          = test_wind_vs_themis_esa_struct(data,/NOM)
+test           = (test0.(0) + test0.(1)) NE 1
+IF (test) THEN BEGIN
+  MESSAGE,notstr_msg,/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+dat            = data[0]
+;;----------------------------------------------------------------------------------------
+;;  Convert units to phase space density
+;;----------------------------------------------------------------------------------------
+IF (test0.(0)) THEN BEGIN
+  ;;-------------------------------------------
+  ;; Wind
+  ;;-------------------------------------------
+  ;;  Check which instrument is being used
+  strns   = dat_3dp_str_names(dat[0])
+  IF (SIZE(strns,/TYPE) NE 8) THEN BEGIN
+    ;;  Incorrect structure type
+    MESSAGE,badstr_mssg[0],/INFORMATIONAL,/CONTINUE
+    RETURN,0b
+  ENDIF
+  shnme   = STRLOWCASE(STRMID(strns.SN[0],0L,2L))
+  CASE shnme[0] OF
+    'ph' :  convert_ph_units,dat,'df'
+    ELSE :  dat    = conv_units(dat,'df')
+  ENDCASE
+ENDIF ELSE BEGIN
+  ;;-------------------------------------------
+  ;; THEMIS
+  ;;-------------------------------------------
+  ;;  make sure the structure has been modified
+  temp_proc = STRLOWCASE(dat[0].UNITS_PROCEDURE)
+  test_un   = (temp_proc[0] NE def_uconv_r_th[0]) AND (temp_proc[0] NE def_uconv_r_th[1])
+  IF (test_un[0]) THEN BEGIN
+    ;;  THEMIS structure, but not modified yet --> routine would crash later
+    MESSAGE,badthm_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN,0b
+  ENDIF
+  ;;  structure modified appropriately so convert units
+  dat    = conv_units(dat,'df')
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define DAT structure parameters
+;;----------------------------------------------------------------------------------------
+n_e            = dat[0].NENERGY          ;;  # of energy bins
+n_a            = dat[0].NBINS            ;;  # of solid angle bins
+kk             = n_e[0]*n_a[0]           ;;  define K for [K]-element arrays below
+df_dat         = dat[0].DATA             ;;  Phase space densities [s^(3) cm^(-3) km^(-3)]
+;;----------------------------------------------------------------------------------------
+;;  Convert energy/angles to 3D velocity vectors [km/s]
+;;----------------------------------------------------------------------------------------
+velocities     = energy_angle_to_velocity(dat[0])
+vxyz_1d        = DOUBLE(REFORM(velocities,kk[0],3L))
+;;----------------------------------------------------------------------------------------
+;;  Reform 2D df array into 1D array [s^(3) cm^(-3) km^(-3)]
+;;----------------------------------------------------------------------------------------
+dat_1d         = DOUBLE(REFORM(df_dat,kk[0]))
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+struct         = {VDF:dat_1d,VELXYZ:vxyz_1d}
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END

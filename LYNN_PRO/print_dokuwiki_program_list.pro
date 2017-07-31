@@ -37,6 +37,8 @@
 ;             4)  Added new folders to LYNN_PRO directory and
 ;                   now calls num2int_str.pro
 ;                                                                   [06/04/2016   v1.2.0]
+;             5)  Added new folders to LYNN_PRO directory
+;                                                                   [07/31/2017   v1.3.0]
 ;
 ;   NOTES:      
 ;               1)  Do not change format of list_of_3DP-TPLOT_pros-changed.txt without
@@ -49,7 +51,7 @@
 ;
 ;   CREATED:  08/26/2013
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/04/2016   v1.2.0
+;    LAST MODIFIED:  07/31/2017   v1.3.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -88,10 +90,12 @@ sec_strs       = cc_line[0]+['Initialization and startup software',             
                  'List of added time series manipulation routines',                   $
                  'List of added miscellaneous routines',                              $
                  'List of added Wind/WAVES Radio Receiver Routines',                  $
-                 'List of added string routines']
+                 'List of added string routines',                                     $
+                 'List of Vbulk Change IDL Libraries routines']
 sub_strs       = cc_line[0]+['Crib Sheets','Main Routine','Common Block Routines',    $
                  'Fit Wrapping Routines','General Routines','Plotting Routines',      $
                  'Prompting Routines','Supporting External Routines','Documentation', $
+                 'Misc. Routines','Testing Routines',                                 $
                  'List of added PESA Low calibration routines']
 nsec           = N_ELEMENTS(sec_strs)
 nsub           = N_ELEMENTS(sub_strs)
@@ -180,6 +184,8 @@ src_ex_out     = ["However, we do not want to do this by hand iteratively, so we
 wav_ex_out     = ex_pref_1[0]+ex_midn_0[0]+'//Wind_WAVES_routines//.'
 ;;  String routines extra
 str_ex_out     = ex_pref_1[0]+ex_midn_0[0]+'//string_routines//.'
+;;  Vbulk Change IDL Libraries extra
+vsw_ex_out     = ex_pref_1[0]+ex_midn_0[0]+'//vbulk_change_routines//.'
 ;;  Define output structure
 jstr           = 'T'+num2int_str(LINDGEN(nsec),NUM_CHAR=3)
 ;jstr           = 'T'+STRING(LINDGEN(nsec),FORMAT='(I3.3)')
@@ -191,7 +197,7 @@ ex_out_str     = CREATE_STRUCT(jstr,stu_ex_out[0],thm_ex_out[0],             $
                                dtt_ex_out[0],tpt_ex_out[0],shk_ex_out[0],    $
                                t_s_ex_out[0],                                $
                                [mis_ex_out[0],src_ex_out[*]],wav_ex_out[0],  $
-                               str_ex_out[0]   )
+                               str_ex_out[0],vsw_ex_out[0])
 ;;----------------------------------------------------------------------------------------
 ;;  Get months of year strings
 ;;----------------------------------------------------------------------------------------
@@ -203,11 +209,16 @@ m_str          = '*'+date_ver0[0]+months_3l
 ;;----------------------------------------------------------------------------------------
 ;;  Define character positions of relevance
 ;;----------------------------------------------------------------------------------------
-sc__loc        = 38L                          ;;  chars before '; => ' and date specification
-mon_loc        = 46L                          ;;  chars before, e.g., 'aug' in date specification
-des_loc        = 68L
-date_spec      = [43L,14L]                    ;;  chars to define date specification
-vers_spec      = [60L, 8L]                    ;;  chars to define version specification
+;sc__loc        = 38L                          ;;  chars before '; => ' and date specification
+;mon_loc        = 46L                          ;;  chars before, e.g., 'aug' in date specification
+;des_loc        = 68L
+;date_spec      = [43L,14L]                    ;;  chars to define date specification
+;vers_spec      = [60L, 8L]                    ;;  chars to define version specification
+sc__loc        = 61L                          ;;  chars before '; => ' and date specification
+mon_loc        = sc__loc[0] + 8L              ;;  chars before end of 3 letter month in date specification
+des_loc        = sc__loc[0] + 30L
+date_spec      = [(mon_loc[0] - 3L),14L]      ;;  chars to define date specification
+vers_spec      = [(sc__loc[0] + 22L), 8L]     ;;  chars to define version specification
 ;;----------------------------------------------------------------------------------------
 ;;  Find list file and read in
 ;;----------------------------------------------------------------------------------------

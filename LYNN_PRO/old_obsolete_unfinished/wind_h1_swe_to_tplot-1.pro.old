@@ -1,0 +1,582 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   wind_h1_swe_to_tplot.pro
+;  PURPOSE  :   This routine reads in the CDF files containing the H1 data for the
+;                 Wind/SWE Faraday Cups instrument and sends the results to TPLOT.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               get_os_slash.pro
+;               is_a_number.pro
+;               get_valid_trange.pro
+;               add_os_slash.pro
+;               general_find_files_from_trange.pro
+;               cdf2tplot.pro
+;               get_data.pro
+;               store_data.pro
+;               str_element.pro
+;               extract_tags.pro
+;               options.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;               2)  SWE H1 CDF files from
+;                     http://cdaweb.gsfc.nasa.gov/
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               wind_h1_swe_to_tplot [,TDATE=tdate] [,TRANGE=trange] [,/LOAD_SIGMA]    $
+;                                    [,/NO_PROTONS] [,/NO_ALPHAS] [,NO_SWE_B=no_swe_b] $
+;                                    [,/LOAD_MOMS] ;; [,MASTERFILE=masterfile]
+;
+;  KEYWORDS:    
+;               TDATE     :  Scalar [string] defining the date of interest of the form:
+;                              'YYYY-MM-DD' [MM=month, DD=day, YYYY=year]
+;                              [Default = prompted by get_valid_trange.pro]
+;               TRANGE    :  [2]-Element [double] array specifying the Unix time
+;                              range for which to limit the data in DATA
+;                              [Default = prompted by get_valid_trange.pro]
+;               LOAD_SIGMA  :  If set, routine will load the one-sigma uncertainties in
+;                                addition to nonlinear fit values.
+;                                [Default = FALSE]
+;               NO_PROTONS  :  If set, routine will not load the data associated with the
+;                                proton velocity moments from the nonlinear fits
+;                                [Default = FALSE]
+;               NO_ALPHAS   :  If set, routine will not load the data associated with the
+;                                alpha-particle velocity moments from the nonlinear fits
+;                                [Default = FALSE]
+;               NO_SWE_B    :  If set, routine will not load the data associated with the
+;                                magnetic fields used to define parallel/perpendicular
+;                                [Default = TRUE]
+;               LOAD_MOMS   :  If set, routine will load the velocity moment results in
+;                                addition to the nonlinear fits results
+;                                [Default = FALSE]
+;               ******************
+;               ***  Obsolete  ***
+;               ******************
+;               MASTERFILE  :  Scalar [string] defining the name of the master file list
+;                                which provides the routine with the file paths and names
+;                                of the relevant CDF files.  If setfileenv.pro has not
+;                                been run, then user must specify the file path name in
+;                                addition to the master file name.
+;                                [Default = 'wi_h1_swe_files']
+;
+;   CHANGED:  1)  Updated NOTES and REFERENCES in Man. page
+;                                                                   [01/27/2014   v1.0.0]
+;             2)  Changed name from wind_swe_h1_to_tplot.pro to wind_h1_swe_to_tplot.pro
+;                   and rewrote entirely
+;                                                                   [04/20/2016   v2.0.0]
+;             3)  Now correctly removes data outside time range and
+;                   now calls sample_rate.pro and trange_clip_data.pro and
+;                   can now handle TSHIFT structure tag for TPLOT structures
+;                                                                   [04/21/2016   v2.1.0]
+
+;
+;   NOTES:      
+;               1)  If user loaded data using load_3dp_data.pro or called the routine
+;                     setfileenv.pro, then an environment variable would have been
+;                     created with the name 'WI_H1_SWE_FILES'.  If already present,
+;                     then setting MASTERFILE='wi_h1_swe_files' would be enough for the
+;                     routine to find the CDF files.  If not, then the user must
+;                     specify the full file path to the CDF files.
+;               2)  The thermal speeds are "most probable speeds" speeds, not rms
+;               3)  The velocity due to the Earth's orbit about the sun has been removed
+;                     from the bulk flow velocities.  This means that ~29.064 km/s has
+;                     been subtracted from the Y-GSE component.
+;               4)  The nonlinear fits provided in the H1 files do NOT contain the higher
+;                     resolution calculations used in Maruca&Kasper, [2013].
+;
+;  REFERENCES:  
+;               1)  K.W. Ogilvie et al., "SWE, A Comprehensive Plasma Instrument for the
+;                     Wind Spacecraft," Space Science Reviews Vol. 71, pp. 55-77,
+;                     doi:10.1007/BF00751326, 1995.
+;               2)  J.C. Kasper et al., "Physics-based tests to identify the accuracy of
+;                     solar wind ion measurements:  A case study with the Wind
+;                     Faraday Cups," Journal of Geophysical Research Vol. 111,
+;                     pp. A03105, doi:10.1029/2005JA011442, 2006.
+;               3)  B.A. Maruca and J.C. Kasper "Improved interpretation of solar wind
+;                     ion measurements via high-resolution magnetic field data,"
+;                     Advances in Space Research Vol. 52, pp. 723-731,
+;                     doi:10.1016/j.asr.2013.04.006, 2013.
+;
+;   CREATED:  01/24/2014
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/21/2016   v2.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO wind_h1_swe_to_tplot,TDATE=tdate,TRANGE=trange,LOAD_SIGMA=load_sigma,            $
+                         NO_PROTONS=no_protons,NO_ALPHAS=no_alphas,NO_SWE_B=no_swe_b,$
+                         LOAD_MOMS=load_moms,MASTERFILE=masterfile
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+slash          = get_os_slash()       ;;  '/' for Unix, '\' for Windows
+;;  Default TPLOT stuff
+vec_str        = ['x','y','z']
+vec_col        = [250,200,75]
+xyz_str        = vec_str
+xyz_col        = vec_col
+mag_str        = [vec_str,'mag']
+mag_col        = [vec_col,25L]
+def__lim       = {YSTYLE:1,PANEL_SIZE:2.,XMINOR:5,XTICKLEN:0.04,YTICKLEN:0.01}
+def_dlim       = {LOG:0,SPEC:0,COLORS:50L,LABELS:'1',LABFLAG:-1}
+;;  ALL CDF Variable names [idiotically case sensitive!!!]
+cdf_var_prefs  = ['Proton_','Alpha_']
+cdf_var_suffs  = ['_nonlin','_moment']
+cdf_midpro_var = ['V','VX','VY','VZ','W','Wperp','Wpar','Np']
+cdf_midalp_var = ['V','VX','VY','VZ','W','Wperp','Wpar','Na']
+cdf_pronon_var = cdf_var_prefs[0]+cdf_midpro_var+cdf_var_suffs[0]
+cdf_pronon_sig = cdf_var_prefs[0]+'sigma'+cdf_midpro_var+cdf_var_suffs[0]
+cdf_alpnon_var = cdf_var_prefs[1]+cdf_midalp_var+cdf_var_suffs[0]
+cdf_alpnon_sig = cdf_var_prefs[1]+'sigma'+cdf_midalp_var+cdf_var_suffs[0]
+cdf_pronon_mom = cdf_var_prefs[0]+cdf_midpro_var+cdf_var_suffs[1]
+cdf_swemag_var = STRUPCASE('b'+vec_str)
+;;  Define some defaults and dummy variables
+sc             = 'Wind'
+scpref         = sc[0]+'_'
+coord_gse      = 'gse'
+coord_gsm      = 'gsm'
+coord_mag      = 'mag'
+coord_gseu     = STRUPCASE(coord_gse[0])
+vel_sub_str    = [coord_mag[0],xyz_str]
+vth_sub_str    = ['_avg','perp','para']
+species        = ['p','a']
+spec_ysub      = ['Protons','Alphas']
+vel_subscs     = ['bulk','Th']
+vel___pref     = 'V'+vel_subscs+'_'
+vel_p_pref     = vel___pref+species[0]+'_'
+vel_a_pref     = vel___pref+species[1]+'_'
+magf_pref      = 'B_for_SWE_'+coord_gse[0]
+dens_tpn_pa    = 'N'+species
+;;  Define TPLOT handles associated with all of these
+nonmom_suffs   = ['_nonlin','_moms']
+swesuff        = '_SWE'
+tpn_pronon_var = scpref[0]+[vel_p_pref[0]+[coord_mag[0],xyz_str+coord_gse[0]],$
+                            vel_p_pref[1]+vth_sub_str,dens_tpn_pa[0]]+swesuff[0]+nonmom_suffs[0]
+tpn_pronon_sig = tpn_pronon_var+'_sigma'
+tpn_alpnon_var = scpref[0]+[vel_a_pref[0]+[coord_mag[0],xyz_str+coord_gse[0]],$
+                            vel_a_pref[1]+vth_sub_str,dens_tpn_pa[1]]+swesuff[0]+nonmom_suffs[0]
+tpn_alpnon_sig = tpn_alpnon_var+'_sigma'
+tpn_promom_var = scpref[0]+[vel_p_pref[0]+[coord_mag[0],xyz_str+coord_gse[0]],$
+                            vel_p_pref[1]+vth_sub_str,dens_tpn_pa[0]]+swesuff[0]+nonmom_suffs[1]
+tpn_swemag_var = scpref[0]+magf_pref[0]+xyz_str
+;;----------------------------------------------------------------------------------------
+;;  Define strings for output symbols/representations of various parameters
+;;----------------------------------------------------------------------------------------
+;;  Define subscripts
+specs_subscrpt = species
+;specs_subscrpt = [species[0],alpha_str[0]]
+Vbulk_subscrpt = vel_subscs[0]+','+specs_subscrpt
+VTher_subscrpt = vel_subscs[1]+','+specs_subscrpt
+Vpgse_subscrpt = Vbulk_subscrpt[0]+'-'+xyz_str
+Vagse_subscrpt = Vbulk_subscrpt[1]+'-'+xyz_str
+VTpPa_subscrpt = VTher_subscrpt[0]+'-'+vth_sub_str[2]
+VTpPe_subscrpt = VTher_subscrpt[0]+'-'+vth_sub_str[1]
+VTaPa_subscrpt = VTher_subscrpt[1]+'-'+vth_sub_str[2]
+VTaPe_subscrpt = VTher_subscrpt[1]+'-'+vth_sub_str[1]
+;;  Define density strings
+Ntot__p_string = 'N!D'+specs_subscrpt[0]+'!N'
+Ntot__a_string = 'N!D'+specs_subscrpt[1]+'!N'
+;;  Define bulk flow speed strings
+Vbulk_p_string = 'V!D'+Vbulk_subscrpt[0]+'!N'
+Vbulk_a_string = 'V!D'+Vbulk_subscrpt[1]+'!N'
+;;  Define bulk flow velocity strings
+Vbgse_p_string = 'V!D'+Vpgse_subscrpt+'!N'
+Vbgse_a_string = 'V!D'+Vagse_subscrpt+'!N'
+;;  Define Avg. thermal speed strings
+VTh___p_string = 'V!D'+VTher_subscrpt[0]+'!N'
+VTh___a_string = 'V!D'+VTher_subscrpt[1]+'!N'
+;;  Define Para. thermal speed strings
+VThPa_p_string = 'V!D'+VTpPa_subscrpt[0]+'!N'
+VThPa_a_string = 'V!D'+VTaPa_subscrpt[0]+'!N'
+;;  Define Perp. thermal speed strings
+VThPe_p_string = 'V!D'+VTpPe_subscrpt[0]+'!N'
+VThPe_a_string = 'V!D'+VTaPe_subscrpt[0]+'!N'
+;;  Define magnetic field strings
+Bgse____string = 'B!D'+xyz_str+'!N'
+;;----------------------------------------------------------------------------------------
+;;  Define units string outputs
+;;----------------------------------------------------------------------------------------
+vel_units      = 'km/s'
+den_units      = 'cm!U-3!N'
+mag_units      = 'nT'
+;;----------------------------------------------------------------------------------------
+;;  Define string outputs inside brackets, e.g., '[ {info}, {units} ]'
+;;----------------------------------------------------------------------------------------
+swe_pref       = '[SWE, '
+Ntot__brack    = swe_pref[0]+den_units[0]+']'
+Vel___brack    = swe_pref[0]+vel_units[0]+']'
+Bgse__brack    = swe_pref[0]+mag_units[0]+', GSE]'
+Vgse__brack    = swe_pref[0]+vel_units[0]+', GSE]'
+;;----------------------------------------------------------------------------------------
+;;  Define Y-Titles [for Plots]
+;;----------------------------------------------------------------------------------------
+;;  Protons
+Ntot__p_yttl   = Ntot__p_string[0]+' '+Ntot__brack[0]
+Vbulk_p_yttl   = Vbulk_p_string[0]+' '+Vel___brack[0]
+Vbgse_p_yttl   =    Vbgse_p_string+' '+Vgse__brack[0]
+VTh___p_yttl   = VTh___p_string[0]+' '+Vel___brack[0]
+VThPa_p_yttl   = VThPa_p_string[0]+' '+Vel___brack[0]
+VThPe_p_yttl   = VThPe_p_string[0]+' '+Vel___brack[0]
+;;  Alphas
+Ntot__a_yttl   = Ntot__a_string[0]+' '+Ntot__brack[0]
+Vbulk_a_yttl   = Vbulk_a_string[0]+' '+Vel___brack[0]
+Vbgse_a_yttl   =    Vbgse_a_string+' '+Vgse__brack[0]
+VTh___a_yttl   = VTh___a_string[0]+' '+Vel___brack[0]
+VThPa_a_yttl   = VThPa_a_string[0]+' '+Vel___brack[0]
+VThPe_a_yttl   = VThPe_a_string[0]+' '+Vel___brack[0]
+;;  B-field
+Bgse____yttl   = Bgse____string+' '+Bgse__brack[0]
+;;----------------------------------------------------------------------------------------
+;;  Defaults
+;;----------------------------------------------------------------------------------------
+;;  Default CDF file location
+def_cdfloc     = '.'+slash[0]+'wind_3dp_pros'+slash[0]+'wind_data_dir'+slash[0]+$
+                 'data1'+slash[0]+'wind'+slash[0]+'swe'+slash[0]+'h1'+slash[0]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check TDATE and TRANGE
+test           = ((N_ELEMENTS(tdate) GT 0) AND (SIZE(tdate,/TYPE) EQ 7)) OR $
+                 ((N_ELEMENTS(trange) EQ 2) AND is_a_number(trange,/NOMSSG))
+IF (test[0]) THEN BEGIN
+  ;;  At least one is set --> use that one
+  test           = ((N_ELEMENTS(tdate) GT 0) AND (SIZE(tdate,/TYPE) EQ 7))
+  IF (test[0]) THEN time_ra = get_valid_trange(TDATE=tdate) ELSE time_ra = get_valid_trange(TRANGE=trange)
+ENDIF ELSE BEGIN
+  ;;  Prompt user and ask user for date/times
+  time_ra        = get_valid_trange(TDATE=tdate,TRANGE=trange)
+ENDELSE
+;;  Define dates and time ranges
+tra            = time_ra.UNIX_TRANGE
+tdates         = time_ra.DATE_TRANGE        ;;  'YYYY-MM-DD'  e.g., '2009-07-13'
+tdate          = tdates[0]                  ;;  Redefine TDATE on output
+;;  Convert TDATEs to format used by CDF files [e.g., 'YYYYMMDD']
+fdates         = STRMID(tdates,0L,4L)+STRMID(tdates,5L,2L)+STRMID(tdates,8L,2L)
+;;  Check LOAD_SIGMA
+test           = KEYWORD_SET(load_sigma) AND (N_ELEMENTS(load_sigma) GT 0)
+IF (test[0]) THEN sig_on = 1b ELSE sig_on = 0b
+;;  Check NO_PROTONS
+test           = KEYWORD_SET(no_protons) AND (N_ELEMENTS(no_protons) GT 0)
+IF (test[0]) THEN pro_on = 0b ELSE pro_on = 1b
+;;  Check NO_ALPHAS
+test           = KEYWORD_SET(no_alphas) AND (N_ELEMENTS(no_alphas) GT 0)
+IF (test[0]) THEN alp_on = 0b ELSE alp_on = 1b
+;;  Check NO_SWE_B
+test           = ~KEYWORD_SET(no_swe_b) AND (N_ELEMENTS(no_swe_b) GT 0)
+IF (test[0]) THEN mag_on = 1b ELSE mag_on = 0b
+;;  Check LOAD_MOMS
+test           = (KEYWORD_SET(load_moms) AND (N_ELEMENTS(load_moms) GT 0)) AND pro_on[0]
+IF (test[0]) THEN mom_on = 1b ELSE mom_on = 0b
+;;----------------------------------------------------------------------------------------
+;;  See if user wants to load anything
+;;----------------------------------------------------------------------------------------
+test           = ~sig_on[0] AND ~pro_on[0] AND ~alp_on[0] AND ~mag_on[0] AND ~mom_on[0]
+IF (test[0]) THEN BEGIN
+  errmsg = 'User shut off all CDF variables:  Exiting without loading any TPLOT variables...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define CDF file location
+;;----------------------------------------------------------------------------------------
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF ~KEYWORD_SET(exists) THEN BEGIN
+  cdfdir = add_os_slash(FILE_EXPAND_PATH(def_cdfloc[0]))
+ENDIF ELSE BEGIN
+  cdfdir = !wind3dp_umn.WIND_DATA1
+  IF (cdfdir[0] EQ '') THEN BEGIN
+    cdfdir = add_os_slash(FILE_EXPAND_PATH(def_cdfloc[0]))
+  ENDIF ELSE BEGIN
+    cdfdir = cdfdir[0]+'swe'+slash[0]+'h1'+slash[0]
+  ENDELSE
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Get CDF files within time range
+;;----------------------------------------------------------------------------------------
+date_form      = 'YYYYMMDD'
+files          = general_find_files_from_trange(cdfdir[0],date_form[0],TRANGE=tra)
+test           = (SIZE(files,/TYPE) NE 7)
+IF (test[0]) THEN BEGIN
+  errmsg = 'Exiting without loading any TPLOT variables...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+test           = (files[0] EQ '')
+IF (test[0]) THEN BEGIN
+  errmsg = 'Exiting without loading any TPLOT variables...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Determine which CDF variables to load
+;;----------------------------------------------------------------------------------------
+cdf_vars       = ''
+IF (~sig_on[0]) THEN BEGIN
+  ;;  Shutoff CDF variables associated with 1 sigma uncertainties
+  cdf_pronon_sig[*] = ''
+  cdf_alpnon_sig[*] = ''
+ENDIF
+IF (~pro_on[0]) THEN BEGIN
+  ;;  Shutoff CDF variables associated with protons
+  cdf_pronon_sig[*] = ''
+  cdf_pronon_var[*] = ''
+  cdf_pronon_mom[*] = ''
+ENDIF
+IF (~alp_on[0]) THEN BEGIN
+  ;;  Shutoff CDF variables associated with alpha-particles
+  cdf_alpnon_var[*] = ''
+  cdf_alpnon_sig[*] = ''
+ENDIF
+IF (~mag_on[0]) THEN BEGIN
+  ;;  Shutoff CDF variables associated with magnetic fields used for SWE data
+  cdf_swemag_var[*] = ''
+ENDIF
+IF (~mom_on[0]) THEN BEGIN
+  ;;  Shutoff CDF variables associated with protons velocity moments
+  cdf_pronon_mom[*] = ''
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define all parameters
+;;----------------------------------------------------------------------------------------
+;;  CDF variable names
+cdf_vars       = [cdf_pronon_var,cdf_pronon_sig,cdf_alpnon_var,cdf_alpnon_sig,$
+                  cdf_pronon_mom,cdf_swemag_var]
+;;  TPLOT handles
+all_tpns       = [tpn_pronon_var,tpn_pronon_sig,tpn_alpnon_var,tpn_alpnon_sig,$
+                  tpn_promom_var,tpn_swemag_var]
+;;  TPLOT YTITLEs
+all_pro_yttl   = [Vbulk_p_yttl[0],Vbgse_p_yttl,VTh___p_yttl[0],VThPe_p_yttl[0],$
+                  VThPa_p_yttl[0],Ntot__p_yttl[0]]
+all_alp_yttl   = [Vbulk_a_yttl[0],Vbgse_a_yttl,VTh___a_yttl[0],VThPe_a_yttl[0],$
+                  VThPa_a_yttl[0],Ntot__a_yttl[0]]
+all_yttls      = [all_pro_yttl,all_pro_yttl,all_alp_yttl,all_alp_yttl,$
+                  all_pro_yttl,Bgse____yttl]
+;;  TPLOT YSUBTITLEs
+all_nlvar_ysub = REPLICATE('[Nonlin. Fits Values]',N_ELEMENTS(all_pro_yttl))
+all_nlsig_ysub = REPLICATE('[Nonlin. Fits 1-Sigma]',N_ELEMENTS(all_pro_yttl))
+all_mmvar_ysub = REPLICATE('[Velocity Mom. Values]',N_ELEMENTS(all_pro_yttl))
+all_bbvar_ysub = REPLICATE('[Values used for SWE]',N_ELEMENTS(Bgse____yttl))
+all_ysubs      = [all_nlvar_ysub,all_nlsig_ysub,all_nlvar_ysub,all_nlsig_ysub,$
+                  all_mmvar_ysub,all_bbvar_ysub]
+;;  Data units
+all_par_units  = [REPLICATE(vel_units[0],7L),'cm^(-3)']
+all_units      = [all_par_units,all_par_units,all_par_units,all_par_units,$
+                  all_par_units,REPLICATE(mag_units[0],3L)]
+;;  Coordinate bases
+all_par_coord  = [coord_mag[0],REPLICATE(coord_gse[0],3L),coord_mag[0],$
+                  vth_sub_str[1:2],coord_mag[0]]
+all_coord      = [all_par_coord,all_par_coord,all_par_coord,all_par_coord,$
+                  all_par_coord,REPLICATE(coord_gse[0],3L)]
+;;  TPLOT COLORS
+all_cols       = REPLICATE(50L,N_ELEMENTS(all_tpns))
+;;  TPLOT LABELS
+all_pro_labs   = ['Vp,'+[coord_mag[0],xyz_str],'VTp,'+['avg',vth_sub_str[1:2]],'Np']
+all_alp_labs   = ['Va,'+[coord_mag[0],xyz_str],'VTa,'+['avg',vth_sub_str[1:2]],'Na']
+all_mag_labs   = 'b'+vec_str
+all_labs       = [all_pro_labs,all_pro_labs,all_alp_labs,all_alp_labs,$
+                  all_pro_labs,all_mag_labs]
+;;  Determine which variables to load
+good_vars      = WHERE(cdf_vars NE '',gd_vars)
+IF (gd_vars[0] EQ 0) THEN BEGIN
+  errmsg = 'User wants to load no CDF variables:  Exiting without loading any TPLOT variables...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+g_cdf_vars     = cdf_vars[good_vars]
+;g_cdf_vars     = STRLOWCASE(cdf_vars[good_vars])
+g_all_tpns     = all_tpns[good_vars]
+g_all_yttls    = all_yttls[good_vars]
+g_all_ysubs    = all_ysubs[good_vars]
+g_all_units    = all_units[good_vars]
+g_all_coord    = all_coord[good_vars]
+g_all_cols     = all_cols[good_vars]
+g_all_labs     = all_labs[good_vars]
+ng             = gd_vars[0]
+;;----------------------------------------------------------------------------------------
+;;  Load CDF variables into TPLOT
+;;----------------------------------------------------------------------------------------
+;;  Load data into TPLOT
+cdf2tplot,FILES=files,VARFORMAT=g_cdf_vars,VARNAMES=varnames,$
+          TPLOTNAMES=tplotnames,/CONVERT_INT1_TO_INT2
+;cdf2tplot,FILES=files,VARFORMAT=STRUPCASE(g_cdf_vars),VARNAMES=varnames,$
+;          TPLOTNAMES=tplotnames,/CONVERT_INT1_TO_INT2
+test           = (tplotnames[0] EQ '')
+IF (test[0]) THEN BEGIN
+  errmsg = 'User did not load any data into TPLOT...'
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Check if order of VARNAMES differs from input
+nv             = N_ELEMENTS(varnames)          ;;  # of variables loaded
+FOR j=0L, nv[0] - 1L DO BEGIN
+  good0 = WHERE(STRLOWCASE(varnames[j]) EQ STRLOWCASE(g_cdf_vars),gd0)
+;  good0 = WHERE(STRLOWCASE(varnames[j]) EQ g_cdf_vars,gd0)
+  IF (gd0 EQ 0) THEN CONTINUE         ;;  Move on to next iteration
+  IF (j EQ 0) THEN gindv = good0[0] ELSE gindv = [gindv,good0[0]]
+  good0 = WHERE(STRLOWCASE(tplotnames[j]) EQ STRLOWCASE(g_cdf_vars),gd0)
+;  good0 = WHERE(STRLOWCASE(tplotnames[j]) EQ g_cdf_vars,gd0)
+  IF (gd0 EQ 0) THEN CONTINUE         ;;  Move on to next iteration
+  IF (j EQ 0) THEN gindt = good0[0] ELSE gindt = [gindt,good0[0]]
+ENDFOR
+;;  Re-order inputs
+o_cdf_vars     = g_cdf_vars[gindv]
+o_all_tpns     = g_all_tpns[gindt]
+o_all_yttls    = g_all_yttls[gindt]
+o_all_ysubs    = g_all_ysubs[gindt]
+o_all_units    = g_all_units[gindt]
+o_all_coord    = g_all_coord[gindt]
+o_all_cols     = g_all_cols[gindt]
+o_all_labs     = g_all_labs[gindt]
+;;----------------------------------------------------------------------------------------
+;;  Rename TPLOT handles and remove originals
+;;----------------------------------------------------------------------------------------
+ntpn           = N_ELEMENTS(tplotnames)
+FOR j=0L, ntpn[0] - 1L DO BEGIN
+;  get_data,tplotnames[j],DATA=temp,DLIM=dlim,LIM=lim
+  get_data,tplotnames[j],DATA=temp0,DLIM=dlim,LIM=lim
+  ;;  Remove original
+  store_data,DELETE=tplotnames[j]
+  ;;  Define elements within time range
+  temp   = trange_clip_data(temp0,TRANGE=tra,PREC=3)
+  test   = (SIZE(temp,/TYPE) NE 8)
+  IF (test[0]) THEN BEGIN
+    ;;  No data within time range
+    errmsg = 'No data within TRANGE for TPLOT variable '+o_all_tpns[j]
+    MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+    CONTINUE
+  ENDIF
+  ;;  Define variables
+  t_tim  = temp.X
+  t_vec  = temp.Y
+  ;;  Check for outliers
+  CASE o_all_units[j] OF
+    'km/s'      :  BEGIN
+      ;;  2000 km/s upper limit [e.g., Kasper et al., 2006]
+      test   = (STRPOS(o_all_tpns[j],'_VTh_') GE 0)
+      IF (test[0]) THEN BEGIN
+        ;;   3 km/s lower limit [i.e., ∆E/E ~ 15% --> 15% of ∆E ~ 3 km/s]
+        test   = (ABS(t_vec) GE 2d3) OR (ABS(t_vec) LT 3d0)
+      ENDIF ELSE BEGIN
+        ;;   use 100 km/s lower limit [i.e., 170 km/s lower limit --> lowest energy bin ~150 eV]
+        IF (STRPOS(o_all_tpns[j],'_xgse_') GE 0) THEN lower = 10d1 ELSE lower = 0d0
+        test   = (ABS(t_vec) GE 2d3) OR (ABS(t_vec) LT lower[0])
+      ENDELSE
+    END
+    'cm^(-3)'   :  BEGIN
+      test   = (ABS(t_vec) GE 1d3)      ;;  1000 cm^(-3) upper limit [i.e., defined in CDF file]
+    END
+    ELSE        :  test = REPLICATE(0b,N_ELEMENTS(t_tim))  ;;  Do nothing
+  ENDCASE
+  bad    = WHERE(test,bd)
+  IF (bd GT 0) THEN t_vec[bad] = f
+  ;;  Determine sample rate [sps] and alter YSUBTITLE
+  diff    = ABS(SHIFT(t_tim,-1) - t_tim)
+  smrate  = sample_rate(t_tim,GAP_THRESH=diff[0]*1.1,/AVE)
+  spperi  = 1d0/smrate[0]
+  strsmr  = STRTRIM(STRING(FORMAT='(f15.1)',spperi[0]),2L)
+  IF (o_all_ysubs[j] NE '') THEN BEGIN
+    ysubt   = o_all_ysubs[j]+'!C'+'[Res.: '+strsmr[0]+' sec]'
+  ENDIF ELSE BEGIN
+    ysubt   = '[Res.: '+strsmr[0]+' sec]'
+  ENDELSE
+  ;;  Define output structure
+  struc  = temp
+  str_element,struc,'Y',t_vec,/ADD_REPLACE
+;  struc  = {X:t_tim,Y:t_vec}
+  str_element,dlim,            'YTITLE',o_all_yttls[j],/ADD_REPLACE      ;;  Add Y-axis title
+  str_element,dlim,         'YSUBTITLE',      ysubt[0],/ADD_REPLACE      ;;  Add Y-axis subtitle
+;  str_element,dlim,         'YSUBTITLE',o_all_ysubs[j],/ADD_REPLACE      ;;  Add Y-axis subtitle
+  str_element,dlim,    'DATA_ATT.UNITS',o_all_units[j],/ADD_REPLACE      ;;  Add units to data attributes structure
+  str_element,dlim,'DATA_ATT.COORD_SYS',o_all_coord[j],/ADD_REPLACE      ;;  Add coordinate basis
+  extract_tags,dlim,def_dlim,EXCEPT_TAGS=['COLORS','LABELS']
+  extract_tags,lim,def__lim
+  ;;  Send data back to TPLOT
+  store_data,o_all_tpns[j],DATA=struc,DLIM=dlim,LIM=lim
+  options,o_all_tpns[j],COLORS=o_all_cols[j],LABELS=o_all_labs[j],/DEF
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+
+
+;;       0  fit_flag
+;;       1  epoch
+;;       2  year
+;;       3  doy
+;;       4  proton_v_nonlin
+;;       5  proton_sigmav_nonlin
+;;       6  proton_vx_nonlin
+;;       7  proton_sigmavx_nonlin
+;;       8  proton_vy_nonlin
+;;       9  proton_sigmavy_nonlin
+;;      10  proton_vz_nonlin
+;;      11  proton_sigmavz_nonlin
+;;      12  proton_w_nonlin
+;;      13  proton_sigmaw_nonlin
+;;      14  proton_wperp_nonlin
+;;      15  proton_sigmawperp_nonlin
+;;      16  proton_wpar_nonlin
+;;      17  proton_sigmawpar_nonlin
+;;      18  ew_flowangle
+;;      19  sigmaew_flowangle
+;;      20  ns_flowangle
+;;      21  sigmans_flowangle
+;;      22  proton_np_nonlin
+;;      23  proton_sigmanp_nonlin
+;;      24  alpha_v_nonlin
+;;      25  alpha_sigmav_nonlin
+;;      26  alpha_vx_nonlin
+;;      27  alpha_sigmavx_nonlin
+;;      28  alpha_vy_nonlin
+;;      29  alpha_sigmavy_nonlin
+;;      30  alpha_vz_nonlin
+;;      31  alpha_sigmavz_nonlin
+;;      32  alpha_w_nonlin
+;;      33  alpha_sigmaw_nonlin
+;;      34  alpha_wperp_nonlin
+;;      35  alpha_sigmawperp_nonlin
+;;      36  alpha_wpar_nonlin
+;;      37  alpha_sigmawpar_nonlin
+;;      38  alpha_na_nonlin
+;;      39  alpha_sigmana_nonlin
+;;      40  chisq_dof_nonlin
+;;      41  peak_doy
+;;      42  sigmapeak_doy
+;;      43  proton_v_moment
+;;      44  proton_vx_moment
+;;      45  proton_vy_moment
+;;      46  proton_vz_moment
+;;      47  proton_w_moment
+;;      48  proton_wperp_moment
+;;      49  proton_wpar_moment
+;;      50  proton_np_moment
+;;      51  bx
+;;      52  by
+;;      53  bz
+;;      54  ang_dev
+;;      55  dev
+;;      56  xgse
+;;      57  ygse
+;;      58  zgse
+;;      59  ygsm
+;;      60  zgsm

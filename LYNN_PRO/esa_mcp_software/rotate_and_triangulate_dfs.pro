@@ -56,9 +56,10 @@
 ;  CALLS:
 ;               is_a_number.pro
 ;               is_a_3_vector.pro
+;               slice2d_vdf.pro
 ;
 ;  REQUIRES:    
-;               NA
+;               1)  UMN Modified Wind/3DP IDL Libraries
 ;
 ;  INPUT:
 ;               VELS       :  [K,3]-Element [numeric] array of particle velocities [km/s]
@@ -71,7 +72,9 @@
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               r_vels = rotate_and_triangulate_dfs(vels, data, rotmx, rotmz [,VLIM=vlim] [,/PROJECT])
+;               r_vels = rotate_and_triangulate_dfs(vels, data, rotmx, rotmz [,VLIM=vlim] $
+;                                                   [,/PROJECT] [,C_LOG=c_log]            $
+;                                                   [,NGRID=ngrid] [,SLICE2D=slice2d]     )
 ;
 ;  KEYWORDS:    
 ;               VLIM       :  Scalar [numeric] defining the speed limit for the velocity
@@ -88,6 +91,13 @@
 ;                               instead of linear space, which really only changes
 ;                               some testing/error handling for TRIANGULATE.PRO and
 ;                               TRIGRID.PRO
+;                               [Default = FALSE]
+;               NGRID      :  Scalar [numeric] defining the number of grid points in each
+;                               direction to use when triangulating the data.  The input
+;                               will be limited to values between 30 and 300.
+;                               [Default = 101]
+;               SLICE2D    :  If set, routine will return a 2D slice instead of a 3D
+;                               projection
 ;                               [Default = FALSE]
 ;
 ;   CHANGED:  1)  Continued writing routine                        [08/08/2012   v1.0.0]
@@ -111,23 +121,41 @@
 ;             8)  Added keyword: C_LOG and
 ;                   now calls is_a_3_vector.pro and is_a_number.pro
 ;                                                                  [05/26/2017   v1.6.0]
+;             9)  Added keywords: SLICE2D and NGRID
+;                   and now calls slice2d_vdf.pro
+;                                                                  [05/27/2017   v1.7.0]
 ;
 ;   NOTES:      
 ;               1)  User should not call this routine
+;               2)  Shan Wang caught an error in versions < v1.7.0 where I had not fully
+;                     realized that what was being done was in fact a projection, not
+;                     a 2D slice through the input origin parallel to each coordinate
+;                     basis plane.  To mitigate this issue, the routine now calls
+;                     slice2d_vdf.pro which explicitly performs a 2D slice if the
+;                     SLICE2D keyword is set.
+;               3)  I recommend setting SLICE2D on input and using a 2D slice
+;               4)  The velocity and VDF units need not be the examples suggested in each
+;                     case so long as they are consistent (i.e., use the same units for
+;                     VELS as VLIM).  However, the routines that generally call this one
+;                     will assume the output have these units.
 ;
 ;  REFERENCES:  
-;               NA
+;               1)  See IDL's documentation for:
+;                     QHULL.PRO:        https://harrisgeospatial.com/docs/qhull.html
+;                     QGRID3.PRO:       https://harrisgeospatial.com/docs/QGRID3.html
+;                     TRIANGULATE.PRO:  https://harrisgeospatial.com/docs/TRIANGULATE.html
+;                     TRIGRID.PRO:      https://harrisgeospatial.com/docs/TRIGRID.html
 ;
 ;   CREATED:  08/07/2012
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/26/2017   v1.6.0
+;    LAST MODIFIED:  05/27/2017   v1.7.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
 FUNCTION rotate_and_triangulate_dfs,vels,data,rotmxy,rotmzy,VLIM=vlim,PROJECT=project,$
-                                    C_LOG=c_log
+                                    C_LOG=c_log,NGRID=ngrid,SLICE2D=slice2d
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -155,7 +183,9 @@ rotz           = rotmzy                      ;;  [K,3,3]-Element array
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
 ;;  Check VLIM
-IF NOT KEYWORD_SET(vlim) THEN BEGIN
+test           = (N_ELEMENTS(vlim) EQ 0) OR (is_a_number(vlim,/NOMSSG) EQ 0)
+;IF NOT KEYWORD_SET(vlim) THEN BEGIN
+IF (test[0]) THEN BEGIN
   vlim = MAX(SQRT(TOTAL(swfv^2,2L,/NAN)),/NAN)
 ENDIF ELSE BEGIN
   vlim = FLOAT(vlim[0])
@@ -165,10 +195,30 @@ IF (N_ELEMENTS(project) EQ 0) THEN proj = 1 ELSE proj = 0
 ;;  Check C_LOG
 test           = (N_ELEMENTS(c_log) EQ 1) AND KEYWORD_SET(c_log)
 IF (test[0]) THEN clog_on = 1b ELSE clog_on = 0b
+;;  Check NGRID
+test           = (N_ELEMENTS(ngrid) EQ 0) OR (is_a_number(ngrid,/NOMSSG) EQ 0)
+IF (test[0]) THEN nm = 101L ELSE nm = (LONG(ngrid[0]) > 30L) < 300L
+;;  Check SLICE2D
+test           = (N_ELEMENTS(slice2d) EQ 1) AND KEYWORD_SET(slice2d)
+IF (test[0]) THEN slice_on = 1b ELSE slice_on = 0b
+;;----------------------------------------------------------------------------------------
+;;  Rotate velocities into new coordinate bases
+;;----------------------------------------------------------------------------------------
+temp_r        = REBIN(swfv,kk,3L,3L)            ;;  expand to a [K,3,3]-element array
+;;  Apply rotations [vectorized]
+temp_rm       = TOTAL(temp_r*rotm,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
+temp_rz       = TOTAL(temp_r*rotz,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
+vel_r         = temp_rm
+vel_z         = temp_rz
+IF (slice_on[0]) THEN BEGIN
+  RETURN,slice2d_vdf(vel_r,dat_1d,VLIM=vlim[0],NGRID=nm[0],C_LOG=clog_on[0])
+ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define regularly gridded velocities
 ;;----------------------------------------------------------------------------------------
-dgs            = vlim[0]/5e1
+nc             = nm[0]/2
+dgs            = vlim[0]/nc[0]
+;dgs            = vlim[0]/5e1
 gs             = [dgs,dgs]               ;;  grid spacing for triangulation used later
 xylim          = [-1*vlim[0],-1*vlim[0],vlim[0],vlim[0]]
 dumb1d         = REPLICATE(d,kk)
@@ -177,17 +227,10 @@ dumb2d         = REPLICATE(d,101L,101L)
 vx2d           = -1e0*vlim[0] + gs[0]*FINDGEN(FIX((2e0*vlim[0])/gs[0]) + 1L)
 vy2d           = -1e0*vlim[0] + gs[1]*FINDGEN(FIX((2e0*vlim[0])/gs[1]) + 1L)
 ;;----------------------------------------------------------------------------------------
-;;  Rotate velocities into new coordinate basis and triangulate
+;;  Define new basis velocities and triangulate
 ;;----------------------------------------------------------------------------------------
-vel_r         = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTM
-vel_z         = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTZ
-
-temp_r        = REBIN(swfv,kk,3L,3L)            ;;  expand to a [K,3,3]-element array
-;;  Apply rotations [vectorized]
-temp_rm       = TOTAL(temp_r*rotm,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
-temp_rz       = TOTAL(temp_r*rotz,2L)           ;; Sum over the 2nd column {[K,3]-Elements}
-vel_r         = temp_rm
-vel_z         = temp_rz
+;vel_r         = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTM
+;vel_z         = DBLARR(kk,3L)                   ;;  Velocity rotated by ROTZ
 ;;  Define new basis velocities components [cal_rot.pro]
 vel2dx        = REFORM(vel_r[*,0])                   ;;  // to [V1]
 vyz2d         = SQRT(TOTAL(vel_r[*,1:2]^2,2,/NAN))

@@ -1,0 +1,205 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   vbulk_change_prompts.pro
+;  PURPOSE  :   This routine produces several prompts and return parameters for
+;                 higher level calling routines that interactively ask for user input.
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               DAT        :  Scalar data structure containing a particle velocity
+;                               distribution function (VDF) with the following
+;                               structure tags:
+;                                 VDF     :  [N]-Element [float/double] array defining
+;                                              the VDF in units of phase space density
+;                                              [i.e., # s^(+3) km^(-3) cm^(-3)]
+;                                 VELXYZ  :  [N,3]-Element [float/double] array defining
+;                                              the particle velocity 3-vectors for each
+;                                              element of VDF
+;                                              [km/s]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               
+;
+;  KEYWORDS:    
+;               ***  INPUT --> Command to Change  ***
+;               VFRAME     :  If set, routine prompts user to define a new value for
+;                               the bulk flow velocity [km/s] reference frame, i.e.,
+;                               this determines the location of the origin in the
+;                               contour plots
+;               VEC1       :  If set, routine prompts user to define a new value for
+;                               the 3-vector used for "parallel" or "X" direction in
+;                               the orthonormal basis used to plot the data
+;                               [e.g. see rotate_and_triangulate_dfs.pro]
+;               VEC2       :  If set, routine prompts user to define a new value for
+;                               the 3-vector used as the second vector to construct
+;                               the orthonormal basis used to plot the data.  The new
+;                               The orthonormal basis is defined as the following:
+;                                 X'  :  VEC1
+;                                 Z'  :  (VEC1 x VEC2)
+;                                 Y'  :  (VEC1 x VEC2) x VEC1
+;               VLIM       :  If set, routine prompts user to define a new value for
+;                               the maximum speed [km/s] to be shown in each plot
+;               NLEV       :  If set, routine prompts user to define a new value for
+;                               the number of contour levels to use
+;               XNAME      :  If set, routine prompts user to define a new value for
+;                               the string associated with VEC1
+;               YNAME      :  If set, routine prompts user to define a new value for
+;                               the string associated with VEC2
+;               SM_CUTS    :  If set, routine prompts user to determine whether to
+;                               smooth the 1D cuts before plotting
+;               SM_CONT    :  If set, routine prompts user to determine whether to
+;                               smooth the 2D contours before plotting
+;               NSMCUT     :  If set, routine prompts user to define a new value for
+;                               the number of points to use when smoothing the 1D cuts
+;               NSMCON     :  If set, routine prompts user to define a new value for
+;                               the number of points to use when smoothing the 2D
+;                               contours
+;               PLANE      :  If set, routine prompts user to define a new value for
+;                               the plane of projection to plot with corresponding
+;                               cuts [Let V1 = VEC1, V2 = VEC2]
+;                                 'xy'  :  horizontal axis parallel to V1 and normal
+;                                            vector to plane defined by (V1 x V2)
+;                                 'xz'  :  horizontal axis parallel to (V1 x V2) and
+;                                            vertical axis parallel to V1
+;                                 'yz'  :  horizontal axis defined by (V1 x V2) x V1
+;                                            and vertical axis (V1 x V2)
+;               DFMIN      :  If set, routine prompts user to define a new value for
+;                               the minimum allowable phase space density to show in
+;                               any plot
+;                               [# s^(+3) km^(-3) cm^(-3)]
+;               DFMAX      :  If set, routine prompts user to define a new value for
+;                               the maximum allowable phase space density to show in
+;                               any plot
+;                               [# s^(+3) km^(-3) cm^(-3)]
+;               DFRA       :  If set, routine prompts user to define a new range for
+;                                 the VDF plot range for both the 2D contour levels and
+;                                 1D cut plots Y-Axis range
+;                               [Default = [DFMIN,DFMAX]]
+;               V_0X       :  If set, routine prompts user to define a new value for
+;                               the velocity [km/s] along the X-Axis (horizontal) to
+;                               shift the location where the perpendicular (vertical)
+;                               cut of the VDF will be performed (i.e., origin of
+;                               vertical line)
+;               V_0Y       :  If set, routine prompts user to define a new value for
+;                               the velocity [km/s] along the Y-Axis (vertical) to shift
+;                               the location where the parallel (horizontal) cut of the
+;                               VDF will be performed (i.e., origin of horizontal line)
+;               ***  INPUT --> System  ***
+;               WINDN      :  Scalar [long] defining the index of the window to use when
+;                               selecting the region of interest
+;                               [Default = !D.WINDOW]
+;               PLOT_STR   :  Scalar [structure] that defines the scaling factors for the
+;                               contour plot shown in window WINDN to be used by
+;                               general_cursor_select.pro
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               READ_OUT   :  Set to a named variable to return a string containing the
+;                               last command line input.  This is used by the overhead
+;                               routine to determine whether user left the program by
+;                               quitting or if the program finished
+;               VALUE_OUT  :  Set to a named variable to return the new value for the
+;                               changed variable associated with the INPUT keyword.
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  For more information about many of the keywords, see
+;                     general_vdf_contour_plot.pro or contour_3d_1plane.pro, etc.
+;               2)  User should NOT call this routine
+;               3)  VDF = particle velocity distribution function
+;               4)  phase space density = [# cm^(-3) km^(-3) s^(3)]
+;               5)  *** Routine can only handle ONE INPUT keyword set at a time ***
+;
+;  REFERENCES:  
+;               1)  Carlson et al., "An instrument for rapidly measuring plasma
+;                      distribution functions with high resolution," Adv. Space Res. 2,
+;                      pp. 67-70, 1983.
+;               2)  Curtis et al., "On-board data analysis techniques for space plasma
+;                      particle instruments," Rev. Sci. Inst. 60, pp. 372, 1989.
+;               3)  Lin et al., "A three-dimensional plasma and energetic particle
+;                      investigation for the Wind spacecraft," Space Sci. Rev. 71,
+;                      pp. 125, 1995.
+;               4)  Paschmann, G. and P.W. Daly "Analysis Methods for Multi-Spacecraft
+;                      Data," ISSI Scientific Report, Noordwijk, The Netherlands.,
+;                      Int. Space Sci. Inst., 1998.
+;               5)  McFadden, J.P., C.W. Carlson, D. Larson, M. Ludlam, R. Abiad,
+;                      B. Elliot, P. Turin, M. Marckwordt, and V. Angelopoulos
+;                      "The THEMIS ESA Plasma Instrument and In-flight Calibration,"
+;                      Space Sci. Rev. 141, pp. 277-302, 2008.
+;               6)  McFadden, J.P., C.W. Carlson, D. Larson, J.W. Bonnell,
+;                      F.S. Mozer, V. Angelopoulos, K.-H. Glassmeier, U. Auster
+;                      "THEMIS ESA First Science Results and Performance Issues,"
+;                      Space Sci. Rev. 141, pp. 477-508, 2008.
+;               7)  Auster, H.U., K.-H. Glassmeier, W. Magnes, O. Aydogar, W. Baumjohann,
+;                      D. Constantinescu, D. Fischer, K.H. Fornacon, E. Georgescu,
+;                      P. Harvey, O. Hillenmaier, R. Kroth, M. Ludlam, Y. Narita,
+;                      R. Nakamura, K. Okrafka, F. Plaschke, I. Richter, H. Schwarzl,
+;                      B. Stoll, A. Valavanoglou, and M. Wiedemann "The THEMIS Fluxgate
+;                      Magnetometer," Space Sci. Rev. 141, pp. 235-264, 2008.
+;               8)  Angelopoulos, V. "The THEMIS Mission," Space Sci. Rev. 141,
+;                      pp. 5-34, (2008).
+;               9)  Wilson III, L.B., et al., "Quantified energy dissipation rates in the
+;                      terrestrial bow shock: 1. Analysis techniques and methodology,"
+;                      J. Geophys. Res. 119, pp. 6455--6474, doi:10.1002/2014JA019929,
+;                      2014a.
+;              10)  Wilson III, L.B., et al., "Quantified energy dissipation rates in the
+;                      terrestrial bow shock: 2. Waves and dissipation,"
+;                      J. Geophys. Res. 119, pp. 6475--6495, doi:10.1002/2014JA019930,
+;                      2014b.
+;              11)  Pollock, C., et al., "Fast Plasma Investigation for Magnetospheric
+;                      Multiscale," Space Sci. Rev. 199, pp. 331--406,
+;                      doi:10.1007/s11214-016-0245-4, 2016.
+;              12)  Gershman, D.J., et al., "The calculation of moment uncertainties
+;                      from velocity distribution functions with random errors,"
+;                      J. Geophys. Res. 120, pp. 6633--6645, doi:10.1002/2014JA020775,
+;                      2015.
+;              13)  Bordini, F. "Channel electron multiplier efficiency for 10-1000 eV
+;                      electrons," Nucl. Inst. & Meth. 97, pp. 405--408,
+;                      doi:10.1016/0029-554X(71)90300-4, 1971.
+;              14)  Meeks, C. and P.B. Siegel "Dead time correction via the time series,"
+;                      Amer. J. Phys. 76, pp. 589--590, doi:10.1119/1.2870432, 2008.
+;              15)  Furuya, K. and Y. Hatano "Pulse-height distribution of output signals
+;                      in positive ion detection by a microchannel plate,"
+;                      Int. J. Mass Spectrom. 218, pp. 237--243,
+;                      doi:10.1016/S1387-3806(02)00725-X, 2002.
+;              16)  Funsten, H.O., et al., "Absolute detection efficiency of space-based
+;                      ion mass spectrometers and neutral atom imagers,"
+;                      Rev. Sci. Inst. 76, pp. 053301, doi:10.1063/1.1889465, 2005.
+;              17)  Oberheide, J., et al., "New results on the absolute ion detection
+;                      efficiencies of a microchannel plate," Meas. Sci. Technol. 8,
+;                      pp. 351--354, doi:10.1088/0957-0233/8/4/001, 1997.
+;
+;   ADAPTED FROM:  beam_fit_prompts.pro [UMN 3DP library, beam fitting routines]
+;   CREATED:  05/16/2017
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  05/16/2017   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO vbulk_change_prompts,_EXTRA=ex_str,                                 $  ;; ***  INPUT --> Command to Change  ***
+                         WINDN=windn,PLOT_STR=plot_str,                 $  ;; ***  INPUT --> System  ***
+                         READ_OUT=read_out,VALUE_OUT=value_out             ;; ***  OUTPUT  ***
+
+
+
+
+
+END

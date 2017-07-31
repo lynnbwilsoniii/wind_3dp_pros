@@ -8,9 +8,9 @@
 ;
 ;CREATED BY:    Peter Schroeder
 ;LAST MODIFICATION:     %W% %E%
-; $LastChangedBy: egrimes $
-; $LastChangedDate: 2016-12-08 17:20:10 -0500 (Thu, 08 Dec 2016) $
-; $LastChangedRevision: 22448 $
+; $LastChangedBy: lbwilsoniii_desk $
+; $LastChangedDate: 2016-07-19 13:33:39 -0400 (Tue, 19 Jul 2016) $
+; $LastChangedRevision: 21489 $
 ; $URL: svn+ssh://thmsvn@ambrosia.ssl.berkeley.edu/repos/spdsoft/trunk/general/tplot/tplot_sort.pro $
 ;
 ;-
@@ -24,12 +24,10 @@ sepname = str_sep(name,'.')
 if (n_elements(sepname) eq 1) then begin
 ;if n_elements(sepname) eq 1 then begin
 	get_data,name,ptr=pdata
-;	test = (size(pdata,/type) ne 10)
-	test = (size(pdata,/type) ne 8)
+	test = (size(pdata,/type) ne 10)
 	if (test[0]) then return  ;;  Not a time-varying data quantity --> exit
 	str_element,pdata,'X',foo,success=ok
 	if ok then begin
-;	  PRINT,'sorting TPLOT handle:  '+name[0]
 		newind = sort(*(pdata.x))
 		*(pdata.x) = (*(pdata.x))[newind]
 ;		*(pdata.x) = (*(pdata.x))(newind)
@@ -39,13 +37,14 @@ if (n_elements(sepname) eq 1) then begin
 		yndim = ndimen(*(pdata.y))
 		if (yndim[0] eq 1) then begin
 			*(pdata.y) = (*(pdata.y))[newind]
-		endif else if (yndim[0] eq 2) then begin
-			*(pdata.y) = (*(pdata.y))[newind,*]
-		endif else if yndim[0] eq 3 then begin
+		endif else begin
+			if (yndim[0] eq 2) then begin
+				*(pdata.y) = (*(pdata.y))[newind,*]
+			endif else begin
+				;;  Assume 3D
 				*(pdata.y) = (*(pdata.y))[newind,*,*]
-		endif else if yndim[0] eq 4 then begin
-        *(pdata.y) = (*(pdata.y))[newind,*,*,*]
-		endif
+			endelse
+		endelse
 ;		if vok then if ndimen(*(pdata.v)) eq 2 then $
 ;			*(pdata.v) = (*(pdata.v))(newind,*)
 		str_element,pdata,'V',foo,success=vok
@@ -62,10 +61,6 @@ if (n_elements(sepname) eq 1) then begin
 				*(pdata.v2) = (*(pdata.v2))[newind,*]
 			endif
 		endif
-		str_element,pdata,'V3',foo,success=v3ok
-		if v3ok eq 1 then begin
-       *(pdata.v3) = (*(pdata.v3))[newind,*]
-		endif
 		;;  Need to account for DY, if present
 		str_element,pdata,'DY',foo,success=vok
 		if (vok[0]) then begin
@@ -75,8 +70,7 @@ if (n_elements(sepname) eq 1) then begin
 					1 : *(pdata.dy) = (*(pdata.dy))[newind]
 					2 : *(pdata.dy) = (*(pdata.dy))[newind,*]
 					3 : *(pdata.dy) = (*(pdata.dy))[newind,*,*]
-					4 : *(pdata.dy) = (*(pdata.dy))[newind,*,*,*]
-					else :  ;;  Do nothing --> can't handle 5D arrays currently
+					else :  ;;  Do nothing --> can't handle 4D arrays currently
 				endcase
 			endif
 		endif
