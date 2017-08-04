@@ -1,5 +1,3 @@
-;;  ~/wind_3dp_pros/wind_3dp_cribs/general_rh_solns_crib.pro
-
 ;;----------------------------------------------------------------------------------------
 ;;  Load into TPLOT
 ;;----------------------------------------------------------------------------------------
@@ -81,9 +79,6 @@ tra_dn_u       = time_double(tr_dn)
 ;;----------------------------------------------------------------------------------------
 ;;  Clip the data to within the upstream/downstream time ranges
 ;;----------------------------------------------------------------------------------------
-;;  Note:  It's a good idea to clean up the data prior to the following steps, i.e.,
-;;         remove NaNs since they will be ignored in the subsequent computations.
-
 ;;  Upstream
 bv__str_up     = trange_clip_data(bvec_str,TRANGE=tra_up_u,PRECISION=3)
 Vsw_str_up     = trange_clip_data(Vsw__str,TRANGE=tra_up_u,PRECISION=3)
@@ -102,10 +97,10 @@ test_updn      = (SIZE(bv__str_up,/TYPE) NE 8) OR (SIZE(bv__str_dn,/TYPE) NE 8) 
                  (SIZE(No__str_up,/TYPE) NE 8) OR (SIZE(No__str_dn,/TYPE) NE 8) OR $
                  (SIZE(Ti__str_up,/TYPE) NE 8) OR (SIZE(Ti__str_dn,/TYPE) NE 8) OR $
                  (SIZE(Te__str_up,/TYPE) NE 8) OR (SIZE(Te__str_dn,/TYPE) NE 8)
-IF (test_updn[0]) THEN PRINT,''
-IF (test_updn[0]) THEN PRINT,'***  No data was found?  ***'
-IF (test_updn[0]) THEN PRINT,''
-IF (test_updn[0]) THEN STOP
+IF (~test_updn[0]) THEN PRINT,''
+IF (~test_updn[0]) THEN PRINT,'***  No data was found?  ***'
+IF (~test_updn[0]) THEN PRINT,''
+IF (~test_updn[0]) THEN STOP
 ;;----------------------------------------------------------------------------------------
 ;;  Resample data to a single uniform time range
 ;;----------------------------------------------------------------------------------------
@@ -159,18 +154,6 @@ mag            = [[[magf_up]],[[magf_dn]]]
 dens           = [[dens_up],[dens_dn]]
 temp           = [[temp_up],[temp_dn]]
 nmax           = 150L
-
-;;  Print Upstream and Downstream averages for reference
-PRINT,';;  Bo_up    [nT, GSE] :  ',MEAN(magf_up,/NAN,DIMENSION=1)  & $
-PRINT,';;  Vsw_up [km/s, GSE] :  ',MEAN(vsw__up,/NAN,DIMENSION=1)  & $
-PRINT,';;  Ni_up    [cm^(-3)] :  ',MEAN(dens_up,/NAN,DIMENSION=1)  & $
-PRINT,';;  Ti_up         [eV] :  ',MEAN(temp_up,/NAN,DIMENSION=1)
-
-PRINT,';;  Bo_dn    [nT, GSE] :  ',MEAN(magf_dn,/NAN,DIMENSION=1)  & $
-PRINT,';;  Vsw_dn [km/s, GSE] :  ',MEAN(vsw__dn,/NAN,DIMENSION=1)  & $
-PRINT,';;  Ni_dn    [cm^(-3)] :  ',MEAN(dens_dn,/NAN,DIMENSION=1)  & $
-PRINT,';;  Ti_dn         [eV] :  ',MEAN(temp_dn,/NAN,DIMENSION=1)
-
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate shock parameters from Rankine-Hugoniot analysis
 ;;----------------------------------------------------------------------------------------
@@ -207,109 +190,7 @@ chisq2     = rh_solve_lmq(dens,vsw,mag,temp,NMAX=nmax,NEQS=nqq,SOLN=soln2,BOWSH=
 ;;  unstable.  For instance, if you remove one point from the upstream and downstream
 ;;  arrays, you can get significantly different results (i.e., 10-20 degrees off).
 
-;;----------------------------------------------------------------------------------------
-;;  Print out solutions
-;;----------------------------------------------------------------------------------------
-IF (bow_shock[0]) THEN suffx = ' bow shock' ELSE suffx = ' IP shock'
 
-line_0     = ';;-----------------------------------------------------------'
-line_1     = ';;==========================================================='
-eqs_0      = ';;  --> Equations 2 and 4 for '+tdate[0]+suffx[0]
-eqs_1      = ';;  --> Equations 2, 3, 4, and 5 for '+tdate[0]+suffx[0]
-eqs_2      = ';;  --> Equations 2, 3, 4, 5, and 6 for '+tdate[0]+suffx[0]
-avg_std    = ';;         Avg.          Std. Dev.'
-
-
-PRINT,''                                                                                 & $
-PRINT,';;  --> Print out best fit shock normal speed in spacecraft frame [km/s]'         & $
-PRINT,"PRINT,';', soln.VSHN"                                                             & $
-PRINT,line_0[0]                                                                          & $
-PRINT,avg_std[0]                                                                         & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_0[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln0.VSHN                                                                    & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_1[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln1.VSHN                                                                    & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_2[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln2.VSHN                                                                    & $
-PRINT,line_0[0]                                                                          & $
-PRINT,''                                                                                 & $
-PRINT,';;  --> Print out best fit upstream shock normal speed in shock frame [km/s]'     & $
-PRINT,"PRINT,';', soln.USHN_UP"                                                          & $
-PRINT,line_0[0]                                                                          & $
-PRINT,avg_std[0]                                                                         & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_0[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln0.USHN_UP                                                                 & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_1[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln1.USHN_UP                                                                 & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_2[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln2.USHN_UP                                                                 & $
-PRINT,line_0[0]                                                                          & $
-PRINT,''                                                                                 & $
-PRINT,';;  --> Print out best fit downstream shock normal speed in shock frame [km/s]'   & $
-PRINT,"PRINT,';', soln.USHN_DN"                                                          & $
-PRINT,line_0[0]                                                                          & $
-PRINT,avg_std[0]                                                                         & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_0[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln0.USHN_DN                                                                 & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_1[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln1.USHN_DN                                                                 & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_2[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln2.USHN_DN                                                                 & $
-PRINT,line_0[0]                                                                          & $
-PRINT,''                                                                                 & $
-PRINT,';;  --> Print out best fit shock normal vector [GSE coordinates]'                 & $
-PRINT,"PRINT,';', soln.SH_NORM[*,0]"                                                     & $
-PRINT,line_0[0]                                                                          & $
-PRINT,avg_std[0]                                                                         & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_0[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln0.SH_NORM[*,0]                                                            & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_1[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln1.SH_NORM[*,0]                                                            & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_2[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln2.SH_NORM[*,0]                                                            & $
-PRINT,line_0[0]                                                                          & $
-PRINT,''                                                                                 & $
-PRINT,';;  --> Print out best fit uncertainty in shock normal vector [GSE coordinates]'  & $
-PRINT,"PRINT,';', soln.SH_NORM[*,1]"                                                     & $
-PRINT,line_0[0]                                                                          & $
-PRINT,avg_std[0]                                                                         & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_0[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln0.SH_NORM[*,1]                                                            & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_1[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln1.SH_NORM[*,1]                                                            & $
-PRINT,line_0[0]                                                                          & $
-PRINT,eqs_2[0]                                                                           & $
-PRINT,line_1[0]                                                                          & $
-PRINT,';;',soln2.SH_NORM[*,1]                                                            & $
-PRINT,line_0[0]
 
 
 
