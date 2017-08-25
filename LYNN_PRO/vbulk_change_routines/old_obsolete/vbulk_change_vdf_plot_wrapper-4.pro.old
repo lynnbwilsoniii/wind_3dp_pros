@@ -49,7 +49,6 @@
 ;                                              [,CONT_STR=cont_str] [,WINDN=windn]         $
 ;                                              [,PLOT_STR=plot_str] [,EX_VECN=ex_vecn]     $
 ;                                              [,VCIRC=vcirc] [,ALL_FPREFS=all_fprefs]     $
-;                                              [,ONEC_ARR=onec_arr]                        $
 ;                                              [,ALL_PTTLS=all_pttls] [,READ_OUT=read_out] $
 ;                                              [,DATA_OUT=data_out] [,PS_FNAME=ps_fname]
 ;
@@ -115,10 +114,6 @@
 ;                                for the M VDFs in DATA
 ;               ALL_PTTLS   :  [M]-Element [string] array defining all the plot titles
 ;                                for the M VDFs in DATA
-;               ***  INPUT --> Contour Plot  ***
-;               ONEC_ARR    :  [M]-Element [structure] array containing particle VDFs
-;                                of the same format as DATA but for the one-count levels
-;                                [Default = FALSE]
 ;               ***  OUTPUT  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [all the following changed on output]  ***
@@ -144,9 +139,6 @@
 ;             4)  Fixed an issue with passing an updated version of the CONT_STR back
 ;                   to the calling routine
 ;                                                                   [08/01/2017   v1.0.1]
-;             5)  Added keyword ONEC_ARR and
-;                   now sends one-count level information to plotting routines
-;                                                                   [08/24/2017   v1.1.0]
 ;
 ;   NOTES:      
 ;               0)  User should not directly call this routine
@@ -215,7 +207,7 @@
 ;   ADAPTED FROM:  beam_fit_1df_plot_fit.pro [UMN 3DP library, beam fitting routines]
 ;   CREATED:  07/26/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/24/2017   v1.1.0
+;    LAST MODIFIED:  08/01/2017   v1.0.1]
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -228,7 +220,6 @@ PRO vbulk_change_vdf_plot_wrapper,data,                                         
                                        EX_VECN=ex_vecn,                               $  ;;  ***  INPUT --> Extras for Contour Plot  ***
                                        VCIRC=vcirc,                                   $  ;;  ***  INPUT --> Circles for Contour Plot  ***
                                        ALL_FPREFS=all_fprefs,ALL_PTTLS=all_pttls,     $  ;;  ***  INPUT --> File and Plot Info  ***
-                                       ONEC_ARR=onec_arr,                             $  ;;  ***  INPUT --> Extras for Cut Plot  ***
                                        READ_OUT=read_out,DATA_OUT=data_out,           $  ;;  ***  OUTPUT  ***
                                        PS_FNAME=ps_fname                                 ;;  ***  OUTPUT  ***
 
@@ -299,12 +290,6 @@ ex_infoa       = REPLICATE(dumb[0],ndat[0])
 ex_infoa.SCPOT = vdf_info.SCPOT
 ex_infoa.VSW   = vdf_info.VSW
 ex_infoa.MAGF  = vdf_info.MAGF
-;;  Check ONEC_ARR
-test           = (N_ELEMENTS(onec_arr) EQ ndat[0]) AND (SIZE(onec_arr,/TYPE) EQ 8)
-IF (test[0]) THEN vdf_1c = onec_arr ELSE vdf_1c = 0b
-;;  Check ONEC_ARR structure format
-test           = vbulk_change_test_vdf_str_form(vdf_1c[0])
-IF (test[0]) THEN onec_on = 1b ELSE onec_on = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Define index-specific parameters
 ;;----------------------------------------------------------------------------------------
@@ -312,7 +297,6 @@ IF (test[0]) THEN onec_on = 1b ELSE onec_on = 0b
 ex_info        = ex_infoa[ind0[0]]
 ;;  Define VDF params for plotting
 dat_i          = dat[ind0[0]]
-IF (onec_on[0]) THEN one_c = vdf_1c[ind0[0]].VDF ELSE one_c = 0b
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Plot initial VDF
@@ -341,7 +325,7 @@ FOR k=0L, 2L DO BEGIN
   WSET,def_winn[k]
   WSHOW,def_winn[k]
   general_vdf_contour_plot,vdf,velxyz,_EXTRA=copy_str,CIRCS=vcirc,EX_VECS=ex_vecn, $
-                       EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0],ONE_C=one_c
+                       EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0]
 ENDFOR
 ;;========================================================================================
 JUMP_STEP_1:
@@ -354,7 +338,6 @@ vbulk_change_change_parameter,dat,                                              
                                   VCIRC=vcirc,                                   $  ;;  ***  INPUT --> Circles for Contour Plot  ***
                                   EX_VECN=ex_vecn,                               $  ;;  ***  INPUT --> Extras for Contour Plot  ***
                                   ALL_FPREFS=all_fprefs,ALL_PTTLS=all_pttls,     $  ;;  ***  INPUT --> File and Plot Info  ***
-                                  ONEC_ARR=onec_arr,                             $  ;;  ***  INPUT --> Extras for Cut Plot  ***
                                   READ_OUT=name_out,DAT_PLOT=dat_i                  ;;  ***  OUTPUT  ***
 ;;  Check if user wishes to quit
 IF (name_out[0] EQ 'q') THEN BEGIN
@@ -375,9 +358,7 @@ IF (test[0]) THEN BEGIN
   RETURN
 ENDIF
 ;;  Redefine structure [in case user changed something]
-dat_i          = dat[ind0[0]]
-IF (onec_on[0]) THEN one_c = vdf_1c[ind0[0]].VDF ELSE one_c = 0b
-;dat_i          = dat_i[0]
+dat_i          = dat_i[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Define plot title(s) and file name(s)
 ;;----------------------------------------------------------------------------------------
@@ -421,7 +402,7 @@ IF (test[0]) THEN BEGIN
     plot_title     = struc.PLOT_TITLE[0]
     popen,file_name[0],_EXTRA=popen_str
       general_vdf_contour_plot,vdf,velxyz,_EXTRA=cont_str,CIRCS=vcirc,EX_VECS=ex_vecn,   $
-                           EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0],ONE_C=one_c
+                           EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0]
     pclose
   ENDIF ELSE BEGIN
     ;;------------------------------------------------------------------------------------
@@ -438,7 +419,7 @@ IF (test[0]) THEN BEGIN
       copy_str       = contstrs.(k)
       popen,file_name[0],_EXTRA=popen_str
         general_vdf_contour_plot,vdf,velxyz,_EXTRA=copy_str,CIRCS=vcirc,EX_VECS=ex_vecn, $
-                             EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0],ONE_C=one_c
+                             EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0]
       pclose
     ENDFOR
   ENDELSE

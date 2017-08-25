@@ -48,14 +48,13 @@
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               plot_esa_sst_combined_spec3d,dat_esa,dat_sst [,LIM_ESA=lim_esa]          $
-;                                           [,LIM_SST=lim_sst] [,ESA_ERAN=esa_eran]      $
-;                                           [,SST_ERAN=sst_eran] [,/SC_FRAME]            $
-;                                           [,CUT_RAN=cut_ran] [,/P_ANGLE]               $
-;                                           [,/SUNDIR] [,VECTOR=vec] [,UNITS=units]      $
-;                                           [,ESA_BINS=esa_bins] [,SST_BINS=sst_bins]    $
-;                                           [,EX_SUFFX=ex_suffx] [,ONE_C=one_c]          $
-;                                           [,RM_PHOTO_E=rm_photo_e] [,EX_LINE=ex_line]
+;               plot_esa_sst_combined_spec3d,dat_esa,dat_sst [,LIM_ESA=lim_esa]       $
+;                                           [,LIM_SST=lim_sst] [,ESA_ERAN=esa_eran]   $
+;                                           [,SST_ERAN=sst_eran] [,/SC_FRAME]         $
+;                                           [,CUT_RAN=cut_ran] [,/P_ANGLE]            $
+;                                           [,/SUNDIR] [,VECTOR=vec] [,UNITS=units]   $
+;                                           [,ESA_BINS=esa_bins] [,SST_BINS=sst_bins] $
+;                                           [,EX_SUFFX=ex_suffx] [,ONE_C=one_c]
 ;
 ;  KEYWORDS:    
 ;               **********************************
@@ -146,12 +145,6 @@
 ;                                shift the corresponding energy bins by
 ;                                CHARGE*SC_POT
 ;                                [Default = FALSE]
-;               EX_LINE     :  Scalar [structure] defining the value and label of an
-;                                extra vertical line to output on the final plots.  The
-;                                structure must have the following tags:
-;                                  NSTR  :  Scalar [string] defining the label
-;                                  NVAL  :  Scalar [numeric] defining the value or
-;                                             location [eV]
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [02/03/2016   v1.0.0]
@@ -172,8 +165,6 @@
 ;             7)  Added error handling to deal with events with no data in a given
 ;                   angle range
 ;                                                                   [08/09/2017   v1.1.1]
-;             8)  Added the keyword EX_LINE and now calls struct_value.pro
-;                                                                   [08/09/2017   v1.1.2]
 ;
 ;   NOTES:      
 ;               1)  This routine is meant to be a wrapper for lbw_spec3d.pro so as to
@@ -221,7 +212,7 @@
 ;
 ;   CREATED:  02/02/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/09/2017   v1.1.2
+;    LAST MODIFIED:  08/09/2017   v1.1.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -233,7 +224,7 @@ PRO plot_esa_sst_combined_spec3d,dat_esa,dat_sst,LIM_ESA=lim_esa,LIM_SST=lim_sst
                                  SUNDIR=sundir,VECTOR=vec,UNITS=units,              $
                                  ESA_BINS=esa_bins,SST_BINS=sst_bins,               $
                                  EX_SUFFX=ex_suffx,LEG_SFFX=leg_sffx,ONE_C=one_c,   $
-                                 RM_PHOTO_E=rm_photo_e,EX_LINE=ex_line
+                                 RM_PHOTO_E=rm_photo_e
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -247,7 +238,6 @@ def_cut_aran   = 22.5d0                 ;;  Default angular range [deg] of accep
 frac_cnts      = 0b                     ;;  logic to use to determine whether to allow fractional counts in unit conversion (THEMIS ESA only)
 cut_mids       = [22.5d0,9d1,157.5d0]   ;;  Default mid angles [deg] about which to define a range over which to average
 vec_cols       = [250,150, 50]
-dumb_exline    = {NSTR:'',NVAL:0d0}
 ;;  Dummy error messages
 noinpt_msg     = 'User must supply two velocity distribution functions as IDL structures...'
 notstr_msg     = 'DAT_ESA and DAT_SST must be IDL structures...'
@@ -413,16 +403,6 @@ IF (test[0]) THEN log_1c = 1b ELSE log_1c = 0b
 ;;  Check RM_PHOTO_E keyword
 test           = KEYWORD_SET(rm_photo_e)
 IF (test[0]) THEN rmscpot = 1b ELSE rmscpot = 0b
-;;  Check EX_LINE
-test           = (N_ELEMENTS(ex_line) EQ 0) OR (SIZE(ex_line,/TYPE) NE 8)
-IF (test[0]) THEN BEGIN
-  extra_line = dumb_exline
-ENDIF ELSE BEGIN
-  nlab           = struct_value(ex_line,'NSTR',DEFAULT='',INDEX=indnstr)
-  nval           = struct_value(ex_line,'NVAL',DEFAULT=0d0,INDEX=indnval)
-  test           = (SIZE(nlab,/TYPE) NE 7) OR (is_a_number(nval,/NOMSSG) EQ 0)
-  IF (test[0]) THEN extra_line = dumb_exline ELSE extra_line = {NSTR:nlab[0],NVAL:nval[0]}
-ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Transform (if desired)
 ;;----------------------------------------------------------------------------------------
@@ -734,11 +714,7 @@ fplaw_2        = a_o_2[0]*xran_out^(-2d0)        ;;  f(E) ~ E^(-2)
 fplaw_3        = a_o_3[0]*xran_out^(-3d0)        ;;  f(E) ~ E^(-3)
 fplaw_4        = a_o_4[0]*xran_out^(-4d0)        ;;  f(E) ~ E^(-4)
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Plot combined spectra
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 legends        = ['Para.','Perp.','Anti.']+' Avg.: '+STRMID(fsuffx[0],1)+' '+legsuffx[0]
 leg_fpl        = ['Dashed:  f(E) ~ E^(-2)','Dash-Dot:  f(E) ~ E^(-3)','Dash-Dot-Dot:  f(E) ~ E^(-4)']
@@ -747,75 +723,48 @@ xyfacs         = [55d-2,105d-2,35d-2]
 xposi          = [0.12,0.15]
 yposi          = [0.34,0.31,0.28,0.24,0.21,0.18]
 thck           = 2.0
-psym           = -6                     ;;  square symbol and connect points with solid lines
+psym           = -6      ;;  square symbol and connect points with solid lines
 symz           = 2.0
-lsty           = [1L,2L,3L,4L]          ;;  LINESTYLE values
-ecol           = [200L,100L, 30L]       ;;  COLOR values
-;;  Define some parameters for XYOUTS
-xxloc          = [xyfacs[0]*all_eran_esa[1],xyfacs[1]*all_eran_sst[0],xyfacs[1]*extra_line.NVAL[0]]
-yyloc          = [xyfacs[2]*yran_out[1],xyfacs[2]*yran_out[1],xyfacs[2]*yran_out[1]]
-vllab          = ['ESA','SST',extra_line.NSTR[0]]
-align          = 0
 WSET,3
 WSHOW,3
-;;----------------------------------------------------------------------------------------
-;;  Initialize Plot
-;;----------------------------------------------------------------------------------------
 PLOT,AvgE_para_esa,Avgf_para_esa,/NODATA,_EXTRA=pstr
-  ;;--------------------------------------------------------------------------------------
   ;;  Plot EESA data
-  ;;--------------------------------------------------------------------------------------
   OPLOT,AvgE_para_esa,Avgf_para_esa,COLOR=vec_cols[0],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
   OPLOT,AvgE_perp_esa,Avgf_perp_esa,COLOR=vec_cols[1],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
   OPLOT,AvgE_anti_esa,Avgf_anti_esa,COLOR=vec_cols[2],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-  ;;--------------------------------------------------------------------------------------
   ;;  Plot SSTe data
-  ;;--------------------------------------------------------------------------------------
   OPLOT,AvgE_para_sst,Avgf_para_sst,COLOR=vec_cols[0],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
   OPLOT,AvgE_perp_sst,Avgf_perp_sst,COLOR=vec_cols[1],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
   OPLOT,AvgE_anti_sst,Avgf_anti_sst,COLOR=vec_cols[2],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-  ;;--------------------------------------------------------------------------------------
   ;;  Plot energy range limits
-  ;;--------------------------------------------------------------------------------------
-  OPLOT,[all_eran_esa[0],all_eran_esa[0]],yran_out,COLOR=ecol[0],LINESTYLE=lsty[1]
-  OPLOT,[all_eran_esa[1],all_eran_esa[1]],yran_out,COLOR=ecol[0],LINESTYLE=lsty[1]
-  OPLOT,[all_eran_sst[0],all_eran_sst[0]],yran_out,COLOR=ecol[1],LINESTYLE=lsty[2]
-  OPLOT,[all_eran_sst[1],all_eran_sst[1]],yran_out,COLOR=ecol[1],LINESTYLE=lsty[2]
-  ;;--------------------------------------------------------------------------------------
+  OPLOT,[all_eran_esa[0],all_eran_esa[0]],yran_out,COLOR=200,LINESTYLE=2
+  OPLOT,[all_eran_esa[1],all_eran_esa[1]],yran_out,COLOR=200,LINESTYLE=2
+  OPLOT,[all_eran_sst[0],all_eran_sst[0]],yran_out,COLOR=100,LINESTYLE=3
+  OPLOT,[all_eran_sst[1],all_eran_sst[1]],yran_out,COLOR=100,LINESTYLE=3
   ;;  Output power-laws
-  ;;--------------------------------------------------------------------------------------
-  OPLOT,xran_out,fplaw_2,LINESTYLE=lsty[1],THICK=thck[0],COLOR=plw_cols[0]
-  OPLOT,xran_out,fplaw_3,LINESTYLE=lsty[2],THICK=thck[0],COLOR=plw_cols[1]
-  OPLOT,xran_out,fplaw_4,LINESTYLE=lsty[3],THICK=thck[0],COLOR=plw_cols[2]
-  ;;--------------------------------------------------------------------------------------
-  ;;  Output EX_LINE
-  ;;--------------------------------------------------------------------------------------
-  OPLOT,[extra_line.NVAL[0],extra_line.NVAL[0]],yran_out,COLOR=ecol[2],LINESTYLE=lsty[1],THICK=thck[0]
-  ;;--------------------------------------------------------------------------------------
+  OPLOT,xran_out,fplaw_2,LINESTYLE=2,THICK=thck[0],COLOR=plw_cols[0]
+  OPLOT,xran_out,fplaw_3,LINESTYLE=3,THICK=thck[0],COLOR=plw_cols[1]
+  OPLOT,xran_out,fplaw_4,LINESTYLE=4,THICK=thck[0],COLOR=plw_cols[2]
   ;;  Output one-count levels (if desired by user)
-  ;;--------------------------------------------------------------------------------------
   IF (log_1c[0]) THEN BEGIN
     ;;  ESA
-    OPLOT,AvgE_para_esa,Av1c_para_esa,COLOR=vec_cols[0],LINESTYLE=lsty[0]
-    OPLOT,AvgE_para_esa,Av1c_perp_esa,COLOR=vec_cols[1],LINESTYLE=lsty[0]
-    OPLOT,AvgE_para_esa,Av1c_anti_esa,COLOR=vec_cols[2],LINESTYLE=lsty[0]
+    OPLOT,AvgE_para_esa,Av1c_para_esa,COLOR=vec_cols[0],LINESTYLE=1
+    OPLOT,AvgE_para_esa,Av1c_perp_esa,COLOR=vec_cols[1],LINESTYLE=1
+    OPLOT,AvgE_para_esa,Av1c_anti_esa,COLOR=vec_cols[2],LINESTYLE=1
     ;;  SST
-    OPLOT,AvgE_para_sst,Av1c_para_sst,COLOR=vec_cols[0],LINESTYLE=lsty[0]
-    OPLOT,AvgE_perp_sst,Av1c_perp_sst,COLOR=vec_cols[1],LINESTYLE=lsty[0]
-    OPLOT,AvgE_anti_sst,Av1c_anti_sst,COLOR=vec_cols[2],LINESTYLE=lsty[0]
+    OPLOT,AvgE_para_sst,Av1c_para_sst,COLOR=vec_cols[0],LINESTYLE=1
+    OPLOT,AvgE_perp_sst,Av1c_perp_sst,COLOR=vec_cols[1],LINESTYLE=1
+    OPLOT,AvgE_anti_sst,Av1c_anti_sst,COLOR=vec_cols[2],LINESTYLE=1
   ENDIF
-  ;;--------------------------------------------------------------------------------------
   ;;  Output legend
-  ;;--------------------------------------------------------------------------------------
-  XYOUTS,xxloc[0],yyloc[0],vllab[0],COLOR=ecol[0],/DATA,ALIGNMENT=align[0]             ;;  ESA energy range labels
-  XYOUTS,xxloc[1],yyloc[1],vllab[1],COLOR=ecol[1],/DATA,ALIGNMENT=align[0]             ;;  SST energy range labels
-  XYOUTS,xxloc[2],yyloc[2],vllab[2],COLOR=ecol[2],/DATA,ALIGNMENT=align[0]             ;;  EX_LINE label
-  XYOUTS,xposi[0],yposi[0],legends[0],COLOR=vec_cols[0],/NORMAL,ALIGNMENT=align[0]     ;;  Para label
-  XYOUTS,xposi[0],yposi[1],legends[1],COLOR=vec_cols[1],/NORMAL,ALIGNMENT=align[0]     ;;  Perp label
-  XYOUTS,xposi[0],yposi[2],legends[2],COLOR=vec_cols[2],/NORMAL,ALIGNMENT=align[0]     ;;  Anti label
-  XYOUTS,xposi[0],yposi[3],leg_fpl[0],COLOR=plw_cols[0],/NORMAL,ALIGNMENT=align[0]     ;;  f(E) ~ E^(-2) label
-  XYOUTS,xposi[0],yposi[4],leg_fpl[1],COLOR=plw_cols[1],/NORMAL,ALIGNMENT=align[0]     ;;  f(E) ~ E^(-3) label
-  XYOUTS,xposi[0],yposi[5],leg_fpl[2],COLOR=plw_cols[2],/NORMAL,ALIGNMENT=align[0]     ;;  f(E) ~ E^(-4) label
+  XYOUTS,xyfacs[0]*all_eran_esa[1],xyfacs[2]*yran_out[1],'ESA',COLOR=200,/DATA,ALIGNMENT=0
+  XYOUTS,xyfacs[1]*all_eran_sst[0],xyfacs[2]*yran_out[1],'SST',COLOR=100,/DATA,ALIGNMENT=0
+  XYOUTS,xposi[0],yposi[0],legends[0],COLOR=vec_cols[0],/NORMAL,ALIGNMENT=0
+  XYOUTS,xposi[0],yposi[1],legends[1],COLOR=vec_cols[1],/NORMAL,ALIGNMENT=0
+  XYOUTS,xposi[0],yposi[2],legends[2],COLOR=vec_cols[2],/NORMAL,ALIGNMENT=0
+  XYOUTS,xposi[0],yposi[3],leg_fpl[0],COLOR=plw_cols[0],/NORMAL,ALIGNMENT=0
+  XYOUTS,xposi[0],yposi[4],leg_fpl[1],COLOR=plw_cols[1],/NORMAL,ALIGNMENT=0
+  XYOUTS,xposi[0],yposi[5],leg_fpl[2],COLOR=plw_cols[2],/NORMAL,ALIGNMENT=0
 
 ;;----------------------------------------------------------------------------------------
 ;;  Save plot of combined spectra
@@ -823,105 +772,44 @@ PLOT,AvgE_para_esa,Avgf_para_esa,/NODATA,_EXTRA=pstr
 thck           = 3.0
 symz           = 1.0
 popen,fname[0],_EXTRA=popen_str
-  ;;--------------------------------------------------------------------------------------
-  ;;  Initialize Plot
-  ;;--------------------------------------------------------------------------------------
   PLOT,AvgE_para_esa,Avgf_para_esa,/NODATA,_EXTRA=pstr
-    ;;------------------------------------------------------------------------------------
     ;;  Plot EESA data
-    ;;------------------------------------------------------------------------------------
     OPLOT,AvgE_para_esa,Avgf_para_esa,COLOR=vec_cols[0],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
     OPLOT,AvgE_perp_esa,Avgf_perp_esa,COLOR=vec_cols[1],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
     OPLOT,AvgE_anti_esa,Avgf_anti_esa,COLOR=vec_cols[2],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-    ;;------------------------------------------------------------------------------------
     ;;  Plot SSTe data
-    ;;------------------------------------------------------------------------------------
     OPLOT,AvgE_para_sst,Avgf_para_sst,COLOR=vec_cols[0],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
     OPLOT,AvgE_perp_sst,Avgf_perp_sst,COLOR=vec_cols[1],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
     OPLOT,AvgE_anti_sst,Avgf_anti_sst,COLOR=vec_cols[2],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-    ;;------------------------------------------------------------------------------------
     ;;  Plot energy range limits
-    ;;------------------------------------------------------------------------------------
-    OPLOT,[all_eran_esa[0],all_eran_esa[0]],yran_out,COLOR=ecol[0],LINESTYLE=lsty[1]
-    OPLOT,[all_eran_esa[1],all_eran_esa[1]],yran_out,COLOR=ecol[0],LINESTYLE=lsty[1]
-    OPLOT,[all_eran_sst[0],all_eran_sst[0]],yran_out,COLOR=ecol[1],LINESTYLE=lsty[2]
-    OPLOT,[all_eran_sst[1],all_eran_sst[1]],yran_out,COLOR=ecol[1],LINESTYLE=lsty[2]
-    ;;------------------------------------------------------------------------------------
+    OPLOT,[all_eran_esa[0],all_eran_esa[0]],yran_out,COLOR=200,LINESTYLE=2
+    OPLOT,[all_eran_esa[1],all_eran_esa[1]],yran_out,COLOR=200,LINESTYLE=2
+    OPLOT,[all_eran_sst[0],all_eran_sst[0]],yran_out,COLOR=100,LINESTYLE=3
+    OPLOT,[all_eran_sst[1],all_eran_sst[1]],yran_out,COLOR=100,LINESTYLE=3
     ;;  Output power-laws
-    ;;------------------------------------------------------------------------------------
-    OPLOT,xran_out,fplaw_2,LINESTYLE=lsty[1],THICK=thck[0],COLOR=plw_cols[0]
-    OPLOT,xran_out,fplaw_3,LINESTYLE=lsty[2],THICK=thck[0],COLOR=plw_cols[1]
-    OPLOT,xran_out,fplaw_4,LINESTYLE=lsty[3],THICK=thck[0],COLOR=plw_cols[2]
-    ;;------------------------------------------------------------------------------------
-    ;;  Output EX_LINE
-    ;;------------------------------------------------------------------------------------
-    OPLOT,[extra_line.NVAL[0],extra_line.NVAL[0]],yran_out,COLOR=ecol[2],LINESTYLE=lsty[1],THICK=thck[0]
-    ;;------------------------------------------------------------------------------------
+    OPLOT,xran_out,fplaw_2,LINESTYLE=2,THICK=thck[0],COLOR=plw_cols[0]
+    OPLOT,xran_out,fplaw_3,LINESTYLE=3,THICK=thck[0],COLOR=plw_cols[1]
+    OPLOT,xran_out,fplaw_4,LINESTYLE=4,THICK=thck[0],COLOR=plw_cols[2]
     ;;  Output one-count levels (if desired by user)
-    ;;------------------------------------------------------------------------------------
     IF (log_1c[0]) THEN BEGIN
       ;;  ESA
-      OPLOT,AvgE_para_esa,Av1c_para_esa,COLOR=vec_cols[0],LINESTYLE=lsty[0]
-      OPLOT,AvgE_para_esa,Av1c_perp_esa,COLOR=vec_cols[1],LINESTYLE=lsty[0]
-      OPLOT,AvgE_para_esa,Av1c_anti_esa,COLOR=vec_cols[2],LINESTYLE=lsty[0]
+      OPLOT,AvgE_para_esa,Av1c_para_esa,COLOR=vec_cols[0],LINESTYLE=1
+      OPLOT,AvgE_para_esa,Av1c_perp_esa,COLOR=vec_cols[1],LINESTYLE=1
+      OPLOT,AvgE_para_esa,Av1c_anti_esa,COLOR=vec_cols[2],LINESTYLE=1
       ;;  SST
-      OPLOT,AvgE_para_sst,Av1c_para_sst,COLOR=vec_cols[0],LINESTYLE=lsty[0]
-      OPLOT,AvgE_perp_sst,Av1c_perp_sst,COLOR=vec_cols[1],LINESTYLE=lsty[0]
-      OPLOT,AvgE_anti_sst,Av1c_anti_sst,COLOR=vec_cols[2],LINESTYLE=lsty[0]
+      OPLOT,AvgE_para_sst,Av1c_para_sst,COLOR=vec_cols[0],LINESTYLE=1
+      OPLOT,AvgE_perp_sst,Av1c_perp_sst,COLOR=vec_cols[1],LINESTYLE=1
+      OPLOT,AvgE_anti_sst,Av1c_anti_sst,COLOR=vec_cols[2],LINESTYLE=1
     ENDIF
-    ;;------------------------------------------------------------------------------------
     ;;  Output legend
-    ;;------------------------------------------------------------------------------------
-    XYOUTS,xxloc[0],yyloc[0],vllab[0],COLOR=ecol[0],/DATA,ALIGNMENT=align[0]             ;;  ESA energy range labels
-    XYOUTS,xxloc[1],yyloc[1],vllab[1],COLOR=ecol[1],/DATA,ALIGNMENT=align[0]             ;;  SST energy range labels
-    XYOUTS,xxloc[2],yyloc[2],vllab[2],COLOR=ecol[2],/DATA,ALIGNMENT=align[0]             ;;  EX_LINE label
-    XYOUTS,xposi[0],yposi[0],legends[0],COLOR=vec_cols[0],/NORMAL,ALIGNMENT=align[0]     ;;  Para label
-    XYOUTS,xposi[0],yposi[1],legends[1],COLOR=vec_cols[1],/NORMAL,ALIGNMENT=align[0]     ;;  Perp label
-    XYOUTS,xposi[0],yposi[2],legends[2],COLOR=vec_cols[2],/NORMAL,ALIGNMENT=align[0]     ;;  Anti label
-    XYOUTS,xposi[0],yposi[3],leg_fpl[0],COLOR=plw_cols[0],/NORMAL,ALIGNMENT=align[0]     ;;  f(E) ~ E^(-2) label
-    XYOUTS,xposi[0],yposi[4],leg_fpl[1],COLOR=plw_cols[1],/NORMAL,ALIGNMENT=align[0]     ;;  f(E) ~ E^(-3) label
-    XYOUTS,xposi[0],yposi[5],leg_fpl[2],COLOR=plw_cols[2],/NORMAL,ALIGNMENT=align[0]     ;;  f(E) ~ E^(-4) label
-;  PLOT,AvgE_para_esa,Avgf_para_esa,/NODATA,_EXTRA=pstr
-;    ;;  Plot EESA data
-;    OPLOT,AvgE_para_esa,Avgf_para_esa,COLOR=vec_cols[0],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-;    OPLOT,AvgE_perp_esa,Avgf_perp_esa,COLOR=vec_cols[1],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-;    OPLOT,AvgE_anti_esa,Avgf_anti_esa,COLOR=vec_cols[2],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-;    ;;  Plot SSTe data
-;    OPLOT,AvgE_para_sst,Avgf_para_sst,COLOR=vec_cols[0],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-;    OPLOT,AvgE_perp_sst,Avgf_perp_sst,COLOR=vec_cols[1],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-;    OPLOT,AvgE_anti_sst,Avgf_anti_sst,COLOR=vec_cols[2],PSYM=psym[0],SYMSIZE=symz[0],THICK=thck[0]
-;    ;;  Plot energy range limits
-;    OPLOT,[all_eran_esa[0],all_eran_esa[0]],yran_out,COLOR=200,LINESTYLE=2
-;    OPLOT,[all_eran_esa[1],all_eran_esa[1]],yran_out,COLOR=200,LINESTYLE=2
-;    OPLOT,[all_eran_sst[0],all_eran_sst[0]],yran_out,COLOR=100,LINESTYLE=3
-;    OPLOT,[all_eran_sst[1],all_eran_sst[1]],yran_out,COLOR=100,LINESTYLE=3
-;    ;;  Output power-laws
-;    OPLOT,xran_out,fplaw_2,LINESTYLE=2,THICK=thck[0],COLOR=plw_cols[0]
-;    OPLOT,xran_out,fplaw_3,LINESTYLE=3,THICK=thck[0],COLOR=plw_cols[1]
-;    OPLOT,xran_out,fplaw_4,LINESTYLE=4,THICK=thck[0],COLOR=plw_cols[2]
-;    ;;  Output EX_LINE
-;    OPLOT,[extra_line.NVAL[0],extra_line.NVAL[0]],yran_out,COLOR= 30,LINESTYLE=2,THICK=thck[0]
-;    ;;  Output one-count levels (if desired by user)
-;    IF (log_1c[0]) THEN BEGIN
-;      ;;  ESA
-;      OPLOT,AvgE_para_esa,Av1c_para_esa,COLOR=vec_cols[0],LINESTYLE=1
-;      OPLOT,AvgE_para_esa,Av1c_perp_esa,COLOR=vec_cols[1],LINESTYLE=1
-;      OPLOT,AvgE_para_esa,Av1c_anti_esa,COLOR=vec_cols[2],LINESTYLE=1
-;      ;;  SST
-;      OPLOT,AvgE_para_sst,Av1c_para_sst,COLOR=vec_cols[0],LINESTYLE=1
-;      OPLOT,AvgE_perp_sst,Av1c_perp_sst,COLOR=vec_cols[1],LINESTYLE=1
-;      OPLOT,AvgE_anti_sst,Av1c_anti_sst,COLOR=vec_cols[2],LINESTYLE=1
-;    ENDIF
-;    ;;  Output legend
-;    XYOUTS,xyfacs[0]*all_eran_esa[1],xyfacs[2]*yran_out[1],'ESA',COLOR=200,/DATA,ALIGNMENT=0
-;    XYOUTS,xyfacs[1]*all_eran_sst[0],xyfacs[2]*yran_out[1],'SST',COLOR=100,/DATA,ALIGNMENT=0
-;    XYOUTS,xyfacs[1]*extra_line.NVAL[0],xyfacs[2]*yran_out[1],extra_line.NSTR[0],COLOR= 30,/DATA,ALIGNMENT=0
-;    XYOUTS,xposi[1],yposi[0],legends[0],COLOR=vec_cols[0],/NORMAL,ALIGNMENT=0
-;    XYOUTS,xposi[1],yposi[1],legends[1],COLOR=vec_cols[1],/NORMAL,ALIGNMENT=0
-;    XYOUTS,xposi[1],yposi[2],legends[2],COLOR=vec_cols[2],/NORMAL,ALIGNMENT=0
-;    XYOUTS,xposi[1],yposi[3],leg_fpl[0],COLOR=plw_cols[0],/NORMAL,ALIGNMENT=0
-;    XYOUTS,xposi[1],yposi[4],leg_fpl[1],COLOR=plw_cols[1],/NORMAL,ALIGNMENT=0
-;    XYOUTS,xposi[1],yposi[5],leg_fpl[2],COLOR=plw_cols[2],/NORMAL,ALIGNMENT=0
+    XYOUTS,xyfacs[0]*all_eran_esa[1],xyfacs[2]*yran_out[1],'ESA',COLOR=200,/DATA,ALIGNMENT=0
+    XYOUTS,xyfacs[1]*all_eran_sst[0],xyfacs[2]*yran_out[1],'SST',COLOR=100,/DATA,ALIGNMENT=0
+    XYOUTS,xposi[1],yposi[0],legends[0],COLOR=vec_cols[0],/NORMAL,ALIGNMENT=0
+    XYOUTS,xposi[1],yposi[1],legends[1],COLOR=vec_cols[1],/NORMAL,ALIGNMENT=0
+    XYOUTS,xposi[1],yposi[2],legends[2],COLOR=vec_cols[2],/NORMAL,ALIGNMENT=0
+    XYOUTS,xposi[1],yposi[3],leg_fpl[0],COLOR=plw_cols[0],/NORMAL,ALIGNMENT=0
+    XYOUTS,xposi[1],yposi[4],leg_fpl[1],COLOR=plw_cols[1],/NORMAL,ALIGNMENT=0
+    XYOUTS,xposi[1],yposi[5],leg_fpl[2],COLOR=plw_cols[2],/NORMAL,ALIGNMENT=0
 pclose
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user

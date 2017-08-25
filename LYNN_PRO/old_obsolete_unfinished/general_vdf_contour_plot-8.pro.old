@@ -395,8 +395,7 @@ END
 ;                                      [,V_0Y=v_0y] [,C_LOG=c_log] [,NGRID=ngrid]        $
 ;                                      [,SLICE2D=slice2d] [,CIRCS=circs] [,P_LOG=p_log]  $
 ;                                      [,EX_VECS=ex_vecs] [,EX_INFO=ex_info]             $
-;                                      [,P_TITLE=p_title] [,ONE_C=one_c]                 $
-;                                      [,DAT_OUT=dat_out]
+;                                      [,P_TITLE=p_title] [,DAT_OUT=dat_out]
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -489,10 +488,6 @@ END
 ;                             [Default = FALSE]
 ;               P_TITLE  :  Scalar [string] defining the plot title for the contour plot
 ;                             [Default = 'Contours of constant PSD']
-;               ONE_C    :  [N]-Element [float/double] array defining particle VDF
-;                             one-count level in units of phase space density
-;                             [e.g., # s^(+3) km^(-3) cm^(-3)]
-;                             [Default = FALSE]
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [none of the following have default settings]  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -551,10 +546,6 @@ END
 ;             8)  No longer calls log10_tickmarks.pro,
 ;                   now calls get_power_of_ten_ticks.pro
 ;                                                                  [08/01/2017   v1.1.3]
-;             9)  Added ONE_C keyword and
-;                   now outputs the value of VFRAME to inform the user of the
-;                   currently used reference frame
-;                                                                  [08/24/2017   v1.2.0]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -574,7 +565,7 @@ END
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/24/2017   v1.2.0
+;    LAST MODIFIED:  08/01/2017   v1.1.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -585,7 +576,7 @@ PRO general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=v
                              SM_CONT=sm_cont,NSMCUT=nsmcut,NSMCON=nsmcon,PLANE=plane, $
                              DFMIN=dfmin,DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,   $
                              C_LOG=c_log,NGRID=ngrid,SLICE2D=slice2d,P_LOG=p_log,     $
-                             P_TITLE=p_title,ONE_C=one_c,DAT_OUT=dat_out,             $
+                             P_TITLE=p_title,DAT_OUT=dat_out,                         $
                              CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range,              $
@@ -734,18 +725,10 @@ IF (test[0]) THEN BEGIN
     IF (test[0]) THEN tran_info = ex_info  ;;  correct format --> define new structure(s)
   ENDIF
 ENDIF
-;;  Check ONE_C
-kk             = N_ELEMENTS(df1do)                      ;;  # of phase space density values
-test           = (N_ELEMENTS(one_c) EQ kk[0]) AND is_a_number(one_c,/NOMSSG)
-IF (test[0]) THEN BEGIN
-  onec_on = 1b
-  vdf1c   = REFORM(one_c,kk[0])
-ENDIF ELSE BEGIN
-  onec_on = 0b
-ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Define rotation matrices
 ;;----------------------------------------------------------------------------------------
+kk             = N_ELEMENTS(df1do)                      ;;  # of phase space density values
 ;;  Expand to make [K,3]-element arrays
 v1             = REPLICATE(1d0,kk[0]) # vec1           ;; [K,3]-Element array
 v2             = REPLICATE(1d0,kk[0]) # vec2           ;; [K,3]-Element array
@@ -768,17 +751,10 @@ vtrxyz         = rel_lorentz_trans_3vec(vxyz,vframe)
 ;;----------------------------------------------------------------------------------------
 ;;  Rotate velocities and VDF into new coordinate basis and triangulate
 ;;----------------------------------------------------------------------------------------
-v_xyz          = FLOAT(vtrxyz)
-r_vels         = rotate_and_triangulate_dfs(v_xyz,df1do,rotm,rotz,VLIM=vlim[0],  $
-                                            C_LOG=clog_on[0],NGRID=nm[0],        $
-                                            SLICE2D=slice_on[0]                  )
-IF (onec_on[0]) THEN BEGIN
-  ;;  Compute one-count equivalent
-  v_xyz          = FLOAT(vtrxyz)
-  r_onec         = rotate_and_triangulate_dfs(v_xyz,vdf1c,rotm,rotz,VLIM=vlim[0],  $
-                                              C_LOG=clog_on[0],NGRID=nm[0],        $
-                                              SLICE2D=slice_on[0]                  )
-ENDIF
+;r_vels         = rotate_and_triangulate_dfs(FLOAT(vtrxyz),df1do,rotm,rotz,VLIM=vlim[0],C_LOG=clog_on)
+r_vels         = rotate_and_triangulate_dfs(FLOAT(vtrxyz),df1do,rotm,rotz,VLIM=vlim[0],$
+                                            C_LOG=clog_on[0],NGRID=nm[0],              $
+                                            SLICE2D=slice_on[0]                        )
 ;;----------------------------------------------------------------------------------------
 ;;  Define parameters for contour plots
 ;;----------------------------------------------------------------------------------------
@@ -806,8 +782,6 @@ CASE plane[0] OF
     vxpts    = r_vels.PLANE_XY.VELX_XY
     vypts    = r_vels.PLANE_XY.VELY_XY
     vzpts    = r_vels.PLANE_XY.VELZ_XY
-    ;;  Define one-count equivalent
-    IF (onec_on[0]) THEN df1c = r_onec.PLANE_XY.DF2D_XY
     ;;  Define elements [x,y]
     gels     = [0L,1L]
   END
@@ -826,8 +800,6 @@ CASE plane[0] OF
     vxpts    = r_vels.PLANE_XZ.VELX_XZ
     vypts    = r_vels.PLANE_XZ.VELY_XZ
     vzpts    = r_vels.PLANE_XZ.VELZ_XZ
-    ;;  Define one-count equivalent
-    IF (onec_on[0]) THEN df1c = r_onec.PLANE_XZ.DF2D_XZ
     ;;  Define elements [x,y]
     gels     = [2L,0L]
   END
@@ -846,8 +818,6 @@ CASE plane[0] OF
     vxpts    = r_vels.PLANE_YZ.VELX_YZ
     vypts    = r_vels.PLANE_YZ.VELY_YZ
     vzpts    = r_vels.PLANE_YZ.VELZ_YZ
-    ;;  Define one-count equivalent
-    IF (onec_on[0]) THEN df1c = r_onec.PLANE_YZ.DF2D_YZ
     ;;  define elements [x,y]
     gels     = [0L,1L]
   END
@@ -866,8 +836,6 @@ CASE plane[0] OF
     vxpts    = r_vels.PLANE_XY.VELX_XY
     vypts    = r_vels.PLANE_XY.VELY_XY
     vzpts    = r_vels.PLANE_XY.VELZ_XY
-    ;;  Define one-count equivalent
-    IF (onec_on[0]) THEN df1c = r_onec.PLANE_XY.DF2D_XY
     ;;  Define elements [x,y]
     gels     = [0L,1L]
   END
@@ -884,11 +852,6 @@ hori_crsshair  = cuts_struc.X_XY_COORD*1d-3    ;;  [K,2]-Element array, VAL[*,0]
 vert_crsshair  = cuts_struc.Y_XY_COORD*1d-3
 hori_offset    = v_0x[0]*1d-3                  ;;  horizontal offset of crosshairs
 vert_offset    = v_0y[0]*1d-3                  ;;  vertical offset of crosshairs
-;;  Define one-count equivalent
-IF (onec_on[0]) THEN BEGIN
-  onec_struc     = find_1d_cuts_2d_dist(df1c,vx2d,vy2d,X_0=v_0x,Y_0=v_0y)
-  onec_cpara     = onec_struc.X_1D_FXY         ;;  parallel cut
-ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define the 2D projection of the extra vectors in EX_VECS
 ;;----------------------------------------------------------------------------------------
@@ -956,17 +919,13 @@ IF (tran_on[0]) THEN BEGIN
   b__out_str     = 'Bo       :  '+magf[0]
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;  Format VFRAME output
-;;----------------------------------------------------------------------------------------
-vframe_str     = format_vector_string(vframe,PREC=2)+' [km/s]'
-vframe_out     = 'Vframe    :  '+vframe_str[0]
-;;----------------------------------------------------------------------------------------
 ;;  Define contour levels
 ;;----------------------------------------------------------------------------------------
 df_ran         = dfrao
 IF (clog_on[0]) THEN range = df_ran ELSE range = ALOG10(df_ran) ;;  Make levels evenly spaced in log base-10 space
 log10levs      = DINDGEN(nlev[0])*(range[1] - range[0])/(nlev[0] - 1L) + range[0]
 IF (plog_on[0]) THEN levels = log10levs ELSE levels = 1d1^log10levs ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
+;IF (clog_on[0]) THEN levels = log10levs ELSE levels = 1d1^log10levs ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
 ;;  Define colors for contour levels
 minclr         = 30L
 c_cols         = minclr[0] + LINDGEN(nlev[0])*(250L - minclr[0])/(nlev[0] - 1L)
@@ -980,7 +939,10 @@ ENDIF ELSE BEGIN
 ENDELSE
 ;;  Define Y-axis tick marks for cuts plot
 tick_str       = get_power_of_ten_ticks(yrange)
+;tick_str       = log10_tickmarks(df2d01,RANGE=yrange,/FORCE_RA)
 IF (plog_on[0]) THEN BEGIN
+;IF (clog_on[0]) THEN BEGIN
+;  df2d01         = REFORM(1d1^df2d,N_ELEMENTS(df2d))
   ylog_cut       = 0b
   ymin_cut       = 10
 ENDIF ELSE BEGIN
@@ -990,7 +952,11 @@ ENDELSE
 ;;  Define the tick names, values, and number of ticks
 cut_ytn        = tick_str.XTICKNAME
 cut_yts        = tick_str.XTICKS
+;cut_ytn        = tick_str.TICKNAME
+;cut_yts        = tick_str.TICKS
+;IF (plog_on[0]) THEN cut_ytv = ALOG10(tick_str.TICKV) ELSE cut_ytv = tick_str.TICKV
 IF (plog_on[0]) THEN cut_ytv = ALOG10(tick_str.XTICKV) ELSE cut_ytv = tick_str.XTICKV
+;IF (clog_on[0]) THEN cut_ytv = ALOG10(tick_str.TICKV) ELSE cut_ytv = tick_str.TICKV
 ;;----------------------------------------------------------------------------------------
 ;;  Smooth cuts and contour if desired [typically necessary for ions or noisy data]
 ;;----------------------------------------------------------------------------------------
@@ -999,11 +965,9 @@ IF (test[0]) THEN BEGIN
   ;;  Smooth cuts
   vdf_cut_para0  = SMOOTH(vdf_para_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
   vdf_cut_perp0  = SMOOTH(vdf_perp_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
-  IF (onec_on[0]) THEN onec_cut_par0 = SMOOTH(onec_cpara,nsmcut[0],/NAN,/EDGE_TRUNCATE)
 ENDIF ELSE BEGIN
   vdf_cut_para0  = vdf_para_cut
   vdf_cut_perp0  = vdf_perp_cut
-  IF (onec_on[0]) THEN onec_cut_par0 = onec_cpara
 ENDELSE
 test           = KEYWORD_SET(sm_cont)
 IF (test[0]) THEN BEGIN
@@ -1019,18 +983,17 @@ IF (test[0]) THEN BEGIN
   vdf_cut_para   = ALOG10(vdf_cut_para0)
   vdf_cut_perp   = ALOG10(vdf_cut_perp0)
   cut_yrange     = ALOG10(df_ran)
-  IF (onec_on[0]) THEN onec_cut_para = ALOG10(onec_cut_par0)
 ENDIF ELSE BEGIN
   df2ds          = df2ds0
   vdf_cut_para   = vdf_cut_para0
   vdf_cut_perp   = vdf_cut_perp0
   cut_yrange     = df_ran
-  IF (onec_on[0]) THEN onec_cut_para = onec_cut_par0
 ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Define plot limits structures for contour and cuts plots
 ;;----------------------------------------------------------------------------------------
 con_xyran      = [-1d0,1d0]*vlim[0]*1d-3     ;;  km  -->  Mm  [just looks better when plotted]
+;con_pttl       = 'Contours of constant PSD'  ;;  *** change later ***
 ;;  Contour plot setup structure
 base_lim_cn    = {XRANGE:con_xyran,XSTYLE:1,XLOG:0,XMINOR:10, $
                   YRANGE:con_xyran,YSTYLE:1,YLOG:0,YMINOR:10, $
@@ -1113,15 +1076,6 @@ PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=base_lim_ct
   xyposi[1] *= 0.7
   XYOUTS,xyposi[0],xyposi[1],'Perp. Cut',/DATA,COLOR= 50
   ;;--------------------------------------------------------------------------------------
-  ;;  Plot 1-Count Level if desired
-  ;;--------------------------------------------------------------------------------------
-  IF (onec_on[0]) THEN BEGIN
-    OPLOT,vpara_cut,onec_cut_para,COLOR=150,LINESTYLE=4
-    ;;  Shift in negative Y-Direction
-    xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],'One-Count',/DATA,COLOR=150
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
   ;;  Output vertical lines for Max/Min values of CIRCS
   ;;--------------------------------------------------------------------------------------
   IF (circs_on[0]) THEN BEGIN
@@ -1130,13 +1084,6 @@ PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=base_lim_ct
       OPLOT,[vc_xx[j],vc_xx[j]],df_ran,LINESTYLE=2,THICK=l_thick[0]
     ENDFOR
   ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Output VFRAME setting
-;;----------------------------------------------------------------------------------------
-chsz           = 0.80
-yposi          = 0.20
-xposi          = 0.76
-XYOUTS,xposi[0],yposi[0],vframe_out[0],/NORMAL,ORIENTATION=90,CHARSIZE=chsz[0],COLOR=30
 ;;----------------------------------------------------------------------------------------
 ;;  Output EX_INFO if present
 ;;----------------------------------------------------------------------------------------

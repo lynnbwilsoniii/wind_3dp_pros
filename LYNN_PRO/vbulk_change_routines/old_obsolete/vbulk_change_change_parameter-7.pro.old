@@ -124,10 +124,6 @@
 ;                                for the M VDFs in DATA
 ;               ALL_PTTLS   :  [M]-Element [string] array defining all the plot titles
 ;                                for the M VDFs in DATA
-;               ***  INPUT --> Contour Plot  ***
-;               ONEC_ARR    :  [M]-Element [structure] array containing particle VDFs
-;                                of the same format as DATA but for the one-count levels
-;                                [Default = FALSE]
 ;               ***  OUTPUT  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [all the following changed on output]  ***
@@ -155,13 +151,6 @@
 ;                                                                   [08/01/2017   v1.0.1]
 ;             7)  Fixed an issue when user does not want to use the new value of VFRAME
 ;                                                                   [08/12/2017   v1.0.2]
-;             8)  Fixed an issue when user hits enter resulting in an undefined output
-;                                                                   [08/22/2017   v1.0.3]
-;             9)  Forgot to update PLOT_STR scales
-;                                                                   [08/23/2017   v1.0.4]
-;            10)  Added keyword ONEC_ARR and
-;                   now sends one-count level information to plotting routines
-;                                                                   [08/24/2017   v1.1.0]
 ;
 ;   NOTES:      
 ;               0)  User should not directly call this routine
@@ -174,7 +163,7 @@
 ;   ADAPTED FROM:  beam_fit_change_parameter.pro [UMN 3DP library, beam fitting routines]
 ;   CREATED:  07/24/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/24/2017   v1.1.0
+;    LAST MODIFIED:  08/12/2017   v1.0.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -187,7 +176,6 @@ PRO vbulk_change_change_parameter,data,                                         
                                       VCIRC=vcirc,                                   $  ;;  ***  INPUT --> Circles for Contour Plot  ***
                                       EX_VECN=ex_vecn,                               $  ;;  ***  INPUT --> Extras for Contour Plot  ***
                                       ALL_FPREFS=all_fprefs,ALL_PTTLS=all_pttls,     $  ;;  ***  INPUT --> File and Plot Info  ***
-                                      ONEC_ARR=onec_arr,                             $  ;;  ***  INPUT --> Extras for Cut Plot  ***
                                       READ_OUT=read_out,DAT_PLOT=dat_plot               ;;  ***  OUTPUT  ***
 
 ;;----------------------------------------------------------------------------------------
@@ -204,14 +192,6 @@ xz_suff        = xyzvecf[0]+'_vs_'+xyzvecf[2]+'_'
 yz_suff        = xyzvecf[2]+'_vs_'+xyzvecf[1]+'_'
 ;;  Default window numbers
 def_winn       = [4L,5L,6L]
-;;  ***************************************************
-;;  The following are from general_vdf_contour_plot.pro
-;;  ***************************************************
-;;  Position of contour plot [square]
-;;                   Xo    Yo    X1    Y1
-pos_0con       = [0.22941,0.515,0.77059,0.915]
-;;  Position of 1st DF cuts [square]
-pos_0cut       = [0.22941,0.050,0.77059,0.450]
 ;;----------------------------------------------------------------------------------------
 ;;  Check input
 ;;----------------------------------------------------------------------------------------
@@ -319,12 +299,6 @@ ENDIF ELSE BEGIN
     ENDELSE
   ENDELSE
 ENDELSE
-;;  Check ONEC_ARR
-test           = (N_ELEMENTS(onec_arr) EQ ndat[0]) AND (SIZE(onec_arr,/TYPE) EQ 8)
-IF (test[0]) THEN vdf_1c = onec_arr ELSE vdf_1c = 0b
-;;  Check ONEC_ARR structure format
-test           = vbulk_change_test_vdf_str_form(vdf_1c[0])
-IF (test[0]) THEN onec_on = 1b ELSE onec_on = 0b
 ;;  Check DAT_PLOT
 test           = (SIZE(dat_plot,/TYPE) NE 8)
 IF (test[0]) THEN BEGIN
@@ -339,7 +313,6 @@ ENDIF ELSE BEGIN
     dat_orig = dat_plot[0]
   ENDELSE
 ENDELSE
-IF (onec_on[0]) THEN one_c = vdf_1c[ind0[0]].VDF ELSE one_c = 0b
 ;;  Define EX_INFO for plotting
 ex_info        = ex_infoa[ind0]
 ;;  Define VDF params for plotting
@@ -413,30 +386,6 @@ WHILE (true) DO BEGIN
   dumb           = TEMPORARY(projxy)
   dumb           = TEMPORARY(defined)
   ;;--------------------------------------------------------------------------------------
-  ;;  Update PLOT_STR values (i.e., define proper scale factors)
-  ;;--------------------------------------------------------------------------------------
-  vlim           = struct_value(cont_str,'vlim',INDEX=dind)
-  IF (dind[0] LT 0) THEN vlim = def_contstr.VLIM
-  xyran          = [-1d0,1d0]*vlim[0]*1d-3     ;;  km  -->  Mm  [just looks better when plotted]
-  ;;  Define ∆X_d and ∆Y_d
-  delta_xd       = MAX(xyran,/NAN) - MIN(xyran,/NAN)
-  delta_yd       = delta_xd
-  ;;  Define ∆X_n and ∆Y_n
-  x_n            = pos_0con[[0,2]]
-  y_n            = pos_0con[[1,3]]
-  delta_xn       = x_n[1] - x_n[0]
-  delta_yn       = y_n[1] - y_n[0]
-  ;;  Define scale factors, e.g.,  S_1x = (∆X_n/∆X_d) and S_0x = X_n1 - (∆X_n/∆X_d)*X_d1
-  sc_1x          = ABS(delta_xn[0]/delta_xd[0])
-  sc_0x          = x_n[1] - sc_1x[0]*xyran[1]
-  sc_1y          = ABS(delta_yn[0]/delta_yd[0])
-  sc_0y          = y_n[1] - sc_1y[0]*xyran[1]
-  sc_x           = DOUBLE([sc_0x[0],sc_1x[0]])
-  sc_y           = DOUBLE([sc_0y[0],sc_1y[0]])
-  ;;  Update [X,Y]SCALE tags
-  str_element,plot_str,'XSCALE',sc_x,/ADD_REPLACE
-  str_element,plot_str,'YSCALE',sc_y,/ADD_REPLACE
-  ;;--------------------------------------------------------------------------------------
   ;;  Update plots not in focus
   ;;--------------------------------------------------------------------------------------
   struc1         = vbulk_change_get_fname_ptitle(dat,all_fprefs,all_pttls,INDEX=ind0,CONT_STR=copy1)
@@ -446,7 +395,7 @@ WHILE (true) DO BEGIN
   FOR k=0L, 1L DO BEGIN
     WSET,exwin[k]
     general_vdf_contour_plot,vdf,velxyz,_EXTRA=copystrs.(k),CIRCS=circ_str,EX_VECS=ex_vecs, $
-                             EX_INFO=ex_info,/SLICE2D,P_TITLE=pttles[k],ONE_C=one_c
+                             EX_INFO=ex_info,/SLICE2D,P_TITLE=pttles[k]
   ENDFOR
   ;;--------------------------------------------------------------------------------------
   ;;  Plot original DF
@@ -454,7 +403,7 @@ WHILE (true) DO BEGIN
   WSET,windn[0]
   WSHOW,windn[0]
   general_vdf_contour_plot,vdf,velxyz,_EXTRA=cont_str,CIRCS=circ_str,EX_VECS=ex_vecs,     $
-                           EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0],ONE_C=one_c
+                           EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0]
   ;;--------------------------------------------------------------------------------------
   ;;  Check if user wants to change any of the plot ranges
   ;;--------------------------------------------------------------------------------------
@@ -497,7 +446,6 @@ WHILE (true) DO BEGIN
       dumb           = TEMPORARY(defined)
       dumb           = TEMPORARY(old_value)
     ENDIF
-    IF (N_ELEMENTS(name_out) EQ 0) THEN name_out = ''        ;;  Make sure it's defined
     ;;------------------------------------------------------------------------------------
     ;; determine which variable user changed
     ;;------------------------------------------------------------------------------------
@@ -633,7 +581,7 @@ WHILE (true) DO BEGIN
     FOR k=0L, 1L DO BEGIN
       WSET,exwin[k]
       general_vdf_contour_plot,vdf,velxyz,_EXTRA=copystrs.(k),CIRCS=circ_str,EX_VECS=ex_vecs, $
-                               EX_INFO=ex_info,/SLICE2D,P_TITLE=pttles[k],ONE_C=one_c
+                               EX_INFO=ex_info,/SLICE2D,P_TITLE=pttles[k]
     ENDFOR
     ;;------------------------------------------------------------------------------------
     ;;  Replot and see if user likes changes
@@ -641,7 +589,7 @@ WHILE (true) DO BEGIN
     WSET,windn[0]
     WSHOW,windn[0]
     general_vdf_contour_plot,vdf,velxyz,_EXTRA=copy_str,CIRCS=circ_str,EX_VECS=ex_vecs,     $
-                             EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0],ONE_C=one_c
+                             EX_INFO=ex_info,/SLICE2D,P_TITLE=plot_title[0]
     ;;------------------------------------------------------------------------------------
     ;; Check if user likes this setting
     ;;------------------------------------------------------------------------------------
@@ -803,8 +751,6 @@ JUMP_END:
 dat_plot       = dat_orig[0]
 ;;  Update CONT_STR
 cont_str0      = cont_str[0]
-;;  Update PLOT_STR
-plot_str0      = plot_str[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

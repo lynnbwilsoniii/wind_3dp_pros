@@ -119,12 +119,6 @@
 ;                                                                   [07/28/2017   v1.0.0]
 ;             4)  Continued to write routine
 ;                                                                   [07/31/2017   v1.0.0]
-;             5)  Routine now uses the bulk flow velocity taken from the input DATA
-;                   VSW or VELOCITY tag vectors for each index as the initial guess for
-;                   the VFRAME vector in CONT_STR
-;                                                                   [08/10/2017   v1.0.1]
-;             6)  Now calculates one-count levels and sends to plotting wrapper
-;                                                                   [08/24/2017   v1.1.0]
 ;
 ;   TO DO LIST: 
 ;               *****************************************************
@@ -197,7 +191,7 @@
 ;   ADAPTED FROM:  wrapper_beam_fit_array.pro [UMN 3DP library, beam fitting routines]
 ;   CREATED:  07/25/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/24/2017   v1.1.0
+;    LAST MODIFIED:  07/31/2017   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -330,15 +324,9 @@ file_prefs     = t_pref[0]+ftimes+'_'       ;; e.g., 'THEMIS-C_IESA_Burst_1998-0
 ;;                   element of VDF
 ;;                   [km/s]
 vdfarr         = REPLICATE(dumb[0],ndat[0])
-vdf_1c         = REPLICATE(dumb[0],ndat[0])
 FOR j=1L, ndat[0] - 1L DO BEGIN
   dumb           = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(dat[j])
   vdfarr[j]      = dumb[0]
-  ;;  Compute one-count level equivalent
-  dat1           = dat[j]
-  dat1[0].DATA   = 1e0
-  dumb           = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(dat1[0])
-  vdf_1c[j]      = dumb[0]
 ENDFOR
 ;;-----------------------------------------------------
 ;;  Define VDF_INFO structures with the following tags:
@@ -524,9 +512,7 @@ vbulk_change_keywords_init,vdfarr,SAVE_DIR=sav_dir[0],FILE_PREF=filepref[0],    
                                   PLOT_STR=plot_str,CONT_STR=cont_str,               $
                                   DFRA_IN=dfra_in
 ;;  Define output version of CONT_STR
-contstr0       = cont_str[0]
-vframe0        = REFORM(contstr0[0].VFRAME)
-cont_out       = REPLICATE(contstr0[0],ndat[0])
+cont_out       = REPLICATE(cont_str[0],ndat[0])
 ;;----------------------------------------------------------------------------------------
 ;;  Start Loop
 ;;----------------------------------------------------------------------------------------
@@ -542,14 +528,6 @@ WHILE (true[0]) DO BEGIN
   ;;  set file name variables
   ind0           = index[0]
   ;;--------------------------------------------------------------------------------------
-  ;;  Update VFRAME in CONT_STR using the VDF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Check if user already altered VFRAME for this index (e.g., last setting was 'prev')
-  diff           = FLOAT(ABS(REFORM(cont_out[ind0[0]].VFRAME) - vframe0))
-  test           = (TOTAL(diff) GT 1e-6)         ;;  TRUE --> user altered VFRAME for this index
-  IF (test[0]) THEN vframe = REFORM(cont_out[ind0[0]].VFRAME) ELSE vframe = vdf_info[ind0[0]].VSW
-  str_element,cont_str,'VFRAME',vframe,/ADD_REPLACE
-  ;;--------------------------------------------------------------------------------------
   ;; Plot and alter dynamically
   ;;--------------------------------------------------------------------------------------
   ;;  vbulk_change_vdf_plot_wrapper.pro
@@ -558,7 +536,7 @@ WHILE (true[0]) DO BEGIN
                                        EX_VECN=ex_vecs,VCIRC=circ_str,ALL_PTTLS=pttl_all,  $
                                        ALL_FPREFS=file_prefs,                              $
                                        DATA_OUT=data_out,READ_OUT=read_out,                $
-                                       PS_FNAME=ps_fname,ONEC_ARR=vdf_1c
+                                       PS_FNAME=ps_fname
   ;;--------------------------------------------------------------------------------------
   ;;  Check if user quit
   ;;--------------------------------------------------------------------------------------
