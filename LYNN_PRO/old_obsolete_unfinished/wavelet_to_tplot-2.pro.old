@@ -33,13 +33,6 @@
 ;                                 which to apply the transform
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               wavelet_to_tplot, tt, dd [,ORDER=order] [,DSCALE=dscale] [,NSCALE=nscale] $
-;                                [,START_SCALE=sscale] [,NEW_NAME=new_name]               $
-;                                [,KILL_CONE=kill_cone] [,SIGNIF=signif] [,PERIOD=period] $
-;                                [,FFT_THEOR=fft_theor] [,MOTHER=mother] [,SCALES=scales] $
-;                                [,CONE=cone] [,CONF_95LEV=conf_95lev]
-;
 ;               nscet = '1998/08/26 06:40:26.120 UT'
 ;               ntime = STRMID(nscet,0,4)+'-'+STRMID(nscet,5,2)+'-'+STRMID(nscet,8,2)+ $
 ;                       '_'+STRMID(nscet,11,2)+STRMID(nscet,14,2)
@@ -136,10 +129,6 @@
 ;                                                                   [10/22/2015   v1.2.0]
 ;            14)  Fixed a typo in calling of sample_rate.pro
 ;                                                                   [10/23/2015   v1.2.1]
-;            15)  Updated Man. page, cleaned up routine, and added error handling
-;                                                                   [10/18/2017   v1.3.0]
-;            16)  Fixed a typo
-;                                                                   [10/19/2017   v1.3.1]
 ;
 ;   NOTES:      
 ;             1)  It's probably wise to set the KILL_CONE to avoid analysis based upon
@@ -179,7 +168,7 @@
 ;
 ;   CREATED:  08/12/2009
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  10/19/2017   v1.3.1
+;    LAST MODIFIED:  10/23/2015   v1.2.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -197,35 +186,13 @@ FORWARD_FUNCTION sample_rate, is_a_number, wavelet, wave_signif, tnames
 ;;----------------------------------------------------------------------------------------
 f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
-;;  Dummy error messages
-no_inpt_msg    = 'User must supply an [N]-element array of time stamps and data values...'
-badvfor_msg    = 'Incorrect input format:  TT and DD must both be [N]-element [numeric] arrays'
-;;----------------------------------------------------------------------------------------
-;;  Check input
-;;----------------------------------------------------------------------------------------
-test           = (N_PARAMS() LT 2) OR (is_a_number(tt,/NOMSSG) EQ 0) OR  $
-                 (is_a_number(dd,/NOMSSG) EQ 0)
-IF (test[0]) THEN BEGIN
-  MESSAGE,no_inpt_msg,/INFORMATIONAL,/CONTINUE
-  RETURN
-ENDIF
-times          = REFORM(tt)
-nsams          = N_ELEMENTS(times)
-data           = REFORM(dd)
-test           = (N_ELEMENTS(data) NE nsams[0]) OR (SIZE(data,/N_DIMENSIONS) NE 1) OR $
-                 (SIZE(times,/N_DIMENSIONS) NE 1)
-IF (test[0]) THEN BEGIN
-  MESSAGE,badvfor_msg,/INFORMATIONAL,/CONTINUE
-  RETURN
-ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Remove NaNs or non-finite values, if present (i.e., set to zero)
-;;----------------------------------------------------------------------------------------
-bad_nan        = WHERE(FINITE(data) EQ 0,bd_nan,COMPLEMENT=goodnan,NCOMPLEMENT=gd_nan)
-IF (bd_nan[0] GT 0) THEN data[bad_nan] = 0
 ;;----------------------------------------------------------------------------------------
 ;;  Define sample rate and period
 ;;----------------------------------------------------------------------------------------
+nsams          = N_ELEMENTS(REFORM(tt))
+times          = REFORM(tt)
+data           = REFORM(dd)
+
 ;;  Determine sample rate [samples per unit time]
 s_rate         = sample_rate(times,GAP_THRESH=1d0,/AVE,OUT_MED_AVG=sr_medavg)
 s_period       = 1d0/s_rate[0]                           ;;  Sample Period [unit time]
@@ -257,12 +224,22 @@ IF (test[0]) THEN order_off = 1b ELSE order_off = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Define optional parameters
 ;;----------------------------------------------------------------------------------------
+;IF NOT KEYWORD_SET(dscale) THEN dd0 = 0.125 ELSE dd0 = dscale[0]
+;IF NOT KEYWORD_SET(sscale) THEN ss0 = 2*sample_period ELSE ss0 = sscale[0]
+;IF KEYWORD_SET(nscale) THEN BEGIN
+;  jscale = nscale[0] - 1L
+;ENDIF ELSE BEGIN
+;  jscale = (ALOG10(nsams/2)/ ALOG10(2))/dd0
+;ENDELSE
+
 ;;  Determine mother wavelet function to use
+;IF NOT KEYWORD_SET(mother) THEN mother = 'Morlet'
 CASE STRLOWCASE(mother) OF
   'morlet' : BEGIN
     mother  = 'Morlet'
     wavefun = 'wavelet'
     IF (order_off[0]) THEN order = 6
+;    IF NOT KEYWORD_SET(order) THEN order = 6
     CASE order[0] OF
       6    : kk0 = 6
       24   : kk0 = 24
@@ -273,11 +250,13 @@ CASE STRLOWCASE(mother) OF
   'paul'   : BEGIN
     mother  = 'Paul'
     IF (order_off[0]) THEN kk0 = 4 ELSE kk0 = FIX(order[0])
+;    kk0     = 4
     wavefun = 'wavelet'
   END
   'dog'    : BEGIN
     mother  = 'DOG'
     IF (order_off[0]) THEN kk0 = 2 ELSE kk0 = FIX(order[0])
+;    kk0     = 2
     wavefun = 'wavelet'
   END
   ELSE     : BEGIN
@@ -290,12 +269,16 @@ ENDCASE
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate Morlet wavelet
 ;;----------------------------------------------------------------------------------------
+;test_wavelet   = CALL_FUNCTION(wavefun,data,sample_period,S0=ss0,DJ=dd0,J=jscale,/PAD, $
+;                               PERIOD=period,SCALE=scales,PARAM=kk0,MOTHER=mother,     $
+;                               COI=cone,SIGNIF=signif,FFT_THEOR=fft_theor)
 test_wavelet   = CALL_FUNCTION(wavefun,data,s_period[0],S0=ss0,DJ=dd0,J=jscale,/PAD, $
                                PERIOD=period,SCALE=scales,PARAM=kk0,MOTHER=mother,     $
                                COI=cone,SIGNIF=signif,FFT_THEOR=fft_theor)
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate wavelet power spectrum
 ;;----------------------------------------------------------------------------------------
+;IF NOT KEYWORD_SET(new_name) THEN new_name = 'wavelet_power_spec'
 wv_power       = ABS(test_wavelet)^2      ;;  wavelet power spectrum [Eq. 4 squared]
 wv_freqs       = REPLICATE(1d0,nsams) # 1d0/period
 ;;  Check if NEW_NAME is already a defined TPLOT handle
@@ -315,8 +298,10 @@ gcone          = WHERE(cone GT 0d0,gco)
 IF (gco GT 0) THEN BEGIN
   gfrqs = 1d0/cone[gcone]
   ylow  = MIN(gfrqs,/NAN)
+;  yra   = [MIN(gfrqs,/NAN),sample_rate/2d0]
 ENDIF ELSE BEGIN
   ylow  = MIN(freq_bins,/NAN)
+;  yra   = [MIN(freq_bins,/NAN),sample_rate/2d0]
 ENDELSE
 yra            = [ylow[0],s_rate[0]/2d0]
 ;;----------------------------------------------------------------------------------------
@@ -346,19 +331,17 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 num_scl        = N_ELEMENTS(scales)
 chitest        = wave_signif(data,s_period[0],scales,0)         ;;  Chi-Squared Test
+;chitest        = wave_signif(data,sample_period,scales,0)         ;;  Chi-Squared Test
 siglevl        = REBIN(TRANSPOSE(chitest),nsams,num_scl)
 conf_95lev     = wv_power/siglevl
 ;;  Normalize wavelet power spectrum to get physical units [units^2/Hz]
 wv_power      *= (2d0/(SQRT(!DPI)*s_rate[0]))
-;;----------------------------------------------------------------------------------------
-;;  Re-NaN values, if present (i.e., set to zero)
-;;----------------------------------------------------------------------------------------
-IF (bd_nan[0] GT 0) THEN wv_power[bad_nan,*] = f
+;wv_power      *= (2d0/(SQRT(!DPI)*sample_rate[0]))
 ;;----------------------------------------------------------------------------------------
 ;;  Send to TPLOT
 ;;----------------------------------------------------------------------------------------
 ;;  --> Wavelet transform
-yttl           = 'Frequency [Hz]'
+yttl           = 'Frequency (Hz)'
 zttl           = 'Wavelet Power'
 zticks         = 3L
 def_dlim       = {YLOG:1,ZLOG:1,YRANGE:yra,YTITLE:yttl,ZTITLE:zttl,ZTICKS:zticks}
@@ -376,6 +359,24 @@ options,op_names,YLOG=1,YRANGE=yra,/DEF
 ;;  Set default plot options
 nnw            = tnames([new_name,op_names])
 options,nnw,YSTYLE=1,PANEL_SIZE=2.0,XMINOR=5,XTICKLEN=0.04
+;lim1           = {YLOG:1,ZLOG:1,YSTYLE:1,PANEL_SIZE:2,XMINOR:5,XTICKLEN:0.04,YRANGE:yra,$
+;                  YTITLE:yttl,ZTITLE:zttl,ZTICKS:zticks,ZSTYLE:1}
+;store_data,new_name,DATA={X:times,Y:wv_power,V:wv_freqs,SPEC:1},LIMIT=lim1
+;op_names       = new_name+'_Conf_Level_95'
+;store_data,op_names,DATA={X:times,Y:conf_95lev,V:1d0/period,SPEC:1}
+;options,op_names,'LEVEL',1.0
+;options,op_names,'C_ANNOTATION','95%'
+;options,op_names,'ZRANGE',[5e-1,1e0]
+;options,op_names,'YTITLE','95% Confidence Level'+'!C'+'(anything > 1.0)'
+;store_data,new_name+'_Cone_of_Influence',DATA={X:times,Y:1d0/cone}
+;op_names       = [new_name+'_Conf_Level_95',new_name+'_Cone_of_Influence']
+;options,op_names,'YLOG',1
+;options,op_names,'YRANGE',yra
+;nnw            = tnames([new_name,op_names])
+;options,nnw,"YSTYLE",1
+;options,nnw,"PANEL_SIZE",2.
+;options,nnw,'XMINOR',5
+;options,nnw,'XTICKLEN',0.04
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

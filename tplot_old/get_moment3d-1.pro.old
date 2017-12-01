@@ -1,17 +1,13 @@
 ;+
 ;*****************************************************************************************
 ;
-;  PROCEDURE:   get_moment3d.pro
+;  FUNCTION :    get_moment3d.pro
 ;  PURPOSE  :    Calculates 3D particle moments for a given time range and returns data
 ;                  to TPLOT for later use.  This program only calculates up through
 ;                  the pressure tensor (2nd moment), but if you want through the 4th
 ;                  moment (R-Tensor), use mom3d.pro.
 ;
-;  CALLED BY:   
-;               NA
-;
-;  INCLUDES:
-;               NA
+;  CALLED BY:   NA
 ;
 ;  CALLS:
 ;               get_??.pro  [?? = el, pl, ehb, etc.]
@@ -25,25 +21,16 @@
 ;               xyz_to_polar.pro
 ;               store_data.pro
 ;
-;  REQUIRES:    
-;               1)  UMN Modified Wind/3DP IDL Libraries
+;  REQUIRES:    Moments in 3DP libraries
 ;
 ;  INPUT:
-;               GET_DAT    :  Scalar [string] defining the 3DP detector from which to
-;                               get data [e.g., 'el' for EESA Low]
+;               GET_DAT    :  A 3d data structure such as those gotten from 
+;                               get_el,get_pl,etc.
 ;
-;  EXAMPLES:    
-;               [calling sequence]
-;               get_moment3d,get_dat [,ERANGE=erange] [,NAME=name] [,TRANGE=trange]     $
-;                                    [,DENS_NAME=dens_name] [,BKG=bkg]                  $
-;                                    [,POT_NAME=pot_name] [,MAG_NAME=mag_name]          $
-;                                    [,BINS=bins] [,EESALOW=eesalow] [,PROTONS=protons] $
-;                                    [,ALPHAS=alphas] [,DATA=data] [,HEATF=heatf]
-;
-;               ;;  Example
+;  EXAMPLES:
 ;               get_moment3d,'plb',NAME='plb',TRANGE=tr3,MAG_NAME='wi_B3(GSE)'
 ;
-;  KEYWORDS:    
+;  KEYWORDS:  
 ;               ERANGE     :  Set to a 2-element array specifying the energy bins to use
 ;                               when calculating the particle moments
 ;               NAME       :  Set to a string defining the type of data (e.g. 'el')
@@ -67,32 +54,18 @@
 ;                               of 3D data structures containing the moments
 ;               HEATF      :  If set, program calculates the heat flux for each moment
 ;
-;   CHANGED:  1)  Davin Larson created
-;                                                                   [??/??/????   v1.0.0]
-;             2)  Added keyword HEATF
-;                                                                   [09/14/2008   v1.0.1]
-;             3)  Updated man page
-;                                                                   [02/08/2009   v1.0.2]
-;             2)  Changed functions called
-;                                                                   [02/08/2009   v2.0.0]
-;             4)  Did some minor "clean up"
-;                                                                   [03/20/2009   v2.0.1]
-;             5)  Updated man page
-;                                                                   [06/17/2009   v2.1.0]
+;   CHANGED:  1)  Davin Larson created                     [??/??/????   v1.0.0]
+;             2)  Added keyword HEATF                      [09/14/2008   v1.0.1]
+;             3)  Updated man page                         [02/08/2009   v1.0.2]
+;             2)  Changed functions called                 [02/08/2009   v2.0.0]
+;             4)  Did some minor "clean up"                [03/20/2009   v2.0.1]
+;             5)  Updated man page                         [06/17/2009   v2.1.0]
 ;             6)  Changed program my_3dp_str_call_2.pro to get_3dp_structs.pro
-;                                                                   [09/24/2009   v2.2.0]
-;             7)  Fixed an indexing bug and cleaned up
-;                                                                   [09/26/2017   v2.2.1]
-;
-;   NOTES:      
-;               NA
-;
-;  REFERENCES:  
-;               NA
+;                                                          [09/24/2009   v2.2.0]
 ;
 ;   CREATED:  ??/??/????
 ;   CREATED BY:  Davin Larson
-;    LAST MODIFIED:  09/26/2017   v2.2.1
+;    LAST MODIFIED:  09/24/2009   v2.2.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -113,32 +86,31 @@ PRO get_moment3d,   get_dat,              $
                     DATA      = ds,       $
                     HEATF     = qf
 
-;;****************************************************************************************
-ex_start       = SYSTIME(1)
-;;****************************************************************************************
-f              = !VALUES.F_NAN
-ions           = KEYWORD_SET(protons) OR KEYWORD_SET(alphas)
+;*****************************************************************************************
+ex_start = SYSTIME(1)
+;*****************************************************************************************
+f    = !VALUES.F_NAN
+ions = KEYWORD_SET(protons) OR KEYWORD_SET(alphas)
 IF KEYWORD_SET(eesalow) THEN BEGIN
   IF NOT KEYWORD_SET(get_dat) THEN get_dat = 'el'
 ENDIF
 IF (ions AND NOT KEYWORD_SET(name)) THEN  get_dat = 'pl'
 
-time           = CALL_FUNCTION('get_'+get_dat[0],/TIMES)
-start_index    = 0L
-;;----------------------------------------------------------------------------------------
-;;  Check keywords
-;;----------------------------------------------------------------------------------------
+time = CALL_FUNCTION('get_'+get_dat,/TIMES)
+start_index = 0l
 IF KEYWORD_SET(trange) THEN BEGIN
   tr = minmax(trange)
   w  = WHERE(time GE tr[0] AND time LE tr[1],c)
-  IF (c[0] GT 0) THEN time = time[w]
+  IF (c GT 0) THEN time = time[w]
   start_index = w[0]
 ENDIF
-mx             = N_ELEMENTS(time)
+mx = N_ELEMENTS(time)
+
 IF NOT KEYWORD_SET(time) THEN BEGIN
-  PRINT,"No data for ",get_dat[0]
+  PRINT,"No data for ",get_dat
   RETURN
 ENDIF
+
 IF KEYWORD_SET(eesalow) THEN BEGIN 
   IF KEYWORD_SET(dens_name) THEN dens = data_cut(dens_name,time)
   IF KEYWORD_SET(pot_name) THEN  pot  = data_cut(pot_name,time)
@@ -148,48 +120,49 @@ ENDIF
 
 IF (KEYWORD_SET(alphas) AND NOT KEYWORD_SET(name))  THEN name = 'am'
 IF (KEYWORD_SET(protons) AND NOT KEYWORD_SET(name)) THEN name = 'pm'
-;;----------------------------------------------------------------------------------------
-;;  Get an empty data structure template
-;;----------------------------------------------------------------------------------------
-str_format     = moments_3d()
+;*****************************************************************************************
+; -Get an empty data structure template
+;*****************************************************************************************
+str_format = moments_3d()
 IF KEYWORD_SET(alphas) OR KEYWORD_SET(protons) THEN $
   str_element,str_format,'MXB',0,/ADD_REPLACE
+
 IF KEYWORD_SET(qf) THEN BEGIN
   str_element,str_format,'QVEC',REPLICATE(f,3),/ADD_REPLACE
 ENDIF
+
 IF NOT KEYWORD_SET(mag_name) THEN mag_name = 'wi_B3(GSE)'
-magf           = data_cut(mag_name,time)
+
+magf = data_cut(mag_name,time)
 IF NOT KEYWORD_SET(magf) THEN BEGIN
-  magf = REPLICATE(f,mx,3)
-  MESSAGE,/INFORMATION,'No Magnetic field data!'
+   magf = REPLICATE(f,mx,3)
+   MESSAGE,/INFO,'No Magnetic field data!'
 ENDIF
-ds             = REPLICATE(str_format[0],mx[0])
-;;----------------------------------------------------------------------------------------
-;;  Get 3D data structures
-;;----------------------------------------------------------------------------------------
-tdats          = get_3dp_structs(get_dat,TRANGE=trange)
-tdat           = tdats.DATA
-times          = tdats.TIMES
-mynn           = N_ELEMENTS(tdat) < mx[0]
-;;----------------------------------------------------------------------------------------
-;;  Add B-field data to each structure
-;;----------------------------------------------------------------------------------------
-add_magf2,tdat,mag_name[0]
-;;----------------------------------------------------------------------------------------
-;;  Calc 3D moments from data structures
-;;----------------------------------------------------------------------------------------
-FOR n=0L, mynn[0] - 1L DO BEGIN
+ds = REPLICATE(str_format,mx)
+;*****************************************************************************************
+; -Get 3D data structures
+;*****************************************************************************************
+tdats = get_3dp_structs(get_dat,TRANGE=trange)
+tdat  = tdats.DATA
+times = tdats.TIMES
+mynn  = N_ELEMENTS(tdat)
+;*****************************************************************************************
+; -Get B-field data for each structure
+;*****************************************************************************************
+add_magf2,tdat,mag_name
+;*****************************************************************************************
+; -Calc 3D moments from data structures
+;*****************************************************************************************
+FOR n=0L,mynn-1L DO BEGIN
     dat = tdat[n]
-    IF dat[0].VALID[0] THEN BEGIN
-      IF ions[0] THEN BEGIN
-        todat = TOTAL(dat.data,2)
+    IF dat.valid THEN BEGIN
+      IF ions THEN BEGIN
+        todat = total(dat.data,2)
         mx    = MAX(todat,mxb)
-        IF KEYWORD_SET(protons) THEN er = [mxb[0] - 3L,13L] ELSE er = [0L,mxb[0] - 4L]
-        IF KEYWORD_SET(alphas) THEN BEGIN
-          dat.ENERGY *= 2e0
-          dat.MASS   *= 4e0
-;          dat.ENERGY = dat.ENERGY*2
-;          dat.MASS   = dat.MASS*4
+        IF KEYWORD_SET(protons) THEN er = [mxb-3L,13L] ELSE er = [0L,mxb-4L]
+        IF KEYWORD_SET(alphas) THEN BEGIN 
+          dat.ENERGY = dat.ENERGY*2
+          dat.MASS   = dat.MASS*4
         ENDIF
       ENDIF
       IF KEYWORD_SET(pot)  THEN  pot_n = pot[n]  ELSE  pot_n = 0.
@@ -197,8 +170,8 @@ FOR n=0L, mynn[0] - 1L DO BEGIN
       ds[n] = moments_3d(dat,ERANGE=er,FORMAT=str_format, $
                          TRUE_DENS=dens_n,COMP=comp,BINS=bins)
       IF KEYWORD_SET(qf) THEN BEGIN
-        temp       = mom3d(dat)
-        qvec       = REFORM(temp.QVEC)
+        temp = mom3d(dat)
+        qvec = REFORM(temp.QVEC)
         ds[n].QVEC = qvec
 ;        str_element,ds[n],'QVEC',temp.QVEC,/ADD_REPLACE
       ENDIF
@@ -235,10 +208,10 @@ ENDFOR
 ;   VEL_PHI         FLOAT           179.259
 ;*****************************************************************************************
 PRINT," number of data points = ",n
-xyz_to_polar,TRANSPOSE(ds.velocity),MAG=mag,THETA=th,PHI=phi,/PH_0_360
-str_element,ds,'VEL_MAG',mag,/ADD_REPLACE
-str_element,ds,'VEL_TH',th,/ADD_REPLACE
-str_element,ds,'VEL_PHI',phi,/ADD_REPLACE
+  xyz_to_polar,TRANSPOSE(ds.velocity),MAG=mag,THETA=th,PHI=phi,/PH_0_360
+  str_element,ds,'VEL_MAG',mag,/ADD_REPLACE
+  str_element,ds,'VEL_TH',th,/ADD_REPLACE
+  str_element,ds,'VEL_PHI',phi,/ADD_REPLACE
 IF KEYWORD_SET(protons) THEN BEGIN
   vth_v  = ds.VTHERMAL/ds.VEL_MAG
   vth_v2 = SQRT(vth_v^2 - .055^2)
@@ -250,13 +223,9 @@ IF KEYWORD_SET(er) THEN comment = STRING('Energy range: ',er) $
                    ELSE comment = 'Full energy range'
 IF NOT KEYWORD_SET(name) THEN name = get_dat+'_mom'
 store_data,name,DATA=ds,DLIM={comment:comment}
-;;****************************************************************************************
-ex_time        = SYSTIME(1) - ex_start[0]
-MESSAGE,STRING(ex_time[0])+' seconds execution time.',/CONTINUE,/INFOR
-;;****************************************************************************************
-;;----------------------------------------------------------------------------------------
-;;  Return to user
-;;----------------------------------------------------------------------------------------
-
+;**************************************************************************
+ex_time = SYSTIME(1) - ex_start
+MESSAGE,STRING(ex_time)+' seconds execution time.',/CONT,/INFO
+;**************************************************************************
 RETURN
 END

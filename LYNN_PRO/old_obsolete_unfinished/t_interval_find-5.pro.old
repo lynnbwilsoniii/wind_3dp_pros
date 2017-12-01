@@ -10,7 +10,7 @@
 ;               NA
 ;
 ;  INCLUDES:
-;               NA
+;               merge_adjacent_int.pro
 ;
 ;  CALLS:
 ;               is_a_number.pro
@@ -60,8 +60,6 @@
 ;             5)  No longer includes merge_adjacent_int.pro, rather now calls
 ;                   merge_overlap_int.pro and cleaned up a little
 ;                                                                   [07/26/2016   v2.0.0]
-;             6)  Optimize a little to reduce wasted computations and fixed Man. page
-;                                                                   [12/01/2017   v2.0.1]
 ;
 ;   NOTES:      
 ;               1)  The output is a [K,2]-element array of [start,end] elements
@@ -74,7 +72,7 @@
 ;
 ;   CREATED:  07/16/2012
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  12/01/2017   v2.0.1
+;    LAST MODIFIED:  07/26/2016   v2.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -93,9 +91,8 @@ d              = !VALUES.D_NAN
 ;;----------------------------------------------------------------------------------------
 ;;  Check input
 ;;----------------------------------------------------------------------------------------
-test           = (N_PARAMS() LT 1)
-IF (test[0]) THEN RETURN,-1
-test           = (is_a_number(time[0],/NOMSSG) EQ 0) OR (N_ELEMENTS(time) LT 4)
+test           = (N_PARAMS() NE 1) OR (is_a_number(time,/NOMSSG) EQ 0) OR $
+                 (N_ELEMENTS(time) LT 4)
 IF (test[0]) THEN RETURN,-1
 
 tt             = REFORM(time)
@@ -139,24 +136,24 @@ ENDIF ELSE BEGIN
   mx_gap = gap_thresh[0]
   ;; check if finite
   test   = (FINITE(mx_gap[0]) EQ 0)
-  IF (test[0]) THEN BEGIN
+  IF (test) THEN BEGIN
     ;; use default
     mx_gap = 4d0/srate[0]
   ENDIF
 ENDELSE
 ;;  Check if user wants to include NaNs as gaps
 test           = (N_ELEMENTS(nan) EQ 0) OR ~KEYWORD_SET(nan)
-IF (test[0]) THEN use_nans = 0 ELSE use_nans = 1
+IF (test) THEN use_nans = 0 ELSE use_nans = 1
 ;;----------------------------------------------------------------------------------------
 ;;  Find where time-shifts exceed gap threshold
 ;;----------------------------------------------------------------------------------------
-IF (use_nans[0]) THEN BEGIN
+IF (use_nans) THEN BEGIN
   find = WHERE(FINITE(sh_diff) EQ 0,fd)
-  IF (fd[0] GT 0) THEN sh_diff[find] = 1.01*mx_gap[0]
+  IF (fd GT 0) THEN sh_diff[find] = 1.01*mx_gap[0]
 ENDIF
 test           = (sh_diff GT mx_gap[0])
 bad            = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
-IF (bd[0] GT 0 AND bd[0] LT nt[0]) THEN BEGIN
+IF (bd GT 0 AND bd LT nt) THEN BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  found data gaps
   ;;--------------------------------------------------------------------------------------
@@ -165,7 +162,7 @@ IF (bd[0] GT 0 AND bd[0] LT nt[0]) THEN BEGIN
   ;;  Define END elements
   gel_end = [(e_els[bad] - 1L),ee[0]]  ;; add last element
 ENDIF ELSE BEGIN
-  IF (bd[0] EQ nt[0]) THEN RETURN,-1
+  IF (bd EQ nt) THEN RETURN,-1
   ;;  Define START elements
   gel_sta = [s0[0]]
   ;;  Define END elements
@@ -176,7 +173,9 @@ ENDELSE
 ;;----------------------------------------------------------------------------------------
 se_int         = [[gel_sta],[gel_end]]
 test           = (N_ELEMENTS(merge) GT 0) AND KEYWORD_SET(merge)
-IF (test[0]) THEN out_int = merge_overlap_int(se_int,GAP_THRSH=merge_thr) ELSE out_int = se_int
+;test           = (N_ELEMENTS(merge) NE 0)
+;IF (test) THEN test   = (merge[0] NE 0)
+IF (test) THEN out_int = merge_overlap_int(se_int,GAP_THRSH=merge_thr) ELSE out_int = se_int
 ;;----------------------------------------------------------------------------------------
 ;;  Make sure intervals contain the 1st and last elements
 ;;----------------------------------------------------------------------------------------
@@ -208,13 +207,13 @@ test_low       = s_int[upp] LT s_int[low]
 test_upp       = s_int GT e_int
 bad_low        = WHERE(test_low,bd_low)
 bad_upp        = WHERE(test_upp,bd_upp)
-IF (bd_low[0] GT 0) THEN BEGIN
+IF (bd_low GT 0) THEN BEGIN
   ;;  There is a start element preceeding a previous end element --> fix
   bindl            = upp[bad_low]
   out_int[bindl,0] = out_int[bindl,1] < ee[0]
 ENDIF
 bindu          = bad_upp
-IF (bd_upp[0] GT 0) THEN out_int[bindu,0] = out_int[bindu,1] < ee[0]   ;;  The start element exceeds the end element --> fix
+IF (bd_upp GT 0) THEN out_int[bindu,0] = out_int[bindu,1] < ee[0]   ;;  The start element exceeds the end element --> fix
 ;;  Sort [just in case]
 sp             = SORT(REFORM(out_int[*,0]))
 out_int        = TEMPORARY(out_int[sp,*])

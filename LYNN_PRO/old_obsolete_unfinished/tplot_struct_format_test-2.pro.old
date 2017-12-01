@@ -188,9 +188,6 @@
 ;             3)  Cleaned up, rewote, and now calls struct_value.pro and
 ;                   added keyword:  TEST_DY
 ;                                                                   [06/15/2016   v2.0.0]
-;             4)  Optimize a little to reduce wasted computations and
-;                   cleaned up a little
-;                                                                   [12/01/2017   v2.0.1]
 ;
 ;   NOTES:      
 ;               1)  See also:  t_resample_tplot_struc.pro
@@ -201,7 +198,7 @@
 ;
 ;   CREATED:  09/23/2010
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  12/01/2017   v2.0.1
+;    LAST MODIFIED:  06/15/2016   v2.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -240,10 +237,20 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 x              = struct_value(str,       'X',DEFAULT=0d0,  INDEX=ind__x)
 y              = struct_value(str,       'Y',DEFAULT=f  ,  INDEX=ind__y)
+v              = struct_value(str,       'V',DEFAULT=f  ,  INDEX=ind__v)
+v1             = struct_value(str,      'V1',DEFAULT=f  ,  INDEX=ind_v1)
+v2             = struct_value(str,      'V2',DEFAULT=f  ,  INDEX=ind_v2)
+dy             = struct_value(str,      'DY',DEFAULT=f  ,  INDEX=ind_dy)
 ;;  Test tag outputs
 test__x        = (ind__x[0] GE 0)
 test__y        = (ind__y[0] GE 0)
+test__v        = (ind__v[0] GE 0)
+test_v1        = (ind_v1[0] GE 0)
+test_v2        = (ind_v2[0] GE 0)
+test_dy        = (ind_dy[0] GE 0)
 good           = (test__x[0] AND test__y[0])
+;test__0        = ~test__x[0] OR ~test__y[0]
+;IF (test__0[0]) THEN BEGIN
 IF (good[0] EQ 0) THEN BEGIN
   ;;  Not a TPLOT structure
   IF ~KEYWORD_SET(nomssg) THEN MESSAGE,badstr_mssg[0],/INFORMATIONAL,/CONTINUE
@@ -260,17 +267,16 @@ test           = (N_ELEMENTS(yndim) GT 0) AND is_a_number(yndim,/NOMSSG)
 IF (test[0]) THEN BEGIN
   good = (y_ndim[0] EQ LONG(yndim[0]))
 ENDIF
+;x_ddim         = SIZE(str[0].X,/DIMENSIONS)
+;y_ndim         = SIZE(str[0].Y,/N_DIMENSIONS)
+;y_ddim         = SIZE(str[0].Y,/DIMENSIONS)
+;IF KEYWORD_SET(yndim) THEN BEGIN
+;  good = (y_ndim[0] EQ yndim[0])
+;ENDIF
+
 ;;  Check YVECT
 IF KEYWORD_SET(yvect) THEN good = is_a_3_vector(y,NOMSSG=nomssg)
-;;  Define and check for V, or V1 and V2, or DY
-v              = struct_value(str,       'V',DEFAULT=f  ,  INDEX=ind__v)
-v1             = struct_value(str,      'V1',DEFAULT=f  ,  INDEX=ind_v1)
-v2             = struct_value(str,      'V2',DEFAULT=f  ,  INDEX=ind_v2)
-dy             = struct_value(str,      'DY',DEFAULT=f  ,  INDEX=ind_dy)
-test__v        = (ind__v[0] GE 0)
-test_v1        = (ind_v1[0] GE 0)
-test_v2        = (ind_v2[0] GE 0)
-test_dy        = (ind_dy[0] GE 0)
+;IF KEYWORD_SET(yvect) THEN good = is_a_3_vector(str[0].Y,NOMSSG=nomssg)
 ;;  Check of V, or V1 and V2, or DY even exist
 check_vs       = ~test__v[0] AND (~test_v1[0] OR ~test_v2[0]) AND ~test_dy[0]
 IF (check_vs[0]) THEN RETURN,good[0]         ;;  check_vs = FALSE --> stop here and return to user
@@ -279,14 +285,13 @@ IF (check_vs[0]) THEN RETURN,good[0]         ;;  check_vs = FALSE --> stop here 
 ;;----------------------------------------------------------------------------------------
 IF (~test_dy[0]) THEN dy = ''
 szddy          = SIZE(dy,/DIMENSIONS)
-;test           =  (szddy[0] NE 0) AND is_a_number(dy,NOMSSG=nomssg)
-test           =  (szddy[0] NE 0)
-IF (test[0]) THEN test = is_a_number(dy[0],NOMSSG=nomssg)
+test           =  (szddy[0] NE 0) AND is_a_number(dy,NOMSSG=nomssg)
 IF (test[0]) THEN BEGIN
   ;;  Check dimensions
   test_dy_nd = (N_ELEMENTS(szddy) EQ [1,2,3])
   good_dy_nd = WHERE(test_dy_nd,gd_dy_nd)
   CASE good_dy_nd[0] OF
+;    0L    :  test_dy = (x_ddim[0] EQ szddy[0])
     0L    :  BEGIN
       IF (y_ndim[0] NE 1L) THEN test_dy = 0b ELSE test_dy = (x_ddim[0] EQ szddy[0])
     END
@@ -303,6 +308,7 @@ IF (test[0]) THEN BEGIN
     ELSE  :  test_dy = 0b    ;;  Not dealing with 4D input!
   ENDCASE
 ENDIF ELSE test_dy = 0b
+
 ;;  Check of V, or V1 and V2, or DY even exist
 check_vs       = ~test__v[0] AND (~test_v1[0] OR ~test_v2[0])
 IF (check_vs[0]) THEN RETURN,good[0]         ;;  check_vs = FALSE --> stop here and return to user
@@ -311,10 +317,9 @@ IF (check_vs[0]) THEN RETURN,good[0]         ;;  check_vs = FALSE --> stop here 
 ;;----------------------------------------------------------------------------------------
 ;;  Define TEST__V for output
 IF (test__v[0]) THEN vv = v  ELSE vv = ''
+;IF (gd__v GT 0) THEN vv = str[0].V  ELSE vv = ''
 szdvv          = SIZE(vv,/DIMENSIONS)
-;test           =  (szdvv[0] NE 0) AND is_a_number(vv,NOMSSG=nomssg)
-test           =  (szdvv[0] NE 0)
-IF (test[0]) THEN test = is_a_number(vv[0],NOMSSG=nomssg)
+test           =  (szdvv[0] NE 0) AND is_a_number(vv,NOMSSG=nomssg)
 IF (test[0]) THEN BEGIN
   test_vv_2d = (N_ELEMENTS(szdvv) EQ 2);; ELSE test_vv_2d = 0b
   IF (test_vv_2d[0]) THEN BEGIN
@@ -333,23 +338,17 @@ ENDIF ELSE test__v = 0b
 ;;  Define V1 and V2, if exist
 IF (~test_v1[0]) THEN v1 = ''
 IF (~test_v2[0]) THEN v2 = ''
+;IF (gd_v1 GT 0) THEN v1 = str[0].V1 ELSE v1 = ''
+;IF (gd_v2 GT 0) THEN v2 = str[0].V2 ELSE v2 = ''
 szdv1          = SIZE(v1,/DIMENSIONS)
 szdv2          = SIZE(v2,/DIMENSIONS)
 test           = (N_ELEMENTS(szdv1) EQ 2) AND (N_ELEMENTS(szdv2) EQ 2) AND $
                  (y_ndim[0] EQ 3)
 IF (test[0]) THEN BEGIN
-  ;;  Check V1 format
-  test_v1        = (szdv1[0] NE 0) AND (x_ddim[0] EQ szdv1[0]) AND $
-                   (y_ddim[1] EQ szdv1[1])
-  IF (test_v1[0]) THEN test_v1 = is_a_number(v1[0],NOMSSG=nomssg)
-  ;;  Check V2 format
-  test_v2        = (szdv2[0] NE 0) AND (x_ddim[0] EQ szdv2[0]) AND $
-                   (y_ddim[2] EQ szdv2[1])
-  IF (test_v2[0]) THEN test_v2 = is_a_number(v2[0],NOMSSG=nomssg)
-;  test_v1        = ((szdv1[0] NE 0) AND is_a_number(v1,NOMSSG=nomssg)) AND $
-;                    (x_ddim[0] EQ szdv1[0]) AND (y_ddim[1] EQ szdv1[1])
-;  test_v2        = ((szdv2[0] NE 0) AND is_a_number(v2,NOMSSG=nomssg)) AND $
-;                    (x_ddim[0] EQ szdv2[0]) AND (y_ddim[2] EQ szdv2[1])
+  test_v1        = ((szdv1[0] NE 0) AND is_a_number(v1,NOMSSG=nomssg)) AND $
+                    (x_ddim[0] EQ szdv1[0]) AND (y_ddim[1] EQ szdv1[1])
+  test_v2        = ((szdv2[0] NE 0) AND is_a_number(v2,NOMSSG=nomssg)) AND $
+                    (x_ddim[0] EQ szdv2[0]) AND (y_ddim[2] EQ szdv2[1])
   ;;  Define TEST_V1_V2
   test_v1_v2     = (test_v1[0] AND test_v2[0])
 ENDIF ELSE test_v1_v2 = 0b
@@ -357,7 +356,7 @@ ENDIF ELSE test_v1_v2 = 0b
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
 
-RETURN,good[0]
+RETURN,good
 END
 
 

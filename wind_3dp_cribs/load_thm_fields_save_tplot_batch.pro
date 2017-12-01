@@ -69,6 +69,8 @@
 ;                                                                   [08/15/2015   v1.1.1]
 ;             3)  Now calls test_tdate_format.pro and get_valid_trange.pro
 ;                                                                   [10/23/2015   v1.2.0]
+;             4)  Changed calling sequence to thm_efi_clean_efw.pro
+;                                                                   [12/10/2016   v1.2.1]
 ;
 ;   NOTES:      
 ;               1)  This batch routine expects a date (in two formats) and a probe,
@@ -111,7 +113,7 @@
 ;
 ;   CREATED:  08/07/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  10/23/2015   v1.2.0
+;    LAST MODIFIED:  12/10/2016   v1.2.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -357,9 +359,9 @@ options,[efp_dsl_name[0],efw_dsl_name[0]],COLORS=vec_col,LABFLAG=2,LABELS='E'+ve
 ;;  Check if AC or DC-coupled
 ;;----------------------------------------------------------------------------------------
 ac_c           = 0b
-efw_hed_ac_tpn = tnames('thc_efw_hed_ac')
+efw_hed_ac_tpn = tnames(scpref[0]+'efw_hed_ac')
 test           = (efw_hed_ac_tpn[0] EQ '')
-IF (test) THEN efw_hed_ac_tpn = tnames('thc_efw*hed_ac*')
+IF (test) THEN efw_hed_ac_tpn = tnames(scpref[0]+'efw*hed_ac*')
 test           = (efw_hed_ac_tpn[0] EQ '')
 IF (test) THEN ac_c = 0b
 test_hac       = (efw_hed_ac_tpn[0] EQ '')
@@ -406,7 +408,8 @@ b_length       = 8L*klen[0]
 new_suff1      = l1_cal_e_suffx[0]+'_tdas_corrected'
 out_ef_names   = scpref[0]+modes_efi[2]+new_suff1[0]+'_'+[coord_dsl[0],coord_fac[0]]
 thm_efi_clean_efw,PROBE=sc[0],TRANGE=trange,ENAME=efw_dsl_name[0],EFPNAME=efp_dsl_name[0],$
-                  SPIKEREMOVE=0,EDSLNAME=out_ef_names[0],EFACNAME=out_ef_names[1]
+                  SPIKEREMOVE=0,EDSLNAME=out_ef_names[0],EFACNAME=out_ef_names[1],$
+                  EFWHEDACNAME=efw_hed_ac_tpn[0]
 ;;  Set defaults
 lbw_tplot_set_defaults
 ;;  Check if routine was successful
@@ -433,7 +436,7 @@ new_suff2      = l1_cal_e_suffx[0]+'_tdas_corrected_rmspikes'
 out_ef_name2   = scpref[0]+modes_efi[2]+new_suff2[0]+'_'+[coord_dsl[0],coord_fac[0]]
 thm_efi_clean_efw,PROBE=sc[0],TRANGE=trange,ENAME=efw_dsl_name[0],EFPNAME=efp_dsl_name[0],$
                   SPIKEREMOVE=1,EDSLNAME=out_ef_name2[0],EFACNAME=out_ef_name2[1],$
-                  SPIKENFIT=300
+                  SPIKENFIT=300,EFWHEDACNAME=efw_hed_ac_tpn[0]
 ;;  Set defaults
 lbw_tplot_set_defaults
 ;;  Check if routine was successful
