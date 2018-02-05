@@ -80,8 +80,6 @@
 ;                                                                   [06/01/2017   v1.0.0]
 ;             2)  Continued to write routine
 ;                                                                   [07/31/2017   v1.0.0]
-;             3)  Fixed an issue where one input contains multiple zeros
-;                                                                   [02/02/2018   v1.0.1]
 ;
 ;   NOTES:      
 ;               1)  The PRECISION has the same setting results as that given by
@@ -89,9 +87,9 @@
 ;               2)  The MIN_OVR and MAX_OVR are percentages of the smaller array
 ;                     interval lengths
 ;               3)  MIN_OVR defines the smallest fraction that will define two intervals
-;                     as overlapping, e.g., MIN_OVR = 0.0 will allow any adjacent
+;                     as the overlapping
 ;               4)  MAX_OVR defines the largest fraction that will define two intervals
-;                     as overlapping
+;                     as the overlapping
 ;               5)  The output will be a [M,2]-element array, where M = (N > K) and those
 ;                     elements that do not have overlapping ranges will be set to -1
 ;               6)  See also:  merge_overlap_int.pro
@@ -101,7 +99,7 @@
 ;
 ;   CREATED:  06/01/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  02/02/2018   v1.0.1
+;    LAST MODIFIED:  07/31/2017   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -119,8 +117,6 @@ d              = !VALUES.D_NAN
 noinpt_msg     = 'User must supply two, two-dimensional numeric arrays, SE_T0 and SE_T1, on input...'
 badfin_msg0    = 'Bad input:  SE_T0 must be an [N,2]-element numeric array...'
 badfin_msg1    = 'Bad input:  SE_T1 must be an [K,2]-element numeric array...'
-badint_msg0    = 'Bad input:  SE_T0 must have finite width intervals...'
-badint_msg1    = 'Bad input:  SE_T1 must have finite width intervals...'
 ;;----------------------------------------------------------------------------------------
 ;;  Check input
 ;;----------------------------------------------------------------------------------------
@@ -148,39 +144,17 @@ test           = (szdt0[1] EQ 2)
 IF (test[0]) THEN new_se0 = se_t0 ELSE new_se0 = TRANSPOSE(se_t0)
 test           = (szdt1[1] EQ 2)
 IF (test[0]) THEN new_se1 = se_t1 ELSE new_se1 = TRANSPOSE(se_t1)
-;;  Make sure to sort input
-sp             = SORT(new_se0[*,0])
-new_se0        = TEMPORARY(new_se0[sp,*])
-sp             = SORT(new_se1[*,0])
-new_se1        = TEMPORARY(new_se1[sp,*])
-;;----------------------------------------------------------------------------------------
-;;  Check for zero-length intervals in input
-;;----------------------------------------------------------------------------------------
-;;  Check SE_T0
-test           = (new_se0[*,0] EQ new_se0[*,1])
-bad            = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
-IF (gd[0] EQ 0) THEN BEGIN
-  MESSAGE,badint_msg0[0],/INFORMATIONAL,/CONTINUE
-  RETURN,0b
-ENDIF
-new_se0        = TEMPORARY(new_se0[good,*])
-;;  Check SE_T1
-test           = (new_se1[*,0] EQ new_se1[*,1])
-bad            = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
-IF (gd[0] EQ 0) THEN BEGIN
-  MESSAGE,badint_msg1[0],/INFORMATIONAL,/CONTINUE
-  RETURN,0b
-ENDIF
-new_se1        = TEMPORARY(new_se1[good,*])
-;;----------------------------------------------------------------------------------------
-;;  Define parameters
-;;----------------------------------------------------------------------------------------
 n_tr0          = N_ELEMENTS(new_se0[*,0])          ;;  # of time range intervals in SE_T0
 k_tr1          = N_ELEMENTS(new_se1[*,0])          ;;  # of time range intervals in SE_T1
 n__larger      = (n_tr0[0] > k_tr1[0])             ;;  # of elements in larger array
 n_smaller      = (n_tr0[0] < k_tr1[0])             ;;  # of elements in smaller array
 n_extra        = n__larger[0] - n_smaller[0]       ;;  Difference in # of elements between larger and smaller arrays
 IF (n_extra[0] GT 0) THEN add_ex = 1b ELSE add_ex = 0b
+;;  Make sure to sort input as well
+sp             = SORT(new_se0[*,0])
+new_se0        = TEMPORARY(new_se0[sp,*])
+sp             = SORT(new_se1[*,0])
+new_se1        = TEMPORARY(new_se1[sp,*])
 ;;  Create dummy arrays
 dumbi          = REPLICATE(-1L,n__larger[0],2L)    ;;  Indices of overlapping arrays
 IF (add_ex[0]) THEN ex_vals = REPLICATE(-1,n_extra[0]) ELSE ex_vals = -1
@@ -217,10 +191,9 @@ min_dt         = MIN([MIN(ABS(delt_sm),/NAN),MIN(ABS(delt_lg),/NAN)],/NAN)
 max_dt         = MAX([MAX(ABS(delt_sm),/NAN),MAX(ABS(delt_lg),/NAN)],/NAN)
 upper          = max_dt[0]/min_dt[0]*1.05
 IF (max_on[0]) THEN BEGIN
-  maxthrsh = (max_ovr[0] > minthrsh[0]) < upper[0]
-;  maxthrsh = (max_ovr[0] > min_ovr[0]) < upper[0]
+  maxthrsh = (max_ovr[0] > min_ovr[0]) < upper[0]
 ENDIF ELSE BEGIN
-  maxthrsh = upper[0] > 1.05
+  maxthrsh = upper[0]
 ENDELSE
 ;;  Define and remove smallest offset
 t_off          = MIN([MIN(new_sm,/NAN),MIN(new_lg,/NAN)],/NAN)
@@ -234,6 +207,7 @@ IF (add_ex[0]) THEN BEGIN
   en_sm = [en_sm,ex_vals]
 ENDIF ELSE BEGIN
   st_sm = st_sm
+;  st_sm = st_t1
   en_sm = en_sm
 ENDELSE
 st_ls          = {LARGE:st_lg,SMALL:st_sm}
@@ -252,33 +226,12 @@ ginds          = dumbi
 frac_out       = 1d0*dumbi
 FOR j=0L, n__larger[0] - 1L DO BEGIN
   test    = (st_lg[j] GE st_sm) AND (st_lg[j] LE en_sm)
-  ;;     |            |            |            |            |
-  ;;     0            1            2            3            4
-  ;;                       ST_Lj
-  ;;                ST_M1        EN_M1
-  ;;  --> good[0] = 1
   good    = WHERE(test,gd)
   IF (gd[0] GT 0) THEN BEGIN
     ;;  Check fractional overlap
-    IF (gd[0] GT 1) THEN BEGIN
-      ;;  Multiple values --> ST_Lj exactly matches EN_Mj
-      IF (j[0] GT 0) THEN BEGIN
-        test = (good[0] EQ ginds[j-1L,0L])
-        IF (test[0]) THEN gind = MAX(good) ELSE gind = good[0]
-      ENDIF ELSE BEGIN
-        gind = good[0]
-      ENDELSE
-    ENDIF ELSE BEGIN
-      ;;  Check fractional overlap
-      gind           = good[0]
-    ENDELSE
-    ;;  D_ELSS = | EN_M[good[0]] - ST_Lj |
+    gind           = good[0]
     d_elss         = ABS(en_sm[gind[0]] - st_lg[j])
-    test           = FINITE(delt_sm[gind[0]])
-    ;;  FRAC = D_ELSS /| EN_M[good[0]] - ST_M[good[0]] |
-    IF (test[0]) THEN frac = d_elss[0]/ABS(delt_sm[gind[0]]) ELSE frac = -1e0
-;    test           = FINITE(delt_sm[gind[0]]) AND (delt_sm[gind[0]] GT 0)
-;    IF (FINITE(delt_sm[gind[0]])) THEN frac = d_elss[0]/ABS(delt_sm[gind[0]]) ELSE frac = -1e0
+    IF (FINITE(delt_sm[gind[0]])) THEN frac = d_elss[0]/ABS(delt_sm[gind[0]]) ELSE frac = -1e0
     frac_out[j,0]  = frac[0]
     test           = (frac[0] GE minthrsh[0]) AND (frac[0] LE maxthrsh[0])
     IF (test[0]) THEN BEGIN
@@ -287,9 +240,6 @@ FOR j=0L, n__larger[0] - 1L DO BEGIN
     ENDIF
   ENDIF
 ENDFOR
-;;----------------------------------------------------------------------------------------
-;;  Check if we need to switch order of indices on output
-;;----------------------------------------------------------------------------------------
 IF (revers[0]) THEN BEGIN
   ;;  Switch so ARRAY_OUT[*,(0,1)] corresponds to indices of SE_T(0,1)
   array_out      = dumbi

@@ -23,7 +23,6 @@
 ;               str_element.pro
 ;               extract_tags.pro
 ;               options.pro
-;               t_get_struc_unix.pro
 ;
 ;  REQUIRES:    
 ;               1)  UMN Modified Wind/3DP IDL Libraries
@@ -61,10 +60,6 @@
 ;               LOAD_MOMS   :  If set, routine will load the velocity moment results in
 ;                                addition to the nonlinear fits results
 ;                                [Default = FALSE]
-;               COMBINE_PA  :  If set, routine will combine the proton and alpha-particle
-;                                density and bulk flows to find total ion density and
-;                                bulk flow velocity
-;                                [Default = FALSE]
 ;               ******************
 ;               ***  Obsolete  ***
 ;               ******************
@@ -88,8 +83,6 @@
 ;                                                                   [07/18/2017   v2.1.1]
 ;             5)  Now loads the fit_flag information into TPLOT
 ;                                                                   [11/17/2017   v2.1.2]
-;             6)  Added keyword:  COMBINE_PA
-;                                                                   [02/05/2018   v2.1.3]
 ;
 ;   NOTES:      
 ;               1)  If user loaded data using load_3dp_data.pro or called the routine
@@ -121,7 +114,7 @@
 ;
 ;   CREATED:  01/24/2014
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  02/05/2018   v2.1.3
+;    LAST MODIFIED:  11/17/2017   v2.1.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -129,7 +122,7 @@
 
 PRO wind_h1_swe_to_tplot,TDATE=tdate,TRANGE=trange,LOAD_SIGMA=load_sigma,            $
                          NO_PROTONS=no_protons,NO_ALPHAS=no_alphas,NO_SWE_B=no_swe_b,$
-                         LOAD_MOMS=load_moms,COMBINE_PA=combine_pa,MASTERFILE=masterfile
+                         LOAD_MOMS=load_moms,MASTERFILE=masterfile
 
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
@@ -137,11 +130,6 @@ PRO wind_h1_swe_to_tplot,TDATE=tdate,TRANGE=trange,LOAD_SIGMA=load_sigma,       
 f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
 slash          = get_os_slash()       ;;  '/' for Unix, '\' for Windows
-;;  Atomic
-me             = 9.1093835600d-31         ;;  Electron mass [kg, 2014 CODATA/NIST]
-mp             = 1.6726218980d-27         ;;  Proton mass [kg, 2014 CODATA/NIST]
-mn             = 1.6749274710d-27         ;;  Neutron mass [kg, 2014 CODATA/NIST]
-ma             = 6.6446572300d-27         ;;  Alpha particle mass [kg, 2014 CODATA/NIST]
 ;;  Default TPLOT stuff
 vec_str        = ['x','y','z']
 vec_col        = [250,200,75]
@@ -300,12 +288,11 @@ IF (test[0]) THEN alp_on = 0b ELSE alp_on = 1b
 ;;  Check NO_SWE_B
 test           = KEYWORD_SET(no_swe_b) AND (N_ELEMENTS(no_swe_b) GT 0)
 IF (test[0]) THEN mag_on = 0b ELSE mag_on = 1b
+;test           = ~KEYWORD_SET(no_swe_b) AND (N_ELEMENTS(no_swe_b) GT 0)
+;IF (test[0]) THEN mag_on = 1b ELSE mag_on = 0b
 ;;  Check LOAD_MOMS
 test           = (KEYWORD_SET(load_moms) AND (N_ELEMENTS(load_moms) GT 0)) AND pro_on[0]
 IF (test[0]) THEN mom_on = 1b ELSE mom_on = 0b
-;;  Check COMBINE_PA
-test           = (KEYWORD_SET(combine_pa) AND (N_ELEMENTS(combine_pa) GT 0)) AND pro_on[0] AND alp_on[0]
-IF (test[0]) THEN comb_on = 1b ELSE comb_on = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  See if user wants to load anything
 ;;----------------------------------------------------------------------------------------
@@ -446,9 +433,11 @@ ENDIF
 nv             = N_ELEMENTS(varnames)          ;;  # of variables loaded
 FOR j=0L, nv[0] - 1L DO BEGIN
   good0 = WHERE(STRLOWCASE(varnames[j]) EQ STRLOWCASE(g_cdf_vars),gd0)
+;  good0 = WHERE(STRLOWCASE(varnames[j]) EQ g_cdf_vars,gd0)
   IF (gd0 EQ 0) THEN CONTINUE         ;;  Move on to next iteration
   IF (j EQ 0) THEN gindv = good0[0] ELSE gindv = [gindv,good0[0]]
   good0 = WHERE(STRLOWCASE(tplotnames[j]) EQ STRLOWCASE(g_cdf_vars),gd0)
+;  good0 = WHERE(STRLOWCASE(tplotnames[j]) EQ g_cdf_vars,gd0)
   IF (gd0 EQ 0) THEN CONTINUE         ;;  Move on to next iteration
   IF (j EQ 0) THEN gindt = good0[0] ELSE gindt = [gindt,good0[0]]
 ENDFOR
@@ -466,6 +455,7 @@ o_all_labs     = g_all_labs[gindt]
 ;;----------------------------------------------------------------------------------------
 ntpn           = N_ELEMENTS(tplotnames)
 FOR j=0L, ntpn[0] - 1L DO BEGIN
+;  get_data,tplotnames[j],DATA=temp,DLIM=dlim,LIM=lim
   get_data,tplotnames[j],DATA=temp0,DLIM=dlim,LIM=lim
   ;;  Remove original
   store_data,DELETE=tplotnames[j]
@@ -515,8 +505,10 @@ FOR j=0L, ntpn[0] - 1L DO BEGIN
   ;;  Define output structure
   struc  = temp
   str_element,struc,'Y',t_vec,/ADD_REPLACE
+;  struc  = {X:t_tim,Y:t_vec}
   str_element,dlim,            'YTITLE',o_all_yttls[j],/ADD_REPLACE      ;;  Add Y-axis title
   str_element,dlim,         'YSUBTITLE',      ysubt[0],/ADD_REPLACE      ;;  Add Y-axis subtitle
+;  str_element,dlim,         'YSUBTITLE',o_all_ysubs[j],/ADD_REPLACE      ;;  Add Y-axis subtitle
   str_element,dlim,    'DATA_ATT.UNITS',o_all_units[j],/ADD_REPLACE      ;;  Add units to data attributes structure
   str_element,dlim,'DATA_ATT.COORD_SYS',o_all_coord[j],/ADD_REPLACE      ;;  Add coordinate basis
   extract_tags,dlim,def_dlim,EXCEPT_TAGS=['COLORS','LABELS']
@@ -525,134 +517,6 @@ FOR j=0L, ntpn[0] - 1L DO BEGIN
   store_data,o_all_tpns[j],DATA=struc,DLIM=dlim,LIM=lim
   options,o_all_tpns[j],COLORS=o_all_cols[j],LABELS=o_all_labs[j],/DEF
 ENDFOR
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;  Define total ion moments
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-IF (comb_on[0]) THEN BEGIN
-  ;;  Define logic for later
-  no_vel         = 0b
-  no_den         = 0b
-  ;;--------------------------------------------------------------------------------------
-  ;;  Define new combined velocities
-  ;;--------------------------------------------------------------------------------------
-  ;;  Find velocities
-  get_data,tpn_pronon_var[1],DATA=t_swe_vxp,DLIM=dlim_swe_vxp,LIM=lim_swe_vxp
-  get_data,tpn_pronon_var[2],DATA=t_swe_vyp,DLIM=dlim_swe_vyp,LIM=lim_swe_vyp
-  get_data,tpn_pronon_var[3],DATA=t_swe_vzp,DLIM=dlim_swe_vzp,LIM=lim_swe_vzp
-  get_data,tpn_alpnon_var[1],DATA=t_swe_vxa,DLIM=dlim_swe_vxa,LIM=lim_swe_vxa
-  get_data,tpn_alpnon_var[2],DATA=t_swe_vya,DLIM=dlim_swe_vya,LIM=lim_swe_vya
-  get_data,tpn_alpnon_var[3],DATA=t_swe_vza,DLIM=dlim_swe_vza,LIM=lim_swe_vza
-  check_vs       = [(SIZE(t_swe_vxp,/TYPE) NE 8),(SIZE(t_swe_vyp,/TYPE) NE 8),$
-                    (SIZE(t_swe_vzp,/TYPE) NE 8),(SIZE(t_swe_vxa,/TYPE) NE 8),$
-                    (SIZE(t_swe_vya,/TYPE) NE 8),(SIZE(t_swe_vza,/TYPE) NE 8) ]
-  bad_vs         = WHERE(check_vs,bd_vs,COMPLEMENT=good_vs,NCOMPLEMENT=gd_vs)
-  test_vs        = (gd_vs[0] EQ 0)
-  struc_pa       = {VXP:t_swe_vxp,VYP:t_swe_vyp,VZP:t_swe_vzp,VXA:t_swe_vxa,VYA:t_swe_vya,VZA:t_swe_vza}
-  nt             = N_TAGS(struc_pa)
-  IF (test_vs[0]) THEN BEGIN
-    ;;  No SWE velocities loaded --> Skip defining new Vp and Va TPLOT handles
-    dumb   = REPLICATE(0e0,10)
-    velp   = dumb # REPLICATE(0e0,3)
-    vela   = velp
-    unix   = DOUBLE(dumb)
-    no_vel = 1b
-  ENDIF ELSE BEGIN
-    unix   = t_get_struc_unix(struc_pa.(good_vs[0]))
-    dumb   = REPLICATE(0e0,N_ELEMENTS(unix))
-    velp   = dumb # REPLICATE(0e0,3)
-    vela   = velp
-    FOR j=0L, gd_vs[0] - 1L DO BEGIN
-      k     = good_vs[j[0]]
-      struc = struc_pa.(k[0])
-      CASE k[0] OF
-        0L  :  velp[*,0L] = struc.Y
-        1L  :  velp[*,1L] = struc.Y
-        2L  :  velp[*,2L] = struc.Y
-        3L  :  vela[*,0L] = struc.Y
-        4L  :  vela[*,1L] = struc.Y
-        5L  :  vela[*,2L] = struc.Y
-        ELSE:  ;;  do nothing
-      ENDCASE
-    ENDFOR
-    ;;------------------------------------------------------------------------------------
-    ;;  Replace NaNs with zeros
-    ;;------------------------------------------------------------------------------------
-    good_p  = WHERE(FINITE(velp) AND ABS(velp) GE 0,gd_p,COMPLEMENT=bad_p,NCOMPLEMENT=bd_p)
-    good_a  = WHERE(FINITE(vela) AND ABS(vela) GE 0,gd_a,COMPLEMENT=bad_a,NCOMPLEMENT=bd_a)
-    IF (bd_p[0] GT 0) THEN velp[bad_p] = 0e0
-    IF (bd_a[0] GT 0) THEN vela[bad_a] = 0e0
-  ENDELSE
-  ;;--------------------------------------------------------------------------------------
-  ;;  Define total ion density
-  ;;    N_i = ∑_s Z_s N_s
-  ;;--------------------------------------------------------------------------------------
-  ;;  Find densities
-  get_data,tpn_pronon_var[7],DATA=t_swe_np,DLIM=dlim_swe_np,LIM=lim_swe_np
-  get_data,tpn_alpnon_var[7],DATA=t_swe_na,DLIM=dlim_swe_na,LIM=lim_swe_na
-  check_ns       = [(SIZE(t_swe_np,/TYPE) NE 8),(SIZE(t_swe_na,/TYPE) NE 8)]
-  bad_ns         = WHERE(check_ns,bd_ns,COMPLEMENT=good_ns,NCOMPLEMENT=gd_ns)
-  test_ns        = (gd_ns[0] EQ 0)
-  struc_pa       = {NP:t_swe_np,NA:t_swe_na}
-  nt             = N_TAGS(struc_pa)
-  ;;  Define dummy arrays to fill if valid data present
-  nn             = N_ELEMENTS(velp[*,0])
-  dumb           = REPLICATE(0e0,nn[0])
-  dens_p         = dumb
-  dens_a         = dumb
-  IF (test_ns[0]) THEN BEGIN
-    ;;  No SWE densities loaded --> Skip changing Vsw
-    no_den = 1b
-  ENDIF ELSE BEGIN
-    IF (no_vel[0]) THEN BEGIN
-      ;;  No SWE velocities loaded --> Need new dummy arrays
-      unix           = t_get_struc_unix(struc_pa.(good_ns[0]))
-      nn             = N_ELEMENTS(unix)
-      dumb           = REPLICATE(0e0,nn[0])
-      dens_p         = dumb
-      dens_a         = dumb
-    ENDIF
-    FOR j=0L, gd_ns[0] - 1L DO BEGIN
-      k     = good_ns[j[0]]
-      struc = struc_pa.(k[0])
-      CASE k[0] OF
-        0L  :  dens_p = struc.Y
-        1L  :  dens_a = struc.Y
-        ELSE:  ;;  do nothing
-      ENDCASE
-    ENDFOR
-    ;;------------------------------------------------------------------------------------
-    ;;  Replace NaNs with zeros
-    ;;------------------------------------------------------------------------------------
-    good_p  = WHERE(FINITE(dens_p) AND dens_p GE 0,gd_p,COMPLEMENT=bad_p,NCOMPLEMENT=bd_p)
-    good_a  = WHERE(FINITE(dens_a) AND dens_a GE 0,gd_a,COMPLEMENT=bad_a,NCOMPLEMENT=bd_a)
-    IF (bd_p[0] GT 0) THEN dens_p[bad_p] = 0e0
-    IF (bd_a[0] GT 0) THEN dens_a[bad_a] = 0e0
-  ENDELSE
-  ;;  Define N_i (= ∑_s Z_s N_s)
-  dens_t         = dens_p + 2e0*dens_a
-  ;;  Send to TPLOT
-  struc          = {X:unix,Y:dens_t}
-  tpn_swe_scpot  = scpref[0]+'Ni_tot'+swesuff[0]
-  store_data,tpn_swe_scpot[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
-  ;;--------------------------------------------------------------------------------------
-  ;;  Define Vbulk
-  ;;    V_i = ∑_s (M_s N_s V_s)/∑_s (M_s N_s)
-  ;;--------------------------------------------------------------------------------------
-  dens_p3d       = ABS(dens_p # REPLICATE(1e0,3))
-  dens_a3d       = ABS(dens_a # REPLICATE(1e0,3))
-  numer          = mp[0]*dens_p3d*velp + ma[0]*dens_a3d*vela
-  denom          = mp[0]*dens_p3d + ma[0]*dens_a3d
-  vbulk          = FLOAT(numer/denom)
-  ;;  Account for Earth's abberation velocity [i.e., add ~29.78 km/s to y-component]
-  vbulk[*,1]    += 29.78     ;;  bulk flow now in solar frame
-  ;;  Send to TPLOT
-  struc          = {X:unix,Y:vbulk}
-  tpn_swe_vbulk  = scpref[0]+'Vbulk_'+coord_gse[0]+swesuff[0]+nonmom_suffs[0]
-  store_data,tpn_swe_vbulk[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
-  options,tpn_swe_vbulk[0],LABELS=vec_str,COLORS=vec_col,YTITLE='Vbulk [km/s, GSE]',/DEF
-ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

@@ -46,8 +46,6 @@
 ;                                                                   [07/31/2017   v1.0.0]
 ;             4)  Fixed a bug in main routine
 ;                                                                   [09/26/2017   v1.0.0]
-;             5)  Now wind_h1_swe_to_tplot.pro combines moments internally
-;                                                                   [02/05/2018   v1.1.0]
 ;
 ;   NOTES:      
 ;               0)  User should not call this routine
@@ -73,7 +71,7 @@
 ;
 ;   CREATED:  07/18/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  02/05/2018   v1.1.0
+;    LAST MODIFIED:  09/26/2017   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -131,8 +129,7 @@ tran1d         = trange
 ;;----------------------------------------------------------------------------------------
 ;;  Load SWE Faraday Cup ion moments
 ;;----------------------------------------------------------------------------------------
-;wind_h1_swe_to_tplot,TDATE=tdate,TRANGE=tran1d,NO_SWE_B=1b
-wind_h1_swe_to_tplot,TDATE=tdate,TRANGE=tran1d,NO_SWE_B=1b,/COMBINE_PA
+wind_h1_swe_to_tplot,TDATE=tdate,TRANGE=tran1d,NO_SWE_B=1b
 ;;  Verify something was loaded
 test_p         = test_tplot_handle(tpn_pronon_var,TPNMS=gd_tpn_p)
 test_a         = test_tplot_handle(tpn_alpnon_var,TPNMS=gd_tpn_a)
@@ -141,139 +138,134 @@ IF (test[0]) THEN RETURN,0b        ;;  Nothing loaded --> exit before user runs 
 ;;  Define logic for later
 no_vel         = 0b
 no_den         = 0b
-;;;----------------------------------------------------------------------------------------
-;;;  Define new combined velocities
-;;;----------------------------------------------------------------------------------------
-;;;  Find velocities
-;get_data,tpn_pronon_var[1],DATA=t_swe_vxp,DLIM=dlim_swe_vxp,LIM=lim_swe_vxp
-;get_data,tpn_pronon_var[2],DATA=t_swe_vyp,DLIM=dlim_swe_vyp,LIM=lim_swe_vyp
-;get_data,tpn_pronon_var[3],DATA=t_swe_vzp,DLIM=dlim_swe_vzp,LIM=lim_swe_vzp
-;get_data,tpn_alpnon_var[1],DATA=t_swe_vxa,DLIM=dlim_swe_vxa,LIM=lim_swe_vxa
-;get_data,tpn_alpnon_var[2],DATA=t_swe_vya,DLIM=dlim_swe_vya,LIM=lim_swe_vya
-;get_data,tpn_alpnon_var[3],DATA=t_swe_vza,DLIM=dlim_swe_vza,LIM=lim_swe_vza
-;check_vs       = [(SIZE(t_swe_vxp,/TYPE) NE 8),(SIZE(t_swe_vyp,/TYPE) NE 8),$
-;                  (SIZE(t_swe_vzp,/TYPE) NE 8),(SIZE(t_swe_vxa,/TYPE) NE 8),$
-;                  (SIZE(t_swe_vya,/TYPE) NE 8),(SIZE(t_swe_vza,/TYPE) NE 8) ]
-;bad_vs         = WHERE(check_vs,bd_vs,COMPLEMENT=good_vs,NCOMPLEMENT=gd_vs)
-;test_vs        = (gd_vs[0] EQ 0)
-;struc_pa       = {VXP:t_swe_vxp,VYP:t_swe_vyp,VZP:t_swe_vzp,VXA:t_swe_vxa,VYA:t_swe_vya,VZA:t_swe_vza}
-;nt             = N_TAGS(struc_pa)
-;IF (test_vs[0]) THEN BEGIN
-;  ;;  No SWE velocities loaded --> Skip defining new Vp and Va TPLOT handles
-;  dumb   = REPLICATE(0e0,10)
-;  velp   = dumb # REPLICATE(0e0,3)
-;  vela   = velp
-;  unix   = DOUBLE(dumb)
-;  no_vel = 1b
-;ENDIF ELSE BEGIN
-;  unix   = t_get_struc_unix(struc_pa.(good_vs[0]))
-;  dumb   = REPLICATE(0e0,N_ELEMENTS(unix))
-;  velp   = dumb # REPLICATE(0e0,3)
-;  vela   = velp
-;  FOR j=0L, gd_vs[0] - 1L DO BEGIN
-;    k     = good_vs[j[0]]
-;    struc = struc_pa.(k[0])
-;    CASE k[0] OF
-;      0L  :  velp[*,0L] = struc.Y
-;      1L  :  velp[*,1L] = struc.Y
-;      2L  :  velp[*,2L] = struc.Y
-;      3L  :  vela[*,0L] = struc.Y
-;      4L  :  vela[*,1L] = struc.Y
-;      5L  :  vela[*,2L] = struc.Y
-;      ELSE:  ;;  do nothing
-;    ENDCASE
-;  ENDFOR
-;  ;;--------------------------------------------------------------------------------------
-;  ;;  Replace NaNs with zeros
-;  ;;--------------------------------------------------------------------------------------
-;  good_p  = WHERE(FINITE(velp) AND ABS(velp) GE 0,gd_p,COMPLEMENT=bad_p,NCOMPLEMENT=bd_p)
-;  good_a  = WHERE(FINITE(vela) AND ABS(vela) GE 0,gd_a,COMPLEMENT=bad_a,NCOMPLEMENT=bd_a)
-;  IF (bd_p[0] GT 0) THEN velp[bad_p] = 0e0
-;  IF (bd_a[0] GT 0) THEN vela[bad_a] = 0e0
-;ENDELSE
-;;;----------------------------------------------------------------------------------------
-;;;  Define total ion density
-;;;    N_i = ∑_s Z_s N_s
-;;;----------------------------------------------------------------------------------------
-;;;  Find densities
-;get_data,tpn_pronon_var[7],DATA=t_swe_np,DLIM=dlim_swe_np,LIM=lim_swe_np
-;get_data,tpn_alpnon_var[7],DATA=t_swe_na,DLIM=dlim_swe_na,LIM=lim_swe_na
-;check_ns       = [(SIZE(t_swe_np,/TYPE) NE 8),(SIZE(t_swe_na,/TYPE) NE 8)]
-;bad_ns         = WHERE(check_ns,bd_ns,COMPLEMENT=good_ns,NCOMPLEMENT=gd_ns)
-;test_ns        = (gd_ns[0] EQ 0)
-;struc_pa       = {NP:t_swe_np,NA:t_swe_na}
-;nt             = N_TAGS(struc_pa)
-;;;  Define dummy arrays to fill if valid data present
-;nn             = N_ELEMENTS(velp[*,0])
-;dumb           = REPLICATE(0e0,nn[0])
-;dens_p         = dumb
-;dens_a         = dumb
-;IF (test_ns[0]) THEN BEGIN
-;  ;;  No SWE densities loaded --> Skip changing Vsw and SC Pot. TPLOT handles
-;  no_den = 1b
-;ENDIF ELSE BEGIN
-;  IF (no_vel[0]) THEN BEGIN
-;    ;;  No SWE velocities loaded --> Need new dummy arrays
-;    unix           = t_get_struc_unix(struc_pa.(good_ns[0]))
-;    nn             = N_ELEMENTS(unix)
-;    dumb           = REPLICATE(0e0,nn[0])
-;    dens_p         = dumb
-;    dens_a         = dumb
-;  ENDIF
-;  FOR j=0L, gd_ns[0] - 1L DO BEGIN
-;    k     = good_ns[j[0]]
-;    struc = struc_pa.(k[0])
-;    CASE k[0] OF
-;      0L  :  dens_p = struc.Y
-;      1L  :  dens_a = struc.Y
-;      ELSE:  ;;  do nothing
-;    ENDCASE
-;  ENDFOR
-;  ;;--------------------------------------------------------------------------------------
-;  ;;  Replace NaNs with zeros
-;  ;;--------------------------------------------------------------------------------------
-;  good_p  = WHERE(FINITE(dens_p) AND dens_p GE 0,gd_p,COMPLEMENT=bad_p,NCOMPLEMENT=bd_p)
-;  good_a  = WHERE(FINITE(dens_a) AND dens_a GE 0,gd_a,COMPLEMENT=bad_a,NCOMPLEMENT=bd_a)
-;  IF (bd_p[0] GT 0) THEN dens_p[bad_p] = 0e0
-;  IF (bd_a[0] GT 0) THEN dens_a[bad_a] = 0e0
-;ENDELSE
-;;;----------------------------------------------------------------------------------------
-;;;  Define N_i (= ∑_s Z_s N_s)
-;;;----------------------------------------------------------------------------------------
-;dens_t         = dens_p + 2e0*dens_a
-;;;  Send to TPLOT
-;struc          = {X:unix,Y:dens_t}
-;tpn_swe_scpot  = scpref[0]+'Ni_tot'+swesuff[0]
-;store_data,tpn_swe_scpot[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
+;;----------------------------------------------------------------------------------------
+;;  Define new combined velocities
+;;----------------------------------------------------------------------------------------
+;;  Find velocities
+get_data,tpn_pronon_var[1],DATA=t_swe_vxp,DLIM=dlim_swe_vxp,LIM=lim_swe_vxp
+get_data,tpn_pronon_var[2],DATA=t_swe_vyp,DLIM=dlim_swe_vyp,LIM=lim_swe_vyp
+get_data,tpn_pronon_var[3],DATA=t_swe_vzp,DLIM=dlim_swe_vzp,LIM=lim_swe_vzp
+get_data,tpn_alpnon_var[1],DATA=t_swe_vxa,DLIM=dlim_swe_vxa,LIM=lim_swe_vxa
+get_data,tpn_alpnon_var[2],DATA=t_swe_vya,DLIM=dlim_swe_vya,LIM=lim_swe_vya
+get_data,tpn_alpnon_var[3],DATA=t_swe_vza,DLIM=dlim_swe_vza,LIM=lim_swe_vza
+check_vs       = [(SIZE(t_swe_vxp,/TYPE) NE 8),(SIZE(t_swe_vyp,/TYPE) NE 8),$
+                  (SIZE(t_swe_vzp,/TYPE) NE 8),(SIZE(t_swe_vxa,/TYPE) NE 8),$
+                  (SIZE(t_swe_vya,/TYPE) NE 8),(SIZE(t_swe_vza,/TYPE) NE 8) ]
+bad_vs         = WHERE(check_vs,bd_vs,COMPLEMENT=good_vs,NCOMPLEMENT=gd_vs)
+test_vs        = (gd_vs[0] EQ 0)
+struc_pa       = {VXP:t_swe_vxp,VYP:t_swe_vyp,VZP:t_swe_vzp,VXA:t_swe_vxa,VYA:t_swe_vya,VZA:t_swe_vza}
+nt             = N_TAGS(struc_pa)
+IF (test_vs[0]) THEN BEGIN
+  ;;  No SWE velocities loaded --> Skip defining new Vp and Va TPLOT handles
+  dumb   = REPLICATE(0e0,10)
+  velp   = dumb # REPLICATE(0e0,3)
+  vela   = velp
+  unix   = DOUBLE(dumb)
+  no_vel = 1b
+ENDIF ELSE BEGIN
+  unix   = t_get_struc_unix(struc_pa.(good_vs[0]))
+  dumb   = REPLICATE(0e0,N_ELEMENTS(unix))
+  velp   = dumb # REPLICATE(0e0,3)
+  vela   = velp
+  FOR j=0L, gd_vs[0] - 1L DO BEGIN
+    k     = good_vs[j[0]]
+    struc = struc_pa.(k[0])
+    CASE k[0] OF
+      0L  :  velp[*,0L] = struc.Y
+      1L  :  velp[*,1L] = struc.Y
+      2L  :  velp[*,2L] = struc.Y
+      3L  :  vela[*,0L] = struc.Y
+      4L  :  vela[*,1L] = struc.Y
+      5L  :  vela[*,2L] = struc.Y
+      ELSE:  ;;  do nothing
+    ENDCASE
+  ENDFOR
+  ;;--------------------------------------------------------------------------------------
+  ;;  Replace NaNs with zeros
+  ;;--------------------------------------------------------------------------------------
+  good_p  = WHERE(FINITE(velp) AND ABS(velp) GE 0,gd_p,COMPLEMENT=bad_p,NCOMPLEMENT=bd_p)
+  good_a  = WHERE(FINITE(vela) AND ABS(vela) GE 0,gd_a,COMPLEMENT=bad_a,NCOMPLEMENT=bd_a)
+  IF (bd_p[0] GT 0) THEN velp[bad_p] = 0e0
+  IF (bd_a[0] GT 0) THEN vela[bad_a] = 0e0
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define total ion density
+;;    N_i = ∑_s Z_s N_s
+;;----------------------------------------------------------------------------------------
+;;  Find densities
+get_data,tpn_pronon_var[7],DATA=t_swe_np,DLIM=dlim_swe_np,LIM=lim_swe_np
+get_data,tpn_alpnon_var[7],DATA=t_swe_na,DLIM=dlim_swe_na,LIM=lim_swe_na
+check_ns       = [(SIZE(t_swe_np,/TYPE) NE 8),(SIZE(t_swe_na,/TYPE) NE 8)]
+bad_ns         = WHERE(check_ns,bd_ns,COMPLEMENT=good_ns,NCOMPLEMENT=gd_ns)
+test_ns        = (gd_ns[0] EQ 0)
+struc_pa       = {NP:t_swe_np,NA:t_swe_na}
+nt             = N_TAGS(struc_pa)
+;;  Define dummy arrays to fill if valid data present
+nn             = N_ELEMENTS(velp[*,0])
+dumb           = REPLICATE(0e0,nn[0])
+dens_p         = dumb
+dens_a         = dumb
+IF (test_ns[0]) THEN BEGIN
+  ;;  No SWE densities loaded --> Skip changing Vsw and SC Pot. TPLOT handles
+  no_den = 1b
+ENDIF ELSE BEGIN
+  IF (no_vel[0]) THEN BEGIN
+    ;;  No SWE velocities loaded --> Need new dummy arrays
+    unix           = t_get_struc_unix(struc_pa.(good_ns[0]))
+    nn             = N_ELEMENTS(unix)
+    dumb           = REPLICATE(0e0,nn[0])
+    dens_p         = dumb
+    dens_a         = dumb
+  ENDIF
+  FOR j=0L, gd_ns[0] - 1L DO BEGIN
+    k     = good_ns[j[0]]
+    struc = struc_pa.(k[0])
+    CASE k[0] OF
+      0L  :  dens_p = struc.Y
+      1L  :  dens_a = struc.Y
+      ELSE:  ;;  do nothing
+    ENDCASE
+  ENDFOR
+  ;;--------------------------------------------------------------------------------------
+  ;;  Replace NaNs with zeros
+  ;;--------------------------------------------------------------------------------------
+  good_p  = WHERE(FINITE(dens_p) AND dens_p GE 0,gd_p,COMPLEMENT=bad_p,NCOMPLEMENT=bd_p)
+  good_a  = WHERE(FINITE(dens_a) AND dens_a GE 0,gd_a,COMPLEMENT=bad_a,NCOMPLEMENT=bd_a)
+  IF (bd_p[0] GT 0) THEN dens_p[bad_p] = 0e0
+  IF (bd_a[0] GT 0) THEN dens_a[bad_a] = 0e0
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define N_i (= ∑_s Z_s N_s)
+;;----------------------------------------------------------------------------------------
+dens_t         = dens_p + 2e0*dens_a
+;;  Send to TPLOT
+struc          = {X:unix,Y:dens_t}
+tpn_swe_scpot  = scpref[0]+'Ni_tot'+swesuff[0]
+store_data,tpn_swe_scpot[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
 ;;----------------------------------------------------------------------------------------
 ;;  Define new SC Potential
 ;;----------------------------------------------------------------------------------------
-tpn_swe_nitot  = scpref[0]+'Ni_tot'+swesuff[0]
-get_data,tpn_swe_nitot[0],DATA=struc,DLIM=dlim_ntot,LIM=lim_ntot
-IF (SIZE(struc,/TYPE) NE 8) THEN RETURN,0b
-unix           = t_get_struc_unix(struc)
-dens_t         = struc.Y
 sc_phi         = sc_pot(dens_t)
 ;;  Send to TPLOT
 struc          = {X:unix,Y:sc_phi}
 tpn_swe_scpot  = scpref[0]+'sc_pot'+swesuff[0]
 store_data,tpn_swe_scpot[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
-;;;----------------------------------------------------------------------------------------
-;;;  Define Vbulk
-;;;    V_i = ∑_s (M_s N_s V_s)/∑_s (M_s N_s)
-;;;----------------------------------------------------------------------------------------
-;dens_p3d       = ABS(dens_p # REPLICATE(1e0,3))
-;dens_a3d       = ABS(dens_a # REPLICATE(1e0,3))
-;numer          = mp[0]*dens_p3d*velp + ma[0]*dens_a3d*vela
-;denom          = mp[0]*dens_p3d + ma[0]*dens_a3d
-;vbulk          = FLOAT(numer/denom)
-;;;  Account for Earth's abberation velocity [i.e., add ~29.78 km/s to y-component]
-;vbulk[*,1]    += 29.78
-;;;  Send to TPLOT
-;struc          = {X:unix,Y:vbulk}
-;tpn_swe_vbulk  = scpref[0]+'Vbulk_'+coord_gse[0]+swesuff[0]+nonmom_suffs[0]
-;store_data,tpn_swe_vbulk[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
-;options,tpn_swe_vbulk[0],LABELS=vec_str,COLORS=vec_col,YTITLE='Vbulk [km/s, GSE]',/DEF
+;;----------------------------------------------------------------------------------------
+;;  Define Vbulk
+;;    V_i = ∑_s (M_s N_s V_s)/∑_s (M_s N_s)
+;;----------------------------------------------------------------------------------------
+dens_p3d       = ABS(dens_p # REPLICATE(1e0,3))
+dens_a3d       = ABS(dens_a # REPLICATE(1e0,3))
+numer          = mp[0]*dens_p3d*velp + ma[0]*dens_a3d*vela
+denom          = mp[0]*dens_p3d + ma[0]*dens_a3d
+vbulk          = FLOAT(numer/denom)
+;;  Account for Earth's abberation velocity [i.e., add ~29.78 km/s to y-component]
+vbulk[*,1]    += 29.78
+;;  Send to TPLOT
+struc          = {X:unix,Y:vbulk}
+tpn_swe_vbulk  = scpref[0]+'Vbulk_'+coord_gse[0]+swesuff[0]+nonmom_suffs[0]
+store_data,tpn_swe_vbulk[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
+options,tpn_swe_vbulk[0],LABELS=vec_str,COLORS=vec_col,YTITLE='Vbulk [km/s, GSE]',/DEF
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
@@ -378,8 +370,6 @@ END
 ;                                                                   [02/02/2018   v1.0.3]
 ;             7)  Cleaned up some of the loading and error handling
 ;                                                                   [02/02/2018   v1.0.4]
-;             8)  Now wind_h1_swe_to_tplot.pro combines moments internally
-;                                                                   [02/05/2018   v1.0.5]
 ;
 ;   NOTES:      
 ;               .compile $HOME/Desktop/temp_idl/general_load_and_save_wind_3dp_data.pro
@@ -430,7 +420,7 @@ END
 ;
 ;   CREATED:  07/18/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  02/05/2018   v1.0.5
+;    LAST MODIFIED:  02/02/2018   v1.0.4
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -781,6 +771,56 @@ ENDIF ELSE BEGIN
   ph_dat         = 0
   phbdat         = 0
 ENDELSE
+;;;  PESA Low
+;IF (SIZE(pl_dat,/TYPE) EQ 8) THEN BEGIN
+;  apl_ = pl_dat.DATA
+;  add_vsw2, apl_,Vgse_tpnm[0]
+;  add_magf2,apl_,Bgse_tpnm[0]
+;  add_scpot,apl_,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  apl_ = 0
+;ENDELSE
+;;;  PESA Low Burst
+;IF (SIZE(plbdat,/TYPE) EQ 8) THEN BEGIN
+;  aplb = plbdat.DATA
+;  add_vsw2, aplb,Vgse_tpnm[0]
+;  add_magf2,aplb,Bgse_tpnm[0]
+;  add_scpot,aplb,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  aplb = 0
+;ENDELSE
+;;;  PESA High
+;IF (SIZE(ph_dat,/TYPE) EQ 8) THEN BEGIN
+;  aph_ = ph_dat.DATA
+;  add_vsw2, aph_,Vgse_tpnm[0]
+;  add_magf2,aph_,Bgse_tpnm[0]
+;  add_scpot,aph_,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  aph_ = 0
+;ENDELSE
+;;;  PESA High Burst
+;IF (SIZE(phbdat,/TYPE) EQ 8) THEN BEGIN
+;  aphb = phbdat.DATA
+;  add_vsw2, aphb,Vgse_tpnm[0]
+;  add_magf2,aphb,Bgse_tpnm[0]
+;  add_scpot,aphb,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  aphb = 0
+;ENDELSE
+;;;  Define BURST_ON status for PLB and PHB
+;burst_on.PLB   = (N_ELEMENTS(aplb) GT 1)
+;burst_on.PHB   = (N_ELEMENTS(aphb) GT 1)
+;IF (pesa_on[0]) THEN BEGIN
+;  fname          = savdir[0]+fpref[0]+tsuffx[0]+fsuffx[0]
+;  ;;  Print out name as a check
+;  PRINT,';; ',fname[0]
+;  ;;  Create IDL save file
+;  SAVE,apl_,aplb,aph_,aphb,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
+;  ;;  Clean up
+;  dumb = TEMPORARY(apl_) & dumb = TEMPORARY(aph_) & dumb = TEMPORARY(aplb) & dumb = TEMPORARY(aphb)
+;  dumb = TEMPORARY(pl_dat) & dumb = TEMPORARY(plbdat)
+;  dumb = TEMPORARY(ph_dat) & dumb = TEMPORARY(phbdat)
+;ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Get thermal [EESA Low] and suprathermal [EESA High]
 ;;    electron velocity distribution functions (VDFs)
@@ -862,6 +902,56 @@ ENDIF ELSE BEGIN
   eh_dat         = 0
   ehbdat         = 0
 ENDELSE
+;;;  EESA Low
+;IF (SIZE(el_dat,/TYPE) EQ 8) THEN BEGIN
+;  ael_ = el_dat.DATA
+;  add_vsw2, ael_,Vgse_tpnm[0]
+;  add_magf2,ael_,Bgse_tpnm[0]
+;  add_scpot,ael_,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  ael_ = 0
+;ENDELSE
+;;;  EESA Low Burst
+;IF (SIZE(elbdat,/TYPE) EQ 8) THEN BEGIN
+;  aelb = elbdat.DATA
+;  add_vsw2, aelb,Vgse_tpnm[0]
+;  add_magf2,aelb,Bgse_tpnm[0]
+;  add_scpot,aelb,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  aelb = 0
+;ENDELSE
+;;;  EESA High
+;IF (SIZE(eh_dat,/TYPE) EQ 8) THEN BEGIN
+;  aeh_ = eh_dat.DATA
+;  add_vsw2, aeh_,Vgse_tpnm[0]
+;  add_magf2,aeh_,Bgse_tpnm[0]
+;  add_scpot,aeh_,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  aeh_ = 0
+;ENDELSE
+;;;  EESA High Burst
+;IF (SIZE(ehbdat,/TYPE) EQ 8) THEN BEGIN
+;  aehb = ehbdat.DATA
+;  add_vsw2, aehb,Vgse_tpnm[0]
+;  add_magf2,aehb,Bgse_tpnm[0]
+;  add_scpot,aehb,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  aehb = 0
+;ENDELSE
+;;;  Define BURST_ON status for ELB and EHB
+;burst_on.ELB   = (N_ELEMENTS(aelb) GT 1)
+;burst_on.EHB   = (N_ELEMENTS(aehb) GT 1)
+;IF (eesa_on[0]) THEN BEGIN
+;  fname          = savdir[0]+fpref[0]+tsuffx[0]+fsuffx[0]
+;  ;;  Print out name as a check
+;  PRINT,';; ',fname[0]
+;  ;;  Create IDL save file
+;  SAVE,ael_,aelb,aeh_,aehb,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
+;  ;;  Clean up
+;  dumb = TEMPORARY(ael_) & dumb = TEMPORARY(aeh_) & dumb = TEMPORARY(aelb) & dumb = TEMPORARY(aehb)
+;  dumb = TEMPORARY(el_dat) & dumb = TEMPORARY(elbdat)
+;  dumb = TEMPORARY(eh_dat) & dumb = TEMPORARY(ehbdat)
+;ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Get solid-state telescope [SST] velocity distribution functions (VDFs)
 ;;    for electrons [Foil] and protons [Open]
@@ -943,6 +1033,56 @@ ENDIF ELSE BEGIN
   so_dat         = 0
   sobdat         = 0
 ENDELSE
+;;;  SST Foil
+;IF (SIZE(sf_dat,/TYPE) EQ 8) THEN BEGIN
+;  asf_ = sf_dat.DATA
+;  add_vsw2, asf_,Vgse_tpnm[0]
+;  add_magf2,asf_,Bgse_tpnm[0]
+;  add_scpot,asf_,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  asf_ = 0
+;ENDELSE
+;;;  SST Foil Burst
+;IF (SIZE(sfbdat,/TYPE) EQ 8) THEN BEGIN
+;  asfb = sfbdat.DATA
+;  add_vsw2, asfb,Vgse_tpnm[0]
+;  add_magf2,asfb,Bgse_tpnm[0]
+;  add_scpot,asfb,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  asfb = 0
+;ENDELSE
+;;;  SST Open
+;IF (SIZE(so_dat,/TYPE) EQ 8) THEN BEGIN
+;  aso_ = so_dat.DATA
+;  add_vsw2, aso_,Vgse_tpnm[0]
+;  add_magf2,aso_,Bgse_tpnm[0]
+;  add_scpot,aso_,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  aso_ = 0
+;ENDELSE
+;;;  SST Open Burst
+;IF (SIZE(sobdat,/TYPE) EQ 8) THEN BEGIN
+;  asob = sobdat.DATA
+;  add_vsw2, asob,Vgse_tpnm[0]
+;  add_magf2,asob,Bgse_tpnm[0]
+;  add_scpot,asob,  scp_tpn[0]
+;ENDIF ELSE BEGIN
+;  asob = 0
+;ENDELSE
+;;;  Define BURST_ON status for SFB and SOB
+;burst_on.SFB   = (N_ELEMENTS(asfb) GT 1)
+;burst_on.SOB   = (N_ELEMENTS(asob) GT 1)
+;IF (sst__on[0]) THEN BEGIN
+;  fname          = savdir[0]+fpref[0]+tsuffx[0]+fsuffx[0]
+;  ;;  Print out name as a check
+;  PRINT,';; ',fname[0]
+;  ;;  Create IDL save file
+;  SAVE,asf_,asfb,aso_,asob,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
+;  ;;  Clean up
+;  dumb = TEMPORARY(asf_) & dumb = TEMPORARY(aso_) & dumb = TEMPORARY(asfb) & dumb = TEMPORARY(asob)
+;  dumb = TEMPORARY(sf_dat) & dumb = TEMPORARY(sfbdat)
+;  dumb = TEMPORARY(so_dat) & dumb = TEMPORARY(sobdat)
+;ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Clean up
 ;;----------------------------------------------------------------------------------------
