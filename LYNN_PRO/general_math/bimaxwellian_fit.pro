@@ -1,7 +1,7 @@
 ;+
 ;*****************************************************************************************
 ;
-;  FUNCTION :   bimaxwellian.pro
+;  FUNCTION :   bimaxwellian_fit.pro
 ;  PURPOSE  :   Creates a Bi-Maxwellian Distribution Function (MDF) from a user
 ;                 defined amplitude, thermal speed, and array of velocities to define
 ;                 the MDF at.  The only note to be careful of is to make sure the
@@ -14,15 +14,15 @@
 ;               NA
 ;
 ;  CALLS:
-;               bimaxwellian.pro
+;               NA
 ;
 ;  REQUIRES:    
-;               1)  UMN Modified Wind/3DP IDL Libraries
+;               NA
 ;
 ;  INPUT:
 ;               VPARA  :  [N]-Element [numeric] array of velocities parallel to the
 ;                           quasi-static magnetic field direction [km/s]
-;               VPERP  :  [N]-Element [numeric] array of velocities orthogonal to the
+;               VPERP  :  [M]-Element [numeric] array of velocities orthogonal to the
 ;                           quasi-static magnetic field direction [km/s]
 ;               PARAM  :  [6]-Element [numeric] array where each element is defined by
 ;                           the following quantities:
@@ -32,23 +32,28 @@
 ;                           PARAM[3] = Parallel Drift Speed [km/s]
 ;                           PARAM[4] = Perpendicular Drift Speed [km/s]
 ;                           PARAM[5] = *** Not Used Here ***
+;               PDER   :  [6]-Element [numeric] array defining which partial derivatives
+;                           of the 6 variable coefficients in PARAM to compute.  For
+;                           instance, to take the partial derivative with respect to
+;                           only the first and third coefficients, then do:
+;                           PDER = [1,0,1,0,0,0]
+;
+;  OUTPUT:
+;               PDER   :  On output, the routine returns an [N,M,6]-element [numeric]
+;                           array containing the partial derivatives of Y with respect
+;                           to each element of PARAM that were not set to zero in
+;                           PDER on input.
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               bimax = bimaxwellian(vpara, vperp, param)
+;               bimax = bimaxwellian_fit(vpara, vperp, param, pder [,FF=ff])
 ;
 ;  KEYWORDS:    
-;               NA
+;               FF     :  Set to a named variable to return an [N,M]-element array of
+;                           values corresponding to the evaluated function
 ;
-;   CHANGED:  1)  Finished writing routine
-;                                                                   [05/31/2012   v1.0.0]
-;             2)  Moved out of the ~/distribution_fit_LM_pro directory and
-;                   changed format of PARAM input
-;                                                                   [08/21/2012   v1.1.0]
-;             3)  Updated Man. page, cleaned up, and optimized a little
-;                                                                   [04/02/2018   v1.1.1]
-;             4)  Cleaned up and vectorized
-;                                                                   [04/04/2018   v1.1.2]
+;   CHANGED:  1)  Fixed Man. page and cleaned up
+;                                                                   [04/05/2018   v1.0.1]
 ;
 ;   NOTES:      
 ;               1)  The thermal speeds are the "most probable speeds" of a 1D Gaussian
@@ -71,16 +76,24 @@
 ;                      Properties of Kappa Distributions in Space Plasmas,"
 ;                      J. Geophys. Res. 120, pp. 1607--1619, doi:10.1002/2014JA020825,
 ;                      2015.
+;               3)  Livadiotis, G. "Statistical origin and properties of kappa
+;                      distributions," J. Phys.: Conf. Ser. 900(1), pp. 012014, 2017.
+;               4)  Livadiotis, G. "Derivation of the entropic formula for the
+;                      statistical mechanics of space plasmas,"
+;                      Nonlin. Proc. Geophys. 25(1), pp. 77-88, 2018.
+;               5)  Livadiotis, G. "Modeling anisotropic Maxwell-Jüttner distributions:
+;                      derivation and properties," Ann. Geophys. 34(1),
+;                      pp. 1145-1158, 2016.
 ;
-;   CREATED:  05/29/2012
+;   CREATED:  04/04/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/04/2018   v1.1.2
+;    LAST MODIFIED:  04/05/2018   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION bimaxwellian,vpara,vperp,param
+FUNCTION bimaxwellian_fit,vpara,vperp,param,pder,FF=ff
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -98,7 +111,7 @@ ENDIF
 np             = N_ELEMENTS(param)
 nva            = N_ELEMENTS(vpara)
 nve            = N_ELEMENTS(vperp)
-test           = (np[0] LT 6) OR (nva[0] LT 1) OR (nve[0] LT 1)
+test           = (np[0] NE 6) OR (nva[0] LT 1) OR (nve[0] LT 1)
 IF (test[0]) THEN BEGIN
   ;;  bad input???
   RETURN,0b
@@ -120,10 +133,69 @@ welpe2d        = uelpe2d/param[2]
 ;;  Define exponent for bi-Maxwellian
 expon          = -1d0*(welpa2d^2d0 + welpe2d^2d0)
 ;;  Define the 2D bi-Maxwellian VDF [# cm^(-3) km^(-3) s^(+3)]
-df             = amp[0]*EXP(expon)
+ff             = amp[0]*EXP(expon)
+;;----------------------------------------------------------------------------------------
+;;  Calculate partial derivatives of Z = A B^(-1) C^(-2) e^[-((X-D)/B)^2 - ((Y-E)/C)^2]
+;;    dZ/dA = Z/A
+;;    dZ/dB = Z {2 [((X-D)/B)^2 - 1]/B}
+;;    dZ/dC = Z {2 [((Y-E)/C)^2 - 1]/C}
+;;    dZ/dD = Z {2 [(X-D)/B^2]}
+;;    dZ/dE = Z {2 [(Y-E)/C^2]}
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() GT 3) THEN BEGIN
+  ;;  Save original (input) partial derivative settings
+  requested      = pder
+  ;;  Redefine partial derivative array
+  pder           = MAKE_ARRAY(nva,nve,np,VALUE=vpara[0]*0)
+  FOR k=0L, np[0] - 1L DO BEGIN
+    IF (requested[k] NE 0) THEN BEGIN
+      CASE k[0] OF
+        0     :  BEGIN
+          ;;  dZ/dA = Z/A
+          pder[*,*,k] = ff/param[0]
+        END
+        1     :  BEGIN
+          ;;  dZ/dB = Z {2 [((X-D)/B)^2 - 1]/B}
+          pder[*,*,k] = ff*2d0*(welpa2d^2d0 - 1d0)/param[1]
+        END
+        2     :  BEGIN
+          ;;  dZ/dC = Z {2 [((Y-E)/C)^2 - 1]/C}
+          pder[*,*,k] = ff*2d0*(welpe2d^2d0 - 1d0)/param[2]
+        END
+        3     :  BEGIN
+          ;;  dZ/dD = Z {2 [(X-D)/B^2]}
+          pder[*,*,k] = ff*2d0*welpa2d/param[1]
+        END
+        4     :  BEGIN
+          ;;  dZ/dE = Z {2 [(Y-E)/C^2]}
+          pder[*,*,k] = ff*2d0*welpe2d/param[2]
+        END
+        ELSE  :  ;;  Do nothing as this parameter is not used
+      ENDCASE
+    ENDIF
+  ENDFOR
+ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Return the total distribution
 ;;----------------------------------------------------------------------------------------
 
-RETURN,df
+RETURN,ff
 END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

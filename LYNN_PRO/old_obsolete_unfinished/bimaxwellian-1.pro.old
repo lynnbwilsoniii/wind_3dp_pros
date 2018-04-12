@@ -1,0 +1,123 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   bimaxwellian.pro
+;  PURPOSE  :   Creates a Bi-Maxwellian Distribution Function (MDF) from a user
+;                 defined amplitude, thermal speed, and array of velocities to define
+;                 the MDF at.  The only note to be careful of is to make sure the
+;                 thermal speed and array of velocities have the same units.
+;
+;  CALLED BY:   
+;               NA
+;
+;  CALLS:
+;               bimaxwellian.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS IDL libraries and UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               VPARA  :  [N]-Element array of velocities parallel to the quasi-static
+;                           magnetic field direction [km/s]
+;               VPERP  :  [N]-Element array of velocities perpendicular to the
+;                           quasi-static magnetic field direction [km/s]
+;               PARAM  :  [6]-Element array containing the following quantities:
+;                           PARAM[0] = Number Density [cm^(-3)]
+;                           PARAM[1] = Parallel Thermal Speed [km/s]
+;                           PARAM[2] = Perpendicular Thermal Speed [km/s]
+;                           PARAM[3] = Parallel Drift Speed [km/s]
+;                           PARAM[4] = Perpendicular Drift Speed [km/s]
+;                           PARAM[5] = *** Not Used Here ***
+;
+;  EXAMPLES:    
+;               NA
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  Finished writing routine                          [05/31/2012   v1.0.0]
+;             2)  Moved out of the ~/distribution_fit_LM_pro directory and
+;                   changed format of PARAM input
+;                                                                   [08/21/2012   v1.1.0]
+;
+;   NOTES:      
+;               1)  The thermal speeds are the "most probable speeds" for each direction
+;                     => V_tpara = SQRT(2*kB*T_para/m)
+;               2)  User should not call this routine
+;               3)  See also:  biselfsimilar.pro and bikappa.pro
+;
+;   CREATED:  05/29/2012
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/21/2012   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION bimaxwellian,vpara,vperp,param
+
+;;----------------------------------------------------------------------------------------
+;; => Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+;;----------------------------------------------------------------------------------------
+;; => Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 3) THEN BEGIN
+  ; => no input???
+  RETURN,0
+ENDIF
+
+np     = N_ELEMENTS(param)
+IF (np LT 3) THEN BEGIN
+  ; => bad input???
+  RETURN,0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;; => Calculate distribution
+;;----------------------------------------------------------------------------------------
+CASE np OF
+  3L   : BEGIN
+    ;; => No drifts included
+    RETURN,bimaxwellian(vpara,vperp,[param,0d0,0d0,0d0])
+  END
+  4L   : BEGIN
+    ;; => Parallel Drift included, but NOT Perpendicular Drift
+    RETURN,bimaxwellian(vpara,vperp,[param,0d0,0d0])
+  END
+  5L   : BEGIN
+    ;; => Correct input
+    nva   = N_ELEMENTS(vpara)
+    nve   = N_ELEMENTS(vperp)
+    ;;  Define the amplitude of the bi-Maxwellian
+    amp   = param[0]/(!DPI^(3d0/2d0)*param[1]*param[2]^2)
+    df    = REPLICATE(d,nva,nve)  ;;  bi-Maxwellian
+    expon = REPLICATE(d,nva,nve)  ;;  Exponent of bi-Maxwellian
+    velpa = vpara - param[3]      ;;  Parallel velocity minus drift speed [km/s]
+    velpe = vperp - param[4]      ;;  Perpendicular velocity minus drift speed [km/s]
+    FOR j=0L, nva - 1L DO BEGIN
+      expon[j,*] = -1d0*((velpa[j]/param[1])^2 + (velpe/param[2])^2)
+    ENDFOR
+    ;;  Define the bi-Maxwellian
+    df    = amp[0]*EXP(expon)
+  END
+  6L   : BEGIN
+    ;; => Correct input
+    RETURN,bimaxwellian(vpara,vperp,param[0L:4L])
+  END
+  ELSE : BEGIN
+    ;; => more than 5 elements in param
+    RETURN,bimaxwellian(vpara,vperp,param[0L:4L])
+  END
+ENDCASE
+;;----------------------------------------------------------------------------------------
+;; => Return the total distribution
+;;----------------------------------------------------------------------------------------
+
+RETURN,df
+END

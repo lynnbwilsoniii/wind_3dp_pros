@@ -121,14 +121,6 @@
 ;                                                                  [05/26/2017   v1.0.4]
 ;             5)  Added keyword P_LOG to main routine
 ;                                                                  [05/30/2017   v1.0.5]
-;             6)  Fixed an issue that occurs when user wants small VLIM with proper
-;                   VFRAME setting that was previously causing the default setting to
-;                   be used
-;                                                                  [02/28/2018   v1.0.6]
-;             7)  Added keyword BIMAX to main routine
-;                                                                  [04/02/2018   v1.0.7]
-;             8)  Added keyword BIKAP to main routine
-;                                                                  [04/04/2018   v1.0.8]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -144,7 +136,7 @@
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/04/2018   v1.0.8
+;    LAST MODIFIED:  05/30/2017   v1.0.5
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -244,11 +236,6 @@ IF (test[0]) THEN def_dfra = def_dfnx  ;;  revert to default limits
 ;;  Check VFRAME
 test           = (is_a_3_vector(vframe,V_OUT=vtrans,/NOMSSG) EQ 0)
 IF (test[0]) THEN vframe = def_vframe ELSE vframe = vtrans
-;;  Define new frame |V| [km/s]
-vf_new         = vxyz
-test           = (TOTAL(FINITE(vframe)) EQ 3)
-IF (test[0]) THEN FOR k=0L, 2L DO vf_new[*,k] -= vframe[k]
-vmag_new       = mag__vec(vf_new,/NAN)
 ;;  Check VEC1 and VEC2
 test           = (is_a_3_vector(vec1,V_OUT=v1out,/NOMSSG) EQ 0)
 IF (test[0]) THEN vec1 = def_vec1 ELSE vec1 = v1out
@@ -257,7 +244,7 @@ IF (test[0]) THEN vec2 = def_vec2 ELSE vec2 = v2out
 ;;  Check VLIM
 test           = (is_a_number(vlim,/NOMSSG) EQ 0)
 IF (test[0]) THEN vlim = def_vlim[0] ELSE vlim = ABS(vlim[0])
-test           = (vlim[0] LE MIN(ABS(vmag_new),/NAN))
+test           = (vlim[0] LE MIN(ABS(vmag),/NAN))
 IF (test[0]) THEN vlim = def_vlim[0]
 ;;  Check NLEV
 test           = (is_a_number(nlev,/NOMSSG) EQ 0)
@@ -325,7 +312,7 @@ IF (test[0]) THEN v_0y = def_voy[0] ELSE v_0y = v_0y[0]
 ;;  Now make sure user hasn't set "dumb" values (i.e., make sure data falls within ranges)
 ;;----------------------------------------------------------------------------------------
 test_dfra      = (TOTAL(vdf GE dfra[0] AND vdf LE dfra[1]) LT 10)
-test_vvra      = (TOTAL(vmag_new GE 0d0 AND vmag_new LE vlim[0]) LT 10)
+test_vvra      = (TOTAL(vmag GE 0d0 AND vmag LE vlim[0]) LT 10)
 IF (test_dfra[0]) THEN BEGIN
   ;;  User set "bad" DFRA --> redefine DFMIN, DFMAX, and DFRA to defaults
   dfra  = def_dfra
@@ -409,7 +396,7 @@ END
 ;                                      [,SLICE2D=slice2d] [,CIRCS=circs] [,P_LOG=p_log]  $
 ;                                      [,EX_VECS=ex_vecs] [,EX_INFO=ex_info]             $
 ;                                      [,P_TITLE=p_title] [,ONE_C=one_c]                 $
-;                                      [,DAT_OUT=dat_out] [,BIMAX=bimax] [,BIKAP=bikap]
+;                                      [,DAT_OUT=dat_out]
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -540,28 +527,6 @@ END
 ;                               MAGF   :  [3]-Element [numeric] array defining to the
 ;                                           quasi-static magnetic field [nT] 3-vector at
 ;                                           the time of the VDF
-;               BIMAX    :  [6]-Element [numeric] array where each element is defined by
-;                             the following quantities:
-;                             PARAM[0] = Number Density [cm^(-3)]
-;                             PARAM[1] = Parallel Thermal Speed [km/s]
-;                             PARAM[2] = Perpendicular Thermal Speed [km/s]
-;                             PARAM[3] = Parallel Drift Speed [km/s]
-;                             PARAM[4] = Perpendicular Drift Speed [km/s]
-;                             PARAM[5] = *** Not Used Here ***
-;                           If set, the routine will output 1D cuts of a model
-;                             bi-Maxwellian VDF defined by the above parameters
-;                             [Default = FALSE]
-;               BIKAP    :  [6]-Element [numeric] array where each element is defined by
-;                             the following quantities:
-;                             PARAM[0] = Number Density [cm^(-3)]
-;                             PARAM[1] = Parallel Thermal Speed [km/s]
-;                             PARAM[2] = Perpendicular Thermal Speed [km/s]
-;                             PARAM[3] = Parallel Drift Speed [km/s]
-;                             PARAM[4] = Perpendicular Drift Speed [km/s]
-;                             PARAM[5] = Kappa Value
-;                           If set, the routine will output 1D cuts of a model
-;                             bi-kappa VDF defined by the above parameters
-;                             [Default = FALSE]
 ;               ***  OUTPUT  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [all the following changed on output]  ***
@@ -590,15 +555,6 @@ END
 ;                   now outputs the value of VFRAME to inform the user of the
 ;                   currently used reference frame
 ;                                                                  [08/24/2017   v1.2.0]
-;            10)  Fixed an issue that occurs when user wants small VLIM with proper
-;                   VFRAME setting that was previously causing the default setting to
-;                   be used
-;                                                                  [02/28/2018   v1.2.1]
-;            11)  Added BIMAX keyword and
-;                   updated Man. page and changed other minor things
-;                                                                  [04/02/2018   v1.2.2]
-;            12)  Added BIKAP keyword
-;                                                                  [04/04/2018   v1.2.3]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -614,46 +570,11 @@ END
 ;               8)  It is generally a good idea to set the SLICE2D keyword
 ;
 ;  REFERENCES:  
-;               1)  Carlson et al., "An instrument for rapidly measuring plasma
-;                      distribution functions with high resolution,"
-;                      Adv. Space Res. Vol. 2, pp. 67-70, 1983.
-;               2)  Curtis et al., "On-board data analysis techniques for space plasma
-;                      particle instruments," Rev. Sci. Inst. Vol. 60,
-;                      pp. 372, 1989.
-;               3)  Lin et al., "A Three-Dimensional Plasma and Energetic particle
-;                      investigation for the Wind spacecraft," Space Sci. Rev.
-;                      Vol. 71, pp. 125, 1995.
-;               4)  Paschmann, G. and P.W. Daly "Analysis Methods for Multi-Spacecraft
-;                      Data," ISSI Scientific Report, Noordwijk, 
-;                      The Netherlands., Int. Space Sci. Inst., 1998.
-;               5)  Wilson III, L.B., et al., "Low-frequency whistler waves and shocklets
-;                      observed at quasi-perpendicular interplanetary shocks,"
-;                      J. Geophys. Res. 114, pp. A10106, 2009.
-;               6)  Wilson III, L.B., et al., "Large-amplitude electrostatic waves
-;                      observed at a supercritical interplanetary shock,"
-;                      J. Geophys. Res. 115, pp. A12104, 2010.
-;               7)  Wilson III, L.B., et al., "Observations of electromagnetic whistler
-;                      precursors at supercritical interplanetary shocks,"
-;                      Geophys. Res. Lett. 39, pp. L08109, 2012.
-;               8)  Wilson III, L.B., et al., "Electromagnetic waves and electron
-;                      anisotropies downstream of supercritical interplanetary shocks,"
-;                      J. Geophys. Res. 118(1), pp. 5--16, 2013a.
-;               9)  Wilson III, L.B., et al., "Shocklets, SLAMS, and field-aligned ion
-;                      beams in the terrestrial foreshock," J. Geophys. Res. 118(3),
-;                      pp. 957--966, 2013b.
-;              10)  Wilson III, L.B., et al., "Quantified Energy Dissipation Rates in the
-;                      Terrestrial Bow Shock: 1. Analysis Techniques and Methodology,"
-;                      J. Geophys. Res. 119(8), pp. 6455--6474, 2014a.
-;              11)  Wilson III, L.B., et al., "Quantified Energy Dissipation Rates in the
-;                      Terrestrial Bow Shock: 2. Waves and Dissipation,"
-;                      J. Geophys. Res. 119(8), pp. 6475--6495, 2014b.
-;              12)  Wilson III, L.B., et al., "Relativistic electrons produced by
-;                      foreshock disturbances observed upstream of the Earth’s bow
-;                      shock," Phys. Rev. Lett. 117(21), pp. 215101, 2016.
+;               NA
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/04/2018   v1.2.3
+;    LAST MODIFIED:  08/24/2017   v1.2.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -665,8 +586,7 @@ PRO general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=v
                              DFMIN=dfmin,DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,   $
                              C_LOG=c_log,NGRID=ngrid,SLICE2D=slice2d,P_LOG=p_log,     $
                              P_TITLE=p_title,ONE_C=one_c,DAT_OUT=dat_out,             $
-                             CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info,             $
-                             BIMAX=bimax,BIKAP=bikap
+                             CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range,              $
                  defaults_vdf_contour_plot, rot_matrix_array_dfs, rel_lorentz_trans_3vec, $
@@ -823,26 +743,6 @@ IF (test[0]) THEN BEGIN
 ENDIF ELSE BEGIN
   onec_on = 0b
 ENDELSE
-;;  Check BIMAX
-test           = (N_ELEMENTS(bimax) GE 4) AND is_a_number(bimax,/NOMSSG)
-IF (test[0]) THEN BEGIN
-  bimax_on = 1b
-  CASE N_ELEMENTS(bimax) OF
-    4L    :  param = [DOUBLE(bimax),0d0,0d0]
-    5L    :  param = [DOUBLE(bimax),0d0]
-    ELSE  :  param = DOUBLE(bimax[0L:5L])
-  ENDCASE
-  ;;  Force drifts to zero to avoid offsets for dummy model comparison
-  ;;    --> This assumes the user has centered the crosshairs on the peak of the VDF
-  param[3L:4L] = 0d0
-ENDIF ELSE BEGIN
-  bimax_on = 0b
-  param    = DBLARR(6L)
-ENDELSE
-;;  Check BIKAP
-test           = (N_ELEMENTS(bikap) EQ 6) AND is_a_number(bikap,/NOMSSG)
-IF (test[0]) THEN bikap_on = 1b ELSE bikap_on = 0b
-IF (bikap_on[0]) THEN kparm = DOUBLE(bikap) ELSE kparm = DBLARR(6L)
 ;;----------------------------------------------------------------------------------------
 ;;  Define rotation matrices
 ;;----------------------------------------------------------------------------------------
@@ -976,8 +876,8 @@ ENDCASE
 ;;  Define cut through f(x,y) at offset {V_0X, V_0Y}
 ;;----------------------------------------------------------------------------------------
 cuts_struc     = find_1d_cuts_2d_dist(df2d,vx2d,vy2d,X_0=v_0x,Y_0=v_0y)
-vdf_para_cut   = cuts_struc.X_1D_FXY           ;;  horizontal 1D cut
-vdf_perp_cut   = cuts_struc.Y_1D_FXY           ;;  vertical 1D cut
+vdf_para_cut   = cuts_struc.X_1D_FXY
+vdf_perp_cut   = cuts_struc.Y_1D_FXY
 vpara_cut      = cuts_struc.X_CUT_COORD*1d-3   ;;  km --> Mm  (looks better when plotted)
 vperp_cut      = cuts_struc.Y_CUT_COORD*1d-3   ;;  km --> Mm  (looks better when plotted)
 hori_crsshair  = cuts_struc.X_XY_COORD*1d-3    ;;  [K,2]-Element array, VAL[*,0] = X, VAL[*,1] = Y
@@ -987,21 +887,7 @@ vert_offset    = v_0y[0]*1d-3                  ;;  vertical offset of crosshairs
 ;;  Define one-count equivalent
 IF (onec_on[0]) THEN BEGIN
   onec_struc     = find_1d_cuts_2d_dist(df1c,vx2d,vy2d,X_0=v_0x,Y_0=v_0y)
-  onec_cpara     = onec_struc.X_1D_FXY         ;;  horizontal 1D cut
-ENDIF
-;;  Define bi-Maxwellian cuts (if set)
-IF (bimax_on[0]) THEN BEGIN
-  bimax_vdf     = bimaxwellian(vx2d,vy2d,param)
-  bimax_struc   = find_1d_cuts_2d_dist(bimax_vdf,vx2d,vy2d,X_0=0d0,Y_0=0d0)
-  bimax_cpara   = bimax_struc.X_1D_FXY         ;;  horizontal 1D cut
-  bimax_cperp   = bimax_struc.Y_1D_FXY         ;;  vertical 1D cut
-ENDIF
-;;  Define bi-kappa cuts (if set)
-IF (bimax_on[0]) THEN BEGIN
-  bikap_vdf     = bikappa(vx2d,vy2d,kparm)
-  bikap_struc   = find_1d_cuts_2d_dist(bikap_vdf,vx2d,vy2d,X_0=0d0,Y_0=0d0)
-  bikap_cpara   = bikap_struc.X_1D_FXY         ;;  horizontal 1D cut
-  bikap_cperp   = bikap_struc.Y_1D_FXY         ;;  vertical 1D cut
+  onec_cpara     = onec_struc.X_1D_FXY         ;;  parallel cut
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define the 2D projection of the extra vectors in EX_VECS
@@ -1129,34 +1015,17 @@ ENDELSE
 ;;  Check if user wants to plot in logarithmic space but computed everything linearly
 test           = plog_on[0] AND ~clog_on[0]
 IF (test[0]) THEN BEGIN
-  ;;  Convert to logarithmic space
   df2ds          = ALOG10(df2ds0)
   vdf_cut_para   = ALOG10(vdf_cut_para0)
   vdf_cut_perp   = ALOG10(vdf_cut_perp0)
   cut_yrange     = ALOG10(df_ran)
   IF (onec_on[0]) THEN onec_cut_para = ALOG10(onec_cut_par0)
-  IF (bimax_on[0]) THEN BEGIN
-    bimax_cut_para = ALOG10(bimax_cpara)
-    bimax_cut_perp = ALOG10(bimax_cperp)
-  ENDIF
-  IF (bikap_on[0]) THEN BEGIN
-    bikap_cut_para = ALOG10(bikap_cpara)
-    bikap_cut_perp = ALOG10(bikap_cperp)
-  ENDIF
 ENDIF ELSE BEGIN
   df2ds          = df2ds0
   vdf_cut_para   = vdf_cut_para0
   vdf_cut_perp   = vdf_cut_perp0
   cut_yrange     = df_ran
   IF (onec_on[0]) THEN onec_cut_para = onec_cut_par0
-  IF (bimax_on[0]) THEN BEGIN
-    bimax_cut_para = bimax_cpara
-    bimax_cut_perp = bimax_cperp
-  ENDIF
-  IF (bikap_on[0]) THEN BEGIN
-    bikap_cut_para = bikap_cpara
-    bikap_cut_perp = bikap_cperp
-  ENDIF
 ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Define plot limits structures for contour and cuts plots
@@ -1192,7 +1061,7 @@ PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=base_lim_cn
   ;;  Output actual locations of data in plane
   OPLOT,vxpts*1d-3,vypts*1d-3,PSYM=8,SYMSIZE=1.0,COLOR=100L
   ;;  Output contour plot
-  CONTOUR,df2ds,vx2d*1d-3,vy2d*1d-3,_EXTRA=con_lim,THICK=2
+  CONTOUR,df2ds,vx2d*1d-3,vy2d*1d-3,_EXTRA=con_lim
   ;;--------------------------------------------------------------------------------------
   ;;  Output arrows for EX_VECS
   ;;--------------------------------------------------------------------------------------
@@ -1236,8 +1105,8 @@ PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=base_lim_ct
   OPLOT,vpara_cut,vdf_cut_para,COLOR=250,PSYM=4  ;;  diamonds
   OPLOT,vperp_cut,vdf_cut_perp,COLOR= 50,PSYM=5  ;;  triangles
   ;;  Output cuts as solid lines
-  OPLOT,vpara_cut,vdf_cut_para,COLOR=250,LINESTYLE=0,THICK=2
-  OPLOT,vperp_cut,vdf_cut_perp,COLOR= 50,LINESTYLE=0,THICK=2
+  OPLOT,vpara_cut,vdf_cut_para,COLOR=250,LINESTYLE=0
+  OPLOT,vperp_cut,vdf_cut_perp,COLOR= 50,LINESTYLE=0
   ;;  Output cut labels
   xyposi     = [4d-1*con_xyran[0],4d0*df_ran[0]]
   XYOUTS,xyposi[0],xyposi[1],'Para. Cut',/DATA,COLOR=250
@@ -1247,35 +1116,10 @@ PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=base_lim_ct
   ;;  Plot 1-Count Level if desired
   ;;--------------------------------------------------------------------------------------
   IF (onec_on[0]) THEN BEGIN
-    OPLOT,vpara_cut,onec_cut_para,COLOR=150,LINESTYLE=4,THICK=2
+    OPLOT,vpara_cut,onec_cut_para,COLOR=150,LINESTYLE=4
     ;;  Shift in negative Y-Direction
     xyposi[1] *= 0.7
     XYOUTS,xyposi[0],xyposi[1],'One-Count',/DATA,COLOR=150
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Plot bi-Maxwellian if desired
-  ;;--------------------------------------------------------------------------------------
-  IF (bimax_on[0]) THEN BEGIN
-    OPLOT,vpara_cut,bimax_cut_para,COLOR=200,LINESTYLE=3,THICK=2
-    OPLOT,vperp_cut,bimax_cut_perp,COLOR= 75,LINESTYLE=3,THICK=2
-    ;;  Shift in negative Y-Direction
-    xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],'Bi-Max. Para.',/DATA,COLOR=200
-    xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],'Bi-Max. Perp.',/DATA,COLOR= 75
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Plot bi-kappa if desired
-  ;;--------------------------------------------------------------------------------------
-  IF (bikap_on[0]) THEN BEGIN
-    OPLOT,vpara_cut,bikap_cut_para,COLOR=225,LINESTYLE=3,THICK=2
-    OPLOT,vperp_cut,bikap_cut_perp,COLOR= 30,LINESTYLE=3,THICK=2
-    ;;  Shift in positive X-Direction
-    xyposi[0] += ABS(4d-1*con_xyran[0])
-    XYOUTS,xyposi[0],xyposi[1],'Bi-kappa Para.',/DATA,COLOR=225
-    ;;  Shift in negative Y-Direction
-    xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],'Bi-kappa Perp.',/DATA,COLOR= 30
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Output vertical lines for Max/Min values of CIRCS

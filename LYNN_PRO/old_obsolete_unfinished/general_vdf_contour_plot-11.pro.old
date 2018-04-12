@@ -127,8 +127,6 @@
 ;                                                                  [02/28/2018   v1.0.6]
 ;             7)  Added keyword BIMAX to main routine
 ;                                                                  [04/02/2018   v1.0.7]
-;             8)  Added keyword BIKAP to main routine
-;                                                                  [04/04/2018   v1.0.8]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -144,7 +142,7 @@
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/04/2018   v1.0.8
+;    LAST MODIFIED:  04/02/2018   v1.0.7
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -409,7 +407,7 @@ END
 ;                                      [,SLICE2D=slice2d] [,CIRCS=circs] [,P_LOG=p_log]  $
 ;                                      [,EX_VECS=ex_vecs] [,EX_INFO=ex_info]             $
 ;                                      [,P_TITLE=p_title] [,ONE_C=one_c]                 $
-;                                      [,DAT_OUT=dat_out] [,BIMAX=bimax] [,BIKAP=bikap]
+;                                      [,DAT_OUT=dat_out] [,BIMAX=bimax]
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -548,20 +546,6 @@ END
 ;                             PARAM[3] = Parallel Drift Speed [km/s]
 ;                             PARAM[4] = Perpendicular Drift Speed [km/s]
 ;                             PARAM[5] = *** Not Used Here ***
-;                           If set, the routine will output 1D cuts of a model
-;                             bi-Maxwellian VDF defined by the above parameters
-;                             [Default = FALSE]
-;               BIKAP    :  [6]-Element [numeric] array where each element is defined by
-;                             the following quantities:
-;                             PARAM[0] = Number Density [cm^(-3)]
-;                             PARAM[1] = Parallel Thermal Speed [km/s]
-;                             PARAM[2] = Perpendicular Thermal Speed [km/s]
-;                             PARAM[3] = Parallel Drift Speed [km/s]
-;                             PARAM[4] = Perpendicular Drift Speed [km/s]
-;                             PARAM[5] = Kappa Value
-;                           If set, the routine will output 1D cuts of a model
-;                             bi-kappa VDF defined by the above parameters
-;                             [Default = FALSE]
 ;               ***  OUTPUT  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [all the following changed on output]  ***
@@ -597,8 +581,6 @@ END
 ;            11)  Added BIMAX keyword and
 ;                   updated Man. page and changed other minor things
 ;                                                                  [04/02/2018   v1.2.2]
-;            12)  Added BIKAP keyword
-;                                                                  [04/04/2018   v1.2.3]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -653,7 +635,7 @@ END
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/04/2018   v1.2.3
+;    LAST MODIFIED:  04/02/2018   v1.2.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -666,7 +648,7 @@ PRO general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=v
                              C_LOG=c_log,NGRID=ngrid,SLICE2D=slice2d,P_LOG=p_log,     $
                              P_TITLE=p_title,ONE_C=one_c,DAT_OUT=dat_out,             $
                              CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info,             $
-                             BIMAX=bimax,BIKAP=bikap
+                             BIMAX=bimax
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range,              $
                  defaults_vdf_contour_plot, rot_matrix_array_dfs, rel_lorentz_trans_3vec, $
@@ -839,10 +821,6 @@ ENDIF ELSE BEGIN
   bimax_on = 0b
   param    = DBLARR(6L)
 ENDELSE
-;;  Check BIKAP
-test           = (N_ELEMENTS(bikap) EQ 6) AND is_a_number(bikap,/NOMSSG)
-IF (test[0]) THEN bikap_on = 1b ELSE bikap_on = 0b
-IF (bikap_on[0]) THEN kparm = DOUBLE(bikap) ELSE kparm = DBLARR(6L)
 ;;----------------------------------------------------------------------------------------
 ;;  Define rotation matrices
 ;;----------------------------------------------------------------------------------------
@@ -996,13 +974,6 @@ IF (bimax_on[0]) THEN BEGIN
   bimax_cpara   = bimax_struc.X_1D_FXY         ;;  horizontal 1D cut
   bimax_cperp   = bimax_struc.Y_1D_FXY         ;;  vertical 1D cut
 ENDIF
-;;  Define bi-kappa cuts (if set)
-IF (bimax_on[0]) THEN BEGIN
-  bikap_vdf     = bikappa(vx2d,vy2d,kparm)
-  bikap_struc   = find_1d_cuts_2d_dist(bikap_vdf,vx2d,vy2d,X_0=0d0,Y_0=0d0)
-  bikap_cpara   = bikap_struc.X_1D_FXY         ;;  horizontal 1D cut
-  bikap_cperp   = bikap_struc.Y_1D_FXY         ;;  vertical 1D cut
-ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define the 2D projection of the extra vectors in EX_VECS
 ;;----------------------------------------------------------------------------------------
@@ -1139,10 +1110,6 @@ IF (test[0]) THEN BEGIN
     bimax_cut_para = ALOG10(bimax_cpara)
     bimax_cut_perp = ALOG10(bimax_cperp)
   ENDIF
-  IF (bikap_on[0]) THEN BEGIN
-    bikap_cut_para = ALOG10(bikap_cpara)
-    bikap_cut_perp = ALOG10(bikap_cperp)
-  ENDIF
 ENDIF ELSE BEGIN
   df2ds          = df2ds0
   vdf_cut_para   = vdf_cut_para0
@@ -1152,10 +1119,6 @@ ENDIF ELSE BEGIN
   IF (bimax_on[0]) THEN BEGIN
     bimax_cut_para = bimax_cpara
     bimax_cut_perp = bimax_cperp
-  ENDIF
-  IF (bikap_on[0]) THEN BEGIN
-    bikap_cut_para = bikap_cpara
-    bikap_cut_perp = bikap_cperp
   ENDIF
 ENDELSE
 ;;----------------------------------------------------------------------------------------
@@ -1263,19 +1226,6 @@ PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=base_lim_ct
     XYOUTS,xyposi[0],xyposi[1],'Bi-Max. Para.',/DATA,COLOR=200
     xyposi[1] *= 0.7
     XYOUTS,xyposi[0],xyposi[1],'Bi-Max. Perp.',/DATA,COLOR= 75
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Plot bi-kappa if desired
-  ;;--------------------------------------------------------------------------------------
-  IF (bikap_on[0]) THEN BEGIN
-    OPLOT,vpara_cut,bikap_cut_para,COLOR=225,LINESTYLE=3,THICK=2
-    OPLOT,vperp_cut,bikap_cut_perp,COLOR= 30,LINESTYLE=3,THICK=2
-    ;;  Shift in positive X-Direction
-    xyposi[0] += ABS(4d-1*con_xyran[0])
-    XYOUTS,xyposi[0],xyposi[1],'Bi-kappa Para.',/DATA,COLOR=225
-    ;;  Shift in negative Y-Direction
-    xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],'Bi-kappa Perp.',/DATA,COLOR= 30
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Output vertical lines for Max/Min values of CIRCS

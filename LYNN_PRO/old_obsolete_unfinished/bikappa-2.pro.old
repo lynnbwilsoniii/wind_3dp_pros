@@ -1,10 +1,10 @@
 ;+
 ;*****************************************************************************************
 ;
-;  FUNCTION :   bimaxwellian.pro
-;  PURPOSE  :   Creates a Bi-Maxwellian Distribution Function (MDF) from a user
+;  FUNCTION :   bikappa.pro
+;  PURPOSE  :   Creates a Bi-Kappa Distribution Function (KDF) from a user
 ;                 defined amplitude, thermal speed, and array of velocities to define
-;                 the MDF at.  The only note to be careful of is to make sure the
+;                 the KDF at.  The only note to be careful of is to make sure the
 ;                 thermal speed and array of velocities have the same units.
 ;
 ;  CALLED BY:   
@@ -14,10 +14,10 @@
 ;               NA
 ;
 ;  CALLS:
-;               bimaxwellian.pro
+;               NA
 ;
 ;  REQUIRES:    
-;               1)  UMN Modified Wind/3DP IDL Libraries
+;               NA
 ;
 ;  INPUT:
 ;               VPARA  :  [N]-Element [numeric] array of velocities parallel to the
@@ -31,33 +31,28 @@
 ;                           PARAM[2] = Perpendicular Thermal Speed [km/s]
 ;                           PARAM[3] = Parallel Drift Speed [km/s]
 ;                           PARAM[4] = Perpendicular Drift Speed [km/s]
-;                           PARAM[5] = *** Not Used Here ***
+;                           PARAM[5] = Kappa Value
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               bimax = bimaxwellian(vpara, vperp, param)
+;               bikap = bikappa(vpara, vperp, param)
 ;
 ;  KEYWORDS:    
 ;               NA
 ;
 ;   CHANGED:  1)  Finished writing routine
 ;                                                                   [05/31/2012   v1.0.0]
-;             2)  Moved out of the ~/distribution_fit_LM_pro directory and
-;                   changed format of PARAM input
+;             2)  Moved out of the ~/distribution_fit_LM_pro directory
 ;                                                                   [08/21/2012   v1.1.0]
 ;             3)  Updated Man. page, cleaned up, and optimized a little
-;                                                                   [04/02/2018   v1.1.1]
-;             4)  Cleaned up and vectorized
-;                                                                   [04/04/2018   v1.1.2]
+;                                                                   [04/03/2018   v1.1.1]
 ;
 ;   NOTES:      
-;               1)  The thermal speeds are the "most probable speeds" of a 1D Gaussian
-;                     --> V_tpara = SQRT(2*kB*T_para/m)
+;               1)  The thermal speeds are the "most probable speeds" for each direction
+;                     => V_tpara = SQRT(2*kB*T_para/m)
 ;               2)  User should not call this routine
-;               3)  See also:  biselfsimilar.pro and bikappa.pro
+;               3)  See also:  biselfsimilar.pro and bimaxwellian.pro
 ;               4)  VDF = velocity distribution function
-;               5)  The use of 6 elements in PARAM is for consistency with other model
-;                     VDF routines (e.g., bikappa.pro)
 ;
 ;  REFERENCES:  
 ;               0)  Barnes, A. "Collisionless Heating of the Solar-Wind Plasma I. Theory
@@ -72,15 +67,15 @@
 ;                      J. Geophys. Res. 120, pp. 1607--1619, doi:10.1002/2014JA020825,
 ;                      2015.
 ;
-;   CREATED:  05/29/2012
+;   CREATED:  05/30/2012
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/04/2018   v1.1.2
+;    LAST MODIFIED:  04/03/2018   v1.1.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION bimaxwellian,vpara,vperp,param
+FUNCTION bikappa,vpara,vperp,param
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -92,35 +87,54 @@ d              = !VALUES.D_NAN
 ;;----------------------------------------------------------------------------------------
 IF (N_PARAMS() LT 3) THEN BEGIN
   ;;  no input???
-  RETURN,0b
+  RETURN,0
 ENDIF
 
 np             = N_ELEMENTS(param)
 nva            = N_ELEMENTS(vpara)
 nve            = N_ELEMENTS(vperp)
-test           = (np[0] LT 6) OR (nva[0] LT 1) OR (nve[0] LT 1)
+test           = (np[0] LT 6) OR (nva[0] LT 5) OR (nve[0] LT 5)
+;IF (np LT 6) THEN BEGIN
 IF (test[0]) THEN BEGIN
   ;;  bad input???
-  RETURN,0b
+  RETURN,0
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate distribution
 ;;----------------------------------------------------------------------------------------
-;;  Define the amplitude of the bi-Maxwellian [# cm^(-3) km^(-3) s^(+3)]
-amp            = param[0]/(!DPI^(3d0/2d0)*param[1]*param[2]^2d0)
-;;  Define velocities offset by drift speeds:  U_j = V_j - V_oj  [km/s]
-uelpa          = vpara - param[3]      ;;  Parallel velocity minus drift speed [km/s]
-uelpe          = vperp - param[4]      ;;  Perpendicular velocity minus drift speed [km/s]
-;;  Convert to 2D
-uelpa2d        = uelpa # REPLICATE(1d0,nve[0])
-uelpe2d        = REPLICATE(1d0,nva[0]) # uelpe
-;;  Define:  W_j = U_j/V_Tj
-welpa2d        = uelpa2d/param[1]
-welpe2d        = uelpe2d/param[2]
-;;  Define exponent for bi-Maxwellian
-expon          = -1d0*(welpa2d^2d0 + welpe2d^2d0)
-;;  Define the 2D bi-Maxwellian VDF [# cm^(-3) km^(-3) s^(+3)]
-df             = amp[0]*EXP(expon)
+;;  Define parallel and perpendicular dimensions
+nva        = N_ELEMENTS(vpara)
+nve        = N_ELEMENTS(vperp)
+kk         = param[5]          ;;  kappa value
+delta      = SQRT(2d0*(kk[0] - 3d0/2d0)/kk[0])
+theta_para = delta[0]*param[1]/SQRT(2d0)        ;;  [Eq. 2 in Mace and Sydora, (2010)]
+theta_perp = delta[0]*param[2]/SQRT(2d0)        ;;  [Eq. 2 in Mace and Sydora, (2010)]
+gamma_rat  = GAMMA(kk[0] + 1d0)/GAMMA(kk[0] - 1d0/2d0)
+factor     = param[0]/((!DPI*kk[0])^(3d0/2d0)*theta_para[0]*theta_perp[0]^2)
+;;  Define the amplitude of the bi-kappa
+;;    [Note:  density has been added to amplitude for Eq. 1 in Mace and Sydora, (2010)]
+amp        = factor[0]*gamma_rat[0]    ;;  bi-kappa amplitude [# cm^(-3) km^(-3) s^(+3)]
+velpa      = vpara - param[3]          ;;  Parallel velocity minus drift speed [km/s]
+velpe      = vperp - param[4]          ;;  Parallel velocity minus drift speed [km/s]
+power      = REPLICATE(d,nva,nve)      ;;  Power factor of bi-kappa
+;;  Compute values of exponent
+IF (nva[0] LT nve[0]) THEN BEGIN
+  ;;  Iterate over parallel dimension
+  FOR j=0L, nva[0] - 1L DO BEGIN
+    vpar_rat   = (velpa[j]/(theta_para[0]*SQRT(kk[0])))^2
+    vper_rat   = (velpe/(theta_perp[0]*SQRT(kk[0])))^2
+    power[j,*] = (1d0 + vper_rat + vpar_rat[0])^(-1d0*(kk[0] + 1d0))
+  ENDFOR
+ENDIF ELSE BEGIN
+  ;;  Iterate over perpendicular dimension
+  FOR i=0L, nve[0] - 1L DO BEGIN
+    vpar_rat   = (velpa/(theta_para[0]*SQRT(kk[0])))^2
+    vper_rat   = (velpe[i]/(theta_perp[0]*SQRT(kk[0])))^2
+    power[*,i] = (1d0 + vper_rat[0] + vpar_rat)^(-1d0*(kk[0] + 1d0))
+  ENDFOR
+ENDELSE
+;;  Define the 2D bi-kappa [Eq. 1 in Mace and Sydora, (2010) with density added]
+df         = amp[0]*power     ;;  [# cm^(-3) km^(-3) s^(+3)]
 ;;----------------------------------------------------------------------------------------
 ;;  Return the total distribution
 ;;----------------------------------------------------------------------------------------
