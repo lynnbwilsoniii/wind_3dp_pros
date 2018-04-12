@@ -1,11 +1,11 @@
 ;+
 ;*****************************************************************************************
 ;
-;  FUNCTION :   bimaxwellian.pro
-;  PURPOSE  :   Creates a Bi-Maxwellian Distribution Function (MDF) from a user
-;                 defined amplitude, thermal speed, and array of velocities to define
-;                 the MDF at.  The only note to be careful of is to make sure the
-;                 thermal speed and array of velocities have the same units.
+;  FUNCTION :   biselfsimilar.pro
+;  PURPOSE  :   Creates an anisotropic self-similar distribution function from a user
+;                 defined amplitude, thermal speed, and array of velocities.  The only
+;                 note to be careful of is to make sure the thermal speed and array
+;                 of velocities have the same units.
 ;
 ;  CALLED BY:   
 ;               NA
@@ -14,10 +14,10 @@
 ;               NA
 ;
 ;  CALLS:
-;               bimaxwellian.pro
+;               NA
 ;
 ;  REQUIRES:    
-;               1)  UMN Modified Wind/3DP IDL Libraries
+;               NA
 ;
 ;  INPUT:
 ;               VPARA  :  [N]-Element [numeric] array of velocities parallel to the
@@ -31,56 +31,57 @@
 ;                           PARAM[2] = Perpendicular Thermal Speed [km/s]
 ;                           PARAM[3] = Parallel Drift Speed [km/s]
 ;                           PARAM[4] = Perpendicular Drift Speed [km/s]
-;                           PARAM[5] = *** Not Used Here ***
+;                           PARAM[5] = Self-Similar Exponent Value [only values ≥ 2]
+;                                       [Default = 4]
+;                                       {Note:  2 = bi-Maxwellian}
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               bimax = bimaxwellian(vpara, vperp, param)
+;               biself = biselfsimilar(vpara, vperp, param)
 ;
 ;  KEYWORDS:    
 ;               NA
 ;
-;   CHANGED:  1)  Finished writing routine
-;                                                                   [05/31/2012   v1.0.0]
-;             2)  Moved out of the ~/distribution_fit_LM_pro directory and
-;                   changed format of PARAM input
+;   CHANGED:  1)  Moved out of the ~/distribution_fit_LM_pro directory
 ;                                                                   [08/21/2012   v1.1.0]
-;             3)  Updated Man. page, cleaned up, and optimized a little
-;                                                                   [04/02/2018   v1.1.1]
-;             4)  Cleaned up and vectorized
-;                                                                   [04/04/2018   v1.1.2]
+;             2)  Updated Man. page, cleaned up, and optimized a little
+;                                                                   [04/03/2018   v1.1.1]
 ;
 ;   NOTES:      
 ;               1)  The thermal speeds are the "most probable speeds" of a 1D Gaussian
 ;                     --> V_tpara = SQRT(2*kB*T_para/m)
 ;               2)  User should not call this routine
-;               3)  See also:  biselfsimilar.pro and bikappa.pro
+;               3)  See also:  bimaxwellian.pro and bikappa.pro
 ;               4)  VDF = velocity distribution function
-;               5)  The use of 6 elements in PARAM is for consistency with other model
-;                     VDF routines (e.g., bikappa.pro)
 ;
 ;  REFERENCES:  
-;               0)  Barnes, A. "Collisionless Heating of the Solar-Wind Plasma I. Theory
+;               0)  Dum, C.T., R. Chodura, and D. Biskamp "Turbulent Heating and
+;                      Quenching of the Ion Sound Instability," Phys. Rev. Lett. 32,
+;                      doi:10.1103/PhysRevLett.32.1231, 1974.
+;               1)  Dum, C.T. "Strong-turbulence theory and the transition from Landau
+;                      to collisional damping," Phys. Rev. Lett. 35,
+;                      doi:10.1103/PhysRevLett.35.947, 1975.
+;               2)  Barnes, A. "Collisionless Heating of the Solar-Wind Plasma I. Theory
 ;                      of the Heating of Collisionless Plasma by Hydromagnetic Waves,"
 ;                      Astrophys. J. 154, pp. 751--759, 1968.
-;               1)  Mace, R.L. and R.D. Sydora "Parallel whistler instability in a plasma
+;               3)  Mace, R.L. and R.D. Sydora "Parallel whistler instability in a plasma
 ;                      with an anisotropic bi-kappa distribution," J. Geophys. Res. 115,
 ;                      pp. A07206, doi:10.1029/2009JA015064, 2010.
-;               2)  Livadiotis, G. "Introduction to special section on Origins and
+;               4)  Livadiotis, G. "Introduction to special section on Origins and
 ;                      Properties of Kappa Distributions: Statistical Background and
 ;                      Properties of Kappa Distributions in Space Plasmas,"
 ;                      J. Geophys. Res. 120, pp. 1607--1619, doi:10.1002/2014JA020825,
 ;                      2015.
 ;
-;   CREATED:  05/29/2012
+;   CREATED:  05/31/2012
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/04/2018   v1.1.2
+;    LAST MODIFIED:  04/03/2018   v1.1.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION bimaxwellian,vpara,vperp,param
+FUNCTION biselfsimilar,vpara,vperp,param
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -92,34 +93,56 @@ d              = !VALUES.D_NAN
 ;;----------------------------------------------------------------------------------------
 IF (N_PARAMS() LT 3) THEN BEGIN
   ;;  no input???
-  RETURN,0b
+  RETURN,0
 ENDIF
 
 np             = N_ELEMENTS(param)
 nva            = N_ELEMENTS(vpara)
 nve            = N_ELEMENTS(vperp)
-test           = (np[0] LT 6) OR (nva[0] LT 1) OR (nve[0] LT 1)
+test           = (np[0] LT 6) OR (nva[0] LT 5) OR (nve[0] LT 5)
+;IF (np LT 6) THEN BEGIN
 IF (test[0]) THEN BEGIN
   ;;  bad input???
-  RETURN,0b
+  RETURN,0
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate distribution
 ;;----------------------------------------------------------------------------------------
-;;  Define the amplitude of the bi-Maxwellian [# cm^(-3) km^(-3) s^(+3)]
-amp            = param[0]/(!DPI^(3d0/2d0)*param[1]*param[2]^2d0)
-;;  Define velocities offset by drift speeds:  U_j = V_j - V_oj  [km/s]
-uelpa          = vpara - param[3]      ;;  Parallel velocity minus drift speed [km/s]
-uelpe          = vperp - param[4]      ;;  Perpendicular velocity minus drift speed [km/s]
-;;  Convert to 2D
-uelpa2d        = uelpa # REPLICATE(1d0,nve[0])
-uelpe2d        = REPLICATE(1d0,nva[0]) # uelpe
-;;  Define:  W_j = U_j/V_Tj
-welpa2d        = uelpa2d/param[1]
-welpe2d        = uelpe2d/param[2]
-;;  Define exponent for bi-Maxwellian
-expon          = -1d0*(welpa2d^2d0 + welpe2d^2d0)
-;;  Define the 2D bi-Maxwellian VDF [# cm^(-3) km^(-3) s^(+3)]
+;;  Define parallel and perpendicular dimensions
+pp             = param[5]*1d0          ;;  Exponent value
+velpa          = vpara - param[3]      ;;  Parallel velocity minus drift speed [km/s]
+velpe          = vperp - param[4]      ;;  Parallel velocity minus drift speed [km/s]
+;;  Check whether exponent is even
+test           = (pp[0] MOD 2) NE 0
+IF (test[0]) THEN BEGIN
+  ;;  Odd exponent
+  ;;   --> use |V|
+  v_para         = (ABS(velpa)/param[1])^pp[0]
+  v_perp         = (ABS(velpe)/param[2])^pp[0]
+ENDIF ELSE BEGIN
+  ;;  Even exponent
+  ;;   --> use (V)
+  v_para         = (velpa/param[1])^pp[0]
+  v_perp         = (velpa/param[2])^pp[0]
+ENDELSE
+;;  Define normalization factor = [2 Gamma{(1 + p)/p}]^(-3)
+factor         = (2d0*GAMMA((1d0 + pp[0])/pp[0]))^(-3d0)
+;; Define amplitude = factor * [no/(V_tpara V_tperp^2)]
+amp            = factor[0]*param[0]/(param[1]*param[2]^2)
+expon          = REPLICATE(d,nva,nve)  ;;  Exponential factor of self-similar VDF
+;;  Compute values of exponent
+IF (nva[0] LT nve[0]) THEN BEGIN
+  ;;  Iterate over parallel dimension
+  FOR j=0L, nva[0] - 1L DO BEGIN
+    expon[j,*] = -1d0*(v_para[j] + v_perp)
+  ENDFOR
+ENDIF ELSE BEGIN
+  ;;  Iterate over perpendicular dimension
+  FOR i=0L, nve[0] - 1L DO BEGIN
+    expon[*,i] = -1d0*(v_para + v_perp[i])
+  ENDFOR
+ENDELSE
+;;  Define the 2D self-similar VDF
 df             = amp[0]*EXP(expon)
 ;;----------------------------------------------------------------------------------------
 ;;  Return the total distribution

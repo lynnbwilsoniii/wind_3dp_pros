@@ -41,44 +41,23 @@
 ;                 summation above.
 ;
 ;  CALLED BY:   
-;               NA
-;
-;  INCLUDES:
-;               NA
+;               temp_bimaxwellian_plus_bikappa_1d.pro
 ;
 ;  CALLS:
 ;               is_a_number.pro
-;               read_digamma_ascii_file.pro
 ;
 ;  REQUIRES:    
 ;               1)  UMN Modified Wind/3DP IDL Libraries
-;               2)  ASCII files named
-;                     digamma_numerical_estimates_0.01-41.0_0.01-steps.txt
-;                     digamma_numerical_estimates_0.0001-0.1_0.0001-steps.txt
-;                     digamma_numerical_estimates_0.05-0.15_0.0001-steps.txt
-;                     digamma_numerical_estimates_0.09-10.10_0.01-steps.txt
-;                     digamma_numerical_estimates_10.00-20.10_0.01-steps.txt
-;                     digamma_numerical_estimates_20.00-30.10_0.01-steps.txt
-;                     digamma_numerical_estimates_30.00-40.10_0.01-steps.txt
-;                   in the following directory
-;                     ~/wind_3dp_pros/LYNN_PRO/general_math/
 ;
 ;  INPUT:
-;               Z  :  Scalar [numeric] defining the argument of the digamma function
+;               Z  :  Scalar [float/double] defining the argument of the digamma function
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               dg = lbw_digamma(z [,N=n] [,READ_DG=read_dg])
+;               NA
 ;
 ;  KEYWORDS:    
-;               N        :  Scalar [long] defining the number of terms to use in the
-;                             summation to calculate the deviation from the
-;                             Euler-Mascheroni constant
-;                             [Default = 30000000]
-;               READ_DG  :  If set and the following is satisfied, 0.01 ≤ Z ≤ 41.0, then
-;                             the routine will read in an ASCII file containing
-;                             pre-evaluated results from the digamma function and then
-;                             will linearly interpolate to the value of Z
+;               N  :  Scalar [long] defining the number of terms to use in the summation
+;                       [Default = 30000000]
 ;
 ;   CHANGED:  1)  Finished writing routine
 ;                                                                   [04/23/2015   v1.0.0]
@@ -87,17 +66,6 @@
 ;                                                                   [04/24/2015   v1.0.1]
 ;             3)  Moved to ~/wind_3dp_pros/LYNN_PRO/general_math/ and updated routine
 ;                                                                   [08/12/2015   v1.1.0]
-;             4)  Cleaned up and updated Man. page
-;                                                                   [04/04/2018   v1.1.1]
-;             5)  Added keyword READ_DG and now calls
-;                   read_digamma_ascii_file.pro
-;                                                                   [04/07/2018   v1.2.0]
-;             6)  Added more fine-grained ASCII files of shorter length to improve
-;                   accuracy and speed up computation and now requires argument
-;                   input for read_digamma_ascii_file.pro to determine the range
-;                   associated with a specific ASCII file and now uses SPLINE
-;                   interpolation
-;                                                                   [04/12/2018   v1.3.0]
 ;
 ;   NOTES:      
 ;               1)  The Euler-Mascheroni constant to 50 decimal places is:
@@ -108,8 +76,6 @@
 ;               3)  Unfortunately, this routine is slow as it creates an array of values
 ;                     that can be several billion elements long, depending on the
 ;                     precision desired by the user
-;               4)  If the input Z falls between 0.01 and 41.0 then the use the READ_DG
-;                     keyword as this will speed up the routine greatly
 ;
 ;  REFERENCES:  
 ;               Equation (15) at:
@@ -117,13 +83,13 @@
 ;
 ;   CREATED:  04/01/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/12/2018   v1.3.0
+;    LAST MODIFIED:  08/12/2015   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION lbw_digamma,z,N=n,READ_DG=read_dg
+FUNCTION lbw_digamma,z,N=n
 
 ;;  Let IDL know that the following are functions
 FORWARD_FUNCTION is_a_number
@@ -132,37 +98,24 @@ FORWARD_FUNCTION is_a_number
 ;;----------------------------------------------------------------------------------------
 f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
-;;  Define the Euler-Mascheroni constant to 50 decimal places
 em_gam         = 0.57721566490153286060651209008240243104215933593992d0
-def_n          = 30000000UL        ;;  Minimum number of terms in series allowed
-min_prec       = 1d-12             ;;  Minimum allowed deviation from Euler-Mascheroni constant
+def_n          = 30000000UL
+min_prec       = 1d-12
 ;;----------------------------------------------------------------------------------------
 ;;  Check input
 ;;----------------------------------------------------------------------------------------
-test           = (N_PARAMS() NE 1) OR (is_a_number(z,/NOMSSG) EQ 0)
-IF (test[0]) THEN BEGIN
+test           = (N_PARAMS() NE 1) OR (is_a_number(z,/NOMSSG) EQ 0) OR $
+                 (N_ELEMENTS(z) LT 1)
+IF (test) THEN BEGIN
   ;;  (Incorrect # of inputs) OR (Input was not numeric)
   RETURN,0b
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
-;;  Check READ_DG
-test           = KEYWORD_SET(read_dg)
-IF (test[0]) THEN test = (z[0] GT 0.0003) AND (z[0] LT 40.90e0)  ;;  Make sure within allowed range
-IF (test[0]) THEN BEGIN
-  ;;  Read in ASCII file
-  zz             = z[0]
-  dglist         = read_digamma_ascii_file(zz[0])
-;  temp           = INTERPOL(dglist[*,1],dglist[*,0],zz[0],/NAN)
-  temp           = INTERPOL(dglist[*,1],dglist[*,0],zz[0],/NAN,/SPLINE)
-  psi_final      = temp[0]
-  ;;  Return to user
-  RETURN,psi_final[0]
-ENDIF
 ;;  Check N
-test           = (is_a_number(n,/NOMSSG) EQ 0)
-IF (test[0]) THEN nn = def_n[0] ELSE nn = ULONG(n[0] > def_n[0])
+test           = (N_ELEMENTS(n) LT 1) OR (is_a_number(n) EQ 0)
+IF (test) THEN nn = def_n[0] ELSE nn = ULONG(n[0] > def_n[0])
 ;;  Make sure N is large enough so that the deviation from Euler-Mascheroni constant
 ;;    is less than ~10^(-12)
 zz             = z[0] - 1d0
