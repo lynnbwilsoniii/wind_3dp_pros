@@ -102,10 +102,6 @@
 ;             5)  Fixed a potential issue if user defined a frequency range with no
 ;                   excluded bins, the routine could break but now will not
 ;                                                                   [04/06/2017   v3.0.1]
-;             6)  Fixed a potential issue where a user sets /MIDF and LF=0.0 but the
-;                   users intent was to keep the zero frequency bin, i.e., they should
-;                   not need to enter a negative frequency
-;                                                                   [04/26/2018   v3.0.2]
 ;
 ;   NOTES:      
 ;               1)  The input units for SR, LF, and HF do not matter so long as they are
@@ -144,7 +140,7 @@
 ;
 ;   CREATED:  12/30/2009
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/26/2018   v3.0.2
+;    LAST MODIFIED:  04/06/2017   v3.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -180,7 +176,7 @@ ENDIF
 ;;  Define relevant/necessary parameters
 ;;----------------------------------------------------------------------------------------
 ;;  Define the number of vectors and sample rate
-no             = N_ELEMENTS(d[*,0])     ;;  # of 3-vectors on input
+no             = N_ELEMENTS(d[*,0])     ;;  # of 3-vectors
 sr             = 1d0*srt[0]             ;;  input sample rate [(unit time)^(-1)]
 def_hf         = sr[0]/2d0              ;;  Default high frequency limit = Nyquist frequency
 ;;  Define defaults
@@ -200,18 +196,6 @@ ENDIF ELSE BEGIN
   IF (is_a_number(lf,/NOMSSG) EQ 0) THEN lf = def_lf[0]
   IF (is_a_number(hf,/NOMSSG) EQ 0) THEN hf = def_hf[0]
 ENDELSE
-;;----------------------------------------------------------------------------------------
-;;  Check keywords
-;;----------------------------------------------------------------------------------------
-IF KEYWORD_SET(lowf)  THEN lowf_on  = 1b ELSE lowf_on  = 0b
-IF KEYWORD_SET(midf)  THEN midf_on  = 1b ELSE midf_on  = 0b
-IF KEYWORD_SET(highf) THEN highf_on = 1b ELSE highf_on = 0b
-check          = [lowf_on[0],midf_on[0],highf_on[0]]
-;;  First check if user's frequency range would not exclude any FFT frequencies
-test           = ((lf[0] LE 0) AND (hf[0] GE sr[0]/2d0)) AND midf_on[0]
-IF (test[0]) THEN RETURN,dat     ;;  return input array without doing anything
-;;  Determine which filter to use (determine elements later)
-gcheck         = WHERE(check GT 0,gch,COMPLEMENT=bcheck,NCOMPLEMENT=bch)
 ;;----------------------------------------------------------------------------------------
 ;;  Replace NaNs with zeros so FFT will return finite values
 ;;----------------------------------------------------------------------------------------
@@ -244,36 +228,31 @@ fft_freq       = fft_freq*(sr[0]/nd[0])
 lfc1           = 1d0*lf[0]
 hfc1           = 1d0*hf[0]
 good_low       = (ABS(fft_freq) LE lfc1[0]) AND (ABS(fft_freq) GT 0d0)
-good_mid       = (ABS(fft_freq) GE lfc1[0]) AND (ABS(fft_freq) LE hfc1[0])
+good_mid       = (ABS(fft_freq) GT lfc1[0]) AND (ABS(fft_freq) LE hfc1[0])
 good_upp       = (ABS(fft_freq) GT hfc1[0])
 lowf1          = WHERE(good_low,lf1,COMPLEMENT=other_mh,NCOMPLEMENT=bd_oth_mh)
 midf1          = WHERE(good_mid,mf1,COMPLEMENT=other_lh,NCOMPLEMENT=bd_oth_lh)
 highf1         = WHERE(good_upp,hf1,COMPLEMENT=other_lm,NCOMPLEMENT=bd_oth_lm)
-;;  Cleanup unused arrays [useful for very large input arrays to keep memory usage low]
-lowf1          = 0
-midf1          = 0
-highf1         = 0
-good_low       = 0
-good_mid       = 0
-good_upp       = 0
+;lowf1          = WHERE(ABS(fft_freq) LE lfc1[0] AND ABS(fft_freq) GT 0d0,lf1,COMPLEMENT=other_mh)
+;midf1          = WHERE(ABS(fft_freq) GT lfc1[0] AND ABS(fft_freq) LE hfc1[0],mf1,COMPLEMENT=other_lh)
+;highf1         = WHERE(ABS(fft_freq) GT hfc1[0],hf1,COMPLEMENT=other_lm)
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
-;IF KEYWORD_SET(lowf)  THEN lowf1  = 1 ELSE lowf1  = 0
-;IF KEYWORD_SET(midf)  THEN midf1  = 1 ELSE midf1  = 0
-;IF KEYWORD_SET(highf) THEN highf1 = 1 ELSE highf1 = 0
-;check          = [KEYWORD_SET(lowf1),KEYWORD_SET(midf1),KEYWORD_SET(highf1)]
-;gcheck         = WHERE(check GT 0,gch,COMPLEMENT=bcheck,NCOMPLEMENT=bch)
-;;  Determine which elements to filter
+IF KEYWORD_SET(lowf)  THEN lowf1  = 1 ELSE lowf1  = 0
+IF KEYWORD_SET(midf)  THEN midf1  = 1 ELSE midf1  = 0
+IF KEYWORD_SET(highf) THEN highf1 = 1 ELSE highf1 = 0
+check          = [KEYWORD_SET(lowf1),KEYWORD_SET(midf1),KEYWORD_SET(highf1)]
+gcheck         = WHERE(check GT 0,gch,COMPLEMENT=bcheck,NCOMPLEMENT=bch)
+;;  Determine which filter to use
 gelems         = {T0:other_mh,T1:other_lh,T2:other_lm}
 gelnum         = {T0:bd_oth_mh,T1:bd_oth_lh,T2:bd_oth_lm}
-IF (gch[0] EQ 1L) THEN BEGIN
+IF (gch EQ 1L) THEN BEGIN
   ;;  Define elements to eliminate in frequency space
   other = gelems.(gcheck[0])
   nbad  = gelnum.(gcheck[0])
-ENDIF ELSE BEGIN
-  ;;  Default setting b/c user entered too many keywords
-  ;;    Default = bandpass
+ENDIF ELSE BEGIN ;;  Default setting b/c user entered too many keywords
+  ;;  Default = bandpass
   other = other_lh
   nbad  = bd_oth_lh[0]
 ENDELSE
