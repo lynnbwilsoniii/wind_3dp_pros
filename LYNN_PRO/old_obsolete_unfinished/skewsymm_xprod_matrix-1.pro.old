@@ -15,7 +15,7 @@
 ;
 ;  CALLS:
 ;               is_a_number.pro
-;               is_a_3_vector.pro
+;               format_2d_vec.pro
 ;               unit_vec.pro
 ;               my_dot_prod.pro
 ;               my_crossp_2.pro
@@ -32,7 +32,6 @@
 ;                            which AV will be rotated
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
 ;               rotm = skewsymm_xprod_matrix(av,bv)
 ;
 ;  KEYWORDS:    
@@ -40,8 +39,6 @@
 ;
 ;   CHANGED:  1)  Now calls vm_matrix.pro  -->  now quasi-vectorized
 ;                                                                   [11/06/2015   v1.0.1]
-;             2)  Now calls is_a_3vector.pro
-;                                                                   [04/19/2018   v1.0.2]
 ;
 ;   NOTES:      
 ;               1)  Interestingly, the rotation matrix from one coordinate basis to
@@ -60,7 +57,7 @@
 ;
 ;   CREATED:  11/06/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/19/2018   v1.0.2
+;    LAST MODIFIED:  11/06/2015   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -69,7 +66,7 @@
 FUNCTION skewsymm_xprod_matrix,av,bv
 
 ;;  Let IDL know that the following are functions
-FORWARD_FUNCTION is_a_number, is_a_3vector, unit_vec, my_dot_prod, my_crossp_2, $
+FORWARD_FUNCTION is_a_number, format_2d_vec, unit_vec, my_dot_prod, my_crossp_2, $
                  mag__vec, vm_matrix
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
@@ -91,10 +88,10 @@ IF (test[0]) THEN BEGIN
   RETURN,0b
 ENDIF
 ;;  Check vector formats
-;av_2d          = format_2d_vec(av)    ;;  If a vector, routine will force to [N,3]-elements, even if N = 1
-;bv_2d          = format_2d_vec(bv)
-test           = (is_a_3_vector(av,V_OUT=av_2d,/NOMSSG) EQ 0) OR  $
-                 (is_a_3_vector(bv,V_OUT=bv_2d,/NOMSSG) EQ 0)
+av_2d          = format_2d_vec(av)    ;;  If a vector, routine will force to [N,3]-elements, even if N = 1
+bv_2d          = format_2d_vec(bv)
+test           = ((N_ELEMENTS(av_2d) LT 3) OR ((N_ELEMENTS(av_2d) MOD 3) NE 0)) OR $
+                 ((N_ELEMENTS(bv_2d) LT 3) OR ((N_ELEMENTS(bv_2d) MOD 3) NE 0))
 IF (test[0]) THEN BEGIN
   MESSAGE,badvfor_msg,/INFORMATIONAL,/CONTINUE
   RETURN,0b
@@ -130,7 +127,7 @@ ENDIF ELSE BEGIN
     v2 = bv_2d
   ENDIF ELSE BEGIN
     ;;------------------------------------------------------------------------------------
-    ;;  Only one is an [N,3]-element array where N > 1
+    ;;  Only one is an [N,3]-element array
     ;;------------------------------------------------------------------------------------
     test           = (N_ELEMENTS(av_2d) GT 3)
     IF (test[0]) THEN BEGIN
@@ -151,10 +148,7 @@ szdu           = SIZE(u1,/DIMENSIONS)
 nu             = szdu[0]
 ;;  Define [N]-Identity matrices
 n_ident        = REPLICATE(0d0,nu,3,3)
-n_ident[*,0,0] = 1d0
-n_ident[*,1,1] = 1d0
-n_ident[*,2,2] = 1d0
-;FOR i=0L, nu - 1L DO n_ident[i,*,*] = ident
+FOR i=0L, nu - 1L DO n_ident[i,*,*] = ident
 ;;----------------------------------------------------------------------------------------
 ;;  Compute dot- and cross-products and magnitudes
 ;;----------------------------------------------------------------------------------------
@@ -169,6 +163,7 @@ ss             = mag__vec(u1_x_u2)           ;;  Sin(ø)
 ;;  Construct the skew-symmetric cross-product matrix
 ;;
 ;;    Let V = AV x BV, then the matrix is given by:
+;;
 ;;
 ;;            |   0   -Vz  +Vy  |
 ;;            |                 |
@@ -191,8 +186,8 @@ fac0           = REPLICATE(0d0,nu,3,3)
 FOR row=0L, 2L DO FOR col=0L, 2L DO fac0[*,col,row] = (1d0 - cc)/ss^2
 rotm           = REPLICATE(0d0,nu,3,3)
 v_x_2          = vm_matrix(v_x,v_x)    ;;  W = V . V or W[i,*,*] = (REFORM(v_x[i,*,*]) ## REFORM(v_x[i,*,*]))
-;;  R = I + V + [(1 - Cos(ø))/Sin^2(ø)] W
 rotm           = n_ident + v_x + fac0*v_x_2
+;FOR i=0L, nu - 1L DO rotm[i,*,*] = ident + v_x[i,*,*] + fac0[i,0,0]*(REFORM(v_x[i,*,*]) ## REFORM(v_x[i,*,*]))
 ;;----------------------------------------------------------------------------------------
 ;;  Return to User
 ;;----------------------------------------------------------------------------------------
