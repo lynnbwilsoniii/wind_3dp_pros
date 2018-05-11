@@ -1167,7 +1167,7 @@ END
 ;                                          [,EMAX_CH=emax_ch] [,EMAX_B=emax_b]                                  $
 ;                                          [,FTOL=ftol] [,GTOL=gtol] [,XTOL=xtol]                               $
 ;                                          [,USE1C4WGHT=use1c4wght] [,NO_WGHT=no_wght] [,/PLOT_BOTH]            $
-;                                          [,POISSON=poisson] [,NB_LT_NH=nb_lt_nh] [,OUTSTRC=out_struc]         $
+;                                          [,POISSON=poisson] [,OUTSTRC=out_struc]                              $
 ;                                          [,_EXTRA=extrakey]
 ;
 ;  KEYWORDS:    
@@ -1409,18 +1409,6 @@ END
 ;                                match that of the VDF input for this to be meaningful.
 ;                                [e.g., # s^(+3) km^(-3) cm^(-3)]
 ;                                [Default  :  FALSE]
-;               NB_LT_NH    :  If set, routine will redefine the LIMITS values of the
-;                                PARINFO structure for the beam fit so as to keep the
-;                                beam density at or below the halo density.  For the
-;                                solar wind electrons, it is generally assumed that the
-;                                strahl density is less than the halo at 1 AU, so one
-;                                may find setting this keyword to be the physically
-;                                significant approach.  It may also hinder a good fit
-;                                and it should be noted that the strahl having a smaller
-;                                density than the halo is largely an assumption that
-;                                has been imposed upon the fitting routines in past
-;                                studies, not necessarily a rigorous, physically
-;                                consistent requirement.
 ;               ***  OUTPUT  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [all the following changed on output]  ***
@@ -1498,8 +1486,6 @@ END
 ;            23)  Use of Poisson statistics works so no longer need to check the quality
 ;                   of the beam fit and cleaned up
 ;                                                                   [05/08/2018   v1.3.3]
-;            24)  Added keyword:  NB_LT_NH
-;                                                                   [05/08/2018   v1.3.4]
 ;
 ;   NOTES:      
 ;               0)  ***  Do not directly set the RMSTRAHL keyword  ***
@@ -1675,7 +1661,7 @@ END
 ;
 ;   CREATED:  04/09/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/08/2018   v1.3.4
+;    LAST MODIFIED:  05/08/2018   v1.3.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -1685,6 +1671,7 @@ PRO wrapper_fit_vdf_2_sumof2funcs,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2, 
                                   COREP=corep,HALOP=halop,CFUNC=cfunc,HFUNC=hfunc,             $
                                   RMSTRAHL=rmstrahl,V1ISB=v1isb,                               $
                                   ELECTRONS=electrons,IONS=ions,                               $
+                                  SAVEF=savef,FILENAME=filename,                               $
                                   BEAMP=beamp,BFUNC=bfunc,ONLY_TOT=only_tot,                   $
                                   FIXED_C=fixed_c,FIXED_H=fixed_h,FIXED_B=fixed_b,             $
                                   NCORE_RAN=ncore_ran,NHALO_RAN=nhalo_ran,NBEAM_RAN=nbeam_ran, $
@@ -1696,7 +1683,6 @@ PRO wrapper_fit_vdf_2_sumof2funcs,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2, 
                                   EMIN_CH=emin_ch,EMIN_B=emin_b,EMAX_CH=emax_ch,EMAX_B=emax_b, $
                                   FTOL=ftol,GTOL=gtol,XTOL=xtol,USE1C4WGHT=use1c4wght,         $
                                   NO_WGHT=no_wght,PLOT_BOTH=plot_both,POISSON=poisson,         $
-                                  NB_LT_NH=nb_lt_nh,SAVEF=savef,FILENAME=filename,             $
                                   _EXTRA=extrakey,                                             $
                                   OUTSTRC=out_struc
 
@@ -2493,25 +2479,6 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
       bweight[bad3]            = 0d0
       berror[badb]             = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
     ENDIF
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Check NB_LT_NH
-  ;;--------------------------------------------------------------------------------------
-  test           = (N_ELEMENTS(nb_lt_nh) GT 0) AND KEYWORD_SET(nb_lt_nh)
-  IF (test[0]) THEN BEGIN
-    ;;  Use the halo density result from the core+halo fit to limit the beam density
-    old_lims          = b_info[0].LIMITS
-    old_limd          = b_info[0].LIMITED
-    halo_dens         = bifit[6]
-    new_lims          = old_lims
-    new_lims[1]       = new_lims[1] < (9d-1*halo_dens[0])
-    IF (new_lims[1] LE new_lims[0]) THEN new_lims[0] *= 1d-1     ;;  Shrink, if necessary
-    ;;  Redefine PARINFO limits for beam fit
-    b_info[0].LIMITS  = new_lims
-    b_info[0].LIMITED = 1b
-    new_bdens         = MEAN(new_lims,/NAN)
-    b_info[0].VALUE   = new_bdens[0]
-    parmb[0]          = new_bdens[0]
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Fit beam to model 2D function

@@ -1167,7 +1167,7 @@ END
 ;                                          [,EMAX_CH=emax_ch] [,EMAX_B=emax_b]                                  $
 ;                                          [,FTOL=ftol] [,GTOL=gtol] [,XTOL=xtol]                               $
 ;                                          [,USE1C4WGHT=use1c4wght] [,NO_WGHT=no_wght] [,/PLOT_BOTH]            $
-;                                          [,POISSON=poisson] [,NB_LT_NH=nb_lt_nh] [,OUTSTRC=out_struc]         $
+;                                          [,POISSON=poisson] [,OUTSTRC=out_struc]                              $
 ;                                          [,_EXTRA=extrakey]
 ;
 ;  KEYWORDS:    
@@ -1409,18 +1409,6 @@ END
 ;                                match that of the VDF input for this to be meaningful.
 ;                                [e.g., # s^(+3) km^(-3) cm^(-3)]
 ;                                [Default  :  FALSE]
-;               NB_LT_NH    :  If set, routine will redefine the LIMITS values of the
-;                                PARINFO structure for the beam fit so as to keep the
-;                                beam density at or below the halo density.  For the
-;                                solar wind electrons, it is generally assumed that the
-;                                strahl density is less than the halo at 1 AU, so one
-;                                may find setting this keyword to be the physically
-;                                significant approach.  It may also hinder a good fit
-;                                and it should be noted that the strahl having a smaller
-;                                density than the halo is largely an assumption that
-;                                has been imposed upon the fitting routines in past
-;                                studies, not necessarily a rigorous, physically
-;                                consistent requirement.
 ;               ***  OUTPUT  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [all the following changed on output]  ***
@@ -1495,11 +1483,6 @@ END
 ;                                                                   [05/07/2018   v1.3.1]
 ;            22)  Added keyword:  POISSON
 ;                                                                   [05/07/2018   v1.3.2]
-;            23)  Use of Poisson statistics works so no longer need to check the quality
-;                   of the beam fit and cleaned up
-;                                                                   [05/08/2018   v1.3.3]
-;            24)  Added keyword:  NB_LT_NH
-;                                                                   [05/08/2018   v1.3.4]
 ;
 ;   NOTES:      
 ;               0)  ***  Do not directly set the RMSTRAHL keyword  ***
@@ -1675,7 +1658,7 @@ END
 ;
 ;   CREATED:  04/09/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/08/2018   v1.3.4
+;    LAST MODIFIED:  05/07/2018   v1.3.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -1685,6 +1668,7 @@ PRO wrapper_fit_vdf_2_sumof2funcs,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2, 
                                   COREP=corep,HALOP=halop,CFUNC=cfunc,HFUNC=hfunc,             $
                                   RMSTRAHL=rmstrahl,V1ISB=v1isb,                               $
                                   ELECTRONS=electrons,IONS=ions,                               $
+                                  SAVEF=savef,FILENAME=filename,                               $
                                   BEAMP=beamp,BFUNC=bfunc,ONLY_TOT=only_tot,                   $
                                   FIXED_C=fixed_c,FIXED_H=fixed_h,FIXED_B=fixed_b,             $
                                   NCORE_RAN=ncore_ran,NHALO_RAN=nhalo_ran,NBEAM_RAN=nbeam_ran, $
@@ -1696,7 +1680,6 @@ PRO wrapper_fit_vdf_2_sumof2funcs,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2, 
                                   EMIN_CH=emin_ch,EMIN_B=emin_b,EMAX_CH=emax_ch,EMAX_B=emax_b, $
                                   FTOL=ftol,GTOL=gtol,XTOL=xtol,USE1C4WGHT=use1c4wght,         $
                                   NO_WGHT=no_wght,PLOT_BOTH=plot_both,POISSON=poisson,         $
-                                  NB_LT_NH=nb_lt_nh,SAVEF=savef,FILENAME=filename,             $
                                   _EXTRA=extrakey,                                             $
                                   OUTSTRC=out_struc
 
@@ -2123,6 +2106,7 @@ IF (rm_strahl_on[0]) THEN BEGIN
       test                    = (def_pinf[9].LIMITS[0] GT def_pinf[9].LIMITS[1]) AND def_pinf[9].LIMITED[1]
       IF (test[0]) THEN def_pinf[9].LIMITS[1] = 10*def_pinf[9].LIMITS[0]
       test                    = (def_binf[3].LIMITS[0] GT def_binf[3].LIMITS[1]) AND def_binf[3].LIMITED[1]
+;      IF (test[0]) THEN def_binf[3].LIMITS[1] = -10*ABS(def_binf[3].LIMITS[0])
       IF (test[0]) THEN BEGIN
         ;;  Adjust and sort
         def_binf[3].LIMITS[1] = -10*ABS(def_binf[3].LIMITS[0])
@@ -2203,6 +2187,8 @@ ENDIF
 vdf_2ds                 = SMOOTH(vdf_2d,3,/NAN,/EDGE_TRUNCATE)
 vdf_2dc                 = vdf_2ds
 vdf_2db                 = vdf_2ds
+;vdf_2dc                 = vdf_2d
+;vdf_2db                 = vdf_2d
 IF (use1c4w_on[0]) THEN BEGIN
   onec_2dc = SMOOTH(dat_out.ONE_CUT.VDF_2D,3,/NAN,/EDGE_TRUNCATE)
   onec_2db = onec_2dc
@@ -2422,6 +2408,7 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
   b_info.VALUE            = parmb                               ;;  Redefine parameters
   fit_out                 = vdf_fit_out
   residual                = (vdf_2ds - fit_out) > 0             ;;  Force values to > 1.0
+;  residual                = (vdf_2db - fit_out) > 0             ;;  Force values to > 1.0
   IF (poisson_on[0]) THEN BEGIN
     ;;  Use user-defined Poisson errors
     berror                  = poisson_2db*poffst[0]
@@ -2493,25 +2480,6 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
       bweight[bad3]            = 0d0
       berror[badb]             = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
     ENDIF
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Check NB_LT_NH
-  ;;--------------------------------------------------------------------------------------
-  test           = (N_ELEMENTS(nb_lt_nh) GT 0) AND KEYWORD_SET(nb_lt_nh)
-  IF (test[0]) THEN BEGIN
-    ;;  Use the halo density result from the core+halo fit to limit the beam density
-    old_lims          = b_info[0].LIMITS
-    old_limd          = b_info[0].LIMITED
-    halo_dens         = bifit[6]
-    new_lims          = old_lims
-    new_lims[1]       = new_lims[1] < (9d-1*halo_dens[0])
-    IF (new_lims[1] LE new_lims[0]) THEN new_lims[0] *= 1d-1     ;;  Shrink, if necessary
-    ;;  Redefine PARINFO limits for beam fit
-    b_info[0].LIMITS  = new_lims
-    b_info[0].LIMITED = 1b
-    new_bdens         = MEAN(new_lims,/NAN)
-    b_info[0].VALUE   = new_bdens[0]
-    parmb[0]          = new_bdens[0]
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Fit beam to model 2D function
@@ -2624,6 +2592,28 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
     bbeam_para              = REPLICATE(0d0,n_par[0])         ;;  horizontal 1D cut
     bbeam_perp              = REPLICATE(0d0,n_per[0])         ;;  vertical 1D cut
   ENDELSE
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define 2D residuals to test quality of beam fit
+  ;;--------------------------------------------------------------------------------------
+  resid_ch                = (vdf_2ds - fit_out)
+  temp                    = [[[fit_out]],[[beamout]]]       ;;  [N,M,2]-Element array
+  fit_all                 = TOTAL(temp,3,/NAN,/DOUBLE)
+  resid__a                = (vdf_2ds - fit_all)
+  ratio_ch                = ABS(TOTAL(resid_ch,/NAN))
+  ratio__a                = ABS(TOTAL(resid__a,/NAN))
+  perc_dif                = ratio__a[0]/ratio_ch[0]
+;  ratio_ch                = resid_ch/vdf_2ds
+;  ratio__a                = resid__a/vdf_2ds
+;  perc_dif                = 1d0 - ABS(TOTAL(ratio__a,/NAN))/ABS(TOTAL(ratio_ch,/NAN))
+;  IF (perc_dif[0] LE 3d-2) THEN BEGIN
+  IF (perc_dif[0] GE 97d-2) THEN BEGIN
+    ;;  Result differs either by < 3% or beam is too intense
+    PRINT,''
+    PRINT,extrakey.P_TITLE[0]
+    PRINT,'% Diff. Ratio:  ',perc_dif[0]
+    PRINT,''
+;    STOP
+  ENDIF
 ENDIF ELSE BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  Main fit to core+halo failed --> don't bother with beam
