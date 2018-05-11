@@ -30,7 +30,6 @@
 ;               2)  The following data:
 ;                     Wind/3DP level zero files
 ;                     Wind/MFI H0 CDF files
-;               3)  Craig B. Markwardt's MPFIT Software
 ;
 ;  INPUT:
 ;               NA
@@ -42,8 +41,8 @@
 ;  KEYWORDS:    
 ;               NA
 ;
-;   CHANGED:  1)  Adjusted to account for changes made to wrapper_fit_vdf_2_sumof2funcs.pro
-;                                                                   [05/08/2018   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  Follow notes in crib and enter each line by hand in the command line
@@ -51,18 +50,6 @@
 ;                     SWF  :  solar wind frame of reference
 ;                     FAC  :  field-aligned coordinates
 ;                     VDF  :  velocity distribution function
-;               3)  The spacecraft (SC) potential estimates given below are really a
-;                     proxy, not the real values.  This is because the deadtime and
-;                     efficiency estimates for each solid angle bin are currently
-;                     defined as the analytical estimates from theory for electrons
-;                     incident on chevron MCPs.  The SC potential estimates are adjusted
-;                     manually until the total electron density determined from the fits
-;                     matches (roughly) the density determined from the upper hybrid
-;                     line observed by the WAVES TNR instrument (i.e., the only
-;                     unambiguous measure of the total electron density).
-;               4)  For an explanation of the deadtime and efficiency estimates for MCPs
-;                     see the work by Goruganthu and Wilson [1984],
-;                     Meeks and Siegel [2008], and Schecker et al. [1992].
 ;
 ;  REFERENCES:  
 ;               0)  Barnes, A. "Collisionless Heating of the Solar-Wind Plasma I. Theory
@@ -123,21 +110,10 @@
 ;                      shock," Phys. Rev. Lett. 117(21), pp. 215101, 2016.
 ;              19)  Location of MPFIT software
 ;                     https://www.physics.wisc.edu/~craigm/idl/fitting.html
-;              20)  Goruganthu, R.R. and W.G. Wilson "Relative electron detection
-;                      efficiency of microchannel plates from 0-3 keV,"
-;                      Rev. Sci. Inst. Vol. 55, pp. 2030-–2033, doi:10.1063/1.1137709,
-;                      1984.
-;              21)  Meeks, C. and P.B. Siegel "Dead time correction via the time series,"
-;                      Amer. J. Phys. Vol. 76, pp. 589--590, doi:10.1119/1.2870432, 2008.
-;              22)  Schecker, J.A., et al., "The performance of a microchannel plate at
-;                      cryogenic temperatures and in high magnetic fields, and the
-;                      detection efficiency for low energy positive hydrogen ions,"
-;                      Nucl. Inst. & Meth. in Phys. Res. A Vol. 320, pp. 556--561,
-;                      doi:10.1016/0168-9002(92)90950-9, 1992.
 ;
 ;   CREATED:  04/27/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/08/2018   v1.0.1
+;    LAST MODIFIED:  04/27/2018   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -157,9 +133,6 @@ trange         = tura[0] + [-1,1]*2d0*36d2       ;;  Use 2 hour window around ra
 ;;----------------------------------------------------------------------------------------
 ;;  ***  Change directory path accordingly!  ***
 @/Users/lbwilson/Desktop/swidl-0.1//wind_3dp_pros/wind_3dp_cribs/wind_load_and_plot_3dp_vdf_compare_shocks_batch.pro
-;;  Redefine ramp time [above batch file gets new ramp time from JCK's shock database]
-tura           = time_double(tramp[0])
-trange         = tura[0] + [-1,1]*2d0*36d2       ;;  Use 4 hour window around ramp
 ;;----------------------------------------------------------------------------------------
 ;;  Define some default parameters
 ;;----------------------------------------------------------------------------------------
@@ -183,36 +156,15 @@ n_elb          = N_ELEMENTS(dat1)
 e_ind          = fill_range(0L,n_elb[0]-1L,DIND=1L)        ;;  change as user sees fit
 ;;  Find strahl direction signs (relative to Bo)
 strahl         = find_strahl_direction(TRANSPOSE(dat1.MAGF))
+jj             = 0L
+ii             = e_ind[jj]
+dat0           = dat1[jj]         ;;  EESA Low Burst
 dfra           = dfra_aelb        ;;  Default VDF range for PESA Low Burst
 vlim           = vlim_aelb        ;;  Default velocity range for PESA Low Burst
 tran_vdf       = tran_el
 fname_mid      = fname_mid_el
 pttl_midf      = ttl_midfs[0]
 
-;;  Limit SC Potential to ≤ +11.3 eV for this date since energy bins are
-;;    ~8.6, ~11.2, ~14.97, ~20.6, etc.
-;;     [factor of 1.25 is to offset factor of 1.3 used later]
-;;    See NOTES section in Man. page (above) for explanation of real meaning of
-;;    the spacecraft potential.
-scpot_max      = 11.3e0*[1,1]/1.25
-temp           = REFORM(dat1.SC_POT)
-t_st           = REFORM(dat1.TIME)
-good_up        = WHERE(t_st LT tura[0],gd_up,COMPLEMENT=good_dn,NCOMPLEMENT=gd_dn)
-IF (gd_up[0] GT 0) THEN max_up               = MAX(temp[good_up],/NAN)
-IF (gd_up[0] GT 0) THEN med_up               = MEDIAN(temp[good_up])
-IF (gd_up[0] GT 0) THEN new_upmax            = (temp[good_up]*ABS(scpot_max[0]))/max_up[0]
-IF (gd_up[0] GT 0) THEN dat1[good_up].SC_POT = new_upmax
-
-IF (gd_dn[0] GT 0) THEN max_dn               = MAX(temp[good_dn],/NAN)
-IF (gd_dn[0] GT 0) THEN med_dn               = MEDIAN(temp[good_dn])
-IF (gd_dn[0] GT 0) THEN new_dnmax            = (temp[good_dn]*ABS(scpot_max[1]))/max_dn[0]
-IF (gd_dn[0] GT 0) THEN dat1[good_dn].SC_POT = new_dnmax
-;;----------------------------------------------------------------------------------------
-;;  Define specific EESA Low Burst VDF [could just as well define PESA Low Burst VDFs]
-;;----------------------------------------------------------------------------------------
-jj             = 0L
-ii             = e_ind[jj]
-dat0           = dat1[jj]         ;;  EESA Low Burst
 ;;  These are some pre-defined bulk flow velocities determined using the Vbulk Change
 ;;    software to find the true peak phase space density location from the PESA Low
 ;;    VDFs.
@@ -238,19 +190,14 @@ pttl_pref      = sc[0]+' ['+ttle_ext[0]+'] '+pttl_midf[0]
 ;;  Define one-count level VDF
 datc           = dat0[0]
 datc.DATA      = 1e0            ;;  Create a one-count copy
-;;  Define Poisson statistics VDF
-datp           = dat0[0]
-datp.DATA      = SQRT(dat0[0].DATA)
+vec1           = REFORM(dat0[0].MAGF)
+vec2           = REFORM(dat0[0].VSW)
 ;;  Convert to phase space density [# cm^(-3) km^(-3) s^(+3)]
-;;    [works on Wind 3DP or THEMIS ESA distributions sent in as IDL structures]
 dat_df         = conv_units(dat0,'df')
 dat_1c         = conv_units(datc,'df')
-dat_ps         = conv_units(datp,'df')
 ;;  Convert F(energy,theta,phi) to F(Vx,Vy,Vz)
-;;    [works on Wind 3DP or THEMIS ESA distributions sent in as IDL structures]
 dat_fvxyz      = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(dat_df)
 dat_1cxyz      = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(dat_1c)
-dat_psxyz      = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(dat_ps)
 ;;  Define EX_VECS stuff  (for general_vdf_contour_plot.pro)
 ex_vecs[0]     = {VEC:FLOAT(dat_df[0].VSW),NAME:'Vsw'}
 ex_vecs[1]     = {VEC:FLOAT(dat_df[0].MAGF),NAME:'Bo'}
@@ -267,7 +214,6 @@ ptitle         = pttl_pref[0]+': '+trange_str(tran_vdf[ii,0],tran_vdf[ii,1],/MSE
 data_1d        = dat_fvxyz.VDF                  ;;  [N]-Element [numeric] array of phase space densities [# s^(+3) km^(-3) cm^(-3)]
 vels_1d        = dat_fvxyz.VELXYZ               ;;  [N,3]-Element [numeric] array of 3-vector velocities [km/s] corresponding to the phase space densities
 onec_1d        = dat_1cxyz.VDF                  ;;  [N]-Element [numeric] array of one-count levels in units of phase space densities [# s^(+3) km^(-3) cm^(-3)]
-pois_1d        = dat_psxyz.VDF                  ;;  [N]-Element [numeric] array of Poisson statistics [# cm^(-3) km^(-3) s^(+3)]
 ;;----------------------------------------------------------------------------------------
 ;;  Plot 2D contour in SWF, in FAC coordinate basis, and fit
 ;;----------------------------------------------------------------------------------------
@@ -314,7 +260,7 @@ wrapper_fit_vdf_2_sumof2funcs,data_1d,vels_1d,VFRAME=vframe,VEC1=vec1,VEC2=vec2,
                           /STRAHL,V1ISB=strahl[jj],OUTSTRC=out_struc,BEAMP=beamp,BFUNC='KK',$
                           FIXED_C=fixed_c,FIXED_H=fixed_h,FIXED_B=fixed_b,/ONLY_TOT,        $
                           VOABEAMRN=voabeamrn,VTABEAMRN=vtabeamrn,VTEBEAMRN=vtebeamrn,      $
-                          POISSON=pois_1d,EXPBEAMRN=expbeamrn,EMIN_CH=emin_ch,EMIN_B=emin_b
+                          EXPBEAMRN=expbeamrn,EMIN_CH=emin_ch,EMIN_B=emin_b
 
 ;;  Define file name
 vlim_str       = num2int_str(vlim[0],NUM_CHAR=6L,/ZERO_PAD)
@@ -322,7 +268,7 @@ fname_end      = 'para-red_perp-blue_1count-green_plane-'+plane[0]+'_VLIM-'+vlim
 fname_pre      = scpref[0]+'df_'+ttle_ext[0]+'_'
 fnams_out2     = fname_pre[0]+fname_mid+'_'+fname_end[0]+'_Fits_Core-MM_Halo-KK_wo-strahl_Beam-KK'
 
-;;  Save Plot [showing each 1D cut individually and total sum of three fits]
+;;  Save Plot [showing each 1D cut individually]
 wrapper_fit_vdf_2_sumof2funcs,data_1d,vels_1d,VFRAME=vframe,VEC1=vec1,VEC2=vec2,COREP=bimax,$
                           HALOP=bikap,CFUNC='MM',HFUNC='KK',VLIM=vlim[0],PLANE=plane[0],    $
                           NLEV=nlev,SM_CUTS=sm_cuts,SM_CONT=sm_cont,XNAME=xname,YNAME=yname,$
@@ -331,8 +277,8 @@ wrapper_fit_vdf_2_sumof2funcs,data_1d,vels_1d,VFRAME=vframe,VEC1=vec1,VEC2=vec2,
                           /STRAHL,V1ISB=strahl[jj],OUTSTRC=out_struc,BEAMP=beamp,BFUNC='KK',$
                           FIXED_C=fixed_c,FIXED_H=fixed_h,FIXED_B=fixed_b,                  $
                           VOABEAMRN=voabeamrn,VTABEAMRN=vtabeamrn,VTEBEAMRN=vtebeamrn,      $
-                          EXPBEAMRN=expbeamrn,EMIN_CH=emin_ch,EMIN_B=emin_b,/PLOT_BOTH,     $
-                          POISSON=pois_1d,FILENAME=fnams_out2[ii],/SAVEF
+                          EXPBEAMRN=expbeamrn,EMIN_CH=emin_ch,EMIN_B=emin_b,                $
+                          FILENAME=fnams_out2[ii],/SAVEF
 ;;  Print temperatures [eV] and anisotropies
 ch_parms       = out_struc.CORE_HALO.FIT_PARAMS
 b__parms       = out_struc.BEAM.FIT_PARAMS
@@ -342,8 +288,39 @@ PRINT,';;',ptitle[0]  & $
 PRINT,';;',tempall  & $
 PRINT,';;',tempall[1]/tempall[0],tempall[3]/tempall[2],tempall[5]/tempall[4]
 ;;Wind [SWF] Eesa Low Burst: 1996-04-03/09:46:17.248 - 09:46:20.408
-;;       10.608220       11.631794       55.616676       62.470147       17.114096       16.679250
-;;       1.0964887       1.1232269      0.97459133
+;;       8.0033960       9.5067176       38.147286       42.644262       37.260730       9.5750995
+;;       1.1878355       1.1178846      0.25697563
+
+
+
+;;  Define file name
+vlim_str       = num2int_str(vlim[0],NUM_CHAR=6L,/ZERO_PAD)
+fname_end      = 'para-red_perp-blue_1count-green_plane-'+plane[0]+'_VLIM-'+vlim_str[0]+'km_s'
+fname_pre      = scpref[0]+'df_'+ttle_ext[0]+'_'
+fnams_out3     = fname_pre[0]+fname_mid+'_'+fname_end[0]+'_Fits_Core-MM_Halo-KK_wo-strahl_Beam-KK_only_tot'
+
+;;  Save Plot [showing a single 1D cut that is the sum of all parameters]
+wrapper_fit_vdf_2_sumof2funcs,data_1d,vels_1d,VFRAME=vframe,VEC1=vec1,VEC2=vec2,COREP=bimax,$
+                          HALOP=bikap,CFUNC='MM',HFUNC='KK',VLIM=vlim[0],PLANE=plane[0],    $
+                          NLEV=nlev,SM_CUTS=sm_cuts,SM_CONT=sm_cont,XNAME=xname,YNAME=yname,$
+                          DFRA=dfra,EX_VECS=ex_vecs,EX_INFO=ex_info,V_0X=vxy_offs[0],       $
+                          V_0Y=vxy_offs[1],/SLICE2D,ONE_C=onec_1d,P_TITLE=ptitle,           $
+                          /STRAHL,V1ISB=strahl[jj],OUTSTRC=out_struc,BEAMP=beamp,BFUNC='KK',$
+                          /ONLY_TOT,FIXED_C=fixed_c,FIXED_H=fixed_h,FIXED_B=fixed_b,        $
+                          VOABEAMRN=voabeamrn,VTABEAMRN=vtabeamrn,VTEBEAMRN=vtebeamrn,      $
+                          EXPBEAMRN=expbeamrn,EMIN_CH=emin_ch,EMIN_B=emin_b,                $
+                          /SAVEF,FILENAME=fnams_out3[ii]
+;;  Print temperatures [eV] and anisotropies
+ch_parms       = out_struc.CORE_HALO.FIT_PARAMS
+b__parms       = out_struc.BEAM.FIT_PARAMS
+vte_all        = [ch_parms[[1,2,7,8]],b__parms[1:2]]      ;;  V_Tej [km/s]
+tempall        = vte2teevfac[0]*vte_all^2d0               ;;  T_ej [eV]
+PRINT,';;',ptitle[0]  & $
+PRINT,';;',tempall  & $
+PRINT,';;',tempall[1]/tempall[0],tempall[3]/tempall[2],tempall[5]/tempall[4]
+;;Wind [SWF] Eesa Low Burst: 1996-04-03/09:46:17.248 - 09:46:20.408
+;;       8.0033966       9.5067180       38.147286       42.644262       37.260733       9.5751068
+;;       1.1878354       1.1178846      0.25697580
 ;;
 ;;         Tcpara          Tcperp          Thpara          Thperp          Tspara          Tsperp
 ;;         Tcanis          Thanis          Tsanis
@@ -355,11 +332,6 @@ PRINT,';;',tempall[1]/tempall[0],tempall[3]/tempall[2],tempall[5]/tempall[4]
 
 
 
-;;  ***  Old/Obsolete  ***
-;;
-;;Wind [SWF] Eesa Low Burst: 1996-04-03/09:46:17.248 - 09:46:20.408
-;;       8.0033960       9.5067176       38.147286       42.644262       37.260730       9.5750995
-;;       1.1878355       1.1178846      0.25697563
 
 
 

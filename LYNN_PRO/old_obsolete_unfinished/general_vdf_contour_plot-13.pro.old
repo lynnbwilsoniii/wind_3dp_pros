@@ -110,41 +110,6 @@
 ;                             Y-Axis (vertical) to shift the location where the
 ;                             parallel (horizontal) cut of the DF will be performed
 ;                             [Default = 0.0]
-;               NGRID    :  Scalar [numeric] defining the number of grid points in each
-;                             direction to use when triangulating the data.  The input
-;                             will be limited to values between 30 and 300.
-;                             [Default = 101]
-;               SLICE2D  :  If set, routine will return a 2D slice instead of a 3D
-;                             projection
-;                             [Default = FALSE]
-;               P_TITLE  :  Scalar [string] defining the plot title for the contour plot
-;                             [Default = 'Contours of constant PSD']
-;               ONE_C    :  [N]-Element [float/double] array defining particle VDF
-;                             one-count level in units of phase space density
-;                             [e.g., # s^(+3) km^(-3) cm^(-3)]
-;                             [Default = FALSE]
-;               BPARM    :  [6]-Element [numeric] array where each element is defined by
-;                             the following quantities:
-;                             PARAM[0] = Number Density [cm^(-3)]
-;                             PARAM[1] = Parallel Thermal Speed [km/s]
-;                             PARAM[2] = Perpendicular Thermal Speed [km/s]
-;                             PARAM[3] = Parallel Drift Speed [km/s]
-;                             PARAM[4] = Perpendicular Drift Speed [km/s]
-;                             PARAM[5] = *** Not Used Here ***
-;                           If set, the routine will output 1D cuts of a model
-;                             bi-Maxwellian VDF defined by the above parameters
-;                             [Default = FALSE]
-;               KPARM    :  [6]-Element [numeric] array where each element is defined by
-;                             the following quantities:
-;                             PARAM[0] = Number Density [cm^(-3)]
-;                             PARAM[1] = Parallel Thermal Speed [km/s]
-;                             PARAM[2] = Perpendicular Thermal Speed [km/s]
-;                             PARAM[3] = Parallel Drift Speed [km/s]
-;                             PARAM[4] = Perpendicular Drift Speed [km/s]
-;                             PARAM[5] = Kappa Value
-;                           If set, the routine will output 1D cuts of a model
-;                             bi-kappa VDF defined by the above parameters
-;                             [Default = FALSE]
 ;
 ;   CHANGED:  1)  Fixed a bug that occurs when VDF input contains zeros
 ;                                                                  [05/16/2016   v1.0.1]
@@ -166,8 +131,6 @@
 ;                                                                  [04/04/2018   v1.0.8]
 ;             9)  Added STRAHL keyword
 ;                                                                  [04/19/2018   v1.0.9]
-;            10)  Added keywords:  NGRID, SLICE2D, P_TITLE, ONE_C, BPARM, and KPARM
-;                                                                  [05/09/2018   v1.1.0]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -183,7 +146,7 @@
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/09/2018   v1.1.0
+;    LAST MODIFIED:  04/19/2018   v1.0.9
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -192,8 +155,7 @@ FUNCTION defaults_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,
                              VLIM=vlim,NLEV=nlev,XNAME=xname,YNAME=yname,SM_CUTS=sm_cuts, $
                              SM_CONT=sm_cont,NSMCUT=nsmcut,NSMCON=nsmcon,PLANE=plane,     $
                              DFMIN=dfmin,DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,       $
-                             STRAHL=strahl,NGRID=ngrid,SLICE2D=slice2d,P_TITLE=p_title,   $
-                             ONE_C=one_c,BPARM=bimax,KPARM=bikap
+                             STRAHL=strahl
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range
 ;;----------------------------------------------------------------------------------------
@@ -235,7 +197,6 @@ def_con_zttl   = '('+def_xname[0]+' x '+def_yname[0]+') [1000 km/s]'
 def_units_vdf  = '[sec!U3!N km!U-3!N cm!U-3!N'+']'
 def_cut_yttl   = '1D VDF Cuts'+'!C'+def_units_vdf[0]
 def_cut_xttl   = 'Velocity [1000 km/sec]'
-def_con_pttl   = 'Contours of constant PSD'
 ;;  Define lower/upper bound on phase space densities
 lower_lim      = 1e-20  ;;  Lowest expected value for DF [s^(+3) cm^(-3) km^(-3)]
 upper_lim      = 1e-2   ;;  Highest expected value for DF [s^(+3) cm^(-3) km^(-3)]
@@ -243,8 +204,6 @@ def_dfnx       = [lower_lim[0],upper_lim[0]]
 ;;  Default crosshair location for cuts
 def_vox        = 0d0
 def_voy        = 0d0
-;;  Default one-count setting
-def_onec       = 0
 ;;----------------------------------------------------------------------------------------
 ;;  Check input
 ;;----------------------------------------------------------------------------------------
@@ -256,22 +215,25 @@ IF (test[0]) THEN BEGIN
 ENDIF
 szdvdf         = SIZE(vdf,/DIMENSIONS)
 szdvel         = SIZE(vxyz,/DIMENSIONS)
-kk             = szdvdf[0]                      ;;  # of phase space density values
-IF ((szdvdf[0] NE szdvel[0]) OR (szdvdf[0] LT 10)) THEN BEGIN
+test           = (szdvdf[0] NE szdvel[0]) OR (szdvdf[0] LT 10)
+IF (test[0]) THEN BEGIN
   MESSAGE,badvfor_msg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
 ;;  Now that we know these are at least formatted correct, test values
 vmag           = mag__vec(vxyz,/NAN)
-IF ((TOTAL(FINITE(vdf)) LT 10) OR (TOTAL(FINITE(vmag)) LT 10)) THEN BEGIN
+test           = (TOTAL(FINITE(vdf)) LT 10) OR (TOTAL(FINITE(vmag)) LT 10)
+IF (test[0]) THEN BEGIN
   MESSAGE,'0: '+nofinite_mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
 ;;  Define default VLIM and DFRA
 def_vlim       = MAX(ABS(vmag),/NAN)*1.05
 def_dfra       = [MIN(ABS(vdf),/NAN) > def_dfnx[0],MAX(ABS(vdf),/NAN) < def_dfnx[1]]
+;def_dfra       = [MIN(ABS(vdf),/NAN),MAX(ABS(vdf),/NAN)]
 ;;  Make sure values are unique and have a finite range
-IF (test_plot_axis_range(def_dfra,/NOMSSG) EQ 0) THEN BEGIN
+test           = (test_plot_axis_range(def_dfra,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
   MESSAGE,'1: '+nofinite_mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
@@ -283,41 +245,61 @@ IF (test[0]) THEN def_dfra = def_dfnx  ;;  revert to default limits
 ;;  Check keywords [Inputs]
 ;;----------------------------------------------------------------------------------------
 ;;  Check VFRAME
-IF (is_a_3_vector(vframe,V_OUT=vtrans,/NOMSSG) EQ 0) THEN vframe = def_vframe ELSE vframe = vtrans
+test           = (is_a_3_vector(vframe,V_OUT=vtrans,/NOMSSG) EQ 0)
+IF (test[0]) THEN vframe = def_vframe ELSE vframe = vtrans
 ;;  Define new frame |V| [km/s]
 vf_new         = vxyz
-IF (TOTAL(FINITE(vframe)) EQ 3) THEN FOR k=0L, 2L DO vf_new[*,k] -= vframe[k]
+test           = (TOTAL(FINITE(vframe)) EQ 3)
+IF (test[0]) THEN FOR k=0L, 2L DO vf_new[*,k] -= vframe[k]
 vmag_new       = mag__vec(vf_new,/NAN)
 ;;  Check VEC1 and VEC2
-IF (is_a_3_vector(vec1,V_OUT=v1out,/NOMSSG) EQ 0) THEN vec1 = def_vec1 ELSE vec1 = v1out
-IF (is_a_3_vector(vec2,V_OUT=v2out,/NOMSSG) EQ 0) THEN vec2 = def_vec2 ELSE vec2 = v2out
+test           = (is_a_3_vector(vec1,V_OUT=v1out,/NOMSSG) EQ 0)
+IF (test[0]) THEN vec1 = def_vec1 ELSE vec1 = v1out
+test           = (is_a_3_vector(vec2,V_OUT=v2out,/NOMSSG) EQ 0)
+IF (test[0]) THEN vec2 = def_vec2 ELSE vec2 = v2out
 ;;  Check VLIM
-IF (is_a_number(vlim,/NOMSSG) EQ 0) THEN vlim = def_vlim[0] ELSE vlim = ABS(vlim[0])
-IF (vlim[0] LE MIN(ABS(vmag_new),/NAN)) THEN vlim = def_vlim[0]
+test           = (is_a_number(vlim,/NOMSSG) EQ 0)
+IF (test[0]) THEN vlim = def_vlim[0] ELSE vlim = ABS(vlim[0])
+test           = (vlim[0] LE MIN(ABS(vmag_new),/NAN))
+IF (test[0]) THEN vlim = def_vlim[0]
 ;;  Check NLEV
-IF (is_a_number(nlev,/NOMSSG) EQ 0) THEN nlev = def_nlev[0] ELSE nlev = LONG(ABS(nlev[0]))
-IF (nlev[0] LE 3) THEN nlev = def_nlev[0]
+test           = (is_a_number(nlev,/NOMSSG) EQ 0)
+IF (test[0]) THEN nlev = def_nlev[0] ELSE nlev = LONG(ABS(nlev[0]))
+test           = (nlev[0] LE 3)
+IF (test[0]) THEN nlev = def_nlev[0]
 ;;  Check XNAME and YNAME
-IF (SIZE(xname,/TYPE) NE 7) THEN xname = def_xname[0] ELSE xname = xname[0]
-IF (SIZE(yname,/TYPE) NE 7) THEN yname = def_yname[0] ELSE yname = yname[0]
+test           = (SIZE(xname,/TYPE) NE 7)
+IF (test[0]) THEN xname = def_xname[0] ELSE xname = xname[0]
+test           = (SIZE(yname,/TYPE) NE 7)
+IF (test[0]) THEN yname = def_yname[0] ELSE yname = yname[0]
 ;;  Check SM_CUTS and SM_CONT
-sm_cuts        = KEYWORD_SET(sm_cuts) AND (N_ELEMENTS(sm_cuts) GT 0)
-sm_cont        = KEYWORD_SET(sm_cont) AND (N_ELEMENTS(sm_cont) GT 0)
+test           = KEYWORD_SET(sm_cuts) AND (N_ELEMENTS(sm_cuts) GT 0)
+IF (test[0]) THEN sm_cuts = 1b ELSE sm_cuts = def_sm_cuts[0]
+test           = KEYWORD_SET(sm_cont) AND (N_ELEMENTS(sm_cont) GT 0)
+IF (test[0]) THEN sm_cont = 1b ELSE sm_cont = def_sm_cuts[0]
 ;;  Check NSMCUT and NSMCON
-IF (is_a_number(nsmcut,/NOMSSG) EQ 0) THEN nsmcut = def_nsmcut[0] ELSE nsmcut = LONG(ABS(nsmcut[0]))
-IF (is_a_number(nsmcon,/NOMSSG) EQ 0) THEN nsmcon = def_nsmcon[0] ELSE nsmcon = LONG(ABS(nsmcon[0]))
+test           = (is_a_number(nsmcut,/NOMSSG) EQ 0)
+IF (test[0]) THEN nsmcut = def_nsmcut[0] ELSE nsmcut = LONG(ABS(nsmcut[0]))
+test           = (is_a_number(nsmcon,/NOMSSG) EQ 0)
+IF (test[0]) THEN nsmcon = def_nsmcon[0] ELSE nsmcon = LONG(ABS(nsmcon[0]))
 ;;  Check PLANE
-IF (SIZE(plane,/TYPE) NE 7) THEN plane = def_plane[0] ELSE plane = STRLOWCASE(plane[0])
-IF (TOTAL(plane[0] EQ all_planes) LT 1) THEN plane = def_plane[0]
+test           = (SIZE(plane,/TYPE) NE 7)
+IF (test[0]) THEN plane = def_plane[0] ELSE plane = STRLOWCASE(plane[0])
+test           = (TOTAL(plane[0] EQ all_planes) LT 1)
+IF (test[0]) THEN plane = def_plane[0]
 ;;  Check for DFMIN, DFMAX, and DFRA
 tests          = [is_a_number(dfmin,/NOMSSG),is_a_number(dfmax,/NOMSSG),$
                   (is_a_number(dfra,/NOMSSG) AND (N_ELEMENTS(dfra) GE 2))]
 ;;  Check DFMIN and DFMAX
-IF (is_a_number(dfmin,/NOMSSG) EQ 0) THEN dfmin = def_dfnx[0] ELSE dfmin = ABS(dfmin[0])
-IF (is_a_number(dfmax,/NOMSSG) EQ 0) THEN dfmax = def_dfnx[1] ELSE dfmax = ABS(dfmax[0])
+test           = (is_a_number(dfmin,/NOMSSG) EQ 0)
+IF (test[0]) THEN dfmin = def_dfnx[0] ELSE dfmin = ABS(dfmin[0])
+test           = (is_a_number(dfmax,/NOMSSG) EQ 0)
+IF (test[0]) THEN dfmax = def_dfnx[1] ELSE dfmax = ABS(dfmax[0])
 ;;  Check DFRA
-IF ((is_a_number(dfra,/NOMSSG) EQ 0) OR (N_ELEMENTS(dfra) LT 2)) THEN dfra = def_dfra ELSE dfra = ABS(dfra)
-IF (test_plot_axis_range(dfra,/NOMSSG) EQ 0) THEN BEGIN
+test           = (is_a_number(dfra,/NOMSSG) EQ 0) OR (N_ELEMENTS(dfra) LT 2)
+IF (test[0]) THEN dfra = def_dfra ELSE dfra = ABS(dfra)
+test           = (test_plot_axis_range(dfra,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
   dfra     = def_dfra
   tests[2] = 0b    ;;  shut off user defined DFRA
 ENDIF
@@ -338,53 +320,34 @@ ENDIF ELSE BEGIN
   ENDIF
 ENDELSE
 ;;  Check V_0X and V_0Y
-IF (is_a_number(v_0x,/NOMSSG) EQ 0) THEN v_0x = def_vox[0] ELSE v_0x = v_0x[0]
-IF (is_a_number(v_0y,/NOMSSG) EQ 0) THEN v_0y = def_voy[0] ELSE v_0y = v_0y[0]
+test           = (is_a_number(v_0x,/NOMSSG) EQ 0)
+IF (test[0]) THEN v_0x = def_vox[0] ELSE v_0x = v_0x[0]
+test           = (is_a_number(v_0y,/NOMSSG) EQ 0)
+IF (test[0]) THEN v_0y = def_voy[0] ELSE v_0y = v_0y[0]
 ;;  Check STRAHL
-strahl                  = (N_ELEMENTS(strahl) GT 0) AND KEYWORD_SET(strahl)
-;;  Check NGRID
-IF (N_ELEMENTS(ngrid) EQ 0) OR (is_a_number(ngrid,/NOMSSG) EQ 0) THEN ngrid = 101L $
-                                                                 ELSE ngrid = (LONG(ngrid[0]) > 30L) < 300L
-;;  Check SLICE2D
-slice2d        = (N_ELEMENTS(slice2d) EQ 1) AND KEYWORD_SET(slice2d)
-;;  Check P_TITLE
-IF (SIZE(p_title,/TYPE) NE 7) OR (N_ELEMENTS(p_title) LT 1) THEN p_title = def_con_pttl[0] ELSE p_title = p_title[0]
-;;  Check ONE_C
-onec_on        = (N_ELEMENTS(one_c) EQ kk[0]) AND is_a_number(one_c,/NOMSSG)
-IF (onec_on[0]) THEN one_c = REFORM(one_c,kk[0])
-;;  Check BPARM
-IF ((N_ELEMENTS(bimax) GE 4) AND is_a_number(bimax,/NOMSSG)) THEN BEGIN
-  CASE N_ELEMENTS(bimax) OF
-    4L    :  bimax = [DOUBLE(bimax),0d0,0d0]
-    5L    :  bimax = [DOUBLE(bimax),0d0]
-    ELSE  :  bimax = DOUBLE(bimax[0L:5L])
-  ENDCASE
-  ;;  Force drifts to zero to avoid offsets for dummy model comparison
-  ;;    --> This assumes the user has centered the crosshairs on the peak of the VDF
-  bimax[3L:4L] = 0d0
-ENDIF ELSE BEGIN
-  bimax        = 0
-ENDELSE
-;;  Check KPARM
-bikap_on       = (N_ELEMENTS(bikap) EQ 6) AND is_a_number(bikap,/NOMSSG)
-IF (bikap_on[0]) THEN bikap = DOUBLE(bikap) ELSE bikap = 0
+test                    = (N_ELEMENTS(strahl) GT 0) AND KEYWORD_SET(strahl)
+IF (test[0]) THEN strahl = 1b ELSE strahl = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Now make sure user hasn't set "dumb" values (i.e., make sure data falls within ranges)
 ;;----------------------------------------------------------------------------------------
-IF (TOTAL(vdf GE dfra[0] AND vdf LE dfra[1]) LT 10) THEN BEGIN
+test_dfra      = (TOTAL(vdf GE dfra[0] AND vdf LE dfra[1]) LT 10)
+test_vvra      = (TOTAL(vmag_new GE 0d0 AND vmag_new LE vlim[0]) LT 10)
+IF (test_dfra[0]) THEN BEGIN
   ;;  User set "bad" DFRA --> redefine DFMIN, DFMAX, and DFRA to defaults
   dfra  = def_dfra
   dfmin = 0.95*dfra[0]
   dfmax = 1.05*dfra[1]
   tests = REPLICATE(0b,3L)
 ENDIF
-IF (TOTAL(vmag_new GE 0d0 AND vmag_new LE vlim[0]) LT 10) THEN BEGIN
+IF (test_vvra[0]) THEN BEGIN
   ;;  User set "bad" VLIM --> redefine VLIM to default
   vlim  = def_vlim[0]
 ENDIF
 ;;  Make sure V_0X and V_0Y are not outside 80% of VLIM
-IF (ABS(v_0x[0]) GE 8d-1*vlim[0]) THEN v_0x = def_vox[0]
-IF (ABS(v_0y[0]) GE 8d-1*vlim[0]) THEN v_0y = def_voy[0]
+test           = (ABS(v_0x[0]) GE 8d-1*vlim[0])
+IF (test[0]) THEN v_0x = def_vox[0]
+test           = (ABS(v_0y[0]) GE 8d-1*vlim[0])
+IF (test[0]) THEN v_0y = def_voy[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Redefine input for output
 ;;----------------------------------------------------------------------------------------
@@ -421,7 +384,9 @@ END
 ;               mag__vec.pro
 ;               test_plot_axis_range.pro
 ;               defaults_vdf_contour_plot.pro
-;               get_rotated_and_triangulated_vdf.pro
+;               rot_matrix_array_dfs.pro
+;               rel_lorentz_trans_3vec.pro
+;               rotate_and_triangulate_dfs.pro
 ;               find_1d_cuts_2d_dist.pro
 ;               format_vector_string.pro
 ;               get_power_of_ten_ticks.pro
@@ -451,7 +416,7 @@ END
 ;                                      [,EX_VECS=ex_vecs] [,EX_INFO=ex_info]             $
 ;                                      [,P_TITLE=p_title] [,ONE_C=one_c]                 $
 ;                                      [,DAT_OUT=dat_out] [,BIMAX=bimax] [,BIKAP=bikap]  $
-;                                      [,STRAHL=strahl] [,/GET_ROT] [,ROT_OUT=rot_out]
+;                                      [,STRAHL=strahl]
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -552,9 +517,6 @@ END
 ;                             direction to the plot so long as the EX_INFO is properly
 ;                             set and defined with finite/real data
 ;                             [Default = FALSE]
-;               GET_ROT  :  If set, routine will skip the plotting and just return the
-;                             structure returned by rotate_and_triangulate_dfs.pro
-;                             [Default = FALSE]
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [none of the following have default settings]  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -617,9 +579,6 @@ END
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               DAT_OUT  :  Set to a named variable to return all the relevant data
 ;                             used to create the contour plot and cuts of the VDF
-;               ROT_OUT  :  Set to a named variable to return a structure containing
-;                             the rotated and triangulated data and rotation matrices,
-;                             i.e., the output from rotate_and_triangulate_dfs.pro
 ;
 ;   CHANGED:  1)  Fixed a bug that occurs when VDF input contains zeros
 ;                                                                  [05/16/2016   v1.0.1]
@@ -656,16 +615,6 @@ END
 ;                   outputs the direction to the plot if the EX_INFO and STRAHL keywords
 ;                   are properly set
 ;                                                                  [04/19/2018   v1.2.4]
-;            14)  Altered output structure to now return information regarding the
-;                   one-count level
-;                                                                  [05/07/2018   v1.2.5]
-;            15)  Added keywords:  GET_ROT and ROT_OUT
-;                                                                  [05/07/2018   v1.2.6]
-;            16)  Now calls get_rotated_and_triangulated_vdf.pro and no longer calls
-;                   rot_matrix_array_dfs.pro, rel_lorentz_trans_3vec.pro, or
-;                   rotate_and_triangulate_dfs.pro and
-;                   moved some error handling to defaults_vdf_contour_plot.pro
-;                                                                  [05/09/2018   v1.3.0]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -720,7 +669,7 @@ END
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/09/2018   v1.3.0
+;    LAST MODIFIED:  04/19/2018   v1.2.4
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -733,8 +682,7 @@ PRO general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=v
                              C_LOG=c_log,NGRID=ngrid,SLICE2D=slice2d,P_LOG=p_log,     $
                              P_TITLE=p_title,ONE_C=one_c,DAT_OUT=dat_out,             $
                              CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info,             $
-                             BIMAX=bimax,BIKAP=bikap,STRAHL=strahl,GET_ROT=get_rot,   $
-                             ROT_OUT=rot_out
+                             BIMAX=bimax,BIKAP=bikap,STRAHL=strahl
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range,              $
                  defaults_vdf_contour_plot, rot_matrix_array_dfs, rel_lorentz_trans_3vec, $
@@ -764,9 +712,6 @@ nofinite_mssg  = 'Not enough finite and unique data was supplied...'
 ;;  Defined user symbol for outputing locations of data on contour
 xxo            = FINDGEN(17)*(!PI*2./16.)
 USERSYM,0.27*COS(xxo),0.27*SIN(xxo),/FILL
-;;  Default model VDF settings
-param          = DBLARR(6L)
-kparm          = param
 ;;----------------------------------------------------------------------------------------
 ;;  Check input
 ;;----------------------------------------------------------------------------------------
@@ -780,21 +725,24 @@ ENDIF
 df1d           = REFORM(vdf)
 szdvdf         = SIZE(df1d,/DIMENSIONS)
 szdvel         = SIZE(vxyz,/DIMENSIONS)
-IF ((szdvdf[0] NE szdvel[0]) OR (szdvdf[0] LT 10)) THEN BEGIN
+test           = (szdvdf[0] NE szdvel[0]) OR (szdvdf[0] LT 10)
+IF (test[0]) THEN BEGIN
   ;;  Incorrect input format --> exit without plotting
   MESSAGE,badvfor_msg[0],/INFORMATIONAL,/CONTINUE
   RETURN
 ENDIF
 ;;  Now that we know these are at least formatted correct, test values
 vmag           = mag__vec(vxyz,/NAN)
-IF ((TOTAL(FINITE(df1d)) LT 10) OR (TOTAL(FINITE(vmag)) LT 10)) THEN BEGIN
+test           = (TOTAL(FINITE(df1d)) LT 10) OR (TOTAL(FINITE(vmag)) LT 10)
+IF (test[0]) THEN BEGIN
   ;;  VDF or VELXYZ have fewer than 10 finite points --> exit without plotting
   MESSAGE,'0: '+nofinite_mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN
 ENDIF
 ;;  Make sure values are unique and have a finite range
 def_dfra       = [MIN(ABS(df1d),/NAN),MAX(ABS(df1d),/NAN)]
-IF (test_plot_axis_range(def_dfra,/NOMSSG) EQ 0) THEN BEGIN
+test           = (test_plot_axis_range(def_dfra,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
   ;;  VDF is either all one value or has no finite values --> exit without plotting
   MESSAGE,'1: '+nofinite_mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN
@@ -807,59 +755,40 @@ tests          = defaults_vdf_contour_plot(df1d,vxyz,VFRAME=vframe,VEC1=vec1,VEC
                                            SM_CUTS=sm_cuts,SM_CONT=sm_cont,NSMCUT=nsmcut,$
                                            NSMCON=nsmcon,PLANE=plane,DFMIN=dfmin,        $
                                            DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,    $
-                                           STRAHL=strahl,NGRID=ngrid,SLICE2D=slice2d,    $
-                                           P_TITLE=p_title,ONE_C=one_c,BPARM=bimax,      $
-                                           KPARM=bikap                                   )
-IF (N_ELEMENTS(tests) EQ 1) THEN RETURN      ;;  Something failed --> exit without plotting
-;;  Check some outputs from default routine
-nm             = ngrid[0]
-slice_on       = slice2d[0]
-con_pttl       = p_title[0]
-bimax_on       = (N_ELEMENTS(bimax) EQ 6)
-bikap_on       = (N_ELEMENTS(bikap) EQ 6)
-IF (bimax_on[0]) THEN param = bimax
-IF (bikap_on[0]) THEN kparm = bikap
-kk             = N_ELEMENTS(df1d)                      ;;  # of phase space density values
-onec_on        = (N_ELEMENTS(one_c) EQ kk[0])
-IF (onec_on[0]) THEN vdf1c = one_c
+                                           STRAHL=strahl)
+test           = (N_ELEMENTS(tests) EQ 1)
+IF (test[0]) THEN RETURN      ;;  Something failed --> exit without plotting
 ;;  Check P_LOG
-plog_on        = (N_ELEMENTS(p_log) EQ 1) AND KEYWORD_SET(p_log)
+test           = (N_ELEMENTS(p_log) EQ 1) AND KEYWORD_SET(p_log)
+IF (test[0]) THEN plog_on = 1b ELSE plog_on = 0b
 ;;  Check C_LOG
-clog_on        = (N_ELEMENTS(c_log) GE 1) AND KEYWORD_SET(c_log) AND ~plog_on[0]
-IF (clog_on[0]) THEN BEGIN
+test           = (N_ELEMENTS(c_log) GE 1) AND KEYWORD_SET(c_log) AND ~plog_on[0]
+IF (test[0]) THEN BEGIN
   ;;  User wants to plot in log-space, not linear space
   df1do   = ALOG10(df1d)
   dfrao   = ALOG10(dfra)
+  clog_on = 1b
   plog_on = 1b           ;;  Turn on logarithmic plotting
 ENDIF ELSE BEGIN
   df1do   = df1d
   dfrao   = dfra
+  clog_on = 0b
 ENDELSE
-;;----------------------------------------------------------------------------------------
-;;  Rotate velocities and VDF into new coordinate basis and triangulate
-;;----------------------------------------------------------------------------------------
-r_vels         = get_rotated_and_triangulated_vdf(vxyz,df1d,VLIM=vlim[0],C_LOG=clog_on[0],$
-                                                  NGRID=nm[0],SLICE2D=slice_on[0],        $
-                                                  VFRAME=vframe,VEC1=vec1,VEC2=vec2,      $
-                                                  P_LOG=plog_on,ROTMXY=rotm,ROTMZY=rotz   )
-;;  Check if user is only looking for the rotation structure
-IF KEYWORD_SET(get_rot) THEN BEGIN
-  rot_out = r_vels
-  ;;  Return to user
-  RETURN
-ENDIF
-IF (onec_on[0]) THEN BEGIN
-  ;;  Compute one-count equivalent
-  r_onec         = get_rotated_and_triangulated_vdf(vxyz,vdf1c,VLIM=vlim[0],C_LOG=clog_on[0],$
-                                                    NGRID=nm[0],SLICE2D=slice_on[0],         $
-                                                    P_LOG=plog_on,VFRAME=vframe,             $
-                                                    VEC1=vec1,VEC2=vec2                      )
-ENDIF
+;;  Check NGRID
+test           = (N_ELEMENTS(ngrid) EQ 0) OR (is_a_number(ngrid,/NOMSSG) EQ 0)
+IF (test[0]) THEN nm = 101L ELSE nm = (LONG(ngrid[0]) > 30L) < 300L
+;;  Check SLICE2D
+test           = (N_ELEMENTS(slice2d) EQ 1) AND KEYWORD_SET(slice2d)
+IF (test[0]) THEN slice_on = 1b ELSE slice_on = 0b
+;;  Check P_TITLE
+test           = (SIZE(p_title,/TYPE) NE 7) OR (N_ELEMENTS(p_title) LT 1)
+IF (test[0]) THEN con_pttl = def_con_pttl[0] ELSE con_pttl = p_title[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords without default options
 ;;----------------------------------------------------------------------------------------
 ;;  Check CIRCS
-IF (SIZE(circs,/TYPE) EQ 8) THEN BEGIN
+test           = (SIZE(circs,/TYPE) EQ 8)
+IF (test[0]) THEN BEGIN
   ;;  Check structure format
   def_tags       = ['vrad','vox','voy']
   tags           = STRLOWCASE(TAG_NAMES(circs))
@@ -867,14 +796,14 @@ IF (SIZE(circs,/TYPE) EQ 8) THEN BEGIN
   FOR j=0L, 2L DO nmatch += TOTAL(def_tags[j] EQ tags)
   IF (nmatch[0] EQ 3) THEN BEGIN
     ;;  User set correct tags --> check value formats
-    circs_on   = is_a_number(circs[0].(0),/NOMSSG) AND is_a_number(circs[0].(1),/NOMSSG) $
+    test       = is_a_number(circs[0].(0),/NOMSSG) AND is_a_number(circs[0].(1),/NOMSSG) $
                  AND is_a_number(circs[0].(2),/NOMSSG)
-;    test       = is_a_number(circs[0].(0),/NOMSSG) AND is_a_number(circs[0].(1),/NOMSSG) AND is_a_number(circs[0].(2),/NOMSSG)
-    IF (circs_on[0]) THEN circle_str = circs  ;;  correct format --> define new structure(s)
+    IF (test[0]) THEN circle_str = circs  ;;  correct format --> define new structure(s)
   ENDIF
-ENDIF ELSE circs_on = 0b
+ENDIF
 ;;  Check EX_VECS
-IF (SIZE(ex_vecs,/TYPE) EQ 8) THEN BEGIN
+test           = (SIZE(ex_vecs,/TYPE) EQ 8)
+IF (test[0]) THEN BEGIN
   ;;  Check structure format
   def_tags       = ['vec','name']
   tags           = STRLOWCASE(TAG_NAMES(ex_vecs))
@@ -882,13 +811,13 @@ IF (SIZE(ex_vecs,/TYPE) EQ 8) THEN BEGIN
   FOR j=0L, 1L DO nmatch += TOTAL(def_tags[j] EQ tags)
   IF (nmatch[0] EQ 2) THEN BEGIN
     ;;  User set correct tags --> check value formats
-    exvec_on   = is_a_3_vector(ex_vecs[0].(0),/NOMSSG) AND (SIZE(ex_vecs[0].(1),/TYPE) EQ 7)
-;    test       = is_a_3_vector(ex_vecs[0].(0),/NOMSSG) AND (SIZE(ex_vecs[0].(1),/TYPE) EQ 7)
-    IF (exvec_on[0]) THEN exvec_str = ex_vecs  ;;  correct format --> define new structure(s)
+    test       = is_a_3_vector(ex_vecs[0].(0),/NOMSSG) AND (SIZE(ex_vecs[0].(1),/TYPE) EQ 7)
+    IF (test[0]) THEN exvec_str = ex_vecs  ;;  correct format --> define new structure(s)
   ENDIF
-ENDIF ELSE exvec_on = 0b
+ENDIF
 ;;  Check EX_INFO
-IF (SIZE(ex_info,/TYPE) EQ 8) THEN BEGIN
+test           = (SIZE(ex_info,/TYPE) EQ 8)
+IF (test[0]) THEN BEGIN
   ;;  Check structure format
   def_tags       = ['scpot','vsw','magf']
   tags           = STRLOWCASE(TAG_NAMES(ex_info))
@@ -896,13 +825,77 @@ IF (SIZE(ex_info,/TYPE) EQ 8) THEN BEGIN
   FOR j=0L, 2L DO nmatch += TOTAL(def_tags[j] EQ tags)
   IF (nmatch[0] EQ 3) THEN BEGIN
     ;;  User set correct tags --> check value formats
-    tran_on    =   is_a_number(ex_info[0].(0),/NOMSSG) AND $
+    test       =   is_a_number(ex_info[0].(0),/NOMSSG) AND $
                  is_a_3_vector(ex_info[0].(1),/NOMSSG) AND $
                  is_a_3_vector(ex_info[0].(2),/NOMSSG)
-;    test       =   is_a_number(ex_info[0].(0),/NOMSSG) AND is_a_3_vector(ex_info[0].(1),/NOMSSG) AND is_a_3_vector(ex_info[0].(2),/NOMSSG)
-    IF (tran_on[0]) THEN tran_info = ex_info  ;;  correct format --> define new structure(s)
+    IF (test[0]) THEN tran_info = ex_info  ;;  correct format --> define new structure(s)
   ENDIF
-ENDIF ELSE tran_on = 0b
+ENDIF
+;;  Check ONE_C
+kk             = N_ELEMENTS(df1do)                      ;;  # of phase space density values
+test           = (N_ELEMENTS(one_c) EQ kk[0]) AND is_a_number(one_c,/NOMSSG)
+IF (test[0]) THEN BEGIN
+  onec_on = 1b
+  vdf1c   = REFORM(one_c,kk[0])
+ENDIF ELSE BEGIN
+  onec_on = 0b
+ENDELSE
+;;  Check BIMAX
+test           = (N_ELEMENTS(bimax) GE 4) AND is_a_number(bimax,/NOMSSG)
+IF (test[0]) THEN BEGIN
+  bimax_on = 1b
+  CASE N_ELEMENTS(bimax) OF
+    4L    :  param = [DOUBLE(bimax),0d0,0d0]
+    5L    :  param = [DOUBLE(bimax),0d0]
+    ELSE  :  param = DOUBLE(bimax[0L:5L])
+  ENDCASE
+  ;;  Force drifts to zero to avoid offsets for dummy model comparison
+  ;;    --> This assumes the user has centered the crosshairs on the peak of the VDF
+  param[3L:4L] = 0d0
+ENDIF ELSE BEGIN
+  bimax_on = 0b
+  param    = DBLARR(6L)
+ENDELSE
+;;  Check BIKAP
+test           = (N_ELEMENTS(bikap) EQ 6) AND is_a_number(bikap,/NOMSSG)
+IF (test[0]) THEN bikap_on = 1b ELSE bikap_on = 0b
+IF (bikap_on[0]) THEN kparm = DOUBLE(bikap) ELSE kparm = DBLARR(6L)
+;;----------------------------------------------------------------------------------------
+;;  Define rotation matrices
+;;----------------------------------------------------------------------------------------
+;;  Expand to make [K,3]-element arrays
+v1             = REPLICATE(1d0,kk[0]) # vec1           ;; [K,3]-Element array
+v2             = REPLICATE(1d0,kk[0]) # vec2           ;; [K,3]-Element array
+;;  Define rotation matrices equivalent to cal_rot.pro
+;;    CAL_ROT = TRUE  --> Primed unit basis vectors are given by:
+;;           X'  :  V1
+;;           Z'  :  (V1 x V2)       = (X x V2)
+;;           Y'  :  (V1 x V2) x V1  = (Z x X)
+rotm           = rot_matrix_array_dfs(v1,v2,/CAL_ROT)  ;;  [K,3,3]-element array
+;;  Define rotation matrices equivalent to rot_mat.pro
+;;    CAL_ROT = FALSE  --> Primed unit basis vectors are given by:
+;;           Z'  :  V1
+;;           Y'  :  (V1 x V2)       = (Z x V2)
+;;           X'  :  (V1 x V2) x V1  = (Y x Z)
+rotz           = rot_matrix_array_dfs(v1,v2)           ;;  [K,3,3]-element array
+;;----------------------------------------------------------------------------------------
+;;  Transform VDF into VFRAME
+;;----------------------------------------------------------------------------------------
+vtrxyz         = rel_lorentz_trans_3vec(vxyz,vframe)
+;;----------------------------------------------------------------------------------------
+;;  Rotate velocities and VDF into new coordinate basis and triangulate
+;;----------------------------------------------------------------------------------------
+v_xyz          = FLOAT(vtrxyz)
+r_vels         = rotate_and_triangulate_dfs(v_xyz,df1do,rotm,rotz,VLIM=vlim[0],  $
+                                            C_LOG=clog_on[0],NGRID=nm[0],        $
+                                            SLICE2D=slice_on[0]                  )
+IF (onec_on[0]) THEN BEGIN
+  ;;  Compute one-count equivalent
+  v_xyz          = FLOAT(vtrxyz)
+  r_onec         = rotate_and_triangulate_dfs(v_xyz,vdf1c,rotm,rotz,VLIM=vlim[0],  $
+                                              C_LOG=clog_on[0],NGRID=nm[0],        $
+                                              SLICE2D=slice_on[0]                  )
+ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define parameters for contour plots
 ;;----------------------------------------------------------------------------------------
@@ -1012,7 +1005,6 @@ vert_offset    = v_0y[0]*1d-3                  ;;  vertical offset of crosshairs
 IF (onec_on[0]) THEN BEGIN
   onec_struc     = find_1d_cuts_2d_dist(df1c,vx2d,vy2d,X_0=v_0x,Y_0=v_0y)
   onec_cpara     = onec_struc.X_1D_FXY         ;;  horizontal 1D cut
-  onec_cperp     = onec_struc.Y_1D_FXY         ;;  horizontal 1D cut
 ENDIF
 ;;  Define bi-Maxwellian cuts (if set)
 IF (bimax_on[0]) THEN BEGIN
@@ -1031,6 +1023,7 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define the 2D projection of the extra vectors in EX_VECS
 ;;----------------------------------------------------------------------------------------
+exvec_on       = (SIZE(exvec_str,/TYPE) EQ 8)
 IF (exvec_on[0]) THEN BEGIN
   n_exvec   = N_ELEMENTS(exvec_str)
   dumb      = {VEC:REPLICATE(d,3L),NAME:''}
@@ -1056,6 +1049,7 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Re-scale values in CIRCS
 ;;----------------------------------------------------------------------------------------
+circs_on       = (SIZE(circle_str,/TYPE) EQ 8)
 IF (circs_on[0]) THEN BEGIN
   ;;  User wants to overplot circles of constant energy
   n_circs    = N_ELEMENTS(circle_str)
@@ -1079,6 +1073,7 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Format EX_INFO output
 ;;----------------------------------------------------------------------------------------
+tran_on        = (SIZE(tran_info,/TYPE) EQ 8)
 IF (tran_on[0]) THEN BEGIN
   ;;  Define string for spacecraft potential output
   scpot          = STRTRIM(STRING(FORMAT='(f10.2)',tran_info[0].SCPOT),2)
@@ -1108,73 +1103,63 @@ vframe_out     = 'Vframe    :  '+vframe_str[0]
 ;;  Define contour levels
 ;;----------------------------------------------------------------------------------------
 df_ran         = dfrao
+IF (clog_on[0]) THEN range = df_ran ELSE range = ALOG10(df_ran) ;;  Make levels evenly spaced in log base-10 space
+log10levs      = DINDGEN(nlev[0])*(range[1] - range[0])/(nlev[0] - 1L) + range[0]
+IF (plog_on[0]) THEN levels = log10levs ELSE levels = 1d1^log10levs ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
 ;;  Define colors for contour levels
 minclr         = 30L
 c_cols         = minclr[0] + LINDGEN(nlev[0])*(250L - minclr[0])/(nlev[0] - 1L)
 ;;  Define inputs for log10_tickmarks.pro
 IF (clog_on[0]) THEN BEGIN
-  range          = df_ran
-  df2d01         = REFORM(1d1^df2d,N_ELEMENTS(df2d))
-  yrange         = 1d1^df_ran
+  df2d01 = REFORM(1d1^df2d,N_ELEMENTS(df2d))
+  yrange = 1d1^df_ran
 ENDIF ELSE BEGIN
-  range          = ALOG10(df_ran)
-  df2d01         = df2d
-  yrange         = df_ran
+  df2d01 = df2d
+  yrange = df_ran
 ENDELSE
-;;  Define (log-based) contour levels
-log10levs      = DINDGEN(nlev[0])*(range[1] - range[0])/(nlev[0] - 1L) + range[0]
 ;;  Define Y-axis tick marks for cuts plot
 tick_str       = get_power_of_ten_ticks(yrange)
-;;  Define the tick names, values, and number of ticks
-cut_ytn        = tick_str.XTICKNAME
-cut_yts        = tick_str.XTICKS
 IF (plog_on[0]) THEN BEGIN
   ylog_cut       = 0b
   ymin_cut       = 10
-  levels         = log10levs
-  cut_ytv        = ALOG10(tick_str.XTICKV)
 ENDIF ELSE BEGIN
   ylog_cut       = 1b
   ymin_cut       = 9
-  levels         = 1d1^log10levs  ;;  contour level values in phase space density [e.g., s^(+3) cm^(-3) km^(-3)]
-  cut_ytv        = tick_str.XTICKV
 ENDELSE
+;;  Define the tick names, values, and number of ticks
+cut_ytn        = tick_str.XTICKNAME
+cut_yts        = tick_str.XTICKS
+IF (plog_on[0]) THEN cut_ytv = ALOG10(tick_str.XTICKV) ELSE cut_ytv = tick_str.XTICKV
 ;;----------------------------------------------------------------------------------------
 ;;  Smooth cuts and contour if desired [typically necessary for ions or noisy data]
 ;;----------------------------------------------------------------------------------------
-IF KEYWORD_SET(sm_cuts) THEN BEGIN
+test           = KEYWORD_SET(sm_cuts)
+IF (test[0]) THEN BEGIN
   ;;  Smooth cuts
   vdf_cut_para0  = SMOOTH(vdf_para_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
   vdf_cut_perp0  = SMOOTH(vdf_perp_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
-  IF (onec_on[0]) THEN BEGIN
-    onec_cut_par0 = SMOOTH(onec_cpara,nsmcut[0],/NAN,/EDGE_TRUNCATE)
-    onec_cut_per0 = SMOOTH(onec_cperp,nsmcut[0],/NAN,/EDGE_TRUNCATE)
-  ENDIF
+  IF (onec_on[0]) THEN onec_cut_par0 = SMOOTH(onec_cpara,nsmcut[0],/NAN,/EDGE_TRUNCATE)
 ENDIF ELSE BEGIN
   vdf_cut_para0  = vdf_para_cut
   vdf_cut_perp0  = vdf_perp_cut
-  IF (onec_on[0]) THEN BEGIN
-    onec_cut_par0 = onec_cpara
-    onec_cut_per0 = onec_cperp
-  ENDIF
+  IF (onec_on[0]) THEN onec_cut_par0 = onec_cpara
 ENDELSE
-IF KEYWORD_SET(sm_cont) THEN BEGIN
+test           = KEYWORD_SET(sm_cont)
+IF (test[0]) THEN BEGIN
   ;;  Smooth contour
   df2ds0 = SMOOTH(df2d,nsmcon[0],/NAN,/EDGE_TRUNCATE)
 ENDIF ELSE BEGIN
   df2ds0 = df2d
 ENDELSE
 ;;  Check if user wants to plot in logarithmic space but computed everything linearly
-IF (plog_on[0] AND ~clog_on[0]) THEN BEGIN
+test           = plog_on[0] AND ~clog_on[0]
+IF (test[0]) THEN BEGIN
   ;;  Convert to logarithmic space
   df2ds          = ALOG10(df2ds0)
   vdf_cut_para   = ALOG10(vdf_cut_para0)
   vdf_cut_perp   = ALOG10(vdf_cut_perp0)
   cut_yrange     = ALOG10(df_ran)
-  IF (onec_on[0]) THEN BEGIN
-    onec_cut_para = ALOG10(onec_cut_par0)
-    onec_cut_perp = ALOG10(onec_cut_per0)
-  ENDIF
+  IF (onec_on[0]) THEN onec_cut_para = ALOG10(onec_cut_par0)
   IF (bimax_on[0]) THEN BEGIN
     bimax_cut_para = ALOG10(bimax_cpara)
     bimax_cut_perp = ALOG10(bimax_cperp)
@@ -1188,10 +1173,7 @@ ENDIF ELSE BEGIN
   vdf_cut_para   = vdf_cut_para0
   vdf_cut_perp   = vdf_cut_perp0
   cut_yrange     = df_ran
-  IF (onec_on[0]) THEN BEGIN
-    onec_cut_para = onec_cut_par0
-    onec_cut_perp = onec_cut_per0
-  ENDIF
+  IF (onec_on[0]) THEN onec_cut_para = onec_cut_par0
   IF (bimax_on[0]) THEN BEGIN
     bimax_cut_para = bimax_cpara
     bimax_cut_perp = bimax_cperp
@@ -1397,20 +1379,9 @@ magf_xy        = CREATE_STRUCT(tags_xy,[xposi[0],yposi[0]],b__out_str[0],30L,90,
 vers_xy        = CREATE_STRUCT(tags_xy,[0.795,0.06],vers[0],-1,90,0.65,1b,0b)
 tags           = ['SCPOT_XY','VSW_XY','MAGF_XY','VERS_XY']
 xyouts_str     = CREATE_STRUCT(tags,scpot_xy,vsw_xy,magf_xy,vers_xy)
-;;  Define structure for one-count of VDF
-tags           = ['VDF_2D','CUT_PAR','CUT_PER']
-IF (onec_on[0]) THEN BEGIN
-  onec_struc     = CREATE_STRUCT(tags,df1c,onec_cut_para,onec_cut_perp)
-ENDIF ELSE BEGIN
-  szdm           = SIZE(df2ds,/DIMENSIONS)
-  df1c           = REPLICATE(d,szdm[0],szdm[1])
-  onec_cut_para  = REFORM(df1c[*,0])
-  onec_cut_perp  = onec_cut_para
-  onec_struc     = CREATE_STRUCT(tags,df1c,onec_cut_para,onec_cut_perp)
-ENDELSE
 ;;  Define DAT_OUT
-tags           = ['CONT_DATA','CUTS_DATA','XYOUTS','ONE_CUT']
-dat_out        = CREATE_STRUCT(tags,con_struc,cut_struc,xyouts_str,onec_struc)
+tags           = ['CONT_DATA','CUTS_DATA','XYOUTS']
+dat_out        = CREATE_STRUCT(tags,con_struc,cut_struc,xyouts_str)
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
