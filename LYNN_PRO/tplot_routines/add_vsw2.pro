@@ -30,7 +30,7 @@
 ;                                 [e.g., see get_th?_p*@b.pro, ? = a-f, * = e,s @ = e,i]
 ;                                 or a Wind/3DP data structure(s)
 ;                                 [see get_?.pro, ? = el, elb, pl, ph, eh, etc.]
-;                                 [Note:  VSW or VELOCITY tag must be defined and finite]
+;                                 [Note:  VSW or VELOCITY tag must be defined]
 ;               SOURCE       :  Scalar [string or integer] defining the TPLOT handle
 ;                                 associated with the bulk flow velocity the user wishes
 ;                                 to add to DAT
@@ -76,6 +76,8 @@
 ;                                                                   [05/24/2012   v3.1.0]
 ;             9)  Updated to include new routines and improve robustness/functionality
 ;                                                                   [03/11/2016   v4.0.0]
+;            10)  Fixed an odd issue from use of t_resample_tplot_struc.pro
+;                                                                   [05/22/2018   v4.0.1]
 ;
 ;   NOTES:      
 ;               1)  If DAT and SOURCE time ranges do not overlap, then tag values
@@ -91,7 +93,7 @@
 ;   ADAPTED FROM: add_vsw.pro  BY: Davin Larson
 ;   CREATED:  03/11/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  03/11/2016   v4.0.0
+;    LAST MODIFIED:  05/22/2018   v4.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -130,7 +132,7 @@ CASE SIZE(source[0],/TYPE) OF
     test           = test_tplot_handle(source,TPNMS=tpnms,GIND=gind)
     IF (test[0] EQ 0) THEN RETURN
     ;;  Get data
-    get_data,source[0],DATA=velb
+    get_data,tpnms[0],DATA=velb
     test           = tplot_struct_format_test(velb,/YVECT)
     IF (test[0] EQ 0) THEN RETURN
   END
@@ -139,8 +141,14 @@ ENDCASE
 ;;  Define some parameters
 ;;----------------------------------------------------------------------------------------
 n              = N_ELEMENTS(dat)
-dumb           = REPLICATE(!VALUES.F_NAN,n,3L)
-b              = FLTARR(n,3)
+dumb           = REPLICATE(!VALUES.F_NAN,n[0],3L)
+b              = FLTARR(n[0],3)
+st_t           = dat.TIME
+en_t           = dat.END_TIME
+myavt          = (st_t + en_t)/2d0                  ;;  Avg. time of data structures
+mxmn_dt        = [MIN(st_t,/NAN),MAX(en_t,/NAN)]    ;;  Time range of data structures
+mxmn_bt        = [MIN(velb.X,/NAN),MAX(velb.X,/NAN)]
+delt           = MIN(en_t - st_t,/NAN)*2d0          ;;  2x's minimum duration of data
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
@@ -148,11 +156,10 @@ b              = FLTARR(n,3)
 test           = ~KEYWORD_SET(leave) AND (N_ELEMENTS(leave) GT 0)
 IF (test[0]) THEN kill_out_tr = 1b ELSE kill_out_tr = 0b
 ;;  Check INT_THRESH
-delt           = MIN(dat.END_TIME - dat.TIME,/NAN)*2d0   ;;  2x's minimum duration of data
 IF KEYWORD_SET(int_thr) THEN BEGIN
   dtmax   = 1d1*delt[0]
 ENDIF ELSE BEGIN
-  dtmax   = (MAX(dat.END_TIME,/NAN) - MIN(dat.TIME,/NAN))*1d3
+  dtmax   = (MAX(en_t,/NAN) - MIN(st_t,/NAN))*1d3
 ENDELSE
 ;;  Check VBULK_TAG
 test           = (SIZE(vbulk_tag,/TYPE) NE 7)
@@ -175,10 +182,9 @@ ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Define time ranges
 ;;----------------------------------------------------------------------------------------
-myavt          = (dat.TIME + dat.END_TIME)/2d0           ;;  Avg. time of data structures
-tra            = [MIN(dat.TIME,/NAN),MAX(dat.END_TIME,/NAN)] + [-1d0,1d0]*delt[0]
-mxmn_bt        = [MIN(velb.X,/NAN),MAX(velb.X,/NAN)]
-test_tt        = (dat.TIME GT mxmn_bt[0]) AND (dat.END_TIME LT mxmn_bt[1])
+tra            = mxmn_dt + [-1d0,1d0]*delt[0]
+;tra            = [MIN(dat.TIME,/NAN),MAX(dat.END_TIME,/NAN)] + [-1d0,1d0]*delt[0]
+test_tt        = (st_t GT mxmn_bt[0]) AND (en_t LT mxmn_bt[1])
 good           = WHERE(test_tt,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
 IF (gd GT 0) THEN BEGIN
   ;;--------------------------------------------------------------------------------------
@@ -186,7 +192,7 @@ IF (gd GT 0) THEN BEGIN
   ;;--------------------------------------------------------------------------------------
   d_t            = myavt
   ;;  make sure data type is float
-  vsw_str        = t_resample_tplot_struc(velb,d_t,/NO_EXTRAPOLATE)
+  vsw_str        = t_resample_tplot_struc(velb,d_t,/NO_EXTRAPOLATE,/IGNORE_INT)
   vsw_v          = struct_value(vsw_str[0],'y',INDEX=vind)
   IF (is_a_number(vsw_v,/NOMSSG) EQ 0) THEN BEGIN
     ;;  Result is not numeric --> quit

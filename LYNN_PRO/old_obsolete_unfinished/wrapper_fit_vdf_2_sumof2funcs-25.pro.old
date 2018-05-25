@@ -1500,11 +1500,6 @@ END
 ;                                                                   [05/08/2018   v1.3.3]
 ;            24)  Added keyword:  NB_LT_NH
 ;                                                                   [05/08/2018   v1.3.4]
-;            25)  Increased line and character thickness when saving to PS files
-;                                                                   [05/23/2018   v1.3.5]
-;            26)  Fixed a bug that occurred when the use of the strahl removal keyword
-;                   conflicted with the parallel core drift speed
-;                                                                   [05/24/2018   v1.3.6]
 ;
 ;   NOTES:      
 ;               0)  ***  Do not directly set the RMSTRAHL keyword  ***
@@ -1680,7 +1675,7 @@ END
 ;
 ;   CREATED:  04/09/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/24/2018   v1.3.6
+;    LAST MODIFIED:  05/08/2018   v1.3.4
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -1733,16 +1728,6 @@ popen_str               = {PORT:1,UNITS:'inches',XSIZE:8e0,YSIZE:11e0,ASPECT:0}
 ;;-------------------------------------------------------
 def_kapp_lim            = [3d0/2d0,10d1]  ;;  3/2 ≤ kappa ≤ 100
 def_ssex_lim            = [2d0,1d1]       ;;  self-similar exponent:  2 ≤ p ≤ 10
-def_voec_lim            = [-1d0,1d0]*1d3  ;;   -1000 km/s ≤ V_oecj ≤  +1000 km/s
-def_voic_lim            = [-1d0,1d0]*2d3  ;;   -2000 km/s ≤ V_opcj ≤  +2000 km/s
-;;  Check IONS
-test           = (N_ELEMENTS(ions) GT 0) AND KEYWORD_SET(ions)
-IF (test[0]) THEN ion__on = 1b ELSE ion__on = 0b
-;;  Check ELECTRONS
-test           = (N_ELEMENTS(electrons) GT 0) AND KEYWORD_SET(electrons)
-IF (test[0]) THEN elec_on = 1b ELSE elec_on = ([0b,1b])[~ion__on[0]]
-IF (elec_on[0] AND ion__on[0]) THEN ion__on[0] = 0b                    ;;  Make sure only one particle type is set
-IF (elec_on[0]) THEN def_v_oc_lim = def_voec_lim ELSE def_v_oc_lim = def_voic_lim
 ;;-------------------------------------------------------
 ;;  Define default RMSTRAHL structure
 ;;-------------------------------------------------------
@@ -2095,19 +2080,13 @@ IF (rm_strahl_on[0]) THEN BEGIN
     uvst                    = REFORM(unit_vec(uv_st))
     v1_dot_uvst             = TOTAL(uv_1*uvst,/NAN)
     para_bo                 = (v1_dot_uvst[0] GE 0)
-    ;;  Check if user is trying to override the default functionality
-    test                    = test_range_keys_4_fitvdf2sumof2funcs(RKEY_IN=voacorern,  $
-                                              DEF_RAN=def_v_oc_lim,LIMS_OUT=lims_v_oca,$
-                                              LIMD_OUT=limd_v_oca,RKEY_ON=v_oca_on)
     IF (para_bo[0]) THEN BEGIN
       ;;----------------------------------------------------------------------------------
       ;;  strahl is parallel to Bo
       ;;----------------------------------------------------------------------------------
-      IF (~v_oca_on[0]) THEN BEGIN
-        pcore[3]                = pcore[3] < 0
-        def_pinf[3].LIMITS[1]   = def_pinf[3].LIMITS[1] < 0
-      ENDIF
+      pcore[3]                = pcore[3] < 0
       phalo[3]                = phalo[3] < 0
+      def_pinf[3].LIMITS[1]   = def_pinf[3].LIMITS[1] < 0
       def_pinf[9].LIMITS[1]   = def_pinf[9].LIMITS[1] < 0
       ;;  Alter beam limits structure
       pbeam[3]                = pbeam[3] > 0
@@ -2131,11 +2110,9 @@ IF (rm_strahl_on[0]) THEN BEGIN
       ;;----------------------------------------------------------------------------------
       ;;  strahl is anti-parallel to Bo
       ;;----------------------------------------------------------------------------------
-      IF (~v_oca_on[0]) THEN BEGIN
-        pcore[3]                = pcore[3] > 0
-        def_pinf[3].LIMITS[0]   = def_pinf[3].LIMITS[0] > 0
-      ENDIF
+      pcore[3]                = pcore[3] > 0
       phalo[3]                = phalo[3] > 0
+      def_pinf[3].LIMITS[0]   = def_pinf[3].LIMITS[0] > 0
       def_pinf[9].LIMITS[0]   = def_pinf[9].LIMITS[0] > 0
       ;;  Alter beam limits structure
       pbeam[3]                = pbeam[3] < 0
@@ -2163,20 +2140,16 @@ IF (rm_strahl_on[0]) THEN BEGIN
     para_bo                 = -1
   ENDELSE
   ;;  Plot VDF
-  pcore0 = pcore
-  phalo0 = phalo
   general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,_EXTRA=extrakey,  $
-                           BIMAX=pcore0,BIKAP=phalo0,DAT_OUT=dat_out
+                           BIMAX=pcore,BIKAP=phalo,DAT_OUT=dat_out
 ENDIF ELSE BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  VEC1 is not set --> do not ignore either side
   ;;--------------------------------------------------------------------------------------
   para_bo                 = -1
   ;;  Call normally without excluding any data
-  pcore0 = pcore
-  phalo0 = phalo
   general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,_EXTRA=extrakey,  $
-                           BIMAX=pcore0,BIKAP=phalo0,DAT_OUT=dat_out
+                           BIMAX=pcore,BIKAP=phalo,DAT_OUT=dat_out
 ENDELSE
 IF (SIZE(dat_out,/TYPE) NE 8) THEN BEGIN
   MESSAGE,'Failure at plot level output!',/INFORMATION,/CONTINUE
@@ -2552,7 +2525,7 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
                                      FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,              $
                                      BEST_RESID=berrors,PFREE_INDEX=bfree_ind,NPEGGED=bpegged, $
                                      PERROR=b_sigma,MAXITER=maxiter                            )
-;  IF (statb[0] EQ 0) THEN STOP
+  IF (statb[0] EQ 0) THEN STOP
   IF (statb[0] EQ -16) THEN BEGIN
     ;;  TRUE = Try changing MPSIDE for density
     b_info[00].MPSIDE[0]    = 3
@@ -2818,13 +2791,6 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
     WSET,wind_ns[1]
     WSHOW,wind_ns[1]
   ENDELSE
-  IF (STRLOWCASE(!D.NAME) EQ 'ps') THEN BEGIN
-    l_thick  = 4e0            ;;  Plot line thickness
-    chthick  = 3e0            ;;  Character line thickness
-  ENDIF ELSE BEGIN
-    l_thick  = 2e0
-    chthick  = 1.5e0
-  ENDELSE
   ;;--------------------------------------------------------------------------------------
   ;;  Plot Contour
   ;;--------------------------------------------------------------------------------------
@@ -2838,43 +2804,43 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
     bitot_para              = TOTAL(temp,2,/NAN,/DOUBLE)
     temp                    = [[bicor_perp],[bihal_perp],[bbeam_perp]]
     bitot_perp              = TOTAL(temp,2,/NAN,/DOUBLE)
-    OPLOT,vpara*1d-3,bitot_para,COLOR=t_cols[0],LINESTYLE=3,THICK=l_thick[0]
-    OPLOT,vperp*1d-3,bitot_perp,COLOR=t_cols[1],LINESTYLE=3,THICK=l_thick[0]
+    OPLOT,vpara*1d-3,bitot_para,COLOR=t_cols[0],LINESTYLE=3,THICK=thck[0]
+    OPLOT,vperp*1d-3,bitot_perp,COLOR=t_cols[1],LINESTYLE=3,THICK=thck[0]
     ;;  Output labels
     cutstruc   = dat_out.CUTS_DATA.CUT_LIM
     xyposi     = [3d-1*cutstruc.XRANGE[1],1d1*cutstruc.YRANGE[0]]
-    XYOUTS,xyposi[0],xyposi[1],'Total Para.',/DATA,COLOR=t_cols[0],CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],'Total Para.',/DATA,COLOR=t_cols[0]
     xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],'Total Perp.',/DATA,COLOR=t_cols[1],CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],'Total Perp.',/DATA,COLOR=t_cols[1]
   ENDIF ELSE BEGIN
     ;;------------------------------------------------------------------------------------
     ;;  Plot fit lines individually
     ;;------------------------------------------------------------------------------------
-    OPLOT,vpara*1d-3,bicor_para,COLOR=c_cols[0],LINESTYLE=3,THICK=l_thick[0]
-    OPLOT,vperp*1d-3,bicor_perp,COLOR=c_cols[1],LINESTYLE=3,THICK=l_thick[0]
-    OPLOT,vpara*1d-3,bihal_para,COLOR=h_cols[0],LINESTYLE=3,THICK=l_thick[0]
-    OPLOT,vperp*1d-3,bihal_perp,COLOR=h_cols[1],LINESTYLE=3,THICK=l_thick[0]
+    OPLOT,vpara*1d-3,bicor_para,COLOR=c_cols[0],LINESTYLE=3,THICK=thck[0]
+    OPLOT,vperp*1d-3,bicor_perp,COLOR=c_cols[1],LINESTYLE=3,THICK=thck[0]
+    OPLOT,vpara*1d-3,bihal_para,COLOR=h_cols[0],LINESTYLE=3,THICK=thck[0]
+    OPLOT,vperp*1d-3,bihal_perp,COLOR=h_cols[1],LINESTYLE=3,THICK=thck[0]
     IF (statb[0] GT 0) THEN BEGIN
       ;;  Oplot beam fit
-      OPLOT,vpara*1d-3,bbeam_para,COLOR=b_cols[0],LINESTYLE=3,THICK=l_thick[0]
-      OPLOT,vperp*1d-3,bbeam_perp,COLOR=b_cols[1],LINESTYLE=3,THICK=l_thick[0]
+      OPLOT,vpara*1d-3,bbeam_para,COLOR=b_cols[0],LINESTYLE=3,THICK=thck[0]
+      OPLOT,vperp*1d-3,bbeam_perp,COLOR=b_cols[1],LINESTYLE=3,THICK=thck[0]
     ENDIF
     ;;  Output labels
     cutstruc   = dat_out.CUTS_DATA.CUT_LIM
     xyposi     = [3d-1*cutstruc.XRANGE[1],1d1*cutstruc.YRANGE[0]]
-    XYOUTS,xyposi[0],xyposi[1],xylabpre[0]+' Para. Core',/DATA,COLOR=c_cols[0],CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],xylabpre[0]+' Para. Core',/DATA,COLOR=c_cols[0]
     xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],xylabpre[0]+' Perp. Core',/DATA,COLOR=c_cols[1],CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],xylabpre[0]+' Perp. Core',/DATA,COLOR=c_cols[1]
     xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],xylabpre[1]+' Para. Halo',/DATA,COLOR=h_cols[0],CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],xylabpre[1]+' Para. Halo',/DATA,COLOR=h_cols[0]
     xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],xylabpre[1]+' Perp. Halo',/DATA,COLOR=h_cols[1],CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],xylabpre[1]+' Perp. Halo',/DATA,COLOR=h_cols[1]
     IF (statb[0] GT 0) THEN BEGIN
       ;;  Output beam info
       xyposi[1] *= 0.7
-      XYOUTS,xyposi[0],xyposi[1],xylabpre[2]+' Para. Beam',/DATA,COLOR=b_cols[0],CHARTHICK=chthick[0]
+      XYOUTS,xyposi[0],xyposi[1],xylabpre[2]+' Para. Beam',/DATA,COLOR=b_cols[0]
       xyposi[1] *= 0.7
-      XYOUTS,xyposi[0],xyposi[1],xylabpre[2]+' Perp. Beam',/DATA,COLOR=b_cols[1],CHARTHICK=chthick[0]
+      XYOUTS,xyposi[0],xyposi[1],xylabpre[2]+' Perp. Beam',/DATA,COLOR=b_cols[1]
     ENDIF
   ENDELSE
   ;;--------------------------------------------------------------------------------------
@@ -2894,7 +2860,7 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
   ENDELSE
   FOR jj=0L, 4L DO BEGIN
     xyposi[0] += xyposi[2]
-    XYOUTS,xyposi[0],xyposi[1],temp_out[jj],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],temp_out[jj],CHARSIZE=.65,/NORMAL,ORIENTATION=90.
   ENDFOR
   IF (cf[0] NE 'MM') THEN temp_out = STRTRIM(STRMID(core_xyout[5L],2L),2L) ELSE temp_out = ''
   IF (hf[0] NE 'MM') THEN BEGIN
@@ -2905,7 +2871,7 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
   ENDIF
   IF (temp_out[0] NE '') THEN BEGIN
     xyposi[0] += xyposi[2]
-    XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Output fit status etc.
@@ -2920,10 +2886,10 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
     temp_outc               = fitstat_mid+fstatstrout
     temp_out                = temp_outc[0]+';  '+temp_outc[1]+';  '+temp_outc[2]
     xyposi[0]              += xyposi[2]
-    XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.
     temp_out                = temp_outc[4]
     xyposi[0]              += xyposi[2]
-    XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.
   ENDIF ELSE BEGIN
     ;;------------------------------------------------------------------------------------
     ;;  Do not include beam fit info
@@ -2932,7 +2898,7 @@ IF (status[0] GT 0) THEN BEGIN  ;;  TRUE = Success!  -->  Print out info
     temp_outc               = fitstat_mid+fstatstrout
     temp_out                = temp_outc[0]+';  '+temp_outc[1]+';  '+temp_outc[2]+';  '+temp_outc[4]
     xyposi[0]              += xyposi[2]
-    XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=chthick[0]
+    XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.
   ENDELSE
   ;;  Close file if saving
   IF (save_on[0]) THEN BEGIN
