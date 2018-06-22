@@ -1,11 +1,14 @@
 ;+
 ;*****************************************************************************************
 ;
-;  FUNCTION :   biselfsimilar_fit.pro
+;  FUNCTION :   biselfsimilar_2exp_fit.pro
 ;  PURPOSE  :   Creates an anisotropic self-similar distribution function from a user
 ;                 defined amplitude, thermal speed, and array of velocities.  The only
 ;                 note to be careful of is to make sure the thermal speed and array
-;                 of velocities have the same units.
+;                 of velocities have the same units.  This differs from the routine
+;                 biselfsimilar_fit.pro in that the exponent for the parallel and
+;                 perpendicular directions can vary and the perpendicular drift
+;                 velocity is forced to zero.
 ;
 ;  CALLED BY:   
 ;               NA
@@ -30,8 +33,12 @@
 ;                           PARAM[1] = Parallel Thermal Speed [km/s]
 ;                           PARAM[2] = Perpendicular Thermal Speed [km/s]
 ;                           PARAM[3] = Parallel Drift Speed [km/s]
-;                           PARAM[4] = Perpendicular Drift Speed [km/s]
-;                           PARAM[5] = Self-Similar Exponent Value [only values ≥ 2]
+;                           PARAM[4] = Self-Similar Exponent Value [only values ≥ 2] for
+;                                       the parallel direction
+;                                       [Default = 4]
+;                                       {Note:  2 = bi-Maxwellian}
+;                           PARAM[5] = Self-Similar Exponent Value [only values ≥ 2] for
+;                                       the perpendicular direction
 ;                                       [Default = 4]
 ;                                       {Note:  2 = bi-Maxwellian}
 ;               PDER   :  [6]-Element [numeric] array defining which partial derivatives
@@ -48,26 +55,30 @@
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               bissm = biselfsimilar_fit(vpara, vperp, param, pder [,FF=ff])
+;               biss2exp = biselfsimilar_2exp_fit(vpara, vperp, param, pder [,FF=ff])
 ;
 ;  KEYWORDS:    
 ;               FF     :  Set to a named variable to return an [N,M]-element array of
 ;                           values corresponding to the evaluated function
 ;
-;   CHANGED:  1)  Now allows lbw_digamma.pro to use the READ_DG keyword for small
-;                   enough values of PARAM[5]
-;                                                                   [04/07/2018   v1.0.1]
-;             2)  Fixed a typo in analytical derivatives
-;                                                                   [06/20/2018   v1.0.2]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  The thermal speeds are the "most probable speeds" for each direction
 ;                     --> V_tpara = SQRT(2*kB*T_para/m)
 ;               2)  User should not call this routine
-;               3)  See also:  biselfsimilar.pro and bimaxwellian.pro
+;               3)  See also:  biselfsimilar.pro, bimaxwellian.pro, bikappa_fit.pro, and
+;                     biselfsimilar_fit.pro
 ;               4)  VDF = velocity distribution function
 ;               5)  The digamma function is slow as it computes a 30 million element
-;                     array to ensure at least 7 digits of accuracy
+;                     array to ensure at least 7 digits of accuracy.  Thus, to improve
+;                     the speed, I created look-up tables of pre-computed values to
+;                     which the routine can interpolate.
+;               6)  If both PARAM[4] and PARAM[5] are set to 2, then the output will
+;                     reduce to a bi-Maxwellian VDF
+;               7)  Unlike the other *_fit.pro routines, this one does not allow the
+;                     user to vary the perpendicular drift speed
 ;
 ;  REFERENCES:  
 ;               0)  Barnes, A. "Collisionless Heating of the Solar-Wind Plasma I. Theory
@@ -95,16 +106,17 @@
 ;                      turbulence theory," Phys. Rev. A 14(1), pp. 424--433, 1976.
 ;               8)  Horton, W. and D.-I. Choi "Renormalized turbulence theory for the
 ;                      ion acoustic problem," Phys. Rep. 49(3), pp. 273--410, 1979.
+;               9)  http://mathworld.wolfram.com/GammaFunction.html
 ;
-;   CREATED:  04/05/2018
+;   CREATED:  06/20/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/20/2018   v1.0.2
+;    LAST MODIFIED:  06/20/2018   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION biselfsimilar_fit,vpara,vperp,param,pder,FF=ff
+FUNCTION biselfsimilar_2exp_fit,vpara,vperp,param,pder,FF=ff
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -131,33 +143,43 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate distribution
 ;;----------------------------------------------------------------------------------------
-;;  Define parallel and perpendicular dimensions
-pp             = ABS(param[5])*1d0          ;;  Exponent value
+;;  Define parallel and perpendicular exponents
+pp             = ABS(param[4])*1d0          ;;  Parallel exponent value
+qq             = ABS(param[5])*1d0          ;;  Perpendicular exponent value
 pp             = pp[0] > 2                  ;;  Require  p ≥ 2
+qq             = qq[0] > 2                  ;;  Require  q ≥ 2
 ;;  Define velocities offset by drift speeds:  U_j = V_j - V_oj  [km/s]
 uelpa          = vpara - param[3]           ;;  Parallel velocity minus drift speed [km/s]
-uelpe          = vperp - param[4]           ;;  Perpendicular velocity minus drift speed [km/s]
+uelpe          = vperp                      ;;  Perpendicular velocity [km/s]
 ;;  Convert to 2D
 uelpa2d        = uelpa # REPLICATE(1d0,nve[0])
 uelpe2d        = REPLICATE(1d0,nva[0]) # uelpe
 ;;  Define:  W_j = U_j/V_Tj
 welpa2d        = uelpa2d/param[1]
 welpe2d        = uelpe2d/param[2]
-;;  Check whether exponent is even
+;;  Check whether exponents are even
 odd__p         = (pp[0] MOD 2) NE 0
 IF (odd__p[0]) THEN BEGIN
   ;;  Odd exponent
   ;;   --> use |V|
   w_para         = (ABS(welpa2d))^pp[0]
-  w_perp         = (ABS(welpe2d))^pp[0]
 ENDIF ELSE BEGIN
   ;;  Even exponent
   ;;   --> use (V)
   w_para         = (welpa2d)^pp[0]
-  w_perp         = (welpe2d)^pp[0]
 ENDELSE
-;;  Define normalization factor = [2 Gamma{(1 + p)/p}]^(-3)
-factor         = (2d0*GAMMA((1d0 + pp[0])/pp[0]))^(-3d0)
+odd__q         = (qq[0] MOD 2) NE 0
+IF (odd__q[0]) THEN BEGIN
+  ;;  Odd exponent
+  ;;   --> use |V|
+  w_perp         = (ABS(welpe2d))^qq[0]
+ENDIF ELSE BEGIN
+  ;;  Even exponent
+  ;;   --> use (V)
+  w_perp         = (welpe2d)^qq[0]
+ENDELSE
+;;  Define normalization factor = 2^(-3) [Gamma{(1 + p)/p}]^(-1) [Gamma{(1 + q)/q}]^(-2)
+factor         = 1d0/(8d0*GAMMA((1d0 + pp[0])/pp[0])*GAMMA((1d0 + qq[0])/qq[0])^2d0)
 ;; Define amplitude = factor * [no/(V_tpara V_tperp^2)]  [# cm^(-3) km^(-3) s^(+3)]
 amp            = factor[0]*param[0]/(param[1]*param[2]^2d0)
 ;;  Define exponent for bi-self-similar VDF
@@ -165,21 +187,21 @@ expon          = -1d0*(w_para + w_perp)
 ;;  Define the 2D bi-self-similar VDF [# cm^(-3) km^(-3) s^(+3)]
 ff             = amp[0]*EXP(expon)
 ;;----------------------------------------------------------------------------------------
-;;  Calculate partial derivatives of Z = H(A,B,C,F) EXP{-[((X-D)/B)^F + ((Y-E)/C)^F]}
-;;    H(A,B,C,F) = [2 GG(1 + 1/F)]^(-3) A/[B C^2]
+;;  Calculate partial derivatives of Z = H(A,B,C,E,F) EXP{-[((X-D)/B)^E + (Y/C)^F]}
+;;    H(A,B,C,F) = A [GG(1 + 1/E)]^(-1) [GG(1 + 1/F)]^(-2)/[2^(3) B C^(2)]
 ;;    GG(z)      = GAMMA(z)
 ;;    DG(z)      = GAMMA'(z)/GAMMA(z)  =  digamma function
 ;;    Let us define the following for brevity:
-;;      U_j = V_j - V_oj  =  {X,Y} - {D,E}
-;;      W_j = U_j/V_Tj    =  ({X,Y} - {D,E})/{B,C}
+;;      U_j = V_j - V_oj  =  {X,Y} - {D,0}
+;;      W_j = U_j/V_Tj    =  ({X,Y} - {D,0})/{B,C}
 ;;
 ;;
 ;;    dZ/dA = Z/A
-;;    dZ/dB = Z [F W_par^(F) - 1]/B
+;;    dZ/dB = Z [F W_par^(E) - 1]/B
 ;;    dZ/dC = Z [F W_per^(F) - 2]/C
-;;    dZ/dD = Z [F W_par^(F-1)]/B
-;;    dZ/dE = Z [F W_per^(F-1)]/C
-;;    dZ/dF = Z { [3 DG(1 + 1/F)/F^2] - W_par^(F) Ln|W_par| - W_per^(F) Ln|W_per|}
+;;    dZ/dD = Z [F W_par^(E-1)]/B
+;;    dZ/dE = Z { [DG(1 + 1/E)/E^2] - W_par^(E) Ln|W_par| }
+;;    dZ/dF = Z { [2 DG(1 + 1/F)/F^2] - W_per^(F) Ln|W_per|}
 ;;----------------------------------------------------------------------------------------
 IF (N_PARAMS() GT 3) THEN BEGIN
   ;;  Save original (input) partial derivative settings
@@ -194,37 +216,44 @@ IF (N_PARAMS() GT 3) THEN BEGIN
           pder[*,*,k] = ff/param[0]
         END
         1     :  BEGIN
-          ;;  dZ/dB = Z [F W_par^(F) - 1]/B
+          ;;  dZ/dB = Z [F W_par^(E) - 1]/B
           pder[*,*,k] = ff*(pp[0]*w_para - 1d0)/param[1]
         END
         2     :  BEGIN
           ;;  dZ/dC = Z [F W_per^(F) - 2]/C
-          pder[*,*,k] = ff*(pp[0]*w_perp - 2d0)/param[2]
+          pder[*,*,k] = ff*(qq[0]*w_perp - 2d0)/param[2]
         END
         3     :  BEGIN
-          ;;  dZ/dD = Z [F W_par^(F-1)]/B
+          ;;  dZ/dD = Z [F W_par^(E-1)]/B
           even_t      = ((pp[0] - 1d0) MOD 2) EQ 0
           IF (even_t[0]) THEN term0 = welpa2d^(pp[0] - 1d0) ELSE term0 = ABS(welpa2d)^(pp[0] - 1d0)
           pder[*,*,k] = ff*(pp[0]*term0)/param[1]
         END
         4     :  BEGIN
-          ;;  dZ/dE = Z [F W_per^(F-1)]/C
+          ;;  dZ/dE = Z { [DG(1 + 1/E)/E^2] - W_par^(E) Ln|W_par| }
           even_t      = ((pp[0] - 1d0) MOD 2) EQ 0
-          IF (even_t[0]) THEN term0 = welpe2d^(pp[0] - 1d0) ELSE term0 = ABS(welpe2d)^(pp[0] - 1d0)
-          pder[*,*,k] = ff*(pp[0]*term0)/param[2]
-        END
-        5     :  BEGIN
-          ;;  dZ/dF = Z { [3 DG(1 + 1/F)/F^2] - W_par^(F) Ln|W_par| - W_per^(F) Ln|W_per|}
+          IF (even_t[0]) THEN term0 = welpa2d^(pp[0] - 1d0) ELSE term0 = ABS(welpa2d)^(pp[0] - 1d0)
           ndg         = 30000000L
           zz          = (1d0 + pp[0])/pp[0]
           test        = (zz[0] GT zran[0]) AND (zz[0] LT zran[1])
           IF (test[0]) THEN dig = lbw_digamma(zz[0],/READ_DG) ELSE dig = lbw_digamma(zz[0],N=ndg[0])
-          term0       = 3d0*dig[0]/pp[0]^2d0
-;          term0       = 3d0*lbw_digamma(zz[0],N=ndg[0])/pp[0]^2d0
+          term0       = 1d0*dig[0]/pp[0]^2d0
           term1       = -1d0*w_para*ALOG(ABS(welpa2d))
-          term2       = -1d0*w_perp*ALOG(ABS(welpe2d))
-          term4       = term1 + term2 + term0[0]
-          pder[*,*,k] = ff*term4
+          term2       = term0[0] + term1
+          pder[*,*,k] = ff*term2
+        END
+        5     :  BEGIN
+          ;;  dZ/dF = Z { [2 DG(1 + 1/F)/F^2] - W_per^(F) Ln|W_per|}
+          even_t      = ((qq[0] - 1d0) MOD 2) EQ 0
+          IF (even_t[0]) THEN term0 = welpe2d^(qq[0] - 1d0) ELSE term0 = ABS(welpe2d)^(qq[0] - 1d0)
+          ndg         = 30000000L
+          zz          = (1d0 + qq[0])/qq[0]
+          test        = (zz[0] GT zran[0]) AND (zz[0] LT zran[1])
+          IF (test[0]) THEN dig = lbw_digamma(zz[0],/READ_DG) ELSE dig = lbw_digamma(zz[0],N=ndg[0])
+          term0       = 2d0*dig[0]/qq[0]^2d0
+          term1       = -1d0*w_perp*ALOG(ABS(welpe2d))
+          term2       = term0[0] + term1
+          pder[*,*,k] = ff*term2
         END
         ELSE  :  ;;  Do nothing as this parameter is not used
       ENDCASE
@@ -237,6 +266,35 @@ ENDIF
 
 RETURN,ff
 END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
