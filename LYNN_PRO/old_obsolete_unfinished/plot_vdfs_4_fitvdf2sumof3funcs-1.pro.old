@@ -48,7 +48,6 @@
 ;                                        [,BEAM_LABS=beam_labs] [,XYLAB_PRE=xylabpre]    $
 ;                                        [,CFUNC=cfunc] [,HFUNC=hfunc] [,BFUNC=bfunc]    $
 ;                                        [,ELECTRONS=electrons] [,IONS=ions]             $
-;                                        [,SPTHRSHS=spthrshs] [,MAXFACS=maxfacs]         $
 ;                                        [,SAVEF=savef] [,FILENAME=filename]             $
 ;                                        [,_EXTRA=extrakey]
 ;
@@ -118,15 +117,6 @@
 ;               IONS        :  If set, routine uses parameters appropriate for non-
 ;                                relativistic proton velocity distributions
 ;                                [Default = FALSE]
-;               SPTHRSHS    :  [3]-Element [float/double] array defining the fraction of
-;                                the maximum speed of the input VDF to allow when looking
-;                                for peaks exceeding MAXFACS for each component
-;                                [ Default = [0.15, 0.20, 0.20] ]
-;               MAXFACS     :  [3]-Element [float/double] array defining the maximum
-;                                value of the ratio between the model and data for each
-;                                component to allow.  Any component exceeding this value
-;                                will be nullified and the status set to -20.
-;                                [ Default = [9.00, 2.25, 2.25] ]
 ;               SAVEF       :  If set, routine will save the final plot to a PS file
 ;                                [Default = FALSE]
 ;               FILENAME    :  Scalar [string] defining the file name for the saved PS
@@ -138,8 +128,6 @@
 ;
 ;   CHANGED:  1)  Now includes bi-self-similar VDF without symmetric exponents
 ;                                                                   [06/21/2018   v1.0.1]
-;             2)  Added keywords:  SPTHRSHS and MAXFACS
-;                                                                   [06/25/2018   v1.0.2]
 ;
 ;   NOTES:      
 ;               0)  User should not call this routine directly
@@ -150,7 +138,7 @@
 ;   ADAPTED FROM: plotting part of wrapper_fit_vdf_2_sumof2funcs.pro
 ;   CREATED:  06/19/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/25/2018   v1.0.2
+;    LAST MODIFIED:  06/21/2018   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -163,7 +151,6 @@ PRO plot_vdfs_4_fitvdf2sumof3funcs,vdf,velxyz,out_struc,VFRAME=vframe,VEC1=vec1,
                                    BEAM_LABS=beam_labs,XYLAB_PRE=xylabpre,                $
                                    CFUNC=cfunc,HFUNC=hfunc,BFUNC=bfunc,                   $
                                    ELECTRONS=electrons,IONS=ions,                         $
-                                   SPTHRSHS=spthrshs,MAXFACS=maxfac0,                     $
                                    SAVEF=savef,FILENAME=filename,                         $
                                    _EXTRA=extrakey
 
@@ -198,12 +185,7 @@ both_plotted            = 0b
 out_tagt                = ['CORE','HALO','BEAM']
 ;;  Define popen structure
 popen_str               = {PORT:1,UNITS:'inches',XSIZE:8e0,YSIZE:11e0,ASPECT:0}
-;;  Define defaults for SPTHRSHS and MAXFACS
-def_spdthrfac           = [15d-2,20d-2,20d-2]           ;;  Fraction of maximum speeds
-def_maxfacs             = [4d0,1d0,1d0]*2.25d0          ;;  Fraction of maximum peak ratios
-;;----------------------------------------------------------------------------------------
 ;;  Check NOUSECTAB
-;;----------------------------------------------------------------------------------------
 IF ((N_ELEMENTS(nousectab) EQ 0) OR ~KEYWORD_SET(nousectab)) THEN BEGIN
   ;;  Force new color table that minimizes amount of green and yellow on output
   SET_PLOT,'X'
@@ -337,17 +319,6 @@ CASE bf[0] OF               ;;  Redefine output to proper/allowed format
   ELSE  :  bfunc       = 'MM'     ;;  Default
 ENDCASE
 ;;------------------------------
-;;  Check SPTHRSHS
-;;------------------------------
-test                    = (N_ELEMENTS(spthrshs) GE 3) AND is_a_number(spthrshs,/NOMSSG)
-IF (test[0]) THEN spd_thrsh_on = 1b ELSE spd_thrsh_on = 0b
-IF (spd_thrsh_on[0]) THEN spd_fracs = ABS(DOUBLE(spthrshs[0:2])) > 1d-2 ELSE spd_fracs = def_spdthrfac
-;;------------------------------
-;;  Check MAXFACS
-;;------------------------------
-test                    = (N_ELEMENTS(maxfac0) GE 3) AND is_a_number(maxfac0,/NOMSSG)
-IF (test[0]) THEN maxfacs = ABS(DOUBLE(maxfac0[0:2])) > 1.1 ELSE maxfacs = def_maxfacs
-;;------------------------------
 ;;  Check SAVEF
 ;;------------------------------
 test           = (N_ELEMENTS(savef) GT 0) AND KEYWORD_SET(savef)
@@ -403,15 +374,8 @@ vper2d                  = REPLICATE(1d0,n_par[0]) # vy_km
 vel_2d                  = [[[vpar2d]],[[vper2d]]]             ;;  [N,M,2]-Element array
 speed                   = SQRT(TOTAL(vel_2d^2,3,/NAN))        ;;  [N,M]-Element array of speeds [km/s]
 mnmxsp                  = [MIN(speed,/NAN),MAX(speed,/NAN)]
-spdthr                  = spd_fracs*mnmxsp[1]
-;spdthr                  = [15d-2,20d-2,20d-2]*mnmxsp[1]
-cvtherm                 = MAX(core_strc.FIT_PARAMS[1:2],/NAN)
-vspmax                  = ([6d1,4d3])[KEYWORD_SET(electrons)]
-;IF KEYWORD_SET(electrons) THEN vspmax = 4d3 ELSE vspmax = 6d1
-IF (FINITE(cvtherm[0])) THEN cvthmax = vspmax[0] > cvtherm[0] ELSE cvthmax = vspmax[0]
-;;  Define speed thresholds for each component
-spdthr                  = ABS(spdthr) < cvthmax[0]
-;;  Find elements below these thresholds
+spdthr                  = [15d-2,20d-2,20d-2]*mnmxsp[1]
+IF KEYWORD_SET(electrons) THEN spdthr[0] = spdthr[0] < 4d3
 good_lspc               = WHERE(speed LE spdthr[0],gd_lspc,COMPLEMENT=bad_lspc,NCOMPLEMENT=bd_lspc)
 good_lsph               = WHERE(speed LE spdthr[1],gd_lsph,COMPLEMENT=bad_lsph,NCOMPLEMENT=bd_lsph)
 good_lspb               = WHERE(speed LE spdthr[2],gd_lspb,COMPLEMENT=bad_lspb,NCOMPLEMENT=bd_lspb)
@@ -593,7 +557,7 @@ temp                    = lbw__add(bicor_perp,bihal_perp,/NAN)
 bitot_perp              = lbw__add(temp,bbeam_perp,/NAN)
 IF (test_trial[0]) THEN BEGIN
   ;;  Check if the total or any component is bad
-;  maxfacs                 = [4d0,1d0,1d0]*2.25d0
+  maxfacs                 = [4d0,1d0,1d0]*2.25d0
   z_orig                  = core_strc.Z_ORIG
   cor2zori                = ABS(core_2d/z_orig)
   hal2zori                = ABS(halo_2d/z_orig)

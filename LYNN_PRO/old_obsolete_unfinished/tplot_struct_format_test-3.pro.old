@@ -37,10 +37,6 @@
 ;                                      V2  :  [N,A]-Element array of pitch-angle bins
 ;                                    occasionally one includes uncertainties as:
 ;                                      DY  :  [N,?]-Element array of uncertainties in Y
-;                                    or in the special case of MMS particle data:
-;                                      V1  :  [N,E]-Element array of azimuthal angles
-;                                      V2  :  [L]-Element array of poloidal angles
-;                                      V3  :  [N,E]-Element array of energy bin values
 ;
 ;                                    If V1 AND V2 are present, then Y must be an
 ;                                    [N,E,A]-element array.  If only V is present, then
@@ -57,7 +53,6 @@
 ;               test = tplot_struct_format_test(struct [,/YNDIM] [,/YVECT]           $
 ;                                                      [,TEST__V=test__v]            $
 ;                                                      [,TEST_V1_V2=test_v1_v2]      $
-;                                                      [,TEST_V123=test_v123]        $
 ;                                                      [,TEST_DY=test_dy] [,/NOMSSG] )
 ;
 ;               ;;  Example of BAD structure
@@ -181,11 +176,6 @@
 ;                                  1  :  exists and is 1D
 ;                                  2  :  exists and is 2D (see notes above for STRUCT)
 ;                                  3  :  exists and is 3D (see notes above for STRUCT)
-;               TEST_V123   :  Set to a named varible to return logic tests that inform
-;                                the user about the existence and format of the V1, V2,
-;                                and V3 structure tags.  The outputs are:
-;                                  0  :  bad/incorrect format/non-existent
-;                                  1  :  all are set and correctly formatted
 ;               NOMSSG      :  If set, routine will not print out warning/error message(s)
 ;                                [Default = FALSE]
 ;
@@ -201,8 +191,6 @@
 ;             4)  Optimize a little to reduce wasted computations and
 ;                   cleaned up a little
 ;                                                                   [12/01/2017   v2.0.1]
-;             5)  Cleaned up and added keyword: TEST_V123
-;                                                                   [07/05/2018   v2.0.2]
 ;
 ;   NOTES:      
 ;               1)  See also:  t_resample_tplot_struc.pro
@@ -213,15 +201,14 @@
 ;
 ;   CREATED:  09/23/2010
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/05/2018   v2.0.2
+;    LAST MODIFIED:  12/01/2017   v2.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
 FUNCTION tplot_struct_format_test,struct,YNDIM=yndim,YVECT=yvect,TEST__V=test__v,$
-                                  TEST_V1_V2=test_v1_v2,TEST_DY=test_dy,         $
-                                  TEST_V123=test_v123,NOMSSG=nomssg
+                                  TEST_V1_V2=test_v1_v2,TEST_DY=test_dy,NOMSSG=nomssg
 
 ;;  Let IDL know that the following are functions
 FORWARD_FUNCTION is_a_number, is_a_3_vector
@@ -233,10 +220,8 @@ f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
 ;;  logic outputs
 good           = 0b           ;;  Main output
-test_dy        = 0b           ;;  Test for DY structure tag
 test__v        = 0b           ;;  Test for V structure tag
 test_v1_v2     = 0b           ;;  Test for V1 and V2 structure tags
-test_v123      = 0b           ;;  Test for V1 and V2 and V3 structure tags
 ;;  Dummy error messages
 notstr_mssg    = 'Must be an IDL structure...'
 badstr_mssg    = 'Not an appropriate TPLOT structure...'
@@ -281,15 +266,13 @@ IF KEYWORD_SET(yvect) THEN good = is_a_3_vector(y,NOMSSG=nomssg)
 v              = struct_value(str,       'V',DEFAULT=f  ,  INDEX=ind__v)
 v1             = struct_value(str,      'V1',DEFAULT=f  ,  INDEX=ind_v1)
 v2             = struct_value(str,      'V2',DEFAULT=f  ,  INDEX=ind_v2)
-v3             = struct_value(str,      'V3',DEFAULT=f  ,  INDEX=ind_v3)
 dy             = struct_value(str,      'DY',DEFAULT=f  ,  INDEX=ind_dy)
 test__v        = (ind__v[0] GE 0)
 test_v1        = (ind_v1[0] GE 0)
 test_v2        = (ind_v2[0] GE 0)
-test_v3        = (ind_v3[0] GE 0)
 test_dy        = (ind_dy[0] GE 0)
-;;  Check if V, or V1 and V2, or DY even exist
-check_vs       = ~test__v[0] AND (~test_v1[0] OR ~test_v2[0]) AND ~test_dy[0] AND ~test_v3[0]
+;;  Check of V, or V1 and V2, or DY even exist
+check_vs       = ~test__v[0] AND (~test_v1[0] OR ~test_v2[0]) AND ~test_dy[0]
 IF (check_vs[0]) THEN RETURN,good[0]         ;;  check_vs = FALSE --> stop here and return to user
 ;;----------------------------------------------------------------------------------------
 ;;  Determine TEST_DY output
@@ -320,8 +303,8 @@ IF (test[0]) THEN BEGIN
     ELSE  :  test_dy = 0b    ;;  Not dealing with 4D input!
   ENDCASE
 ENDIF ELSE test_dy = 0b
-;;  Check if V, or V1 and V2 even exist
-check_vs       = ~test__v[0] AND (~test_v1[0] OR ~test_v2[0]) AND ~test_v3[0]
+;;  Check of V, or V1 and V2, or DY even exist
+check_vs       = ~test__v[0] AND (~test_v1[0] OR ~test_v2[0])
 IF (check_vs[0]) THEN RETURN,good[0]         ;;  check_vs = FALSE --> stop here and return to user
 ;;----------------------------------------------------------------------------------------
 ;;  Determine TEST__V output
@@ -344,9 +327,6 @@ IF (test[0]) THEN BEGIN
     IF (test_vv[0]) THEN test__v = 1b ELSE test__v = 0b
   ENDELSE
 ENDIF ELSE test__v = 0b
-;;  Check if V1 and V2 even exist
-check_vs       = (~test_v1[0] OR ~test_v2[0]) AND ~test_v3[0]
-IF (check_vs[0]) THEN RETURN,good[0]         ;;  check_vs = FALSE --> stop here and return to user
 ;;----------------------------------------------------------------------------------------
 ;;  Determine TEST_V1_V2 output
 ;;----------------------------------------------------------------------------------------
@@ -366,35 +346,13 @@ IF (test[0]) THEN BEGIN
   test_v2        = (szdv2[0] NE 0) AND (x_ddim[0] EQ szdv2[0]) AND $
                    (y_ddim[2] EQ szdv2[1])
   IF (test_v2[0]) THEN test_v2 = is_a_number(v2[0],NOMSSG=nomssg)
+;  test_v1        = ((szdv1[0] NE 0) AND is_a_number(v1,NOMSSG=nomssg)) AND $
+;                    (x_ddim[0] EQ szdv1[0]) AND (y_ddim[1] EQ szdv1[1])
+;  test_v2        = ((szdv2[0] NE 0) AND is_a_number(v2,NOMSSG=nomssg)) AND $
+;                    (x_ddim[0] EQ szdv2[0]) AND (y_ddim[2] EQ szdv2[1])
   ;;  Define TEST_V1_V2
   test_v1_v2     = (test_v1[0] AND test_v2[0])
 ENDIF ELSE test_v1_v2 = 0b
-;;  Check if V1 and V2 and V3 even exist
-check_vs       = ~test_v3[0]
-IF (check_vs[0]) THEN RETURN,good[0]         ;;  check_vs = FALSE --> stop here and return to user
-;;----------------------------------------------------------------------------------------
-;;  Determine TEST_V123 output
-;;----------------------------------------------------------------------------------------
-;;  Define V3, if exists
-IF (~test_v3[0]) THEN v3 = ''
-szdv3          = SIZE(v3,/DIMENSIONS)
-test           = (N_ELEMENTS(szdv1) EQ 2) AND (N_ELEMENTS(szdv2) EQ 1) AND $
-                 (N_ELEMENTS(szdv3) EQ 2) AND (y_ndim[0] EQ 4)
-IF (test[0]) THEN BEGIN
-  ;;  Check V1 format
-  test_v1        = (szdv1[0] NE 0) AND (x_ddim[0] EQ szdv1[0]) AND $
-                   (y_ddim[1] EQ szdv1[1])
-  IF (test_v1[0]) THEN test_v1 = is_a_number(v1[0],NOMSSG=nomssg)
-  ;;  Check V2 format
-  test_v2        = (szdv2[0] NE 0) AND (y_ddim[2] EQ szdv2[0])
-  IF (test_v2[0]) THEN test_v2 = is_a_number(v2[0],NOMSSG=nomssg)
-  ;;  Check V3 format
-  test_v3        = (szdv3[0] NE 0) AND (x_ddim[0] EQ szdv3[0]) AND $
-                   (y_ddim[3] EQ szdv3[1])
-  IF (test_v3[0]) THEN test_v3 = is_a_number(v3[0],NOMSSG=nomssg)
-  ;;  Define TEST_V123
-  test_v123      = (test_v1[0] AND test_v2[0] AND test_v3[0])
-ENDIF ELSE test_v123 = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
