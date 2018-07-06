@@ -22,7 +22,7 @@
 ;  INPUT:
 ;               T_IN         :  [N]-Element [numeric] defining the input time stamps for
 ;                                 each value in Y_IN
-;               Y_IN         :  [N,K,L,M]-Element [numeric] defining the input data array,
+;               Y_IN         :  [N,K,L]-Element [numeric] defining the input data array,
 ;                                 where K and L can be unity (i.e., 1D array) or any
 ;                                 value greater than one
 ;               DTIN         :  Scalar [numeric] defining the new sample period [s] for
@@ -41,8 +41,6 @@
 ;
 ;   CHANGED:  1)  Optimize a little to reduce wasted computations
 ;                                                                   [12/01/2017   v1.0.1]
-;             2)  Now can handle 4D Y_IN input
-;                                                                   [07/05/2018   v1.0.2]
 ;
 ;   NOTES:      
 ;               1)  N > 5 at minimum
@@ -52,7 +50,7 @@
 ;
 ;   CREATED:  11/29/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/05/2018   v1.0.2
+;    LAST MODIFIED:  12/01/2017   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -151,8 +149,7 @@ CASE szny[0] OF
   1    : yout = REPLICATE(0d0,nx[0])
   2    : yout = REPLICATE(0d0,nx[0],szdy[1])
   3    : yout = REPLICATE(0d0,nx[0],szdy[1],szdy[2])
-  4    : yout = REPLICATE(0d0,nx[0],szdy[1],szdy[2],szdy[3])
-  ELSE : STOP        ;;  >4 dimensions? --> Not compatible!
+  ELSE : STOP        ;;  >3 dimensions? --> Not compatible!
 ENDCASE
 
 FOR j=0L, n_in[0] - 1L DO BEGIN
@@ -164,9 +161,8 @@ FOR j=0L, n_in[0] - 1L DO BEGIN
     yout[bins_tt[j]] += TOTAL(yy[j],/NAN)
   ENDIF ELSE BEGIN
     CASE szny[0] OF
-      2    : yout[bins_tt[j],*]     += TOTAL(yy[j,*],  1L,/NAN)
-      3    : yout[bins_tt[j],*,*]   += TOTAL(yy[j,*,*],1L,/NAN)
-      4    : yout[bins_tt[j],*,*,*] += TOTAL(yy[j,*,*,*],1L,/NAN)
+      2    : yout[bins_tt[j],*]   += TOTAL(yy[j,*],  1L,/NAN)
+      3    : yout[bins_tt[j],*,*] += TOTAL(yy[j,*,*],1L,/NAN)
     ENDCASE
   ENDELSE
 ENDFOR
@@ -185,7 +181,6 @@ IF (gd[0] GT 0) THEN BEGIN
     3    : BEGIN
       smdim  = szdy[1] < szdy[2]
       lgdim  = szdy[1] > szdy[2]
-      ;;  Define good bin array
       gbin2d = gbins # REPLICATE(1,lgdim[0])
       FOR k=0L, smdim[0] - 1L DO BEGIN
         IF (smdim[0] EQ szdy[1]) THEN BEGIN
@@ -193,45 +188,6 @@ IF (gd[0] GT 0) THEN BEGIN
         ENDIF ELSE BEGIN
           yout[good,*,k] /= gbin2d
         ENDELSE
-      ENDFOR
-    END
-    4    : BEGIN
-      smdim  = MIN(szdy[1:3],sln)
-      lgdim  = MAX(szdy[1:3],slg)
-      CASE sln[0] OF
-        0  :  IF (slg[0] EQ 1) THEN slm = 2L ELSE slm = 1L
-        1  :  IF (slg[0] EQ 2) THEN slm = 0L ELSE slm = 2L
-        2  :  IF (slg[0] EQ 0) THEN slm = 1L ELSE slm = 0L
-      ENDCASE
-      mddim  = (szdy[1:3])[slm[0]]
-      ;;  Define good bin array
-      gbin2d = gbins # REPLICATE(1,lgdim[0])
-       FOR k=0L, smdim[0] - 1L DO BEGIN
-        FOR j=0L, mddim[0] - 1L DO BEGIN
-          CASE sln[0] OF
-            0  :  BEGIN
-              IF (slg[0] EQ 1) THEN BEGIN
-                yout[good,k,*,j] /= REFORM(gbin2d,gd[0],1L,lgdim[0],1L)
-              ENDIF ELSE BEGIN
-                yout[good,k,j,*] /= REFORM(gbin2d,gd[0],1L,1L,lgdim[0])
-              ENDELSE
-            END
-            1  :  BEGIN
-              IF (slg[0] EQ 2) THEN BEGIN
-                yout[good,j,k,*] /= REFORM(gbin2d,gd[0],1L,1L,lgdim[0])
-              ENDIF ELSE BEGIN
-                yout[good,*,k,j] /= REFORM(gbin2d,gd[0],lgdim[0],1L,1L)
-              ENDELSE
-            END
-            2  :  BEGIN
-              IF (slg[0] EQ 0) THEN BEGIN
-                yout[good,*,j,k] /= REFORM(gbin2d,gd[0],lgdim[0],1L,1L)
-              ENDIF ELSE BEGIN
-                yout[good,j,*,k] /= REFORM(gbin2d,gd[0],1L,lgdim[0],1L)
-              ENDELSE
-            END
-          ENDCASE
-        ENDFOR
       ENDFOR
     END
   ENDCASE
@@ -244,11 +200,9 @@ ENDELSE
 ;;----------------------------------------------------------------------------------------
 IF (nan_on[0]) THEN BEGIN
   CASE szny[0] OF
-    1    : yout[bad]       = f
-    2    : yout[bad,*]     = f
-    3    : yout[bad,*,*]   = f
-    4    : yout[bad,*,*,*] = f
-    ELSE :  ;;  Should not get here
+    1    : yout[bad]     = f
+    2    : yout[bad,*]   = f
+    3    : yout[bad,*,*] = f
   ENDCASE
 ENDIF
 ;;----------------------------------------------------------------------------------------
