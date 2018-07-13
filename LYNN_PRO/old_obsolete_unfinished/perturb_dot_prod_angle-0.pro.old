@@ -41,8 +41,7 @@
 ;               [calling sequence]
 ;               a_da = perturb_dot_prod_angle(v1,v2 [,NAN=nan] [,RADIANS=radians]       $
 ;                                             [,TH_0_90=th_0_90] [,PLANE=plane]         $
-;                                             [,DELTA_V1=delta_v1] [,DELTA_V2=delta_v2] $
-;                                             [,/USE_MED] [,/USE_STAND]                 )
+;                                             [,DELTA_V1=delta_v1] [,DELTA_V2=delta_v2] )
 ;
 ;  KEYWORDS:    
 ;               NAN          :  If set, routine will ignore non-finite values
@@ -69,15 +68,9 @@
 ;               DELTA_V2     :  [N,3]-Element or [3]-element [numeric] array of 3-vectors
 ;                                 defining the uncertainties for the components of V2
 ;                                 [ Default = [0,0,0] ]
-;               USE_MED      :  If set, routine will use the median instead of the mean
-;                                 for the output angle values
-;                                 [Default = FALSE]
-;               USE_STAND    :  If set, routine will use the standard deviation instead
-;                                 of the range for the output angle uncertainties
-;                                 [Default = FALSE]
 ;
-;   CHANGED:  1)  Added keywords: USE_MED and USE_STAND
-;                                                                   [07/12/2018   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  Either both inputs are [N,3]-element arrays or only one is while
@@ -96,15 +89,14 @@
 ;
 ;   CREATED:  08/04/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/12/2018   v1.0.1
+;    LAST MODIFIED:  08/04/2017   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION perturb_dot_prod_angle,v1,v2,NAN=nan,RADIANS=radians,TH_0_90=th_0_90,        $
-                                      PLANE=plane,DELTA_V1=delta_v1,DELTA_V2=delta_v2,$
-                                      USE_MED=use_med,USE_STAND=use_stand
+FUNCTION perturb_dot_prod_angle,v1,v2,NAN=nan,RADIANS=radians,TH_0_90=th_0_90,$
+                                      PLANE=plane,DELTA_V1=delta_v1,DELTA_V2=delta_v2
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -120,12 +112,14 @@ incordm_mssg   = 'Incorrect dimensions...  Either both inputs are [N,3]-element 
 ;;----------------------------------------------------------------------------------------
 ;;  Check input
 ;;----------------------------------------------------------------------------------------
-IF ((N_PARAMS() NE 2) OR (N_ELEMENTS(v1) EQ 0) OR (N_ELEMENTS(v2) EQ 0)) THEN BEGIN
+test           = (N_PARAMS() NE 2) OR (N_ELEMENTS(v1) EQ 0) OR (N_ELEMENTS(v2) EQ 0)
+IF (test[0]) THEN BEGIN
   MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
 ;;  Check input format
-IF ((is_a_3_vector(v1,/NOMSSG) EQ 0) OR (is_a_3_vector(v2,/NOMSSG) EQ 0)) THEN BEGIN
+test           = (is_a_3_vector(v1,/NOMSSG) EQ 0) OR (is_a_3_vector(v2,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
   MESSAGE,badinfm_mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
@@ -136,9 +130,11 @@ fv1            = format_2d_vec(v1)
 fv2            = format_2d_vec(v2)
 szd1           = SIZE(fv1,/DIMENSIONS)
 szd2           = SIZE(fv2,/DIMENSIONS)
-IF ((szd1[0] NE szd2[0]) AND ((szd1[0] NE 1) OR (szd2[0] NE 1))) THEN BEGIN
+test           = (szd1[0] NE szd2[0]) AND ((szd1[0] NE 1) OR (szd2[0] NE 1))
+IF (test[0]) THEN BEGIN
   ;;  Check to see if one of the inputs is a single vector
-  IF ((szd1[0] NE szd2[0]) AND ((szd1[0] EQ 1) OR (szd2[0] EQ 1))) THEN BEGIN
+  test           = (szd1[0] NE szd2[0]) AND ((szd1[0] EQ 1) OR (szd2[0] EQ 1))
+  IF (test[0]) THEN BEGIN
     IF (szd1[0] EQ 1) THEN BEGIN
       ;;  V1 is a [3]-element vector --> convert to 2D
       fv1f           = REPLICATE(1d0,szd2[0]) # fv1
@@ -160,18 +156,23 @@ ENDELSE
 szd11          = SIZE(fv1f,/DIMENSIONS)
 nv             = szd11[0]                  ;;  # of 3-vectors in each array
 ;;  Check for complex values
-IF ((TOTAL(IMAGINARY(fv1f)) EQ 0) AND (TOTAL(IMAGINARY(fv2f)) EQ 0)) THEN cmplx_on = 0b ELSE cmplx_on = 1b
+test           = (TOTAL(IMAGINARY(fv1f)) EQ 0) AND (TOTAL(IMAGINARY(fv2f)) EQ 0)
+IF (test[0]) THEN cmplx_on = 0b ELSE cmplx_on = 1b
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
 ;;  Check RADIANS
-IF ((N_ELEMENTS(radians) GE 1) AND KEYWORD_SET(radians)) THEN rad_on = 1b ELSE rad_on = 0b
+test           = (N_ELEMENTS(radians) EQ 1) AND KEYWORD_SET(radians)
+IF (test[0]) THEN rad_on = 1b ELSE rad_on = 0b
 ;;  Check TH_0_90
-IF ((N_ELEMENTS(th_0_90) GE 1) AND KEYWORD_SET(th_0_90)) THEN th90_on = 1b ELSE th90_on = 0b
+test           = (N_ELEMENTS(th_0_90) EQ 1) AND KEYWORD_SET(th_0_90)
+IF (test[0]) THEN th90_on = 1b ELSE th90_on = 0b
 ;;  Check PLANE
-IF (KEYWORD_SET(plane) AND (SIZE(plane,/TYPE) EQ 7)) THEN plane_on = 1b ELSE plane_on = 0b
+test           = KEYWORD_SET(plane) AND (SIZE(plane,/TYPE) EQ 7)
+IF (test[0]) THEN plane_on = 1b ELSE plane_on = 0b
 ;;  Check DELTA_V1
-IF (is_a_3_vector(delta_v1,/NOMSSG)) THEN BEGIN
+test           = is_a_3_vector(delta_v1,/NOMSSG)
+IF (test[0]) THEN BEGIN
   d_v1           = format_2d_vec(delta_v1)
   szdv1          = SIZE(d_v1,/DIMENSIONS)
   test           = (szdv1[0] EQ 1) OR (szdv1[0] EQ nv[0])
@@ -184,7 +185,8 @@ ENDIF ELSE BEGIN
   dv1            = REPLICATE(0d0,nv[0],3L)
 ENDELSE
 ;;  Check DELTA_V2
-IF (is_a_3_vector(delta_v2,/NOMSSG)) THEN BEGIN
+test           = is_a_3_vector(delta_v2,/NOMSSG)
+IF (test[0]) THEN BEGIN
   d_v2           = format_2d_vec(delta_v2)
   szdv2          = SIZE(d_v2,/DIMENSIONS)
   test           = (szdv2[0] EQ 1) OR (szdv2[0] EQ nv[0])
@@ -196,10 +198,6 @@ IF (is_a_3_vector(delta_v2,/NOMSSG)) THEN BEGIN
 ENDIF ELSE BEGIN
   dv2            = REPLICATE(0d0,nv[0],3L)
 ENDELSE
-;;  Check USE_MED
-IF ((N_ELEMENTS(use_med) GE 1) AND KEYWORD_SET(use_med)) THEN med_on = 1b ELSE med_on = 0b
-;;  Check USE_STAND
-IF ((N_ELEMENTS(use_stand) GE 1) AND KEYWORD_SET(use_stand)) THEN stand_on = 1b ELSE stand_on = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Check if user only wants to consider a 2D plane
 ;;----------------------------------------------------------------------------------------
@@ -270,33 +268,21 @@ IF (bd GT 0) THEN MESSAGE,'unit_vec.pro seems to have failed...?',/INFORMATIONAL
 IF (bd GT 0) THEN u1_dot_u2[bad] = d  ;;  remove for now [if this happens, something is wrong]
 ;;  Calculate angle [radians]
 thetas         = ACOS(u1_dot_u2)                             ;;  [N,3,3]-Element array
-IF (med_on[0]) THEN BEGIN
-  theta0         = MEDIAN(thetas,/DOUBLE,DIMENSION=3)          ;;  [N,3]-Element array
-  gtheta         = MEDIAN(theta0,/DOUBLE,DIMENSION=2)          ;;  [N]-Element array
-ENDIF ELSE BEGIN
-  theta0         = MEAN(thetas,NAN=nan,/DOUBLE,DIMENSION=3)    ;;  [N,3]-Element array
-  gtheta         = MEAN(theta0,NAN=nan,/DOUBLE,DIMENSION=2)    ;;  [N]-Element array
-ENDELSE
-;;  Calculate uncertainties [radians]
-IF (stand_on[0]) THEN BEGIN
-  ;;  Use Standard deviation instead of range for uncertainties
-  dth0           = STDDEV(thetas,NAN=nan,/DOUBLE,DIMENSION=3)  ;;  [N,3]-Element array
-  dtheta         = STDDEV(dth0,NAN=nan,/DOUBLE,DIMENSION=2)    ;;  [N]-Element array
-ENDIF ELSE BEGIN
-  theta0         = (thetas + 2d0*!DPI)                         ;;  Avoid roll over errors
-  mnth0          = MIN(theta0,NAN=nan,DIMENSION=3)             ;;  [N,3]-Element array
-  mnth1          = MIN( mnth0,NAN=nan,DIMENSION=2)             ;;  [N]-Element array
-  mxth0          = MAX(theta0,NAN=nan,DIMENSION=3)             ;;  [N,3]-Element array
-  mxth1          = MAX( mxth0,NAN=nan,DIMENSION=2)             ;;  [N]-Element array
-  dtheta         = (mxth1 - mnth1)/2d0                         ;;  [N]-Element array
-ENDELSE
+theta0         = MEAN(thetas,NAN=nan,/DOUBLE,DIMENSION=3)    ;;  [N,3]-Element array
+gtheta         = MEAN(theta0,NAN=nan,/DOUBLE,DIMENSION=2)    ;;  [N]-Element array
+theta0         = (thetas + 2d0*!DPI)                         ;;  Avoid roll over errors
+mnth0          = MIN(theta0,NAN=nan,DIMENSION=3)             ;;  [N,3]-Element array
+mnth1          = MIN( mnth0,NAN=nan,DIMENSION=2)             ;;  [N]-Element array
+mxth0          = MAX(theta0,NAN=nan,DIMENSION=3)             ;;  [N,3]-Element array
+mxth1          = MAX( mxth0,NAN=nan,DIMENSION=2)             ;;  [N]-Element array
+dtheta         = (mxth1 - mnth1)/2d0                         ;;  [N]-Element array
 ;;----------------------------------------------------------------------------------------
 ;;  Convert to degrees and/or 0--90 degrees if desired
 ;;----------------------------------------------------------------------------------------
 ;;  Convert to:  0 ≤ Ω ≤ π/2
 IF (th90_on[0]) THEN BEGIN
   gtheta         = gtheta < (!DPI - gtheta)
-;  dtheta         = dtheta < (!DPI - dtheta)         ;;  Not sure if I should keep this...
+  dtheta         = dtheta < (!DPI - dtheta)         ;;  Not sure if I should keep this...
 ENDIF
 ;;  Convert to:  degrees
 IF (~rad_on[0]) THEN BEGIN

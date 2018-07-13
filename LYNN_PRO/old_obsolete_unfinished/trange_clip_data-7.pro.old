@@ -17,10 +17,10 @@
 ;
 ;  CALLS:
 ;               tplot_struct_format_test.pro
-;               t_get_struc_unix.pro
 ;               struct_value.pro
 ;               is_a_number.pro
 ;               get_valid_trange.pro
+;               str_element.pro
 ;               extract_tags.pro
 ;
 ;  REQUIRES:    
@@ -50,15 +50,6 @@
 ;                                   If the TSHIFT tag is present, the routine will assume
 ;                                   that TRANGE is a Unix time and DATA.X is seconds from
 ;                                   DATA.TSHIFT[0].
-;
-;                                   For MMS FPI distributions stored in TPLOT, there are
-;                                   additional tags and the structure has the following
-;                                   format:
-;                                     X  :  [N]-Element array of Unix times
-;                                     Y  :  [N,Z,L,E]-Element array of data values
-;                                     V1 :  [N,Z]-Element array of azimuthal angle bin values [deg]
-;                                     V2 :  [L]-Element array of poloidal angle bin values [deg]
-;                                     V3 :  [N,E]-Element array of energy bin values [eV]
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
@@ -190,10 +181,6 @@
 ;             7)  Cleaned up and now calls struct_value.pro and extract_tags.pro and
 ;                   now handles structures with DY tag and other time-independent tags
 ;                                                                   [06/15/2016   v1.3.0]
-;             8)  Now allows for MMS FPI TPLOT structure distributions, i.e., 4D strucs
-;                   and now calls t_get_struc_unix.pro
-;                   and no longer calls str_element.pro
-;                                                                   [07/12/2018   v1.3.1]
 ;
 ;   NOTES:      
 ;               1)  See also:  get_valid_trange.pro
@@ -203,7 +190,7 @@
 ;
 ;   CREATED:  10/05/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/12/2018   v1.3.1
+;    LAST MODIFIED:  06/15/2016   v1.3.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -224,7 +211,7 @@ test_vv_2d     = 0b
 test_v1        = 0b
 test_v2        = 0b
 ;;  Not extracted tags
-excpt_tags     = ['X','Y','V','V1','V2','V3','DY','TSHIFT']
+excpt_tags     = ['X','Y','V','V1','V2','DY','TSHIFT']
 ;;  Dummy error messages
 no_inpt_msg    = 'User must supply an IDL TPLOT structure...'
 baddfor_msg    = 'Incorrect input format:  DATA must be an IDL TPLOT structure'
@@ -241,7 +228,8 @@ IF (test[0]) THEN BEGIN
 ENDIF
 ;;  Check if TPLOT structure
 test           = tplot_struct_format_test(data,TEST__V=test__v,TEST_V1_V2=test_v1_v2,$
-                                          TEST_DY=test_dy,TEST_V123=test_v123,/NOMSSG)
+                                          TEST_DY=test_dy,/NOMSSG)
+;test           = tplot_struct_format_test(data,TEST__V=test__v,TEST_V1_V2=test_v1_v2,/NOMSSG)
 IF (test[0] EQ 0) THEN BEGIN
   MESSAGE,baddfor_msg,/INFORMATIONAL,/CONTINUE
   RETURN,0b
@@ -250,14 +238,10 @@ ENDIF
 ;;  Define parameters
 ;;----------------------------------------------------------------------------------------
 nt             = N_TAGS(data)
-unix           = t_get_struc_unix(data,TSHFT_ON=tshft_on)     ;;  [N]-Element array of Unix times
-IF (tshft_on[0]) THEN BEGIN
-  tshift         = struct_value(data,'TSHIFT',DEFAULT=0d0)
-ENDIF ELSE BEGIN
-  tshift         = 0d0
-ENDELSE
-time           = unix - tshift[0]  ;;  [N]-Element array of either Unix times (TSHFT_ON EQ FALSE) or seconds of day (TSHFT_ON EQ TRUE)
-dats           = data.Y            ;;  [N [,M , L]]- or [N,Z,L,E]-Element array of data
+time           = data.X            ;;  [N]-Element array of Unix times
+dats           = data.Y            ;;  [N [,M , L]]-Element array of data
+;str_element,data,'TSHIFT',tshift
+tshift         = struct_value(data,'TSHIFT',DEFAULT=0d0)
 szdt           = SIZE(time,/DIMENSIONS)
 szdd           = SIZE(dats,/DIMENSIONS)
 sznd           = SIZE(dats,/N_DIMENSIONS)
@@ -290,14 +274,6 @@ IF (v1_v2_on[0]) THEN BEGIN
   v1             = data.V1
   v2             = data.V2
 ENDIF
-;;  Check for V1, V2, and V3
-v1v2v3_on      = test_v123[0]
-IF (v1v2v3_on[0]) THEN BEGIN
-  ;;  All V1, V2, and V3 present --> define variables
-  v1             = data.V1
-  v2             = data.V2
-  v3             = data.V3
-ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
@@ -320,6 +296,7 @@ trange         = tra_unix
 sp             = SORT(time)
 tt             = time[sp]
 test           = (tt LE tra_off[1]) AND (tt GE tra_off[0])
+;test           = (tt LE trange[1]) AND (tt GE trange[0])
 good           = WHERE(test,gd)
 IF (gd EQ 0) THEN BEGIN
   ;;  No data between specified time range limits
@@ -342,103 +319,53 @@ CASE sznd[0] OF
     yy = dats[sp2,*,*]      ;;  [N,M,L]-Element array
     IF (test_uy[0]) THEN dy = uny[sp2,*,*]
   END
-  4    :  BEGIN
-    yy = dats[sp2,*,*,*]      ;;  [N,Z,L,E]-Element array
-    IF (test_uy[0]) THEN dy = uny[sp2,*,*,*]
-  END
+;  1    :  yy = dats[sp2]          ;;  [N]-Element array
+;  2    :  yy = dats[sp2,*]        ;;  [N,M]-Element array
+;  3    :  yy = dats[sp2,*,*]      ;;  [N,M,L]-Element array
   ELSE : STOP  ;;  What did you do?  --> debug
 ENDCASE
-;;  Clean up to save space [important for MMS TPLOT structure inputs]
-dats           = 0
-uny            = 0
-unix           = 0 & time = 0 & tt = 0
+;;  Check for V or V1 AND V2
+IF (test_vv[0]) THEN BEGIN
+  IF (test_vv_2d[0]) THEN BEGIN
+    ;;  V is 2D
+    vvout          = vv[sp2,*]
+  ENDIF ELSE BEGIN
+    ;;  V is 1D  -->  Assume 1st dimension is independent of # of time stamps
+    vvout          = vv
+  ENDELSE
+ENDIF
+;IF (test[0]) THEN BEGIN
+IF (v1_v2_on[0]) THEN BEGIN
+  ;;  Both V1 and V2 present and correctly formatted
+  v1out          = v1[sp2,*]
+  v2out          = v2[sp2,*]
+ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define output structure
 ;;----------------------------------------------------------------------------------------
-;;  Extract remaining time-independent tags
-extract_tags,extra,data,EXCEPT_TAGS=excpt_tags
-IF (SIZE(extra,/TYPE) EQ 8) THEN extra_tags = TAG_NAMES(extra) ELSE extra_tags = 0
-;;  Check for V[?] tags
-check          = [test_vv[0],v1_v2_on[0],v1v2v3_on[0]]
-gchck          = WHERE(check,gdchck)
-out_tags       = excpt_tags[0L:1L]
-IF (gdchck[0] GT 0) THEN BEGIN
-  ;;--------------------------------------------------------------------------------------
-  ;;  At least one V[?]-related tag is present
-  ;;--------------------------------------------------------------------------------------
-  CASE gchck[0] OF
-    0L   :  BEGIN
-      ;;----------------------------------------------------------------------------------
-      ;;  V tag is present
-      ;;----------------------------------------------------------------------------------
-      IF (test_vv_2d[0]) THEN vvout = vv[sp2,*] ELSE vvout = vv
-      ;;  Define structure
-      IF (tshft_on[0]) THEN BEGIN
-        ;;  Keep TSHIFT if present on input
-        IF (test_uy[0]) THEN struc = {X:xx,Y:yy,V:vvout,TSHIFT:tshift[0],DY:dy} $
-                        ELSE struc = {X:xx,Y:yy,V:vvout,TSHIFT:tshift[0]}
-      ENDIF ELSE BEGIN
-        IF (test_uy[0]) THEN struc = {X:xx,Y:yy,V:vvout,DY:dy}$
-                        ELSE struc = {X:xx,Y:yy,V:vvout}
-      ENDELSE
-    END
-    1L   :  BEGIN
-      ;;----------------------------------------------------------------------------------
-      ;;  Both V1 and V2 present and correctly formatted
-      ;;----------------------------------------------------------------------------------
-      v1out          = v1[sp2,*]
-      v2out          = v2[sp2,*]
-      ;;  Define structure
-      IF (tshft_on[0]) THEN BEGIN
-        ;;  Keep TSHIFT if present on input
-        IF (test_uy[0]) THEN struc = {X:xx,Y:yy,V1:v1out,V2:v2out,TSHIFT:tshift[0],DY:dy} $
-                        ELSE struc = {X:xx,Y:yy,V1:v1out,V2:v2out,TSHIFT:tshift[0]}
-      ENDIF ELSE BEGIN
-        IF (test_uy[0]) THEN struc = {X:xx,Y:yy,V1:v1out,V2:v2out,DY:dy} $
-                        ELSE struc = {X:xx,Y:yy,V1:v1out,V2:v2out}
-      ENDELSE
-      
-    END
-    2L   :  BEGIN
-      ;;----------------------------------------------------------------------------------
-      ;;  All V1, V2, and V3 present --> define variables
-      ;;----------------------------------------------------------------------------------
-      v1out          = v1[sp2,*]
-      v2out          = v2                 ;;  Poloidal angles are constant in time for MMS structures
-      v3out          = v3[sp2,*]
-      ;;  Define structure
-      IF (tshft_on[0]) THEN BEGIN
-        ;;  Keep TSHIFT if present on input
-        IF (test_uy[0]) THEN struc = {X:xx,Y:yy,V1:v1out,V2:v2out,V3:v3out,TSHIFT:tshift[0],DY:dy} $
-                        ELSE struc = {X:xx,Y:yy,V1:v1out,V2:v2out,V3:v3out,TSHIFT:tshift[0]}
-      ENDIF ELSE BEGIN
-        IF (test_uy[0]) THEN struc = {X:xx,Y:yy,V1:v1out,V2:v2out,V3:v3out,DY:dy} $
-                        ELSE struc = {X:xx,Y:yy,V1:v1out,V2:v2out,V3:v3out}
-      ENDELSE
-    END
-    ELSE :  STOP  ;;  ???
-  ENDCASE
-ENDIF ELSE BEGIN
-  ;;--------------------------------------------------------------------------------------
-  ;;  No V[?]-related tags present
-  ;;--------------------------------------------------------------------------------------
-  IF (tshft_on[0]) THEN BEGIN
-    ;;  Keep TSHIFT if present on input
-    IF (test_uy[0]) THEN struc = {X:xx,Y:yy,TSHIFT:tshift[0],DY:dy} $
-                    ELSE struc = {X:xx,Y:yy,TSHIFT:tshift[0]}
+test           = (v1_v2_on[0] OR test_vv[0])
+IF (test[0]) THEN BEGIN
+  ;;  Either V or V1 AND V2 are present
+  IF (v1_v2_on[0]) THEN BEGIN
+    ;;  V1 AND V2 are present
+    struc          = {X:xx,Y:yy,V1:v1out,V2:v2out,TSHIFT:tshift[0]}
+;    struc          = {X:xx,Y:yy,V1:v1out,V2:v2out}
   ENDIF ELSE BEGIN
-    IF (test_uy[0]) THEN struc = {X:xx,Y:yy,DY:dy} $
-                    ELSE struc = {X:xx,Y:yy}
+    ;;  V is present
+    struc          = {X:xx,Y:yy,V:vvout,TSHIFT:tshift[0]}
+;    struc          = {X:xx,Y:yy,V:vvout}
   ENDELSE
+ENDIF ELSE BEGIN
+  ;;  Only X and Y tags are present or correctly set
+  struc          = {X:xx,Y:yy,TSHIFT:tshift[0]}
+;  struc          = {X:xx,Y:yy}
 ENDELSE
-;;  Clean up to save space
-yy             = 0
-dy             = 0
-xx             = 0 & vv = 0 & v1 = 0 & v2 = 0 & v3 = 0
-vvout          = 0 & v1out = 0 & v2out = 0 & v3out = 0
-good           = 0 & sp = 0 & sp2 = 0
-;;  Add remaining time-independent tags to output structure
-IF (SIZE(extra_tags,/TYPE) EQ 7) THEN extract_tags,struc,extra,TAGS=extra_tags
+;;  Check for DY
+IF (test_uy[0]) THEN str_element,struc,'DY',dy,/ADD_REPLACE  ;;  Add DY (if present)
+;;  Add remaining time-independent tags
+extract_tags,struc,data,EXCEPT_TAGS=excpt_tags
+;;;  Check for TSHIFT
+;IF (N_ELEMENTS(tshift) GT 0) THEN str_element,struc,'TSHIFT',tshift[0],/ADD_REPLACE  ;;  Add TSHIFT (if present)
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
