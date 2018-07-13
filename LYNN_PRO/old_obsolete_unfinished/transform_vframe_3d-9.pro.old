@@ -76,44 +76,42 @@
 ;                               [Default = FALSE]
 ;
 ;   CHANGED:  1)  Added keyword:  EASY_TRAN
-;                                                                   [02/09/2012   v1.1.0]
+;                                                                  [02/09/2012   v1.1.0]
 ;             2)  Now removes energies < 1.3 * (SC Pot) and now calls
 ;                   dat_3dp_energy_bins.pro and Added keyword:  INTERP
-;                                                                   [02/22/2012   v1.2.0]
+;                                                                  [02/22/2012   v1.2.0]
 ;             3)  Added keyword:  NOKILL_PH and now calls dat_3dp_str_names.pro and
 ;                   convert_ph_units.pro
-;                                                                   [02/23/2012   v1.3.0]
+;                                                                  [02/23/2012   v1.3.0]
 ;             4)  Now calls test_wind_vs_themis_esa_struct.pro and no longer calls
 ;                   test_3dp_struc_format.pro and now uses particle charge appropriately
-;                                                                   [03/29/2012   v1.4.0]
+;                                                                  [03/29/2012   v1.4.0]
 ;             5)  Fixed a sign error when removing SC potential
-;                                                                   [05/24/2012   v1.5.0]
+;                                                                  [05/24/2012   v1.5.0]
 ;             6)  Removed the unnecessary plot command in the error handling section
 ;                   and now calls energy_to_vel.pro instead of velocity.pro
-;                                                                   [04/23/2013   v1.6.0]
+;                                                                  [04/23/2013   v1.6.0]
 ;             7)  Cleaned up a few things and now calls
 ;                   define_particle_charge.pro and energy_angle_to_velocity.pro and
 ;                   no longer calls str_element.pro
-;                                                                   [10/02/2014   v1.7.0]
+;                                                                  [10/02/2014   v1.7.0]
 ;             8)  Fixed a typo regarding which energy bins to remove after adjusting
 ;                   for spacecraft potential (really only affects electron distributions)
-;                                                                   [09/28/2015   v1.7.1]
+;                                                                  [09/28/2015   v1.7.1]
 ;             9)  Now routine can handle THEMIS SST data structures and
 ;                   updated Man. page and cleaned up a little and
 ;                   now calls:  struct_value.pro, str_element.pro,
 ;                               rel_lorentz_trans_3vec.pro
-;                                                                   [11/16/2015   v1.8.0]
+;                                                                  [11/16/2015   v1.8.0]
 ;            10)  Cleaned up and now calls mag__vec.pro
-;                                                                   [11/16/2015   v1.8.1]
+;                                                                  [11/16/2015   v1.8.1]
 ;            11)  Cleaned up and fixed bug where previously defined bad bins were not
 ;                   removed in input structure prior to calling
 ;                   energy_angle_to_velocity.pro and
 ;                   now default setting for EASY_TRAN = TRUE and
 ;                   no longer tries to add VSW tag --> avoid altering structures for
 ;                   backwards compatibility
-;                                                                   [12/01/2015   v1.9.0]
-;            12)  Apply E_SHIFT correction for Wind/3DP EESA data before unit conversion
-;                                                                   [07/12/2018   v1.9.1]
+;                                                                  [12/01/2015   v1.9.0]
 ;
 ;   NOTES:      
 ;               1)  This routine modifies the input structure, DAT, so make sure
@@ -121,15 +119,11 @@
 ;               2)  The VSW or VELOCITY structure tag in DAT must be defined and finite
 ;                     as a single 3-vector corresponding to the bulk flow velocity for DAT
 ;               3)  The Compton-Getting effect is accounted for because the routine
-;                     converts the input data into units of phase space density, then
-;                     performs a Lorentz transformation on the resulting data by
-;                     converting the f(E,ø,Ω) to f(Vx,Vy,Vz) and subtracting the bulk
-;                     flow speed.  The routine calls rel_lorentz_trans_3vec.pro to
-;                     perform the relativistically accurate Lorentz transformation.
-;               4)  Order of operations for energy changes are critical, thus we need
-;                     to account for the E_SHIFT values for the 3DP data and then remove
-;                     the spacecraft potential after converting to phase space density
-;                     (e.g., see example_order_scpot_removal_differences.pdf)
+;                     converts the input data into units of phase space, then performs
+;                     a Lorentz transformation on the resulting data by converting the
+;                     f(E,ø,Ω) to f(Vx,Vy,Vz) and subtracting the bulk flow speed.  The
+;                     routine calls rel_lorentz_trans_3vec.pro to perform the
+;                     relativistically accurate Lorentz transformation.
 ;
 ;  REFERENCES:  
 ;               1)  Carlson et al., "An instrument for rapidly measuring
@@ -165,7 +159,7 @@
 ;
 ;   CREATED:  02/08/2012
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/12/2018   v1.9.1
+;    LAST MODIFIED:  12/01/2015   v1.9.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -200,7 +194,6 @@ IF (SIZE(str,/TYPE) NE 8L) THEN BEGIN
   RETURN
 ENDIF
 data           = dat[0]
-datv           = dat[0]           ;;  Use for velocity computation below to avoid double-removal of SC potential
 ;;  Define sign of particle charge and energy shift
 charge         = define_particle_charge(data,E_SHIFT=e_shift)
 IF (charge[0] EQ 0) THEN BEGIN
@@ -223,9 +216,6 @@ IF KEYWORD_SET(nokill_ph) THEN nokill_ph = 1b ELSE nokill_ph = 0b
 ;;  Determine the spacecraft from which DAT originated
 ;;----------------------------------------------------------------------------------------
 test0          = test_wind_vs_themis_esa_struct(dat,/NOM)
-;;  Apply E_SHIFT correction if necessary
-IF ((N_ELEMENTS(e_shift) EQ 0) OR (SIZE(e_shift,/TYPE) LE 2)) THEN e_shift = 0e0
-data.ENERGY   += e_shift[0]
 IF (test0.(0)) THEN BEGIN
   ;;-------------------------------------------
   ;; Wind
@@ -310,8 +300,7 @@ n_a            = data.NBINS              ;;  # of angle bins
 ind_2d         = INDGEN(n_e,n_a)         ;;  original indices of angle bins
 def_ener       = evalues # REPLICATE(1e0,n_a)
 ;;  Check for energy shift in data structure
-energy         = data.ENERGY             ;;  Energy bin values [eV]
-;energy         = data.ENERGY + e_shift   ;;  Energy bin values [eV]
+energy         = data.ENERGY + e_shift   ;;  Energy bin values [eV]
 old_energy     = energy
 denergy        = data.DENERGY            ;;  Uncertainty in ENERGY [eV]
 ;;   Shift energies by SC-Potential
@@ -365,8 +354,7 @@ IF KEYWORD_SET(easy_tran) THEN BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  Define velocities [km/s] from energies [eV] and angles [degrees]
   ;;--------------------------------------------------------------------------------------
-;  mvel_3d       = energy_angle_to_velocity(data)
-  mvel_3d       = energy_angle_to_velocity(datv)
+  mvel_3d       = energy_angle_to_velocity(data)
   mvel_1d       = REFORM(mvel_3d,n_e*n_a,3)       ;;  [K,3]-Element array
   ;;  Calculate (relativistically correct) Lorentz transformation
   swvel         = rel_lorentz_trans_3vec(mvel_1d,v_vsws)

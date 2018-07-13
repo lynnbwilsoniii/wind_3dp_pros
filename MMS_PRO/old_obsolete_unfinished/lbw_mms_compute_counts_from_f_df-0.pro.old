@@ -15,8 +15,6 @@
 ;               test_tplot_handle.pro
 ;               get_data.pro
 ;               tplot_struct_format_test.pro
-;               is_a_number.pro
-;               trange_clip_data.pro
 ;               t_get_struc_unix.pro
 ;               delete_variable.pro
 ;
@@ -45,13 +43,9 @@
 ;                               bins, P = # of poloidal/latitudinal angle bins, and E =
 ;                               # of energy bins.
 ;                               [output units = length^(+6) time^(-3)]
-;               TRANGE     :  [2]-Element [double] array specifying the Unix time range
-;                               on which to limit the output analysis
-;                               [Default = [MIN(T_IN),MAX(T_IN)] ]
 ;
-;   CHANGED:  1)  Added keyword: TRANGE
-;                   and now calls get_valid_trange.pro
-;                                                                   [07/06/2018   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  The units must be the same for DAT_TPN and ERR_TPN
@@ -68,13 +62,13 @@
 ;
 ;   CREATED:  07/05/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/06/2018   v1.0.1
+;    LAST MODIFIED:  07/05/2018   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION lbw_mms_compute_counts_from_f_df,dat_tpn,err_tpn,FACTORS=factors,TRANGE=trange
+FUNCTION lbw_mms_compute_counts_from_f_df,dat_tpn,err_tpn,FACTORS=factors
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -100,62 +94,27 @@ IF (~test[0]) THEN BEGIN
   RETURN,0b
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;  Check keywords
-;;----------------------------------------------------------------------------------------
-;;  Check TRANGE
-tra_struc      = get_valid_trange(TRANGE=trange,PRECISION=3L)
-trange         = tra_struc.UNIX_TRANGE
-;;----------------------------------------------------------------------------------------
 ;;  Check TPLOT structures
 ;;----------------------------------------------------------------------------------------
 ;;  Get DATA
-get_data,tpn_dat[0],DATA=temp_da0,DLIMIT=dlim_dat,LIMIT=lim_dat
-test           = tplot_struct_format_test(temp_da0,TEST_V123=test_v123,/NOMSSG)
+get_data,tpn_dat[0],DATA=temp_dat,DLIMIT=dlim_dat,LIMIT=lim_dat
+test           = tplot_struct_format_test(temp_dat,TEST_V123=test_v123,/NOMSSG)
 IF (~test[0] OR ~test_v123[0]) THEN BEGIN
   MESSAGE,'DAT_TPN'+nottps_suf[0],/CONTINUE,/INFORMATIONAL
   RETURN,0b
 ENDIF
-;;  Limit data if TRANGE is set
-good           = WHERE(temp_da0.X GE trange[0] AND temp_da0.X LE trange[1],gd)
-IF (gd[0] GT 0) THEN BEGIN
-  ;;  Good TRANGE --> apply
-  data_t0        = t_get_struc_unix(temp_da0)
-  temp_dat       = {X:data_t0[good],Y:temp_da0.Y[good,*,*,*],V1:temp_da0.V1[good,*],V2:temp_da0.V2,V3:temp_da0.V3[good,*]}
-ENDIF ELSE BEGIN
-  ;;  Assume user made a mistake and just ignore TRANGE input
-  temp_dat       = temp_da0
-ENDELSE
-;;  Clean up
-delete_variable,temp_da0,data_t0
 ;;  Define DATA variables
 data_t         = t_get_struc_unix(temp_dat)
 data_v         = DOUBLE(temp_dat.Y)
 ;;  Clean up to save space
 delete_variable,temp_dat,dlim_dat,lim_dat
 ;;  Get ERROR
-get_data,tpn_err[0],DATA=temp_er0,DLIMIT=dlim_err,LIMIT=lim_err
-test           = tplot_struct_format_test(temp_er0,TEST_V123=test_v123,/NOMSSG)
+get_data,tpn_err[0],DATA=temp_err,DLIMIT=dlim_err,LIMIT=lim_err
+test           = tplot_struct_format_test(temp_err,TEST_V123=test_v123,/NOMSSG)
 IF (~test[0] OR ~test_v123[0]) THEN BEGIN
   MESSAGE,'ERR_TPN'+nottps_suf[0],/CONTINUE,/INFORMATIONAL
   RETURN,0b
 ENDIF
-;;  Limit data if TRANGE is set
-good           = WHERE(temp_er0.X GE trange[0] AND temp_er0.X LE trange[1],gd)
-IF (gd[0] GT 0) THEN BEGIN
-  ;;  Good TRANGE --> apply
-  data_t0        = t_get_struc_unix(temp_er0)
-  temp_err       = {X:data_t0[good],Y:temp_er0.Y[good,*,*,*],V1:temp_er0.V1[good,*],V2:temp_er0.V2,V3:temp_er0.V3[good,*]}
-ENDIF ELSE BEGIN
-  ;;  Assume user made a mistake and just ignore TRANGE input
-  temp_err       = temp_er0
-ENDELSE
-;IF (N_ELEMENTS(trange) EQ 2 AND is_a_number(trange,/NOMSSG)) THEN BEGIN
-;  temp_err       = trange_clip_data(temp_er0,TRANGE=trange,PRECISION=3L)
-;ENDIF ELSE BEGIN
-;  temp_err       = temp_er0
-;ENDELSE
-;;  Clean up
-delete_variable,temp_er0,data_t0
 ;;  Define ERROR variables
 err__v         = DOUBLE(temp_err.Y)
 ;;  Clean up to save space

@@ -48,11 +48,9 @@
 ;               NA
 ;
 ;   CHANGED:  1)  Continued to write routine
-;                                                                   [12/01/2015   v1.0.0]
+;                                                                  [12/01/2015   v1.0.0]
 ;             2)  Finished writing routine
-;                                                                   [12/01/2015   v1.0.0]
-;             3)  Apply E_SHIFT correction for Wind/3DP EESA data before unit conversion
-;                                                                   [07/12/2018   v1.0.1]
+;                                                                  [12/01/2015   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  See also:
@@ -62,10 +60,6 @@
 ;                     energy_to_vel.pro
 ;                     energy_angle_to_velocity.pro
 ;                     velocity_to_energy_angle.pro
-;               2)  Order of operations for energy changes are critical, thus we need
-;                     to account for the E_SHIFT values for the 3DP data and then remove
-;                     the spacecraft potential after converting to phase space density
-;                     (e.g., see example_order_scpot_removal_differences.pdf)
 ;
 ;  REFERENCES:  
 ;               1)  Carlson et al., "An instrument for rapidly measuring
@@ -95,7 +89,7 @@
 ;
 ;   CREATED:  12/01/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/12/2018   v1.0.1
+;    LAST MODIFIED:  12/01/2015   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -151,46 +145,7 @@ ENDIF
 data           = dat
 dat0           = data[0]
 ;;  Define sign of particle charge and energy shift
-charge         = define_particle_charge(dat0,E_SHIFT=e_shift)
-IF (charge[0] EQ 0) THEN BEGIN
-  MESSAGE,notvdf_msg,/INFORMATIONAL,/CONTINUE
-  RETURN
-ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Check for existence of E_SHIFT structure tag
-;;----------------------------------------------------------------------------------------
-n_str          = N_ELEMENTS(data)           ;;  # of data structures
-str_element,dat0,'E_SHIFT',e_shift
-IF (N_ELEMENTS(e_shift) GT 0) THEN BEGIN
-  ;;  E_SHIFT tag exists --> define
-  e_shift0 = data.E_SHIFT[0]
-  e_sh_on  = 1b
-ENDIF ELSE BEGIN
-  ;;  E_SHIFT tag does not exists --> set to zero
-  e_sh_on  = 0b
-ENDELSE
-;;----------------------------------------------------------------------------------------
-;;  Define the spacecraft potentials
-;;    -->  Assume charge does not change between structures
-;;----------------------------------------------------------------------------------------
-scpot          = data.SC_POT[0]*charge[0]  ;;  ø < 0 (electrons), ø > 0 (ions)
-bad_scp        = WHERE(FINITE(scpot) EQ 0,bd_scp)
-IF (bd_scp GT 0) THEN BEGIN
-  scpot[bad_scp]       = 0e0
-  data[bad_scp].SC_POT = 0e0
-ENDIF
-n_e            = data[0].NENERGY            ;;  # of energy bins
-n_a            = data[0].NBINS              ;;  # of angle bins
-mass           = data[0].MASS[0]            ;;  particle mass [eV km^(-2) s^(2)]
-;;  Change dimensions of SC_POT and E_SHIFT
-scpot3d        = REPLICATE(0e0,n_e[0],n_a[0],n_str[0])
-e_shift3d      = REPLICATE(0e0,n_e[0],n_a[0],n_str[0])
-FOR j=0L, n_str[0] - 1L DO BEGIN
-  scpot3d[*,*,j] = scpot[j]
-  IF (e_sh_on[0]) THEN e_shift3d[*,*,j] = e_shift0[j]
-ENDFOR
-;;  Adjust energies prior to converting units
-data.ENERGY   += e_shift3d
+charge         = define_particle_charge(dat0)
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
@@ -242,11 +197,41 @@ ENDIF ELSE BEGIN
   data   = conv_units(data,'df')
 ENDELSE
 ;;----------------------------------------------------------------------------------------
+;;  Define the spacecraft potentials
+;;    -->  Assume charge does not change between structures
+;;----------------------------------------------------------------------------------------
+scpot          = data.SC_POT[0]*charge[0]  ;;  ø < 0 (electrons), ø > 0 (ions)
+bad_scp        = WHERE(FINITE(scpot) EQ 0,bd_scp)
+IF (bd_scp GT 0) THEN BEGIN
+  scpot[bad_scp]       = 0e0
+  data[bad_scp].SC_POT = 0e0
+ENDIF
+;;  Check for existence of E_SHIFT structure tag
+n_str          = N_ELEMENTS(data)           ;;  # of data structures
+str_element,dat0,'E_SHIFT',e_shift
+IF (N_ELEMENTS(e_shift) GT 0) THEN BEGIN
+  ;;  E_SHIFT tag exists --> define
+  e_shift0 = data.E_SHIFT[0]
+  e_sh_on  = 1b
+ENDIF ELSE BEGIN
+  ;;  E_SHIFT tag does not exists --> set to zero
+  e_sh_on  = 0b
+ENDELSE
+;;----------------------------------------------------------------------------------------
 ;;  Define DAT structure parameters
 ;;----------------------------------------------------------------------------------------
+n_e            = data[0].NENERGY            ;;  # of energy bins
+n_a            = data[0].NBINS              ;;  # of angle bins
+mass           = data[0].MASS[0]            ;;  particle mass [eV km^(-2) s^(2)]
+;;  Change dimensions of SC_POT and E_SHIFT
+scpot3d        = REPLICATE(0e0,n_e[0],n_a[0],n_str[0])
+e_shift3d      = REPLICATE(0e0,n_e[0],n_a[0],n_str[0])
+FOR j=0L, n_str[0] - 1L DO BEGIN
+  scpot3d[*,*,j] = scpot[j]
+  IF (e_sh_on[0]) THEN e_shift3d[*,*,j] = e_shift0[j]
+ENDFOR
 ;;  Define energy bin values ([E,A,N]-Element array)
-energy         = data.ENERGY                ;;  Energy bin midpoint values [eV]
-;energy         = data.ENERGY + e_shift3d    ;;  Energy bin midpoint values [eV]
+energy         = data.ENERGY + e_shift3d    ;;  Energy bin midpoint values [eV]
 old_energy     = energy
 denergy        = data.DENERGY               ;;  Range for each energy bin [eV]
 phi            = data.PHI                   ;;  Azimuthal angle (from sun direction) [deg]

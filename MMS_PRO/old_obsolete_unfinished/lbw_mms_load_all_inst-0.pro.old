@@ -12,29 +12,7 @@
 ;               NA
 ;
 ;  CALLS:
-;               num2int_str.pro
-;               tplot_options.pro
-;               get_valid_trange.pro
-;               timespan.pro
-;               timerange.pro
-;               get_general_char_name.pro
-;               timespan.pro
-;               mms_load_state.pro
-;               store_data.pro
-;               tnames.pro
-;               mms_load_mec.pro
-;               mms_load_fgm.pro
-;               get_data.pro
-;               mag__vec.pro
-;               t_get_struc_unix.pro
-;               sample_rate.pro
-;               options.pro
-;               mms_load_scm.pro
-;               mms_qcotrans.pro
-;               str_element.pro
-;               mms_load_edp.pro
-;               test_tplot_handle.pro
-;               mms_load_fpi.pro
+;               
 ;
 ;  REQUIRES:    
 ;               1)  UMN Modified Wind/3DP IDL Libraries; and
@@ -65,11 +43,11 @@
 ;                                  [Default = '1']
 ;               LOAD_DES_DF   :  If set, routine loads calibrated DES [Fast,Burst] data
 ;                                  structures with THETA/PHI angles and VELOCITY/MAGF
-;                                  data in DBCS coordinates
+;                                  data in DMPA coordinates
 ;                                  [Default = FALSE]
 ;               LOAD_DIS_DF   :  If set, routine loads calibrated DIS [Fast,Burst] data
 ;                                  structures with THETA/PHI angles and VELOCITY/MAGF
-;                                  data in DBCS coordinates
+;                                  data in DMPA coordinates
 ;                                  [Default = FALSE]
 ;               LOAD_SCM_HIB  :  If set, routine loads the highest rate burst B-field
 ;                                  data from the SCM instrument
@@ -87,14 +65,9 @@
 ;               RM_FPI_POLAR  :  If set, routine removes the FPI TPLOT handle data in
 ;                                  polar angle format
 ;                                  [Default = FALSE]
-;               SPDF          :  If set, routine will search for data through the SPDF
-;                                  servers rather than the LASP servers
-;                                  [Default = FALSE]
 ;
-;   CHANGED:  1)  Finished writing routine, added TIME_CLIP setting to mms_load_*
-;                   routine calls to force the use of the TRANGE keywords, and
-;                   no longer uses DMPA coordinates, just DBCS
-;                                                                   [07/12/2018   v1.0.0]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  Definitions:
@@ -217,7 +190,7 @@
 ;
 ;   CREATED:  06/29/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/12/2018   v1.0.0
+;    LAST MODIFIED:  06/29/2018   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -229,6 +202,7 @@ PRO lbw_mms_load_all_inst,TRANGE=trange,PROBE=probe,LOAD_DES_DF=load_des_df,   $
                           RM_EDP_SPRT=rm_edp_sprt,RM_EDP_DSL=rm_edp_dsl,       $
                           RM_FPI_SPRT=rm_fpi_sprt,RM_FPI_POLAR=rm_fpi_polar,   $
                           SPDF=spdf
+
 
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
@@ -275,7 +249,6 @@ coord_dsl      = 'dsl'
 coord_gse      = 'gse'
 coord_gsm      = 'gsm'
 coord_mag      = 'mag'
-coord_tot      = 'tot'
 coord_bcs      = 'bcs'                    ;;  Body Coordinate System (of MMS spacecraft)
 coord_dbcs     = 'dbcs'                   ;;  despun-BCS
 coord_dmpa     = 'dmpa'                   ;;  Despun, Major Principal Axis (coordinate system)
@@ -323,7 +296,7 @@ mms_load_state,TRANGE=trs,PROBES=sc,DATATYPES='*',SPDF=spdf
 ;;  Remove MEC TPLOT handles
 store_data,DELETE=tnames(scpref[0]+'mec_*')
 ;;  Load quaternions
-mms_load_mec,TRANGE=trs,PROBE=sc,VARFORMAT='*_quat_*',/TIME_CLIP
+mms_load_mec,TRANGE=trs,PROBE=sc,VARFORMAT='*_quat_*'
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
@@ -332,13 +305,13 @@ mms_load_mec,TRANGE=trs,PROBE=sc,VARFORMAT='*_quat_*',/TIME_CLIP
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 mms_load_fgm,TRANGE=tran,PROBES=sc,DATA_RATE=ssfb_str[0],LEVEL='l2',$
-             /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf,/TIME_CLIP
+             /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf
 mms_load_fgm,TRANGE=tran,PROBES=sc,DATA_RATE=ssfb_str[1],LEVEL='l2',$
-             /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf,/TIME_CLIP
+             /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf
 mms_load_fgm,TRANGE=tran,PROBES=sc,DATA_RATE=ssfb_str[3],LEVEL='l2',$
-             /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf,/TIME_CLIP
+             /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf
 ;;----------------------------------------------------------------------------------------
-;;  Remove BCS, *_bvec, and *_btot TPLOT handles
+;;  Remove BCS TPLOT handles
 ;;----------------------------------------------------------------------------------------
 bad_tpns = tnames(scpref[0]+'fgm_*_bcs_*')
 IF (bad_tpns[0] NE '') THEN store_data,DELETE=tnames(scpref[0]+'fgm_*_bcs_*')
@@ -375,11 +348,22 @@ all_fgm_gsm_tp = [fgm_gsm_svtpn[0],fgm_gsm_sltpn[0],fgm_gsm_fatpn[0],fgm_gsm_bst
 all_fgm_mag_tp = REPLICATE('',4L)
 n_fgm_tp       = N_ELEMENTS(all_fgm_gse_tp)
 FOR j=0L, n_fgm_tp[0] - 1L DO BEGIN
+  ;;  Reset variables [save space]
+  t_bgse_vm      = 0
+  t_bgsm_vm      = 0
+  bvec_gse       = 0
+  bvec_gsm       = 0
+  bmag           = 0
+  b_t0           = 0
+  b__t           = 0
+  struc_bgse     = 0
+  struc_bgsm     = 0
+  struc_bmag     = 0
   ;;  Make sure TPLOT handles are valid before moving forward
   test           = (all_fgm_gse_tp[j] EQ '') OR (all_fgm_gsm_tp[j] EQ '')
   IF (test[0]) THEN CONTINUE
   get_data,all_fgm_gse_tp[j],DATA=t_bgse_vm,DLIMIT=dlim_bgse,LIMIT=lim_bgse
-  get_data,all_fgm_gsm_tp[j],DATA=t_bgsm_vm,DLIMIT=dlim_bgsm,LIMIT=lim_bgsm
+  get_data,all_fgm_gse_tp[j],DATA=t_bgsm_vm,DLIMIT=dlim_bgsm,LIMIT=lim_bgsm
   ;;  Define parameters
   bvec_gse       = REFORM(t_bgse_vm.Y[*,0:2])
   bvec_gsm       = REFORM(t_bgsm_vm.Y[*,0:2])
@@ -403,15 +387,15 @@ FOR j=0L, n_fgm_tp[0] - 1L DO BEGIN
   bm_yttls       = '|Bo| [nT]'
   bv_yttls       = 'Bo ['+STRUPCASE([coord_gse[0],coord_gsm[0]])+', nT]'
   bo_ysub        = '[FGM Samp. Rate: '+srate_str[0]+' '+srunits[0]+']'
-  struc_bmag     = {X:b__t,Y:bmag,    TSHIFT:t_off[0]}
   struc_bgse     = {X:b__t,Y:bvec_gse,TSHIFT:t_off[0]}
   struc_bgsm     = {X:b__t,Y:bvec_gsm,TSHIFT:t_off[0]}
-  fgm_mag_tpnout = scpref[0]+'fgm_'+ssfb_str[j]+'_l2_'+coord_tot[0]             ;;  Use TOT instead of MAG to avoid confusion with solar magnetic or other magnetic coordinate bases
+  struc_bmag     = {X:b__t,Y:bmag,    TSHIFT:t_off[0]}
   fgm_gse_tpnout = scpref[0]+'fgm_'+ssfb_str[j]+'_l2_'+coord_gse[0]
   fgm_gsm_tpnout = scpref[0]+'fgm_'+ssfb_str[j]+'_l2_'+coord_gsm[0]
-  store_data,fgm_mag_tpnout[0],DATA=struc_bmag,DLIMIT=dlim_bgse,LIMIT=lim_bgse
+  fgm_mag_tpnout = scpref[0]+'fgm_'+ssfb_str[j]+'_l2_'+coord_mag[0]
   store_data,fgm_gse_tpnout[0],DATA=struc_bgse,DLIMIT=dlim_bgse,LIMIT=lim_bgse
   store_data,fgm_gsm_tpnout[0],DATA=struc_bgsm,DLIMIT=dlim_bgsm,LIMIT=lim_bgsm
+  store_data,fgm_mag_tpnout[0],DATA=struc_bmag,DLIMIT=dlim_bgse,LIMIT=lim_bgse
   ;;  Fix options/labels/colors
   options,fgm_mag_tpnout[0],LABELS=['mag'],YTITLE=bm_yttls[0],YSUBTITLE=bo_ysub[0],COLORS=50,LABFLAG=lab_flg[0]-1,/DEF
   options,fgm_gse_tpnout[0],LABELS=bv_labs,YTITLE=bv_yttls[0],YSUBTITLE=bo_ysub[0],COLORS=vec_col,LABFLAG=lab_flg[0],/DEF
@@ -426,17 +410,6 @@ FOR j=0L, n_fgm_tp[0] - 1L DO BEGIN
   all_fgm_gse_tp[j] = fgm_gse_tpnout[0]
   all_fgm_gsm_tp[j] = fgm_gsm_tpnout[0]
   all_fgm_mag_tp[j] = fgm_mag_tpnout[0]
-  ;;  Reset variables [save space]
-  t_bgse_vm      = 0
-  t_bgsm_vm      = 0
-  bvec_gse       = 0
-  bvec_gsm       = 0
-  bmag           = 0
-  b_t0           = 0
-  b__t           = 0
-  struc_bgse     = 0
-  struc_bgsm     = 0
-  struc_bmag     = 0
 ENDFOR
 ;;  Clean up
 IF (N_ELEMENTS(bvec_gse  ) GT 0) THEN dumb = TEMPORARY(bvec_gse  )
@@ -463,7 +436,7 @@ test           = (~KEYWORD_SET(load_scm_hib) AND (N_ELEMENTS(load_scm_hib) GT 0)
                    (N_ELEMENTS(load_scm_hib) EQ 0)
 IF (test[0]) THEN d_types = scm_types[0] ELSE d_types = scm_types
 mms_load_scm,TRANGE=tran,PROBES=sc,DATA_RATE=ssfb_str[3],DATATYPE=d_types,$
-             LEVEL='l2',/GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf,/TIME_CLIP
+             LEVEL='l2',/GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf
 ;;  Define TPLOT handles
 scm_btpn_pref  = scpref[0]+'scm_acb_'
 scm_btpn_suff  = '_'+d_types+'_'+ssfb_str[3]+'_l2'
@@ -474,6 +447,12 @@ scm_tpn_old    = tnames(scm_btpn_pref[0]+coord_gse[0]+scm_btpn_suff)
 scm_tpn_new    = scm_btpn_pref[0]+ssfb_str[3]+'_'+d_types+'_l2_'+coord_gse[0]
 n_scm_tp       = N_ELEMENTS(scm_tpn_old)
 FOR j=0L, n_scm_tp[0] - 1L DO BEGIN
+  ;;  Reset variables [save space]
+  t_bgse_vm      = 0
+  bvec_gse       = 0
+  b_t0           = 0
+  b__t           = 0
+  struc_bgse     = 0
   ;;  Make sure TPLOT handles are valid before moving forward
   test           = (scm_tpn_old[j] EQ '')
   IF (test[0]) THEN CONTINUE
@@ -509,12 +488,6 @@ FOR j=0L, n_scm_tp[0] - 1L DO BEGIN
   options,scm_tpn_new[j],'LABFLAG'
   ;;  Remove old versions that have combined magnitude and vector components
   store_data,DELETE=scm_tpn_old[j]
-  ;;  Reset variables [save space]
-  t_bgse_vm      = 0
-  bvec_gse       = 0
-  b_t0           = 0
-  b__t           = 0
-  struc_bgse     = 0
 ENDFOR
 ;;  Clean up
 IF (N_ELEMENTS(bvec_gse  ) GT 0) THEN dumb = TEMPORARY(bvec_gse  )
@@ -565,9 +538,9 @@ IF (test[0]) THEN d_types = edp_types[0:2] ELSE d_types = edp_types
 n_t            = N_ELEMENTS(d_types)
 FOR j=0L, n_t[0] - 1L DO BEGIN
   mms_load_edp,TRANGE=tran,PROBES=sc,LEVEL='l2',DATATYPE=d_types[j],$
-               DATA_RATE=ssfb_str[2],/GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf,/TIME_CLIP
+               DATA_RATE=ssfb_str[2],/GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf
   mms_load_edp,TRANGE=tran,PROBES=sc,LEVEL='l2',DATATYPE=d_types[j],$
-               DATA_RATE=ssfb_str[3],/GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf,/TIME_CLIP
+               DATA_RATE=ssfb_str[3],/GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf
 ENDFOR
 ;;  Check RM_EDP_SPRT
 test           = KEYWORD_SET(rm_edp_sprt)
@@ -579,7 +552,7 @@ ENDIF
 ;;    Relevant TPLOT handle of the form:
 ;;      mms?_edp_scpot_[MODE]_l2
 mms_load_edp,TRANGE=tran,PROBES=sc,LEVEL='l2',DATATYPE='scpot',$
-             DATA_RATE=ssfb_str[2],/GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf,/TIME_CLIP
+             DATA_RATE=ssfb_str[2],/GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf
 ;;----------------------------------------------------------------------------------------
 ;;  Get data, remove "bad" TPLOT handles, and rename
 ;;----------------------------------------------------------------------------------------
@@ -633,6 +606,12 @@ FOR j=0L, n_r[0] - 1L DO BEGIN
   n_edp_tp = LONG(TOTAL(good_otpn GE 0))
   IF (n_edp_tp EQ 0) THEN CONTINUE        ;;  No old TPLOT handles --> jump to next rate
   FOR k=0L, n_edp_tp[0] - 1L DO BEGIN
+    ;;  Reset variables [save space]
+    t_bgse_vm      = 0
+    bvec_gse       = 0
+    b_t0           = 0
+    b__t           = 0
+    struc_bgse     = 0
     ;;  Make sure TPLOT handles are valid before moving forward
     gk             = good_otpn[k]
     get_data,old_tpns[k],DATA=t_bgse_vm,DLIMIT=dlim_bgse,LIMIT=lim_bgse
@@ -667,12 +646,6 @@ FOR j=0L, n_r[0] - 1L DO BEGIN
     options,new_tpns[gk],'LABFLAG'
     ;;  Remove old versions
     store_data,DELETE=old_tpns[k]
-    ;;  Reset variables [save space]
-    t_bgse_vm      = 0
-    bvec_gse       = 0
-    b_t0           = 0
-    b__t           = 0
-    struc_bgse     = 0
   ENDFOR
 ENDFOR
 ;;  Clean up
@@ -708,16 +681,16 @@ test           = (~KEYWORD_SET(load_dis_df) AND (N_ELEMENTS(load_dis_df) GT 0)) 
                    (N_ELEMENTS(load_dis_df) EQ 0)
 IF (test[0]) THEN fpi_types[1] = ''
 n_fpi_tp       = N_ELEMENTS(fpi_types)
-;;  mms_load_fpi.pro expects the TIME_CLIP keyword to be set otherwise it will not follow TRANGE
+
 FOR j=0L, n_fpi_tp[0] - 1L DO BEGIN
   test           = (fpi_types[j] EQ '')
   IF (test[0]) THEN CONTINUE
   ;;  Load Fast data
   mms_load_fpi,TRANGE=tran,PROBES=sc,LEVEL='l2',DATATYPE=fpi_types[j],DATA_RATE='fast',$
-               /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf,/TIME_CLIP
+               /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf
   ;;  Load Burst data
   mms_load_fpi,TRANGE=tran,PROBES=sc,LEVEL='l2',DATATYPE=fpi_types[j],DATA_RATE='brst',$
-               /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf,/TIME_CLIP
+               /GET_SUPPORT_DATA,/LATEST_VERSION,SPDF=spdf
 ENDFOR
 ;;  Currently all TPLOT handles with '*_gse_*' in their name have no data
 ;;    --> remove and rotate by hand after all sets are loaded
@@ -790,11 +763,11 @@ FOR j=0L, N_ELEMENTS(in__names) - 1L DO BEGIN
   dumb           = TEMPORARY(unix)
 ENDFOR
 ;;----------------------------------------------------------------------------------------
-;;  Rotate Bo from GSE to GSM
+;;  Rotate Bo from GSE to DMPA
 ;;----------------------------------------------------------------------------------------
-;;  Define input coordinate (GSE) and output coordinate (GSM) basis
+;;  Define input coordinate (GSE) and output coordinate (DBCS) basis
 in__coord      = coord_gse[0]
-out_coord      = coord_gsm[0]
+out_coord      = coord_dmpa[0]
 ;;  Define input and output TPLOT handles
 in__names      = [fgm_s__gse_tpn[0],fgm_l__gse_tpn[0],fgm_f__gse_tpn[0],fgm_b__gse_tpn[0]]
 out_names      = scpref[0]+'fgm_'+ssfb_str+'_l2_'+out_coord[0]
@@ -849,12 +822,12 @@ FOR j=0L, N_ELEMENTS(in__names) - 1L DO BEGIN
   dumb           = TEMPORARY(unix)
 ENDFOR
 ;;----------------------------------------------------------------------------------------
-;;  Rotate Vbulk from GSE to GSM
+;;  Rotate Vbulk from GSE to DMPA
 ;;----------------------------------------------------------------------------------------
-;;  Define input coordinate (GSE) and output coordinate (GSM) basis
+;;  Define input coordinate (GSE) and output coordinate (DMPA) basis
 in__coord      = coord_gse[0]
-out_coord      = coord_gsm[0]
-;;  Rotate Vbulk from GSE to GSM
+out_coord      = coord_dmpa[0]
+;;  Rotate Vbulk from GSE to DMPA
 in__names      = tnames(out_names)
 out_name0      = scpref[0]+['dis_bulkv_','des_bulkv_']+out_coord[0]+'_'
 out_names      = [out_name0[0]+ssfb_str[2:3],out_name0[1]+ssfb_str[2:3]]
