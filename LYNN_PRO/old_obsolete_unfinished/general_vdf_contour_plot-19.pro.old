@@ -35,11 +35,7 @@
 ;                                                 [,SM_CONT=sm_cont] [,NSMCUT=nsmcut]    $
 ;                                                 [,NSMCON=nsmcon] [,PLANE=plane]        $
 ;                                                 [,DFMIN=dfmin] [,DFMAX=dfmax]          $
-;                                                 [,DFRA=dfra] [,V_0X=v_0x] [,V_0Y=v_0y] $
-;                                                 [,STRAHL=strahl] [,NGRID=ngrid]        $
-;                                                 [,/SLICE2D] [,P_TITLE=p_title]         $
-;                                                 [,ONE_C=one_c] [,BPARM=bparm]          $
-;                                                 [,KPARM=bikap] [,S_SIGN=s_sign]        )
+;                                                 [,DFRA=dfra] [,V_0X=v_0x] [,V_0Y=v_0y])
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -149,14 +145,6 @@
 ;                           If set, the routine will output 1D cuts of a model
 ;                             bi-kappa VDF defined by the above parameters
 ;                             [Default = FALSE]
-;               S_SIGN   :  Scalar [integer/long] defining the sign to apply to the
-;                             computed strahl direction from find_strahl_direction.pro
-;                             for times when the sun direction is nearly orthogonal to
-;                             the quasi-static magnetic field and the strahl (as seen
-;                             in plotted VDFs) is in the "wrong" direction.  If the value
-;                             is positive, then the output from find_strahl_direction.pro
-;                             will be used, otherwise the sign will flip.
-;                             [Default = +1]
 ;
 ;   CHANGED:  1)  Fixed a bug that occurs when VDF input contains zeros
 ;                                                                  [05/16/2016   v1.0.1]
@@ -182,8 +170,6 @@
 ;                                                                  [05/09/2018   v1.1.0]
 ;            11)  Added error handling for non-finite VEC1 and/or VEC2 inputs
 ;                                                                  [06/19/2018   v1.1.1]
-;            12)  Added S_SIGN keyword
-;                                                                  [08/07/2018   v1.1.2]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -209,7 +195,7 @@ FUNCTION defaults_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,
                              SM_CONT=sm_cont,NSMCUT=nsmcut,NSMCON=nsmcon,PLANE=plane,     $
                              DFMIN=dfmin,DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,       $
                              STRAHL=strahl,NGRID=ngrid,SLICE2D=slice2d,P_TITLE=p_title,   $
-                             ONE_C=one_c,BPARM=bimax,KPARM=bikap,S_SIGN=s_sign
+                             ONE_C=one_c,BPARM=bimax,KPARM=bikap
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range
 ;;----------------------------------------------------------------------------------------
@@ -366,9 +352,6 @@ IF (is_a_number(v_0x,/NOMSSG) EQ 0) THEN v_0x = def_vox[0] ELSE v_0x = v_0x[0]
 IF (is_a_number(v_0y,/NOMSSG) EQ 0) THEN v_0y = def_voy[0] ELSE v_0y = v_0y[0]
 ;;  Check STRAHL
 strahl                  = (N_ELEMENTS(strahl) GT 0) AND KEYWORD_SET(strahl)
-;;  Check S_SIGN
-IF (N_ELEMENTS(s_sign) EQ 0) OR (is_a_number(s_sign,/NOMSSG) EQ 0) THEN s_sign = 1 ELSE s_sign = sign(s_sign[0])
-IF (s_sign[0] EQ 0 OR FINITE(s_sign[0]) EQ 0) THEN s_sign = 1  ;;  force to default if zero or non-finite
 ;;  Check NGRID
 IF (N_ELEMENTS(ngrid) EQ 0) OR (is_a_number(ngrid,/NOMSSG) EQ 0) THEN ngrid = 101L $
                                                                  ELSE ngrid = (LONG(ngrid[0]) > 30L) < 300L
@@ -450,11 +433,7 @@ END
 ;               defaults_vdf_contour_plot.pro
 ;               get_rotated_and_triangulated_vdf.pro
 ;               find_1d_cuts_2d_dist.pro
-;               bimaxwellian.pro
-;               bikappa.pro
-;               unit_vec.pro
 ;               format_vector_string.pro
-;               find_strahl_direction.pro
 ;               get_power_of_ten_ticks.pro
 ;               routine_version.pro
 ;
@@ -482,8 +461,7 @@ END
 ;                                      [,EX_VECS=ex_vecs] [,EX_INFO=ex_info]             $
 ;                                      [,P_TITLE=p_title] [,ONE_C=one_c]                 $
 ;                                      [,DAT_OUT=dat_out] [,BIMAX=bimax] [,BIKAP=bikap]  $
-;                                      [,STRAHL=strahl] [,/GET_ROT] [,ROT_OUT=rot_out]   $
-;                                      [,S_SIGN=s_sign]
+;                                      [,STRAHL=strahl] [,/GET_ROT] [,ROT_OUT=rot_out]
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -587,14 +565,6 @@ END
 ;               GET_ROT  :  If set, routine will skip the plotting and just return the
 ;                             structure returned by rotate_and_triangulate_dfs.pro
 ;                             [Default = FALSE]
-;               S_SIGN   :  Scalar [integer/long] defining the sign to apply to the
-;                             computed strahl direction from find_strahl_direction.pro
-;                             for times when the sun direction is nearly orthogonal to
-;                             the quasi-static magnetic field and the strahl (as seen
-;                             in plotted VDFs) is in the "wrong" direction.  If the value
-;                             is positive, then the output from find_strahl_direction.pro
-;                             will be used, otherwise the sign will flip.
-;                             [Default = +1]
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [none of the following have default settings]  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -713,10 +683,6 @@ END
 ;            19)  Added error handling for case where user does not supply
 ;                   EX_INFO structure
 ;                                                                  [07/02/2018   v1.3.3]
-;            20)  Added S_SIGN keyword to correct strahl direction for events where
-;                   the sun direction is nearly orthogonal to Bo and the strahl is
-;                   not along the direction predicted by find_strahl_direction.pro
-;                                                                  [08/07/2018   v1.3.4]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -771,7 +737,7 @@ END
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/07/2018   v1.3.4
+;    LAST MODIFIED:  07/02/2018   v1.3.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -785,7 +751,7 @@ PRO general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=v
                              P_TITLE=p_title,ONE_C=one_c,DAT_OUT=dat_out,             $
                              CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info,             $
                              BIMAX=bimax,BIKAP=bikap,STRAHL=strahl,GET_ROT=get_rot,   $
-                             ROT_OUT=rot_out,S_SIGN=s_sign
+                             ROT_OUT=rot_out
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range,              $
                  defaults_vdf_contour_plot, rot_matrix_array_dfs, rel_lorentz_trans_3vec, $
@@ -860,7 +826,7 @@ tests          = defaults_vdf_contour_plot(df1d,vxyz,VFRAME=vframe,VEC1=vec1,VEC
                                            DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,    $
                                            STRAHL=strahl,NGRID=ngrid,SLICE2D=slice2d,    $
                                            P_TITLE=p_title,ONE_C=one_c,BPARM=bimax,      $
-                                           KPARM=bikap,S_SIGN=s_sign                     )
+                                           KPARM=bikap                                   )
 IF (N_ELEMENTS(tests) EQ 1) THEN RETURN      ;;  Something failed --> exit without plotting
 ;;  Check some outputs from default routine
 nm             = ngrid[0]
@@ -920,6 +886,7 @@ IF (SIZE(circs,/TYPE) EQ 8) THEN BEGIN
     ;;  User set correct tags --> check value formats
     circs_on   = is_a_number(circs[0].(0),/NOMSSG) AND is_a_number(circs[0].(1),/NOMSSG) $
                  AND is_a_number(circs[0].(2),/NOMSSG)
+;    test       = is_a_number(circs[0].(0),/NOMSSG) AND is_a_number(circs[0].(1),/NOMSSG) AND is_a_number(circs[0].(2),/NOMSSG)
     IF (circs_on[0]) THEN circle_str = circs  ;;  correct format --> define new structure(s)
   ENDIF
 ENDIF ELSE circs_on = 0b
@@ -933,6 +900,7 @@ IF (SIZE(ex_vecs,/TYPE) EQ 8) THEN BEGIN
   IF (nmatch[0] EQ 2) THEN BEGIN
     ;;  User set correct tags --> check value formats
     exvec_on   = is_a_3_vector(ex_vecs[0].(0),/NOMSSG) AND (SIZE(ex_vecs[0].(1),/TYPE) EQ 7)
+;    test       = is_a_3_vector(ex_vecs[0].(0),/NOMSSG) AND (SIZE(ex_vecs[0].(1),/TYPE) EQ 7)
     IF (exvec_on[0]) THEN exvec_str = ex_vecs  ;;  correct format --> define new structure(s)
   ENDIF
 ENDIF ELSE exvec_on = 0b
@@ -948,6 +916,7 @@ IF (SIZE(ex_info,/TYPE) EQ 8) THEN BEGIN
     tran_on    =   is_a_number(ex_info[0].(0),/NOMSSG) AND $
                  is_a_3_vector(ex_info[0].(1),/NOMSSG) AND $
                  is_a_3_vector(ex_info[0].(2),/NOMSSG)
+;    test       =   is_a_number(ex_info[0].(0),/NOMSSG) AND is_a_3_vector(ex_info[0].(1),/NOMSSG) AND is_a_3_vector(ex_info[0].(2),/NOMSSG)
     IF (tran_on[0]) THEN tran_info = ex_info  ;;  correct format --> define new structure(s)
   ENDIF
 ENDIF ELSE tran_on = 0b
@@ -1149,7 +1118,6 @@ IF (tran_on[0]) THEN BEGIN
     strahl_dir = find_strahl_direction(tran_info[0].MAGF)
     test       = (strahl_dir[0] NE 0)
     IF (test[0]) THEN BEGIN
-      IF (s_sign[0] LT 0) THEN strahl_dir *= -1   ;;  User knows to switch sign
       strahl_out  = 'strahl '+(['','anti-']+'parallel to Bo')[(strahl_dir[0] LT 0)]
     ENDIF ELSE strahl_out = ''
   ENDIF ELSE strahl_out = ''
