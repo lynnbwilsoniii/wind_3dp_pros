@@ -31,8 +31,8 @@
 ;                            figures at which to truncate/round
 ;                            [Default: 1]
 ;
-;   CHANGED:  1)  Changed the range of values for SIGFIG for base-10 calculations
-;                                                                   [08/10/2018   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  Program assumes input can be written as:
@@ -56,7 +56,7 @@
 ;
 ;   CREATED:  05/23/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/10/2018   v1.0.1
+;    LAST MODIFIED:  05/23/2018   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -95,40 +95,36 @@ x              = 1d0*xx       ;;  Make sure of double type
 ;;  Check BASE
 IF (is_a_number(base,/NOMSSG)   EQ 0) THEN lbase = def_base[0] ELSE lbase = DOUBLE(ABS(base[0])) > 2d0
 ;;  Check SIGFIG
-IF (is_a_number(sigfig,/NOMSSG) EQ 0) THEN gsigs = def_sigf[0] ELSE gsigs = DOUBLE(ABS(sigfig[0])) > 0d0
+IF (is_a_number(sigfig,/NOMSSG) EQ 0) THEN gsigs = def_sigf[0] ELSE gsigs = DOUBLE(ABS(sigfig[0])) > 1d0
 ;;----------------------------------------------------------------------------------------
 ;;  Remove zeros and find negative values from input (if present)
 ;;----------------------------------------------------------------------------------------
 good_neg       = WHERE(x LT 0,gd_neg)
 bad            = WHERE(x EQ 0,bd)
 IF (bd[0] GT 0) THEN x[bad] = 1d0
-IF (lbase[0] NE 10) THEN BEGIN
-  ;;--------------------------------------------------------------------------------------
-  ;;  Find the log_BASE of XX
-  ;;
-  ;;    Base conversion with logarithms
-  ;;      log_new |X|  =  ( log_old |X| )/( log_old |new| )
-  ;;--------------------------------------------------------------------------------------
-  l10_new        = ALOG10(lbase[0])
-  l10___x        = ALOG10(ABS(x))
-  lnew_x         = l10___x/l10_new[0]
-  ;;--------------------------------------------------------------------------------------
-  ;;  Need to convert SIGFIG to new base as well
-  ;;--------------------------------------------------------------------------------------
-  lsigs          = ALOG10(gsigs[0])/l10_new[0]
-  sigexp         = FLOOR(lsigs[0] - 1d1,/L64)
-  sigres         = lsigs[0] - sigexp[0]
-  sigman         = ROUND(1d1^sigres[0],/L64)
-  lbsigs         = sigman[0]*lbase[0]^sigexp[0]
-ENDIF ELSE BEGIN
-  ;;  Operations done in base-10
-  lnew_x         = ALOG10(ABS(x))
-  lbsigs         = gsigs[0]
-ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Find the log_BASE of XX
+;;
+;;    Base conversion with logarithms
+;;      log_new |X|  =  ( log_old |X| )/( log_old |new| )
+;;----------------------------------------------------------------------------------------
+l10_new        = ALOG10(lbase[0])
+l10___x        = ALOG10(ABS(x))
+lnew_x         = l10___x/l10_new[0]
+;;----------------------------------------------------------------------------------------
+;;  Need to convert SIGFIG to new base as well
+;;----------------------------------------------------------------------------------------
+lsigs          = ALOG10(gsigs[0])/l10_new[0]
+sigexp         = FLOOR(lsigs[0] - 1d1,/L64)
+sigres         = lsigs[0] - sigexp[0]
+sigman         = ROUND(1d1^sigres[0],/L64)
+lbsigs         = sigman[0]*lbase[0]^sigexp[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate the scaled exponent and mantissa (or significand)
 ;;----------------------------------------------------------------------------------------
 sc_expon       = FLOOR(lnew_x - lbsigs[0],/L64)
+;sc_expon       = FLOOR(lnew_x - lsigs[0],/L64)
+;sc_expon       = FLOOR(lnew_x - gsigs[0],/L64)
 residual       = lnew_x - sc_expon
 mantissa       = ROUND(1d1^residual,/L64)
 ;;----------------------------------------------------------------------------------------

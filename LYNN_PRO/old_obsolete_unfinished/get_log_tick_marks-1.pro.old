@@ -1,0 +1,394 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   get_log_tick_marks.pro
+;  PURPOSE  :   This routine returns the tick mark structure tags and values for
+;                 plotting data on a logarithmic scale to correct for some of the
+;                 issues that arise from IDL's automated tick mark generation.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               num2int_str.pro
+;               is_a_number.pro
+;               test_plot_axis_range.pro
+;               fill_range.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               limits = get_log_tick_marks([,DATA=data] [,RANGE=range]            $
+;                                       [,MIN_VAL=min_val] [,MAX_VAL=max_val]      )
+;
+;  KEYWORDS:    
+;               DATA      :  [N]-Element [numeric] array of values for which the user
+;                              wishes to determine appropriate tick mark values to show
+;                              on a logarithmic scale
+;                              [Default = FALSE]
+;               RANGE     :  [2]-Element [numeric] array defining the range of values to
+;                              use when defining the appropriate tick marks
+;                              [Default = calc_log_scale_yrange(data)]
+;               MIN_VAL   :  Scalar [numeric] defining the minimum value to consider
+;                              before determining the data range.  If set, then all
+;                              values < MIN_VAL will be ignored.  This keyword is
+;                              overridden if RANGE keyword is set properly.
+;                              [Default = MIN(DATA,/NAN) OR 0]
+;               MAX_VAL   :  Scalar [numeric] defining the maximum value to consider
+;                              before determining the data range.  If set, then all
+;                              values > MAX_VAL will be ignored.  This keyword is
+;                              overridden if RANGE keyword is set properly.
+;                              [Default = MAX(DATA,/NAN) OR 10^300]
+;               FORCE_RA  :  If set, then the bounds set by RANGE, MIN_VAL, or MAX_VAL
+;                              are considered absolute and tick marks will not be defined
+;                              outside of any of these boundaries
+;                              [Default = FALSE]
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [08/10/2018   v1.0.0]
+;
+;   NOTES:      
+;               ***  Still testing  ***
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  08/09/2018
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/10/2018   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION get_log_tick_marks,DATA=data,RANGE=range,MIN_VAL=min_val,MAX_VAL=max_val
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+tickv_fac      = [1,2,3,4,5,6,7,8,9]
+ticks_fac      = num2int_str(tickv_fac)
+;;  Error messages
+noinput_mssg   = 'No input was supplied...'
+bad_ran_mssg   = 'Bad keyword setting(s) leading to invalid plot RANGE...'
+;;----------------------------------------------------------------------------------------
+;;  Check for input
+;;----------------------------------------------------------------------------------------
+testd          = is_a_number(data,/NOMSSG)
+testr          = test_plot_axis_range(range,/NOMSSG)
+testn          = is_a_number(min_val,/NOMSSG)
+testx          = is_a_number(max_val,/NOMSSG)
+test           = ~testd[0] AND ~testr[0] AND (~testn[0] OR ~testx[0])
+IF (test[0]) THEN BEGIN
+  ;;  no input???
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check MIN_VAL
+IF (testn[0]) THEN mnv = min_val[0] > 0d0 ELSE mnv = 0d0
+;;  Check MAX_VAL
+IF (testx[0]) THEN mxv = max_val[0] < 1d300 ELSE mxv = 1d300
+;;  Check for range settings
+IF (testd[0] OR testr[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  DATA or RANGE is set --> test
+  ;;--------------------------------------------------------------------------------------
+  IF (testd[0] AND testr[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Both are set
+    ;;------------------------------------------------------------------------------------
+    ran        = REFORM(range[SORT(range)])
+    mnv        = ran[0]
+    mxv        = ran[1]
+    xx         = REFORM(data,N_ELEMENTS(data))      ;;  force to a 1D array
+    good       = WHERE(xx GT 0,gd)
+    IF (gd[0] GT 0) THEN BEGIN
+      dat_ran    = [MIN(xx[good],/NAN),MAX(xx[good],/NAN)]
+    ENDIF ELSE BEGIN
+      ;;  DATA is set but negative values are not allowed --> use only RANGE
+      dat_ran    = ran
+    ENDELSE
+    ;;  Limit to within RANGE
+    dat_ran[0] = dat_ran[0] > ran[0]
+    dat_ran[1] = dat_ran[1] < ran[1]
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Only one is set
+    ;;------------------------------------------------------------------------------------
+    IF (testd[0]) THEN BEGIN
+      ;;  DATA is set --> test
+      ran        = [mnv[0],mxv[0]]
+      xx         = REFORM(data,N_ELEMENTS(data))      ;;  force to a 1D array
+      good       = WHERE(xx GT 0,gd)
+      IF (gd[0] GT 0) THEN BEGIN
+        dat_ran    = [MIN(xx[good],/NAN),MAX(xx[good],/NAN)]
+      ENDIF ELSE BEGIN
+        dat_ran    = ran
+      ENDELSE
+      ;;  Limit to within RANGE
+      dat_ran[0] = dat_ran[0] > ran[0]
+      dat_ran[1] = dat_ran[1] < ran[1]
+    ENDIF ELSE BEGIN
+      ;;  RANGE is set --> test
+      ran        = REFORM(range[SORT(range)])
+      mnv        = ran[0]
+      mxv        = ran[1]
+      dat_ran    = ran
+    ENDELSE
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  MIN_VAL and MAX_VAL are set --> test
+  ;;--------------------------------------------------------------------------------------
+  ran        = [mnv[0],mxv[0]]
+  dat_ran    = ran
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Make sure range is still okay
+;;----------------------------------------------------------------------------------------
+testr      = test_plot_axis_range(dat_ran,/NOMSSG)
+IF (~testr[0]) THEN BEGIN
+  ;;  Bad DATA, RANGE, or M[IN,AX]_VAL setting
+  MESSAGE,bad_ran_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Create dummy array for later
+;;----------------------------------------------------------------------------------------
+l10_ran        = ALOG10(dat_ran)
+l10_rex        = [FLOOR(l10_ran),CEIL(l10_ran)]
+exp_ran        = [MIN(l10_rex,/NAN) - 1,MAX(l10_rex,/NAN) + 1]
+int_exp        = fill_range(exp_ran[0],exp_ran[1],DIND=1)
+str_exp        = num2int_str(int_exp)
+FOR j=0L, N_ELEMENTS(int_exp) - 1L DO BEGIN
+  test_zero  = (int_exp[j] EQ 0)
+  test__one  = (int_exp[j] EQ 1)
+  IF (test_zero[0] OR test__one[0]) THEN BEGIN
+    IF (test_zero[0]) THEN str_suff = '' ELSE str_suff = '0'
+  ENDIF ELSE BEGIN
+    str_suff       = ' x 10!U'+str_exp[j]+'!N'
+  ENDELSE
+  IF (j EQ 0) THEN BEGIN
+    dumb_tickv     = tickv_fac*1d1^int_exp[j]
+    dumb_ticks     = ticks_fac+str_suff[0]
+  ENDIF ELSE BEGIN
+    dumb_tickv     = [dumb_tickv,tickv_fac*1d1^int_exp[j]]
+    dumb_ticks     = [dumb_ticks,ticks_fac+str_suff[0]]
+  ENDELSE
+ENDFOR
+n_dumb         = N_ELEMENTS(dumb_tickv)
+id             = LINDGEN(n_dumb[0])
+good_dumb      = WHERE(dumb_tickv GE dat_ran[0] AND dumb_tickv LE dat_ran[1],gd_dumb)
+;;  Determine which bound is closer to an integer power of 10
+temp           = dumb_tickv[good_dumb]
+l10t           = ALOG10(temp)
+lower          = FLOOR(MIN(l10t,/NAN))
+upper          = CEIL(MAX(l10t,/NAN))
+diff           = [ABS(MIN(l10t,/NAN) - lower[0]),ABS(MAX(l10t,/NAN) - upper[0])]
+mndiff         = MIN(diff,/NAN,lndf)
+IF (lndf[0] EQ 0) THEN BEGIN
+  ;;  Closer to lower bound
+  ld             = VALUE_LOCATE(dumb_tickv,1d1^(lower[0]))
+  ud             = MAX(good_dumb)
+ENDIF ELSE BEGIN
+  ;;  Closer to upper bound
+  ud             = VALUE_LOCATE(dumb_tickv,1d1^(upper[0]))
+  ld             = MIN(good_dumb)
+ENDELSE
+tickv_all      = dumb_tickv[ld[0]:ud[0]]
+ticks_all      = dumb_ticks[ld[0]:ud[0]]
+;;----------------------------------------------------------------------------------------
+;;  Check if range falls between 1 and 100
+;;----------------------------------------------------------------------------------------
+check          = (dat_ran[0] GT 1e-1) AND (dat_ran[1] LT 1e2)
+IF (check[0]) THEN BEGIN
+;  l10_exp        = [0d0,1d0]
+;  tick_low       = tickv_fac*1d1^l10_exp[0]
+;  tick_upp       = tickv_fac*1d1^l10_exp[1]
+;  ;;  Keep to ≤ 5 major tick marks to avoid bunching and messy results
+;  good_low       = WHERE(dat_ran[0] GE tick_low,gd_low)
+;  good_upp       = WHERE(dat_ran[1] LE tick_upp,gd_upp)
+;  IF (gd_low[0] EQ 0) THEN good_low = [0L]
+;  IF (gd_upp[0] EQ 0) THEN good_upp = [N_ELEMENTS(tick_upp) - 1L]
+  ntmin          = 3L                    ;;  Default minimum number of major tick marks
+  ntmax          = 5L                    ;;  Default maximum number of major tick marks
+  minor          = 10L                   ;;  # of minor tick marks
+  ;;  Define new, slightly expanded range
+  new_ran        = [MIN(tickv_all),MAX(tickv_all)]
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define proper range
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if expansion is necessary
+  l10_dlw        = ABS(l10_ran[0] - l10_rex)
+  l10_dup        = ABS(l10_ran[1] - l10_rex)
+  l10_dln        = MIN(l10_dlw,/NAN,inl)
+  l10_dun        = MIN(l10_dup,/NAN,inu)
+  l10_exp        = [l10_rex[inl[0]],l10_rex[inu[0]]]
+  ;;  Expand above/below nearest power of 10
+  IF (l10_exp[0] EQ l10_exp[1]) THEN BEGIN
+    ;;  Data is clustered around a single power of 10 and spans less than one order of magnitude
+    l10_exp[0] -= 1
+    l10_exp[1] += 1
+    IF (l10_exp[1] GE 1) THEN l10_exp[1] -= 1  ;;  do not over expand
+  ENDIF ELSE BEGIN
+    IF (l10_dln[0] LT l10_dun[0]) THEN l10_exp[0] -= 1 ELSE l10_exp[1] += 1
+  ENDELSE
+  tick_low       = tickv_fac*1d1^l10_exp[0]
+  tick_upp       = tickv_fac*1d1^l10_exp[1]
+  good_low       = WHERE(dat_ran[0] GE tick_low,gd_low)
+  good_upp       = WHERE(dat_ran[1] LE tick_upp,gd_upp)
+  STOP
+  IF (gd_low[0] EQ 0) THEN BEGIN
+    ;;  Need to expand to avoid excluding lower bound
+    l10_exp[0]    -= 1
+    tick_low       = tickv_fac*1d1^l10_exp[0]
+    good_low       = WHERE(dat_ran[0] GE tick_low,gd_low)
+  ENDIF
+  IF (gd_upp[0] EQ 0) THEN BEGIN
+    ;;  Need to expand to avoid excluding upper bound
+    l10_exp[1]    += 1
+    tick_upp       = tickv_fac*1d1^l10_exp[1]
+    good_upp       = WHERE(dat_ran[1] LE tick_upp,gd_upp)
+  ENDIF
+  IF (gd_low[0] EQ 0 AND gd_upp[0] EQ 0) THEN STOP          ;;  Should not get here --> debug
+  ;;  Define new, slightly expanded range
+  ;new_ran        = [tick_low[MAX(good_low)],tick_upp[MIN(good_upp)]]
+  new_ran        = [MAX(tick_low[good_low]),MIN(tick_upp[good_upp])]
+  ;;--------------------------------------------------------------------------------------
+  ;;--------------------------------------------------------------------------------------
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define tick marks
+  ;;--------------------------------------------------------------------------------------
+  ;;--------------------------------------------------------------------------------------
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define associated tick mark values
+  int_exp        = fill_range(l10_exp[0],l10_exp[1],DIND=1)
+  str_exp        = num2int_str(int_exp)
+  test_2orders   = (MAX(ALOG10(new_ran)) - MIN(ALOG10(new_ran))) GE 3
+  IF (test_2orders[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  RANGE spans at least 3 orders of magnitude --> limit tick marks to powers of 10
+    ;;------------------------------------------------------------------------------------
+    ntmax          = 15L                   ;;  Default maximum number of major tick marks
+    ntmin          = 1L                    ;;  Default minimum number of major tick marks
+    minor          = 9L                    ;;  # of minor tick marks
+    FOR j=0L, N_ELEMENTS(int_exp) - 1L DO BEGIN
+      IF (j EQ 0) THEN BEGIN
+        tickv_all = 1d1^int_exp[j]
+        ticks_all = '10!U'+str_exp[j]+'!N'
+      ENDIF ELSE BEGIN
+        tickv_all = [tickv_all,1d1^int_exp[j]]
+        ticks_all = [ticks_all,'10!U'+str_exp[j]+'!N']
+      ENDELSE
+    ENDFOR
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  RANGE spans less than 3 orders of magnitude --> include minor tick marks
+    ;;------------------------------------------------------------------------------------
+    ntmax          = 5L                    ;;  Default maximum number of major tick marks
+    FOR j=0L, N_ELEMENTS(int_exp) - 1L DO BEGIN
+      test_zero  = (int_exp[j] EQ 0)
+      test__one  = (int_exp[j] EQ 1)
+      IF (test_zero[0] OR test__one[0]) THEN BEGIN
+        IF (test_zero[0]) THEN str_suff = '' ELSE str_suff = '0'
+        minor          = 10L                   ;;  # of minor tick marks
+        ntmin          = 3L                    ;;  Default minimum number of major tick marks
+      ENDIF ELSE BEGIN
+        str_suff       = ' x 10!U'+str_exp[j]+'!N'
+        minor          = 9L                    ;;  # of minor tick marks
+        ntmin          = 1L                    ;;  Default minimum number of major tick marks
+      ENDELSE
+      IF (j EQ 0) THEN BEGIN
+        tickv_all = tickv_fac*1d1^int_exp[j]
+        ticks_all = ticks_fac+str_suff[0]
+      ENDIF ELSE BEGIN
+        tickv_all = [tickv_all,tickv_fac*1d1^int_exp[j]]
+        ticks_all = [ticks_all,ticks_fac+str_suff[0]]
+      ENDELSE
+    ENDFOR
+  ENDELSE
+ENDELSE
+;;  Sort
+sp             = SORT(tickv_all)
+tickv_all      = TEMPORARY(tickv_all[sp])
+ticks_all      = TEMPORARY(ticks_all[sp])
+;;----------------------------------------------------------------------------------------
+;;  Determine which fall inside range of interest
+;;----------------------------------------------------------------------------------------
+good_tick      = WHERE(tickv_all  GE new_ran[0] AND tickv_all  LE new_ran[1],gd_tick)
+good_dumb      = WHERE(dumb_tickv GE new_ran[0] AND dumb_tickv LE new_ran[1],gd_dumb)
+IF (gd_tick[0] EQ 0) THEN STOP          ;;  Should not get here --> debug
+tick_val       = tickv_all[good_tick]
+tick_str       = ticks_all[good_tick]
+;;----------------------------------------------------------------------------------------
+;;  Check if we need to limit or expand the number of tick marks
+;;----------------------------------------------------------------------------------------
+nt             = N_ELEMENTS(tick_val)
+kk             = LINDGEN(nt[0])
+;;  Check if limitation is necessary
+IF (nt[0] GT ntmax[0]) THEN BEGIN
+  ;;  Need to limit
+  tran           = [MIN(tick_val),MAX(tick_val)]
+  fac            = FLOOR(1d0*nt[0]/(ntmax[0] - 1L)) > 1L
+  ii             = LINDGEN(ntmax[0])*fac[0]
+  gi             = WHERE(ii LE (nt[0] - 1L),gg)
+  IF (gg[0] EQ 0) THEN BEGIN
+    low            = 0L
+    upp            = (nt[0] - 1L)
+    jj             = kk[low[0]:upp[0]]
+  ENDIF ELSE BEGIN
+    jj             = ii[gi]
+  ENDELSE
+  ;;  Redefine ticks
+  tick_val       = TEMPORARY(tick_val[jj])
+  tick_str       = TEMPORARY(tick_str[jj])
+ENDIF
+;;  Check if expansion is necessary
+IF (nt[0] LT ntmin[0]) THEN BEGIN
+  ;;  Need to expand
+  n_ex           = ntmin[0] - nt[0]         ;;  # of additional tick marks needed
+  even_t         = (n_ex[0] MOD 2) EQ 0     ;;  TRUE --> even # of extra ticks
+  n_subex        = n_ex[0]/2L               ;;  # to add on each side
+  IF (even_t[0]) THEN BEGIN
+    ;;  Add even number of ticks
+    low            = MIN(good_dumb) - n_subex[0]
+    upp            = MAX(good_dumb) + n_subex[0]
+  ENDIF ELSE BEGIN
+    low            = MIN(good_dumb) - n_subex[0]
+    upp            = MAX(good_dumb) + n_subex[0] + 1L
+  ENDELSE
+  gind           = good_dumb[low[0]:upp[0]]
+  tick_val       = dumb_tickv[gind]
+  tick_str       = dumb_ticks[gind]
+ENDIF
+;;  Define the [X,Y,Z]TICKS keyword value
+tick_nnn       = N_ELEMENTS(tick_val) - 1L
+;;  Redefine range for output to match tick mark values
+dat_ran[0]     = dat_ran[0] < MIN(tick_val,/NAN)
+dat_ran[1]     = dat_ran[1] > MAX(tick_val,/NAN)
+;;----------------------------------------------------------------------------------------
+;;  Define output
+;;----------------------------------------------------------------------------------------
+tags           = ['RANGE','TICKV','TICKNAME','TICKS','MINOR']
+struct         = CREATE_STRUCT(tags,dat_ran,tick_val,tick_str,tick_nnn[0],minor[0])
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struct
+END
+
