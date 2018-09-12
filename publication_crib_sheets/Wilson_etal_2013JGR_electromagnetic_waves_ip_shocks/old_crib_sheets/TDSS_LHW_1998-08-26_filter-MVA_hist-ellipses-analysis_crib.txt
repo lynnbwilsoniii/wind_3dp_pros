@@ -1,0 +1,1697 @@
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+beta_fac = 1d6*(kB*K_eV)*(2d0*muo)
+;-----------------------------------------------------------------------------------------
+; => Check date 
+;-----------------------------------------------------------------------------------------
+date   = '082698'
+t      = ['1998-08-26/05:40:00','1998-08-26/07:40:00']  ; -For moment writing
+tramp  = '1998-08-26/06:40:24.972'
+
+tr3   = time_double(t)
+tura  = time_double(tramp)
+
+mydate = my_str_date(DATE=date)
+sdate  = mydate.S_DATE[0]  ; -('MMDDYY')
+ldate  = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate  = mydate.TDATE[0]   ; => 'YYYY-MM-DD'
+;-----------------------------------------------------------------------------------------
+; => Get TDS data
+;-----------------------------------------------------------------------------------------
+; => Get TDSS data
+my_tdss    = get_wind_tds_data(DATE=date,FIXFILE=1,/TDSS)
+IF (sdate[0] EQ '082698') THEN gels = [14L,15L,16L,17L]
+; => Get ONLY whistler TDSS
+IF (gels[0] NE -1) THEN scetss  = my_tdss.SCET[gels[*]]             ELSE scetss  = ''
+IF (gels[0] NE -1) THEN timess  = REFORM(my_tdss.TIME[gels[*],*])   ELSE timess  = dumbd
+
+tds_times = REFORM(timess[0,*])*1d-3  ; => TDSS times (s)
+mts       = my_time_string(scetss[0],STR=1,FORM=1,PREC=5,/NOMSSG)
+tds_unx   = mts.UNIX
+times     = mts.DATE_TIME
+unix_tdss = tds_unx[0] + tds_times[*]
+times     = time_string(unix_tdss,PREC=5)
+t_00      = [0d0,MAX(unix_tdss,/NAN) - MIN(unix_tdss,/NAN)]
+;-----------------------------------------------------------------------------------------
+; => Load MFI data
+;-----------------------------------------------------------------------------------------
+htr_mfi2tplot,DATE=date
+get_data,'WIND_B3_HTR(GSE,nT)',DATA=temporary_mfi
+magf_htr = temporary_mfi
+
+
+magf     = magf_htr.Y
+magtt    = magf_htr.X
+sm_magfx = SMOOTH(magf[*,0],5L,/NAN,/EDGE_TRUNCATE)
+sm_magfy = SMOOTH(magf[*,1],5L,/NAN,/EDGE_TRUNCATE)
+sm_magfz = SMOOTH(magf[*,2],5L,/NAN,/EDGE_TRUNCATE)
+
+tempx    = interp(magf[*,0],magtt,unix_tdss,/NO_EXTRAP)
+tempy    = interp(magf[*,1],magtt,unix_tdss,/NO_EXTRAP)
+tempz    = interp(magf[*,2],magtt,unix_tdss,/NO_EXTRAP)
+
+smmagfx  = interp(sm_magfx,magtt,unix_tdss,/NO_EXTRAP)
+smmagfy  = interp(sm_magfy,magtt,unix_tdss,/NO_EXTRAP)
+smmagfz  = interp(sm_magfz,magtt,unix_tdss,/NO_EXTRAP)
+
+;smmagfx  = SMOOTH(tempx,15L,/NAN,/EDGE_TRUNCATE)
+;smmagfy  = SMOOTH(tempy,15L,/NAN,/EDGE_TRUNCATE)
+;smmagfz  = SMOOTH(tempz,15L,/NAN,/EDGE_TRUNCATE)
+
+
+FOR j=0L, 2047L DO BEGIN       $
+  jtest = (j MOD 100L) EQ 0  & $
+  IF (jtest) THEN PRINT,FORMAT='(";",a28,3f10.3)',times[j],tempx[j],tempy[j],tempz[j]
+;         Date/Time                Bx        By        Bz
+;==============================================================
+;   1998-08-26/06:40:26.12000    -3.377    16.519     3.780
+;   1998-08-26/06:40:26.17333    -2.726    16.521     3.358
+;   1998-08-26/06:40:26.22666    -2.032    16.547     2.711
+;   1998-08-26/06:40:26.28000    -1.254    16.619     1.632
+;   1998-08-26/06:40:26.33333    -1.245    16.871     1.424
+;   1998-08-26/06:40:26.38666    -1.715    17.234     1.761
+;   1998-08-26/06:40:26.44000    -1.874    17.813     2.456
+;   1998-08-26/06:40:26.49333    -2.045    18.471     2.982
+;   1998-08-26/06:40:26.54666    -2.473    19.394     2.428
+;   1998-08-26/06:40:26.60000    -2.037    19.938     0.937
+;   1998-08-26/06:40:26.65333    -0.506    20.000    -1.742
+;   1998-08-26/06:40:26.70666     0.564    19.561    -3.255
+;   1998-08-26/06:40:26.76000     1.450    18.924    -4.304
+;   1998-08-26/06:40:26.81333     0.091    18.304    -2.690
+;   1998-08-26/06:40:26.86666    -0.765    18.037    -1.365
+;   1998-08-26/06:40:26.92000    -0.171    18.740    -0.913
+;   1998-08-26/06:40:26.97333     0.397    19.038    -0.653
+;   1998-08-26/06:40:27.02666     0.944    18.992    -0.555
+;   1998-08-26/06:40:27.08000     0.745    18.875    -0.063
+;   1998-08-26/06:40:27.13333     0.421    18.740     0.525
+;   1998-08-26/06:40:27.18667     0.536    18.593     1.177
+
+FOR j=0L, 2047L DO BEGIN       $
+  jtest = (j MOD 100L) EQ 0  & $
+  IF (jtest) THEN PRINT,FORMAT='(";",a28,3f10.3)',times[j],smmagfx[j],smmagfy[j],smmagfz[j]
+;         Date/Time                Bx        By        Bz
+;==============================================================
+;   1998-08-26/06:40:26.12000    -3.008    16.984     3.371
+;   1998-08-26/06:40:26.17333    -2.654    16.899     3.079
+;   1998-08-26/06:40:26.22666    -2.354    16.885     2.829
+;   1998-08-26/06:40:26.28000    -2.158    17.009     2.660
+;   1998-08-26/06:40:26.33333    -2.032    17.298     2.474
+;   1998-08-26/06:40:26.38666    -1.950    17.691     2.278
+;   1998-08-26/06:40:26.44000    -1.711    18.095     1.681
+;   1998-08-26/06:40:26.49333    -1.450    18.477     1.034
+;   1998-08-26/06:40:26.54666    -1.170    18.740     0.393
+;   1998-08-26/06:40:26.60000    -0.970    18.917    -0.133
+;   1998-08-26/06:40:26.65333    -0.872    18.984    -0.514
+;   1998-08-26/06:40:26.70666    -0.672    19.065    -0.936
+;   1998-08-26/06:40:26.76000    -0.431    19.151    -1.374
+;   1998-08-26/06:40:26.81333     0.002    19.045    -1.683
+;   1998-08-26/06:40:26.86666     0.337    18.927    -1.818
+;   1998-08-26/06:40:26.92000     0.393    18.781    -1.473
+;   1998-08-26/06:40:26.97333     0.365    18.687    -0.945
+;   1998-08-26/06:40:27.02666     0.267    18.639    -0.261
+;   1998-08-26/06:40:27.08000     0.429    18.664     0.028
+;   1998-08-26/06:40:27.13333     0.628    18.707     0.223
+;   1998-08-26/06:40:27.18667     0.606    18.774     0.377
+
+
+;mag_tdss = [[tempx],[tempy],[tempz]]
+mag_tdss = [[smmagfx],[smmagfy],[smmagfz]]
+mag_s    = [-3.3765931,16.519283,3.7796388]
+mag_e    = [0.58949312,18.524716,1.4833978]
+nt       = N_ELEMENTS(smmagfx)
+bmagtdss = SQRT(TOTAL(mag_tdss^2,2L,/NAN))
+bvec_tds = mag_tdss/(bmagtdss # REPLICATE(1d0,3L))
+
+
+tags     = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9']
+;
+; => For  7 Hz < f < 30 Hz on 1998-08-26
+;
+kvec0   = [ 0.88528,-0.11080, 0.45167]
+kvec1   = [ 0.88917,-0.30740, 0.33895]
+kvec2   = [-0.81224, 0.45489,-0.36516]
+kvec3   = [-0.74506, 0.56526,-0.35408]
+kvec4   = [ 0.89282, 0.03908, 0.44872]
+kvec5   = [ 0.90320,-0.05326, 0.42590]
+kvec6   = [-0.92841,-0.36634, 0.06200]
+kvec7   = [ 0.95386, 0.21550, 0.20907]
+kv_07_30  = CREATE_STRUCT(tags[0:7],kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7)
+np             = N_TAGS(kv_07_30)
+theta_kb_07_30 = DBLARR(nt,np)
+FOR j=0L, np - 1L DO BEGIN                    $
+  kvec    = REFORM(kv_07_30.(j))            & $
+  k_dot_b = my_dot_prod(bvec_tds,kvec,/NO)  & $
+  theta_kb_07_30[*,j] = ACOS(k_dot_b)*18d1/!DPI
+
+theta_kb_07_30_s = theta_kb_07_30 < (18d1 - theta_kb_07_30)
+theta_kb_07_30   = theta_kb_07_30_s
+
+FOR j=0L, np - 1L DO BEGIN                    $
+  jstr = 'k_vec-'+STRTRIM(j,2L)             & $
+  PRINT,FORMAT='(";",a10,4f18.3)',jstr[0],MIN(theta_kb_07_30[*,j],/NAN), $
+                                          MAX(theta_kb_07_30[*,j],/NAN), $
+                                         MEAN(theta_kb_07_30[*,j],/NAN), $
+                                       STDDEV(theta_kb_07_30[*,j],/NAN)
+;   Vector         theta_kB,MIN      theta_kB,MAX      theta_kB,AVG     theta_kB,STDEV
+;======================================================================================
+;   k_vec-0            80.098            85.878            82.049             1.663
+;   k_vec-1            67.403            74.282            70.311             1.926
+;   k_vec-2            59.430            65.160            61.380             1.694
+;   k_vec-3            52.481            57.808            54.144             1.609
+;   k_vec-4            85.524            89.997            88.764             1.317
+;   k_vec-5            82.855            89.173            85.253             1.756
+;   k_vec-6            66.631            79.444            71.363             4.007
+;   k_vec-7            75.490            85.119            79.877             2.717
+
+
+;
+; => For 10 Hz < f < 30 Hz on 1998-08-26
+;
+kvec0   = [ 0.97753,-0.19375, 0.08310]
+kvec1   = [ 0.98265,-0.18422, 0.02172]
+kvec2   = [ 0.98946,-0.09520,-0.10915]
+kvec3   = [-0.98757, 0.10656, 0.11557]
+kvec4   = [ 0.93488,-0.22788, 0.27217]
+kvec5   = [-0.93604, 0.22445,-0.27100]
+kvec6   = [-0.93492, 0.22550,-0.27399]
+kv_10_30  = CREATE_STRUCT(tags[0:6],kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6)
+np             = N_TAGS(kv_10_30)
+theta_kb_10_30 = DBLARR(nt,np)
+FOR j=0L, np - 1L DO BEGIN                    $
+  kvec    = REFORM(kv_10_30.(j))            & $
+  k_dot_b = my_dot_prod(bvec_tds,kvec,/NO)  & $
+  theta_kb_10_30[*,j] = ACOS(k_dot_b)*18d1/!DPI
+
+theta_kb_10_30_s = theta_kb_10_30 < (18d1 - theta_kb_10_30)
+theta_kb_10_30   = theta_kb_10_30_s
+
+FOR j=0L, np - 1L DO BEGIN                    $
+  jstr = 'k_vec-'+STRTRIM(j,2L)             & $
+  PRINT,FORMAT='(";",a10,4f18.3)',jstr[0],MIN(theta_kb_10_30[*,j],/NAN), $
+                                          MAX(theta_kb_10_30[*,j],/NAN), $
+                                         MEAN(theta_kb_10_30[*,j],/NAN), $
+                                       STDDEV(theta_kb_10_30[*,j],/NAN)
+;   Vector         theta_kB,MIN      theta_kB,MAX      theta_kB,AVG     theta_kB,STDEV
+;======================================================================================
+;   k_vec-0            70.207            80.804            76.373             3.188
+;   k_vec-1            69.997            81.327            76.811             3.482
+;   k_vec-2            73.601            86.384            81.734             4.093
+;   k_vec-3            72.890            85.724            81.073             4.119
+;   k_vec-4            70.850            78.955            74.811             2.274
+;   k_vec-5            71.025            79.155            75.008             2.281
+;   k_vec-6            71.010            79.096            74.954             2.267
+
+
+
+;
+; => For 40 Hz < f < 400 Hz on 1998-08-26
+;
+kvec0   = [-0.94571,-0.32443, 0.01933]
+kvec1   = [-0.95320,-0.30214, 0.01062]
+kvec2   = [-0.94307,-0.33022, 0.03975]
+kvec3   = [-0.95488,-0.29440, 0.03924]
+kvec4   = [ 0.22309,-0.97434,-0.02993]
+kvec5   = [ 0.22294,-0.97431,-0.03192]
+kvec6   = [ 0.22949,-0.97296,-0.02617]
+kvec7   = [-0.20060, 0.97763, 0.06322]
+kvec8   = [ 0.36635,-0.92961, 0.04006]
+kvec9   = [ 0.59689,-0.79017, 0.13910]
+kv_40_400  = CREATE_STRUCT(tags[0:9],kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,$
+                                     kvec7,kvec8,kvec9)
+np              = N_TAGS(kv_40_400)
+theta_kb_40_400 = DBLARR(nt,np)
+FOR j=0L, np - 1L DO BEGIN                     $
+  kvec    = REFORM(kv_40_400.(j))            & $
+  k_dot_b = my_dot_prod(bvec_tds,kvec,/NO)  & $
+  theta_kb_40_400[*,j] = ACOS(k_dot_b)*18d1/!DPI
+
+theta_kb_40_400_s = theta_kb_40_400 < (18d1 - theta_kb_40_400)
+theta_kb_40_400   = theta_kb_40_400_s
+
+FOR j=0L, np - 1L DO BEGIN                    $
+  jstr = 'k_vec-'+STRTRIM(j,2L)             & $
+  PRINT,FORMAT='(";",a10,4f18.3)',jstr[0],MIN(theta_kb_40_400[*,j],/NAN), $
+                                          MAX(theta_kb_40_400[*,j],/NAN), $
+                                         MEAN(theta_kb_40_400[*,j],/NAN), $
+                                       STDDEV(theta_kb_40_400[*,j],/NAN)
+;   Vector         theta_kB,MIN      theta_kB,MAX      theta_kB,AVG     theta_kB,STDEV
+;======================================================================================
+;   k_vec-0            69.156            81.493            73.847             3.801
+;   k_vec-1            70.494            82.717            75.172             3.755
+;   k_vec-2            68.820            81.370            73.528             3.895
+;   k_vec-3            70.980            83.482            75.678             3.882
+;   k_vec-4             8.282            15.732            11.706             2.692
+;   k_vec-5             8.228            15.780            11.691             2.732
+;   k_vec-6             8.712            15.964            12.044             2.648
+;   k_vec-7             6.320            15.663            10.593             3.348
+;   k_vec-8            17.563            23.616            20.094             2.259
+;   k_vec-9            32.955            39.886            36.052             2.154
+
+
+;
+; => For 60 Hz < f < 150 Hz on 1998-08-26
+;
+kvec0   = [ 0.23114,-0.97065,-0.06637]
+kv_60_150  = CREATE_STRUCT(tags[0],kvec0)
+np              = N_TAGS(kv_60_150)
+theta_kb_60_150 = DBLARR(nt,np)
+FOR j=0L, np - 1L DO BEGIN                     $
+  kvec    = REFORM(kv_60_150.(j))            & $
+  k_dot_b = my_dot_prod(bvec_tds,kvec,/NO)   & $
+  theta_kb_60_150[*,j] = ACOS(k_dot_b)*18d1/!DPI
+
+theta_kb_60_150_s = theta_kb_60_150 < (18d1 - theta_kb_60_150)
+theta_kb_60_150   = theta_kb_60_150_s
+
+FOR j=0L, np - 1L DO BEGIN                    $
+  jstr = 'k_vec-'+STRTRIM(j,2L)             & $
+  PRINT,FORMAT='(";",a10,4f18.3)',jstr[0],MIN(theta_kb_60_150[*,j],/NAN), $
+                                          MAX(theta_kb_60_150[*,j],/NAN), $
+                                         MEAN(theta_kb_60_150[*,j],/NAN), $
+                                       STDDEV(theta_kb_60_150[*,j],/NAN)
+;   Vector         theta_kB,MIN      theta_kB,MAX      theta_kB,AVG     theta_kB,STDEV
+;======================================================================================
+;   k_vec-0             7.775            17.237            12.119             3.529
+
+
+;
+; => For 60 Hz < f < 200 Hz on 1998-08-26
+;
+kvec0   = [-0.97078,-0.01012, 0.23974]
+kvec1   = [-0.65773, 0.44369,-0.60872]
+kvec2   = [-0.73401,-0.65436,-0.18178]
+kvec3   = [ 0.25802,-0.96360,-0.06999]
+kvec4   = [ 0.33709,-0.93821,-0.07830]
+kv_60_200  = CREATE_STRUCT(tags[0:4],kvec0,kvec1,kvec2,kvec3,kvec4)
+np              = N_TAGS(kv_60_200)
+theta_kb_60_200 = DBLARR(nt,np)
+FOR j=0L, np - 1L DO BEGIN                     $
+  kvec    = REFORM(kv_60_200.(j))            & $
+  k_dot_b = my_dot_prod(bvec_tds,kvec,/NO)   & $
+  theta_kb_60_200[*,j] = ACOS(k_dot_b)*18d1/!DPI
+
+theta_kb_60_200_s = theta_kb_60_200 < (18d1 - theta_kb_60_200)
+theta_kb_60_200   = theta_kb_60_200_s
+
+FOR j=0L, np - 1L DO BEGIN                    $
+  jstr = 'k_vec-'+STRTRIM(j,2L)             & $
+  PRINT,FORMAT='(";",a10,4f18.3)',jstr[0],MIN(theta_kb_60_200[*,j],/NAN), $
+                                          MAX(theta_kb_60_200[*,j],/NAN), $
+                                         MEAN(theta_kb_60_200[*,j],/NAN), $
+                                       STDDEV(theta_kb_60_200[*,j],/NAN)
+;   Vector         theta_kB,MIN      theta_kB,MAX      theta_kB,AVG     theta_kB,STDEV
+;======================================================================================
+;   k_vec-0            78.323            89.998            85.850             3.182
+;   k_vec-1            59.947            65.922            63.004             1.933
+;   k_vec-2            47.044            57.208            51.593             2.791
+;   k_vec-3             8.574            18.691            13.542             3.668
+;   k_vec-4            11.652            23.099            17.994             3.881
+
+
+;
+; => For 150 Hz < f < 200 Hz on 1998-08-26
+;
+kvec0   = [-0.07895,-0.99658, 0.02448]
+kvec1   = [-0.06465,-0.99725, 0.03609]
+kvec2   = [-0.02118,-0.99832, 0.05399]
+kvec3   = [-0.23192,-0.97041,-0.06713]
+kv_150_200  = CREATE_STRUCT(tags[0:3],kvec0,kvec1,kvec2,kvec3)
+np               = N_TAGS(kv_150_200)
+theta_kb_150_200 = DBLARR(nt,np)
+FOR j=0L, np - 1L DO BEGIN                      $
+  kvec    = REFORM(kv_150_200.(j))            & $
+  k_dot_b = my_dot_prod(bvec_tds,kvec,/NO)    & $
+  theta_kb_150_200[*,j] = ACOS(k_dot_b)*18d1/!DPI
+
+theta_kb_150_200_s = theta_kb_150_200 < (18d1 - theta_kb_150_200)
+theta_kb_150_200   = theta_kb_150_200_s
+
+FOR j=0L, np - 1L DO BEGIN                    $
+  jstr = 'k_vec-'+STRTRIM(j,2L)             & $
+  PRINT,FORMAT='(";",a10,4f18.3)',jstr[0],MIN(theta_kb_150_200[*,j],/NAN), $
+                                          MAX(theta_kb_150_200[*,j],/NAN), $
+                                         MEAN(theta_kb_150_200[*,j],/NAN), $
+                                       STDDEV(theta_kb_150_200[*,j],/NAN)
+;   Vector         theta_kB,MIN      theta_kB,MAX      theta_kB,AVG     theta_kB,STDEV
+;======================================================================================
+;   k_vec-0             3.306            19.115             8.778             4.912
+;   k_vec-1             2.685            18.962             8.266             5.125
+;   k_vec-2             0.071            18.052             7.013             5.376
+;   k_vec-3            11.876            24.361            17.098             3.332
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Plot histograms of angular spread
+;-----------------------------------------------------------------------------------------
+
+; => For  4 Hz < f < 20 Hz on 1998-08-26
+theta_kb0826_04_20 = [54.37]
+theta_kn0826_04_20 = [39.17]
+theta_kv0826_04_20 = [40.99]
+
+; => For  7 Hz < f < 30 Hz on 1998-08-26
+theta_kb0826_07_30 = [81.18,69.13,60.84,54.07,89.27,84.18,69.31,76.27]
+theta_kn0826_07_30 = [22.35,31.76,34.36,38.96,22.84,23.81,56.86,39.30]
+theta_kv0826_07_30 = [28.81,27.71,35.92,41.89,28.14,26.63,22.40,18.94]
+
+; => For 10 Hz < f < 30 Hz on 1998-08-26
+theta_kb0826_10_30 = [73.85,73.73,77.32,76.59,77.00,76.29,76.03]
+theta_kn0826_10_30 = [44.71,48.13,55.28,55.67,34.24,34.27,34.11]
+theta_kv0826_10_30 = [12.06,10.16, 6.84, 7.57,21.33,21.15,21.34]
+
+; => For 40 Hz < f < 400 Hz on 1998-08-26
+theta_kb0826_40_400 = [77.59,79.09,77.29,79.60,15.20,15.22,15.53,14.38,23.61,39.52]
+theta_kn0826_40_400 = [53.71,52.82,54.93,54.26,80.65,80.74,80.24,82.94,72.10,58.17]
+theta_kv0826_40_400 = [19.71,18.38,20.09,17.93,76.30,76.30,75.92,77.57,67.79,52.82]
+
+; => For 60 Hz < f < 150 Hz on 1998-08-26
+theta_kb0826_60_150 = [16.19]
+theta_kn0826_60_150 = [81.94]
+theta_kv0826_60_150 = [75.77]
+
+; => For 60 Hz < f < 200 Hz on 1998-08-26
+theta_kb0826_60_200 = [84.31,58.76,51.12,17.70,21.64]
+theta_kn0826_60_200 = [62.95,24.83,53.72,81.10,78.50]
+theta_kv0826_60_200 = [12.65,49.48,43.88,74.18,69.42]
+
+; => For 150 Hz < f < 200 Hz on 1998-08-26
+theta_kb0826_150_200 = [10.12, 9.70, 9.22,17.81]
+theta_kn0826_150_200 = [89.62,88.58,86.17,80.58]
+theta_kv0826_150_200 = [86.22,87.02,89.49,77.46]
+
+; => look at low freq. and high freq. separately
+every_theta_kb_lf   = [theta_kb0826_04_20,theta_kb0826_07_30,theta_kb0826_10_30]
+every_theta_kn_lf   = [theta_kn0826_04_20,theta_kn0826_07_30,theta_kn0826_10_30]
+every_theta_kv_lf   = [theta_kv0826_04_20,theta_kv0826_07_30,theta_kv0826_10_30]
+
+every_theta_kb_hf   = [theta_kb0826_60_150,theta_kb0826_60_200,theta_kb0826_150_200]
+every_theta_kn_hf   = [theta_kn0826_60_150,theta_kn0826_60_200,theta_kn0826_150_200]
+every_theta_kv_hf   = [theta_kv0826_60_150,theta_kv0826_60_200,theta_kv0826_150_200]
+
+every_theta_kb      = [theta_kb0826_07_30,theta_kb0826_10_30,theta_kb0826_40_400,$
+                       theta_kb0826_60_150,theta_kb0826_60_200,theta_kb0826_150_200]
+every_theta_kn      = [theta_kn0826_07_30,theta_kn0826_10_30,theta_kn0826_40_400,$
+                       theta_kn0826_60_150,theta_kn0826_60_200,theta_kn0826_150_200]
+every_theta_kv      = [theta_kv0826_07_30,theta_kv0826_10_30,theta_kv0826_40_400,$
+                       theta_kv0826_60_150,theta_kv0826_60_200,theta_kv0826_150_200]
+
+
+httleb = '!7h!3!DkB!N for 1998-08-26 (All Freqs)'
+hxttlb = '!7h!3!DkB!N (deg)'
+fpref  = 'TDSS_1998-08-26_0640x26-120_'
+fname  = fpref[0]+'All-Theta-kB'
+popen,fname[0],/LAND
+  my_histogram_plot,every_theta_kb,NBINS=7L,XTTL=hxttlb,TTLE=httleb,DRANGE=[0.,90.]
+pclose
+
+httleb = '!7h!3!Dkn!N for 1998-08-26 (All Freqs)'
+hxttlb = '!7h!3!Dkn!N (deg)'
+fname  = fpref[0]+'All-Theta-kn'
+popen,fname[0],/LAND
+  my_histogram_plot,every_theta_kn,NBINS=7L,XTTL=hxttlb,TTLE=httleb,DRANGE=[0.,90.]
+pclose
+
+httleb = '!7h!3!Dkv!N for 1998-08-26 (All Freqs)'
+hxttlb = '!7h!3!Dkv!N (deg)'
+fname  = fpref[0]+'All-Theta-kV'
+popen,fname[0],/LAND
+  my_histogram_plot,every_theta_kv,NBINS=7L,XTTL=hxttlb,TTLE=httleb,DRANGE=[0.,90.]
+pclose
+
+
+httleb = '!7h!3!DkB!N for 1998-08-26 (Low Freqs)'
+hxttlb = '!7h!3!DkB!N (deg)'
+fpref  = 'TDSS_1998-08-26_0640x26-120_'
+fname  = fpref[0]+'LowF-Theta-kB'
+popen,fname[0],/LAND
+  my_histogram_plot,every_theta_kb_lf,NBINS=7L,XTTL=hxttlb,TTLE=httleb,DRANGE=[0.,90.]
+pclose
+
+httleb = '!7h!3!Dkn!N for 1998-08-26 (Low Freqs)'
+hxttlb = '!7h!3!Dkn!N (deg)'
+fpref  = 'TDSS_1998-08-26_0640x26-120_'
+fname  = fpref[0]+'LowF-Theta-kn'
+popen,fname[0],/LAND
+  my_histogram_plot,every_theta_kn_lf,NBINS=7L,XTTL=hxttlb,TTLE=httleb,DRANGE=[0.,90.]
+pclose
+
+httleb = '!7h!3!DkV!N for 1998-08-26 (Low Freqs)'
+hxttlb = '!7h!3!DkV!N (deg)'
+fpref  = 'TDSS_1998-08-26_0640x26-120_'
+fname  = fpref[0]+'LowF-Theta-kV'
+popen,fname[0],/LAND
+  my_histogram_plot,every_theta_kv_lf,NBINS=7L,XTTL=hxttlb,TTLE=httleb,DRANGE=[0.,90.]
+pclose
+
+
+httleb = '!7h!3!DkB!N for 1998-08-26 (High Freqs)'
+hxttlb = '!7h!3!DkB!N (deg)'
+fpref  = 'TDSS_1998-08-26_0640x26-120_'
+fname  = fpref[0]+'HighF-Theta-kB'
+popen,fname[0],/LAND
+  my_histogram_plot,every_theta_kb_hf,NBINS=7L,XTTL=hxttlb,TTLE=httleb,DRANGE=[0.,90.]
+pclose
+
+httleb = '!7h!3!Dkn!N for 1998-08-26 (High Freqs)'
+hxttlb = '!7h!3!Dkn!N (deg)'
+fpref  = 'TDSS_1998-08-26_0640x26-120_'
+fname  = fpref[0]+'HighF-Theta-kn'
+popen,fname[0],/LAND
+  my_histogram_plot,every_theta_kn_hf,NBINS=7L,XTTL=hxttlb,TTLE=httleb,DRANGE=[0.,90.]
+pclose
+
+httleb = '!7h!3!DkV!N for 1998-08-26 (High Freqs)'
+hxttlb = '!7h!3!DkV!N (deg)'
+fpref  = 'TDSS_1998-08-26_0640x26-120_'
+fname  = fpref[0]+'HighF-Theta-kV'
+popen,fname[0],/LAND
+  my_histogram_plot,every_theta_kv_hf,NBINS=7L,XTTL=hxttlb,TTLE=httleb,DRANGE=[0.,90.]
+pclose
+
+;-----------------------------------------------------------------------------------------
+; => Look at Fluid parameter estimates
+;-----------------------------------------------------------------------------------------
+ppt      = 2.0
+n        = 100L
+u        = DINDGEN(n)*2d0*!DPI/(n - 1L)
+v        = DINDGEN(n)*1d0*!DPI/(n - 1L)
+x_n      = DBLARR(n)
+yxn      = DBLARR(n)              ; => Y on Y-Axis
+yzn      = DBLARR(n)              ; => Y on X-Axis
+z_n      = DBLARR(n)
+x_v      = DBLARR(n)
+yxv      = DBLARR(n)              ; => Y on Y-Axis
+yzv      = DBLARR(n)              ; => Y on X-Axis
+z_v      = DBLARR(n)
+
+; => Upstream solar wind from JCK's site
+vo       = [-463.50,-2.3000,23.400]
+v1       = [ 4.4000, 2.5000, 4.400]
+mgo      = SQRT(TOTAL(vo^2,/NAN))
+mg1      = SQRT(TOTAL(v1^2,/NAN))
+vo       = vo/mgo[0]              ; => re-normalize
+v1       = v1/mg1[0]              ; => re-normalize
+x_v      = v1[0]*COS(u) + vo[0]
+yxv      = v1[1]*SIN(u) + vo[1]
+yzv      = v1[1]*COS(u) + vo[1]
+z_v      = v1[2]*SIN(u) + vo[2]
+
+; => RH09 Methods for nvec
+no       = [-0.820,0.138,0.553]
+n1       = [ 0.040,0.070,0.448]
+mgo      = SQRT(TOTAL(no^2,/NAN))
+mg1      = SQRT(TOTAL(n1^2,/NAN))
+no       = no/mgo[0]              ; => re-normalize
+n1       = n1/mg1[0]              ; => re-normalize
+x_n      = n1[0]*COS(u) + no[0]
+yxn      = n1[1]*SIN(u) + no[1]
+yzn      = n1[1]*COS(u) + no[1]
+z_n      = n1[2]*SIN(u) + no[2]
+
+!P.MULTI    = 0
+!P.CHARSIZE = 1.5
+plim     = {NODATA:1,YRANGE:[-2.,2.],XRANGE:[-2.,2.],XSTYLE:1,YSTYLE:1}
+WINDOW,1,XSIZE=300,YSIZE=900,RETAIN=2 
+!P.MULTI = [0,1,3]
+
+tags     = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9']
+fpref    = 'k_vector-Uncert_RH09-Shock-Normal_Vsw-Upstream_lhw_1998-08-26_0640x26-120_filt-'
+;
+; => For  7 Hz < f < 30 Hz on 1998-08-26
+;
+kvec0   = [ 0.88528,-0.11080, 0.45167]
+kvec1   = [ 0.88917,-0.30740, 0.33895]
+kvec2   = [-0.81224, 0.45489,-0.36516]
+kvec3   = [-0.74506, 0.56526,-0.35408]
+kvec4   = [ 0.89282, 0.03908, 0.44872]
+kvec5   = [ 0.90320,-0.05326, 0.42590]
+kvec6   = [-0.92841,-0.36634, 0.06200]
+kvec7   = [ 0.95386, 0.21550, 0.20907]
+dkvec0  = ABS([-0.03504,-0.05796, 0.05446])
+dkvec1  = ABS([-0.03915,-0.05047, 0.05694])
+dkvec2  = ABS([ 0.00620,-0.03021,-0.05143])
+dkvec3  = ABS([-0.02192,-0.03239,-0.00559])
+dkvec4  = ABS([-0.02448,-0.04473, 0.05260])
+dkvec5  = ABS([-0.03234,-0.06077, 0.06097])
+dkvec6  = ABS([-0.01898, 0.03965,-0.04999])
+dkvec7  = ABS([-0.01783, 0.04634, 0.03359])
+kv_07_30  = CREATE_STRUCT(tags[0:7],kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7)
+dkv_07_30 = CREATE_STRUCT(tags[0:7],dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,dkvec6,dkvec7)
+ko_07_30  = FLTARR(N_TAGS(kv_07_30),3L)
+k1_07_30  = FLTARR(N_TAGS(kv_07_30),3L)
+; => Define ellipses in each plane
+x_k_07_30 = DBLARR(n,N_TAGS(kv_07_30))
+yxk_07_30 = DBLARR(n,N_TAGS(kv_07_30))              ; => Y on Y-Axis
+yzk_07_30 = DBLARR(n,N_TAGS(kv_07_30))              ; => Y on X-Axis
+z_k_07_30 = DBLARR(n,N_TAGS(kv_07_30))
+FOR j=0L, N_TAGS(kv_07_30) - 1L DO BEGIN     $
+  ko = REFORM(kv_07_30.(j))                & $
+  k1 = REFORM(dkv_07_30.(j))               & $
+  mgo = SQRT(TOTAL(ko^2,/NAN))             & $
+  mg1 = SQRT(TOTAL(k1^2,/NAN))             & $
+  ko             = ko/mgo[0]               & $
+  k1             = k1/mg1[0]               & $
+  ko_07_30[j,*]  = ko                      & $
+  k1_07_30[j,*]  = k1                      & $
+  x_k_07_30[*,j] = k1[0]*COS(u) + ko[0]    & $
+  yxk_07_30[*,j] = k1[1]*SIN(u) + ko[1]    & $
+  yzk_07_30[*,j] = k1[1]*COS(u) + ko[1]    & $
+  z_k_07_30[*,j] = k1[2]*SIN(u) + ko[2]
+
+fsuffx  = '07-30Hz'
+str_element,plim,'TITLE','TDSS B-field [MVA] at: 06:40:26.120, Filtered 7 - 30 Hz',/ADD_REPLACE
+j       = 0L
+np      = N_TAGS(kv_07_30)
+xx      = x_k_07_30
+yx      = yxk_07_30
+yz      = yzk_07_30
+zz      = z_k_07_30
+popen,fpref[0]+fsuffx[0],/PORT
+  PLOT,xx[*,j],yx[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],yx[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,yxn,COLOR=150L,THICK=ppt
+    OPLOT,x_v,yxv,COLOR= 50L,THICK=ppt
+  PLOT,xx[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,z_n,COLOR=150L,THICK=ppt
+    OPLOT,x_v,z_v,COLOR= 50L,THICK=ppt
+  PLOT,yz[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,yz[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,yzn,z_n,COLOR=150L,THICK=ppt
+    OPLOT,yzv,z_v,COLOR= 50L,THICK=ppt
+pclose
+
+;
+; => For 10 Hz < f < 30 Hz on 1998-08-26
+;
+kvec0   = [ 0.97753,-0.19375, 0.08310]
+kvec1   = [ 0.98265,-0.18422, 0.02172]
+kvec2   = [ 0.98946,-0.09520,-0.10915]
+kvec3   = [-0.98757, 0.10656, 0.11557]
+kvec4   = [ 0.93488,-0.22788, 0.27217]
+kvec5   = [-0.93604, 0.22445,-0.27100]
+kvec6   = [-0.93492, 0.22550,-0.27399]
+dkvec0  = ABS([-0.00665,-0.00128, 0.07518])
+dkvec1  = ABS([-0.00782,-0.03884, 0.02431])
+dkvec2  = ABS([-0.00500, 0.00884,-0.05302])
+dkvec3  = ABS([-0.00677,-0.00366,-0.05443])
+dkvec4  = ABS([-0.02194,-0.05694, 0.02767])
+dkvec5  = ABS([ 0.01134,-0.02418,-0.05919])
+dkvec6  = ABS([ 0.01123,-0.02178,-0.05623])
+kv_10_30  = CREATE_STRUCT(tags[0:6],kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6)
+dkv_10_30 = CREATE_STRUCT(tags[0:6],dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,dkvec6)
+ko_10_30  = FLTARR(N_TAGS(kv_10_30),3L)
+k1_10_30  = FLTARR(N_TAGS(kv_10_30),3L)
+; => Define ellipses in each plane
+x_k_10_30 = DBLARR(n,N_TAGS(kv_10_30))
+yxk_10_30 = DBLARR(n,N_TAGS(kv_10_30))              ; => Y on Y-Axis
+yzk_10_30 = DBLARR(n,N_TAGS(kv_10_30))              ; => Y on X-Axis
+z_k_10_30 = DBLARR(n,N_TAGS(kv_10_30))
+FOR j=0L, N_TAGS(kv_10_30) - 1L DO BEGIN     $
+  ko = REFORM(kv_10_30.(j))                & $
+  k1 = REFORM(dkv_10_30.(j))               & $
+  mgo = SQRT(TOTAL(ko^2,/NAN))             & $
+  mg1 = SQRT(TOTAL(k1^2,/NAN))             & $
+  ko             = ko/mgo[0]               & $
+  k1             = k1/mg1[0]               & $
+  ko_10_30[j,*]  = ko                      & $
+  k1_10_30[j,*]  = k1                      & $
+  x_k_10_30[*,j] = k1[0]*COS(u) + ko[0]    & $
+  yxk_10_30[*,j] = k1[1]*SIN(u) + ko[1]    & $
+  yzk_10_30[*,j] = k1[1]*COS(u) + ko[1]    & $
+  z_k_10_30[*,j] = k1[2]*SIN(u) + ko[2]
+
+fsuffx  = '10-30Hz'
+str_element,plim,'TITLE','TDSS B-field [MVA] at: 06:40:26.120, Filtered 10 - 30 Hz',/ADD_REPLACE
+j       = 0L
+np      = N_TAGS(kv_10_30)
+xx      = x_k_10_30
+yx      = yxk_10_30
+yz      = yzk_10_30
+zz      = z_k_10_30
+popen,fpref[0]+fsuffx[0],/PORT
+  PLOT,xx[*,j],yx[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],yx[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,yxn,COLOR=150L,THICK=ppt
+    OPLOT,x_v,yxv,COLOR= 50L,THICK=ppt
+  PLOT,xx[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,z_n,COLOR=150L,THICK=ppt
+    OPLOT,x_v,z_v,COLOR= 50L,THICK=ppt
+  PLOT,yz[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,yz[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,yzn,z_n,COLOR=150L,THICK=ppt
+    OPLOT,yzv,z_v,COLOR= 50L,THICK=ppt
+pclose
+
+
+;
+; => For 40 Hz < f < 400 Hz on 1998-08-26
+;
+kvec0   = [-0.94571,-0.32443, 0.01933]
+kvec1   = [-0.95320,-0.30214, 0.01062]
+kvec2   = [-0.94307,-0.33022, 0.03975]
+kvec3   = [-0.95488,-0.29440, 0.03924]
+kvec4   = [ 0.22309,-0.97434,-0.02993]
+kvec5   = [ 0.22294,-0.97431,-0.03192]
+kvec6   = [ 0.22949,-0.97296,-0.02617]
+kvec7   = [-0.20060, 0.97763, 0.06322]
+kvec8   = [ 0.36635,-0.92961, 0.04006]
+kvec9   = [ 0.59689,-0.79017, 0.13910]
+dkvec0  = ABS([-0.04173, 0.12032,-0.02218])
+dkvec1  = ABS([-0.03750, 0.11771,-0.01693])
+dkvec2  = ABS([-0.04004, 0.11090,-0.02855])
+dkvec3  = ABS([-0.03362, 0.10724,-0.01358])
+dkvec4  = ABS([-0.15903,-0.03579,-0.02029])
+dkvec5  = ABS([-0.15633,-0.03512,-0.02003])
+dkvec6  = ABS([-0.15073,-0.03509,-0.01728])
+dkvec7  = ABS([-0.12370,-0.02084,-0.07024])
+dkvec8  = ABS([-0.09519,-0.03875,-0.02858])
+dkvec9  = ABS([-0.09497,-0.07605,-0.02450])
+kv_40_400  = CREATE_STRUCT(tags[0:9],kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,$
+                                     kvec7,kvec8,kvec9)
+dkv_40_400 = CREATE_STRUCT(tags[0:9],dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,$
+                                     dkvec6,dkvec7,dkvec8,dkvec9)
+ko_40_400  = FLTARR(N_TAGS(kv_40_400),3L)
+k1_40_400  = FLTARR(N_TAGS(kv_40_400),3L)
+; => Define ellipses in each plane
+x_k_40_400 = DBLARR(n,N_TAGS(kv_40_400))
+yxk_40_400 = DBLARR(n,N_TAGS(kv_40_400))              ; => Y on Y-Axis
+yzk_40_400 = DBLARR(n,N_TAGS(kv_40_400))              ; => Y on X-Axis
+z_k_40_400 = DBLARR(n,N_TAGS(kv_40_400))
+FOR j=0L, N_TAGS(kv_40_400) - 1L DO BEGIN     $
+  ko = REFORM(kv_40_400.(j))                & $
+  k1 = REFORM(dkv_40_400.(j))               & $
+  mgo = SQRT(TOTAL(ko^2,/NAN))              & $
+  mg1 = SQRT(TOTAL(k1^2,/NAN))              & $
+  ko             = ko/mgo[0]                & $
+  k1             = k1/mg1[0]                & $
+  ko_40_400[j,*]  = ko                      & $
+  k1_40_400[j,*]  = k1                      & $
+  x_k_40_400[*,j] = k1[0]*COS(u) + ko[0]    & $
+  yxk_40_400[*,j] = k1[1]*SIN(u) + ko[1]    & $
+  yzk_40_400[*,j] = k1[1]*COS(u) + ko[1]    & $
+  z_k_40_400[*,j] = k1[2]*SIN(u) + ko[2]
+
+fsuffx  = '40-400Hz'
+str_element,plim,'TITLE','TDSS B-field [MVA] at: 06:40:26.120, Filtered 40 - 400 Hz',/ADD_REPLACE
+j       = 0L
+np      = N_TAGS(kv_40_400)
+xx      = x_k_40_400
+yx      = yxk_40_400
+yz      = yzk_40_400
+zz      = z_k_40_400
+popen,fpref[0]+fsuffx[0],/PORT
+  PLOT,xx[*,j],yx[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],yx[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,yxn,COLOR=150L,THICK=ppt
+    OPLOT,x_v,yxv,COLOR= 50L,THICK=ppt
+  PLOT,xx[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,z_n,COLOR=150L,THICK=ppt
+    OPLOT,x_v,z_v,COLOR= 50L,THICK=ppt
+  PLOT,yz[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,yz[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,yzn,z_n,COLOR=150L,THICK=ppt
+    OPLOT,yzv,z_v,COLOR= 50L,THICK=ppt
+pclose
+
+
+
+;
+; => For 60 Hz < f < 150 Hz on 1998-08-26
+;
+kvec0   = [ 0.23114,-0.97065,-0.06637]
+dkvec0  = ABS([ 0.03147, 0.01336,-0.08582])
+kv_60_150  = CREATE_STRUCT(tags[0],kvec0)
+dkv_60_150 = CREATE_STRUCT(tags[0],dkvec0)
+ko_60_150  = FLTARR(N_TAGS(kv_60_150),3L)
+k1_60_150  = FLTARR(N_TAGS(kv_60_150),3L)
+; => Define ellipses in each plane
+x_k_60_150 = DBLARR(n,N_TAGS(kv_60_150))
+yxk_60_150 = DBLARR(n,N_TAGS(kv_60_150))              ; => Y on Y-Axis
+yzk_60_150 = DBLARR(n,N_TAGS(kv_60_150))              ; => Y on X-Axis
+z_k_60_150 = DBLARR(n,N_TAGS(kv_60_150))
+FOR j=0L, N_TAGS(kv_60_150) - 1L DO BEGIN     $
+  ko = REFORM(kv_60_150.(j))                & $
+  k1 = REFORM(dkv_60_150.(j))               & $
+  mgo = SQRT(TOTAL(ko^2,/NAN))              & $
+  mg1 = SQRT(TOTAL(k1^2,/NAN))              & $
+  ko             = ko/mgo[0]                & $
+  k1             = k1/mg1[0]                & $
+  ko_60_150[j,*]  = ko                      & $
+  k1_60_150[j,*]  = k1                      & $
+  x_k_60_150[*,j] = k1[0]*COS(u) + ko[0]    & $
+  yxk_60_150[*,j] = k1[1]*SIN(u) + ko[1]    & $
+  yzk_60_150[*,j] = k1[1]*COS(u) + ko[1]    & $
+  z_k_60_150[*,j] = k1[2]*SIN(u) + ko[2]
+
+fsuffx  = '60-150Hz'
+str_element,plim,'TITLE','TDSS B-field [MVA] at: 06:40:26.120, Filtered 60 - 150 Hz',/ADD_REPLACE
+j       = 0L
+np      = N_TAGS(kv_60_150)
+xx      = x_k_60_150
+yx      = yxk_60_150
+yz      = yzk_60_150
+zz      = z_k_60_150
+popen,fpref[0]+fsuffx[0],/PORT
+  PLOT,xx[*,j],yx[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],yx[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,yxn,COLOR=150L,THICK=ppt
+    OPLOT,x_v,yxv,COLOR= 50L,THICK=ppt
+  PLOT,xx[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,z_n,COLOR=150L,THICK=ppt
+    OPLOT,x_v,z_v,COLOR= 50L,THICK=ppt
+  PLOT,yz[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,yz[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,yzn,z_n,COLOR=150L,THICK=ppt
+    OPLOT,yzv,z_v,COLOR= 50L,THICK=ppt
+pclose
+
+
+
+;
+; => For 60 Hz < f < 200 Hz on 1998-08-26
+;
+kvec0   = [-0.97078,-0.01012, 0.23974]
+kvec1   = [-0.65773, 0.44369,-0.60872]
+kvec2   = [-0.73401,-0.65436,-0.18178]
+kvec3   = [ 0.25802,-0.96360,-0.06999]
+kvec4   = [ 0.33709,-0.93821,-0.07830]
+dkvec0  = ABS([-0.01132,-0.09477,-0.04984])
+dkvec1  = ABS([-0.10201, 0.01209, 0.11904])
+dkvec2  = ABS([ 0.10027,-0.09905,-0.04833])
+dkvec3  = ABS([ 0.02237, 0.01152,-0.07610])
+dkvec4  = ABS([-0.11340,-0.03991,-0.00999])
+kv_60_200  = CREATE_STRUCT(tags[0:4],kvec0,kvec1,kvec2,kvec3,kvec4)
+dkv_60_200 = CREATE_STRUCT(tags[0:4],dkvec0,dkvec1,dkvec2,dkvec3,dkvec4)
+ko_60_200  = FLTARR(N_TAGS(kv_60_200),3L)
+k1_60_200  = FLTARR(N_TAGS(kv_60_200),3L)
+; => Define ellipses in each plane
+x_k_60_200 = DBLARR(n,N_TAGS(kv_60_200))
+yxk_60_200 = DBLARR(n,N_TAGS(kv_60_200))              ; => Y on Y-Axis
+yzk_60_200 = DBLARR(n,N_TAGS(kv_60_200))              ; => Y on X-Axis
+z_k_60_200 = DBLARR(n,N_TAGS(kv_60_200))
+FOR j=0L, N_TAGS(kv_60_200) - 1L DO BEGIN     $
+  ko = REFORM(kv_60_200.(j))                & $
+  k1 = REFORM(dkv_60_200.(j))               & $
+  mgo = SQRT(TOTAL(ko^2,/NAN))              & $
+  mg1 = SQRT(TOTAL(k1^2,/NAN))              & $
+  ko             = ko/mgo[0]                & $
+  k1             = k1/mg1[0]                & $
+  ko_60_200[j,*]  = ko                      & $
+  k1_60_200[j,*]  = k1                      & $
+  x_k_60_200[*,j] = k1[0]*COS(u) + ko[0]    & $
+  yxk_60_200[*,j] = k1[1]*SIN(u) + ko[1]    & $
+  yzk_60_200[*,j] = k1[1]*COS(u) + ko[1]    & $
+  z_k_60_200[*,j] = k1[2]*SIN(u) + ko[2]
+
+fsuffx  = '60-200Hz'
+str_element,plim,'TITLE','TDSS B-field [MVA] at: 06:40:26.120, Filtered 60 - 200 Hz',/ADD_REPLACE
+j       = 0L
+np      = N_TAGS(kv_60_200)
+xx      = x_k_60_200
+yx      = yxk_60_200
+yz      = yzk_60_200
+zz      = z_k_60_200
+popen,fpref[0]+fsuffx[0],/PORT
+  PLOT,xx[*,j],yx[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],yx[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,yxn,COLOR=150L,THICK=ppt
+    OPLOT,x_v,yxv,COLOR= 50L,THICK=ppt
+  PLOT,xx[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,z_n,COLOR=150L,THICK=ppt
+    OPLOT,x_v,z_v,COLOR= 50L,THICK=ppt
+  PLOT,yz[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,yz[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,yzn,z_n,COLOR=150L,THICK=ppt
+    OPLOT,yzv,z_v,COLOR= 50L,THICK=ppt
+pclose
+
+
+
+;
+; => For 150 Hz < f < 200 Hz on 1998-08-26
+;
+kvec0   = [-0.07895,-0.99658, 0.02448]
+kvec1   = [-0.06465,-0.99725, 0.03609]
+kvec2   = [-0.02118,-0.99832, 0.05399]
+kvec3   = [-0.23192,-0.97041,-0.06713]
+dkvec0  = ABS([-0.14507, 0.01149,-0.00021])
+dkvec1  = ABS([-0.11917, 0.00769,-0.00093])
+dkvec2  = ABS([-0.09552, 0.00249, 0.00865])
+dkvec3  = ABS([ 0.09161,-0.02766, 0.08330])
+kv_150_200  = CREATE_STRUCT(tags[0:3],kvec0,kvec1,kvec2,kvec3)
+dkv_150_200 = CREATE_STRUCT(tags[0:3],dkvec0,dkvec1,dkvec2,dkvec3)
+ko_150_200  = FLTARR(N_TAGS(kv_150_200),3L)
+k1_150_200  = FLTARR(N_TAGS(kv_150_200),3L)
+; => Define ellipses in each plane
+x_k_150_200 = DBLARR(n,N_TAGS(kv_150_200))
+yxk_150_200 = DBLARR(n,N_TAGS(kv_150_200))              ; => Y on Y-Axis
+yzk_150_200 = DBLARR(n,N_TAGS(kv_150_200))              ; => Y on X-Axis
+z_k_150_200 = DBLARR(n,N_TAGS(kv_150_200))
+FOR j=0L, N_TAGS(kv_150_200) - 1L DO BEGIN     $
+  ko = REFORM(kv_150_200.(j))                & $
+  k1 = REFORM(dkv_150_200.(j))               & $
+  mgo = SQRT(TOTAL(ko^2,/NAN))              & $
+  mg1 = SQRT(TOTAL(k1^2,/NAN))              & $
+  ko             = ko/mgo[0]                & $
+  k1             = k1/mg1[0]                & $
+  ko_150_200[j,*]  = ko                      & $
+  k1_150_200[j,*]  = k1                      & $
+  x_k_150_200[*,j] = k1[0]*COS(u) + ko[0]    & $
+  yxk_150_200[*,j] = k1[1]*SIN(u) + ko[1]    & $
+  yzk_150_200[*,j] = k1[1]*COS(u) + ko[1]    & $
+  z_k_150_200[*,j] = k1[2]*SIN(u) + ko[2]
+
+fsuffx  = '150-200Hz'
+str_element,plim,'TITLE','TDSS B-field [MVA] at: 06:40:26.120, Filtered 150 - 200 Hz',/ADD_REPLACE
+j       = 0L
+np      = N_TAGS(kv_150_200)
+xx      = x_k_150_200
+yx      = yxk_150_200
+yz      = yzk_150_200
+zz      = z_k_150_200
+popen,fpref[0]+fsuffx[0],/PORT
+  PLOT,xx[*,j],yx[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],yx[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,yxn,COLOR=150L,THICK=ppt
+    OPLOT,x_v,yxv,COLOR= 50L,THICK=ppt
+  PLOT,xx[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,xx[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,x_n,z_n,COLOR=150L,THICK=ppt
+    OPLOT,x_v,z_v,COLOR= 50L,THICK=ppt
+  PLOT,yz[*,j],zz[*,j],_EXTRA=plim
+    XYOUTS,-1.8, 1.75,'k-vector',         COLOR=250,/DATA
+    XYOUTS, 1.3, 1.7,'Z vs. Y',           COLOR=250,/DATA
+    XYOUTS,-1.8, 1.5,'shock normal',      COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'V!Dsw!N Upstream', COLOR= 50,/DATA
+    FOR k=0L, np - 1L DO BEGIN                                     $
+      OPLOT,yz[*,k],zz[*,k],COLOR=250L,THICK=ppt                 & $
+    ENDFOR                                                       & $
+    OPLOT,yzn,z_n,COLOR=150L,THICK=ppt
+    OPLOT,yzv,z_v,COLOR= 50L,THICK=ppt
+pclose
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Compare RH08 and RH09 results and JCK's Vsw with my Vsw
+;-----------------------------------------------------------------------------------------
+ppt      = 2.0
+n        = 100L
+u        = DINDGEN(n)*2d0*!DPI/(n - 1L)
+v        = DINDGEN(n)*1d0*!DPI/(n - 1L)
+x_n      = DBLARR(n)
+yxn      = DBLARR(n)              ; => Y on Y-Axis
+yzn      = DBLARR(n)              ; => Y on X-Axis
+z_n      = DBLARR(n)
+x_v      = DBLARR(n)
+yxv      = DBLARR(n)              ; => Y on Y-Axis
+yzv      = DBLARR(n)              ; => Y on X-Axis
+z_v      = DBLARR(n)
+
+; => Upstream solar wind from JCK's site
+vo       = [-463.50,-2.3000,23.400]
+v1       = [ 4.4000, 2.5000, 4.400]
+mgo      = SQRT(TOTAL(vo^2,/NAN))
+mg1      = SQRT(TOTAL(v1^2,/NAN))
+vo       = vo/mgo[0]              ; => re-normalize
+v1       = v1/mg1[0]              ; => re-normalize
+x_v      = v1[0]*COS(u) + vo[0]
+yxv      = v1[1]*SIN(u) + vo[1]
+yzv      = v1[1]*COS(u) + vo[1]
+z_v      = v1[2]*SIN(u) + vo[2]
+
+; => Upstream solar wind from my 3DP estimate site
+vo2      = [-484.565, 6.580,10.997]
+v12      = ABS(vo2)*[25d-3,3d-1,3d-1]
+mgo2     = SQRT(TOTAL(vo2^2,/NAN))
+mg12     = SQRT(TOTAL(v12^2,/NAN))
+vo2      = vo2/mgo2[0]              ; => re-normalize
+v12      = v12/mg12[0]              ; => re-normalize
+x_v2     = v12[0]*COS(u) + vo2[0]
+yxv2     = v12[1]*SIN(u) + vo2[1]
+yzv2     = v12[1]*COS(u) + vo2[1]
+z_v2     = v12[2]*SIN(u) + vo2[2]
+
+; => RH08 Methods for nvec
+no       = [-0.655,0.040,-0.754]
+n1       = [ 0.010,0.009, 0.561]
+mgo      = SQRT(TOTAL(no^2,/NAN))
+mg1      = SQRT(TOTAL(n1^2,/NAN))
+no       = no/mgo[0]              ; => re-normalize
+n1       = n1/mg1[0]              ; => re-normalize
+x_n      = n1[0]*COS(u) + no[0]
+yxn      = n1[1]*SIN(u) + no[1]
+yzn      = n1[1]*COS(u) + no[1]
+z_n      = n1[2]*SIN(u) + no[2]
+
+; => RH09 Methods for nvec
+no2      = [-0.820,0.138,0.553]
+n12      = [ 0.040,0.070,0.448]
+mgo2     = SQRT(TOTAL(no2^2,/NAN))
+mg12     = SQRT(TOTAL(n12^2,/NAN))
+no2      = no2/mgo2[0]              ; => re-normalize
+n12      = n12/mg12[0]              ; => re-normalize
+x_n2     = n12[0]*COS(u) + no2[0]
+yxn2     = n12[1]*SIN(u) + no2[1]
+yzn2     = n12[1]*COS(u) + no2[1]
+z_n2     = n12[2]*SIN(u) + no2[2]
+
+!P.MULTI    = 0
+!P.CHARSIZE = 1.5
+WINDOW,1,XSIZE=300,YSIZE=900,RETAIN=2 
+!P.MULTI = [0,1,3]
+
+fpref    = 'RH08_vs_RH09-Shock-Normal_JCKs_vs_My3DP_Vsw-Upstream_1998-08-26'
+
+fsuffx  = ''
+j       = 0L
+
+popen,fpref[0]+fsuffx[0],/PORT
+  plim     = {NODATA:1,YRANGE:[-2.,2.],XRANGE:[-2.,2.],XSTYLE:1,YSTYLE:1}
+  str_element,plim,'TITLE','Comparison of RH08 and RH09 Methods',/ADD_REPLACE
+  str_element,plim,'XTITLE','X-GSE',/ADD_REPLACE
+  str_element,plim,'YTITLE','Y-GSE',/ADD_REPLACE
+  PLOT,x_n,yxn,_EXTRA=plim
+    XYOUTS, 1.0, 1.75,'JCK V!Dsw1!N',      COLOR=250,/DATA
+    XYOUTS,-1.8, 1.75,'RH08 shock normal', COLOR=210,/DATA
+    XYOUTS,-1.8, 1.45,'RH09 shock normal', COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'3DP V!Dsw1!N',      COLOR= 50,/DATA
+    OPLOT,x_v,yxv,  COLOR=250L,THICK=ppt
+    OPLOT,x_n,yxn,  COLOR=210L,THICK=ppt
+    OPLOT,x_n2,yxn2,COLOR=150L,THICK=ppt
+    OPLOT,x_v2,yxv2,COLOR= 50L,THICK=ppt
+  str_element,plim,'TITLE',"JCK's V!Dsw!N vs. My 3DP Estimate",/ADD_REPLACE
+  str_element,plim,'XTITLE','X-GSE',/ADD_REPLACE
+  str_element,plim,'YTITLE','Z-GSE',/ADD_REPLACE
+  PLOT,x_n,z_n,_EXTRA=plim
+    XYOUTS, 1.0, 1.75,'JCK V!Dsw1!N',      COLOR=250,/DATA
+    XYOUTS,-1.8, 1.75,'RH08 shock normal', COLOR=210,/DATA
+    XYOUTS,-1.8, 1.45,'RH09 shock normal', COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'3DP V!Dsw1!N',      COLOR= 50,/DATA
+    OPLOT,x_v,z_v,  COLOR=250L,THICK=ppt
+    OPLOT,x_n,z_n,  COLOR=210L,THICK=ppt
+    OPLOT,x_n2,z_n2,COLOR=150L,THICK=ppt
+    OPLOT,x_v2,z_v2,COLOR= 50L,THICK=ppt
+  str_element,plim,'TITLE',"My 3DP V!Dsw!N used [2.5%,30%,30%] Uncertainty",/ADD_REPLACE
+  str_element,plim,'XTITLE','Y-GSE',/ADD_REPLACE
+  str_element,plim,'YTITLE','Z-GSE',/ADD_REPLACE
+  PLOT,yzn,z_n,_EXTRA=plim
+    XYOUTS, 1.0, 1.75,'JCK V!Dsw1!N',      COLOR=250,/DATA
+    XYOUTS,-1.8, 1.75,'RH08 shock normal', COLOR=210,/DATA
+    XYOUTS,-1.8, 1.45,'RH09 shock normal', COLOR=150,/DATA
+    XYOUTS, 1.0, 1.45,'3DP V!Dsw1!N',      COLOR= 50,/DATA
+    OPLOT,yzv,z_v,  COLOR=250L,THICK=ppt
+    OPLOT,yzn,z_n,  COLOR=210L,THICK=ppt
+    OPLOT,yzn2,z_n2,COLOR=150L,THICK=ppt
+    OPLOT,yzv2,z_v2,COLOR= 50L,THICK=ppt
+pclose
+
+
+
+
+
+
+
+
+
+
+; => My upstream estimates from 3DP and MFI
+vsw1  = [-484.565,6.580,10.997]
+vvec  = vsw/(norm(vsw))[0]
+vsw2  = [-648.070,10.635,-182.219]
+vvec2 = vsw2/(norm(vsw2))[0]
+magf  = [0.244,6.492,-1.289]
+bvec  = magf/(norm(magf))[0]
+magf2 = [-12.256,6.196,12.414]
+bvec2 = magf2/(norm(magf2))[0]
+; => Check -(V x B) x B = B x (V x B) = (B x V) x B direction
+esw1  = -1d0*my_crossp_2(vvec,bvec)
+esw2  = -1d0*my_crossp_2(vvec2,bvec2)
+tanv1 = my_crossp_2(esw1,bvec)
+tanv2 = my_crossp_2(esw2,bvec2)
+btan1 = my_crossp_2(my_crossp_2(nvec,bvec),nvec)
+btan2 = my_crossp_2(my_crossp_2(nvec,bvec2),nvec)
+
+
+print, acos(my_dot_prod(kvec,nvec))*18d1/!DPI
+
+print, acos(my_dot_prod(kvec,bvec))*18d1/!DPI 
+print, acos(my_dot_prod(kvec,bvec2))*18d1/!DPI
+
+print, acos(my_dot_prod(kvec,vvec))*18d1/!DPI
+print, acos(my_dot_prod(kvec,vvec2))*18d1/!DPI
+
+print, acos(my_dot_prod(nvec,vvec))*18d1/!DPI
+print, acos(my_dot_prod(nvec,vvec2))*18d1/!DPI
+
+print, acos(my_dot_prod(kvec,esw1))*18d1/!DPI
+print, acos(my_dot_prod(kvec,esw2))*18d1/!DPI
+
+print, acos(my_dot_prod(kvec,tanv1))*18d1/!DPI
+print, acos(my_dot_prod(kvec,tanv2))*18d1/!DPI
+
+print, acos(my_dot_prod(kvec,btan1))*18d1/!DPI
+print, acos(my_dot_prod(kvec,btan2))*18d1/!DPI
+
+
+
+
+; => RH08 Methods for nvec
+kvec  = [-0.95,.111,.29]
+nvec  = [-0.655,0.040,-0.754]
+btan1 = my_crossp_2(my_crossp_2(nvec,bvec),nvec)
+btan2 = my_crossp_2(my_crossp_2(nvec,bvec2),nvec)
+vtan1 = my_crossp_2(my_crossp_2(nvec,vvec),nvec)
+vtan2 = my_crossp_2(my_crossp_2(nvec,vvec2),nvec)
+
+print, acos(my_dot_prod(kvec,nvec))*18d1/!DPI
+print, acos(my_dot_prod(nvec,vvec))*18d1/!DPI
+print, acos(my_dot_prod(nvec,vvec2))*18d1/!DPI
+
+print, acos(my_dot_prod(kvec,btan1))*18d1/!DPI
+print, acos(my_dot_prod(kvec,btan2))*18d1/!DPI
+print, acos(my_dot_prod(kvec,vtan1))*18d1/!DPI
+print, acos(my_dot_prod(kvec,vtan2))*18d1/!DPI
+;-----------------------------------------------------------------------------------------
+; => print out to LaTeX
+;-----------------------------------------------------------------------------------------
+gnorm      = [-0.655,0.040,-0.754]   ; => Using RH08 from JCK's site
+dgnorm     = [0.010,0.009,0.561]
+
+htr_mfi2tplot,DATE=date
+get_data,'WIND_B3_HTR(GSE,nT)',DATA=magf_htr
+
+magf     = magf_htr.Y
+magtt    = magf_htr.X
+bmag     = SQRT(TOTAL(magf^2,2L,/NAN))
+
+
+tags     = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9']
+;
+; => For  4 Hz < f < 20 Hz on 1998-08-26
+;
+prefd   = '1998-08-26/'
+tr0     = time_double([prefd[0]+'06:40:26.2501',prefd[0]+'06:40:26.5269'])
+
+elam0   = [45.233531,1.2735423]
+
+kvec0   = [-0.75528, 0.55880,-0.34249]
+dkvec0  = ABS([-0.02406,-0.04140,-0.01449])
+
+bvec0   = [-0.08887, 0.98836, 0.11519]
+bmag0   = [17.61827]
+strg0   = ['26.2501 - 26.5269']
+
+tr_04_20   = CREATE_STRUCT(tags[0],tr0)
+kv_04_20   = CREATE_STRUCT(tags[0],kvec0)
+bv_04_20   = CREATE_STRUCT(tags[0],bvec0)
+bm_04_20   = CREATE_STRUCT(tags[0],bmag0)
+st_04_20   = CREATE_STRUCT(tags[0],strg0)
+lamb_04_20 = CREATE_STRUCT(tags[0],elam0)
+
+nvc00  = REFORM(gnorm)
+bv_str = bv_04_20
+kv_str = kv_04_20
+np     = N_TAGS(bv_str)
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  str_element,thkb_04_20,jstr,[thkb0,thkb1],/ADD_REPLACE            & $
+  str_element,thkn_04_20,jstr,[thkn0,thkn1],/ADD_REPLACE
+
+
+latexform = '(a17," & $<$",f6.3,",",f6.3,",",f6.3,"$>$ & ",f6.3," & $<$",'
+latexform += 'f6.3,",",f6.3,",",f6.3,"$>$ & $\frac{",f6.2,"^{o}}{(",f6.2,'
+latexform += '"^{o})}$ & $\frac{",f6.2,"^{o}}{(",f6.2,"^{o})}$ '
+latexform += '& ",f7.3," & ",f7.3,"  \ML")'
+
+; -Print in LaTeX format for my_wave_stats.tex
+FOR j=0L, np - 1L DO BEGIN                                                   $
+  PRINT, st_04_20.(j),kv_04_20.(j),bm_04_20.(j),bv_04_20.(j),thkb_04_20.(j), $
+         thkn_04_20.(j),lamb_04_20.(j),FORMAT=latexform
+
+;
+; => For  7 Hz < f < 30 Hz on 1998-08-26
+;
+prefd   = '1998-08-26/'
+tr0     = time_double([prefd[0]+'06:40:26.2704',prefd[0]+'06:40:26.7296'])
+tr1     = time_double([prefd[0]+'06:40:26.2720',prefd[0]+'06:40:26.6245'])
+tr2     = time_double([prefd[0]+'06:40:26.2731',prefd[0]+'06:40:26.5776'])
+tr3     = time_double([prefd[0]+'06:40:26.2741',prefd[0]+'06:40:26.5248'])
+tr4     = time_double([prefd[0]+'06:40:26.6053',prefd[0]+'06:40:26.7899'])
+tr5     = time_double([prefd[0]+'06:40:26.4251',prefd[0]+'06:40:26.7845'])
+tr6     = time_double([prefd[0]+'06:40:26.7904',prefd[0]+'06:40:26.8896'])
+tr7     = time_double([prefd[0]+'06:40:26.9253',prefd[0]+'06:40:27.0661'])
+
+elam0   = [11.369266,1.5493357]
+elam1   = [13.394446,1.5012153]
+elam2   = [30.811204,1.2267413]
+elam3   = [79.826478,1.1297338]
+elam4   = [24.020896,1.5808126]
+elam5   = [11.332868,1.6004137]
+elam6   = [34.964636,2.1990164]
+elam7   = [30.394394,4.6116373]
+
+kvec0   = [ 0.88528,-0.11080, 0.45167]
+kvec1   = [ 0.88917,-0.30740, 0.33895]
+kvec2   = [-0.81224, 0.45489,-0.36516]
+kvec3   = [-0.74506, 0.56526,-0.35408]
+kvec4   = [ 0.89282, 0.03908, 0.44872]
+kvec5   = [ 0.90320,-0.05326, 0.42590]
+kvec6   = [-0.92841,-0.36634, 0.06200]
+kvec7   = [ 0.95386, 0.21550, 0.20907]
+
+bvec0   = [-0.08023, 0.98856, 0.06116]
+bvec1   = [-0.10141, 0.98754, 0.11232]
+bvec2   = [-0.10141, 0.98754, 0.11232]
+bvec3   = [-0.08887, 0.98836, 0.11519]
+bvec4   = [ 0.03502, 0.98243,-0.17202]
+bvec5   = [-0.04201, 0.98278,-0.02071]
+bvec6   = [-0.05142, 0.99524,-0.08283]
+bvec7   = [ 0.03008, 0.99870,-0.03262]
+
+bmag0   = [18.64674]
+bmag1   = [18.26503]
+bmag2   = [18.26503]
+bmag3   = [17.61827]
+bmag4   = [19.81591]
+bmag5   = [19.62904]
+bmag6   = [17.93509]
+bmag7   = [19.04833]
+
+strg0   = ['26.2704 - 26.7296']
+strg1   = ['26.2720 - 26.6245']
+strg2   = ['26.2731 - 26.5776']
+strg3   = ['26.2741 - 26.5248']
+strg4   = ['26.6053 - 26.7899']
+strg5   = ['26.4251 - 26.7845']
+strg6   = ['26.7904 - 26.8896']
+strg7   = ['26.9253 - 27.0661']
+
+tr_07_30   = CREATE_STRUCT(tags[0:7],tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7)
+kv_07_30   = CREATE_STRUCT(tags[0:7],kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7)
+bv_07_30   = CREATE_STRUCT(tags[0:7],bvec0,bvec1,bvec2,bvec3,bvec4,bvec5,bvec6,bvec7)
+bm_07_30   = CREATE_STRUCT(tags[0:7],bmag0,bmag1,bmag2,bmag3,bmag4,bmag5,bmag6,bmag7)
+st_07_30   = CREATE_STRUCT(tags[0:7],strg0,strg1,strg2,strg3,strg4,strg5,strg6,strg7)
+lamb_07_30 = CREATE_STRUCT(tags[0:7],elam0,elam1,elam2,elam3,elam4,elam5,elam6,elam7)
+
+nvc00  = REFORM(gnorm)
+bv_str = bv_07_30
+kv_str = kv_07_30
+np     = N_TAGS(bv_str)
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  str_element,thkb_07_30,jstr,[thkb0,thkb1],/ADD_REPLACE            & $
+  str_element,thkn_07_30,jstr,[thkn0,thkn1],/ADD_REPLACE
+
+
+latexform = '(a17," & $<$",f6.3,",",f6.3,",",f6.3,"$>$ & ",f6.3," & $<$",'
+latexform += 'f6.3,",",f6.3,",",f6.3,"$>$ & $\frac{",f6.2,"^{o}}{(",f6.2,'
+latexform += '"^{o})}$ & $\frac{",f6.2,"^{o}}{(",f6.2,"^{o})}$ '
+latexform += '& ",f7.3," & ",f7.3,"  \ML")'
+
+; -Print in LaTeX format for my_wave_stats.tex
+FOR j=0L, np - 1L DO BEGIN                                                   $
+  PRINT, st_07_30.(j),kv_07_30.(j),bm_07_30.(j),bv_07_30.(j),thkb_07_30.(j), $
+         thkn_07_30.(j),lamb_07_30.(j),FORMAT=latexform
+
+
+
+
+;
+; => For 10 Hz < f < 30 Hz on 1998-08-26
+;
+prefd   = '1998-08-26/'
+tr0     = time_double([prefd[0]+'06:40:26.3237',prefd[0]+'06:40:26.5264'])
+tr1     = time_double([prefd[0]+'06:40:26.3744',prefd[0]+'06:40:26.4997'])
+tr2     = time_double([prefd[0]+'06:40:26.3920',prefd[0]+'06:40:26.6000'])
+tr3     = time_double([prefd[0]+'06:40:26.3920',prefd[0]+'06:40:26.5899'])
+tr4     = time_double([prefd[0]+'06:40:26.6656',prefd[0]+'06:40:27.2117'])
+tr5     = time_double([prefd[0]+'06:40:26.6656',prefd[0]+'06:40:27.0400'])
+tr6     = time_double([prefd[0]+'06:40:26.6656',prefd[0]+'06:40:27.0197'])
+
+kvec0   = [ 0.97753,-0.19375, 0.08310]
+kvec1   = [ 0.98265,-0.18422, 0.02172]
+kvec2   = [ 0.98946,-0.09520,-0.10915]
+kvec3   = [-0.98757, 0.10656, 0.11557]
+kvec4   = [ 0.93488,-0.22788, 0.27217]
+kvec5   = [-0.93604, 0.22445,-0.27100]
+kvec6   = [-0.93492, 0.22550,-0.27399]
+
+elam0   = [24.959507,1.1318334]
+elam1   = [79.445986,1.1979660]
+elam2   = [48.277253,1.0837785]
+elam3   = [45.040525,1.2288479]
+elam4   = [20.044077,1.0676473]
+elam5   = [25.678349,1.0526309]
+elam6   = [29.448864,1.0521651]
+
+bvec0   = [-0.10354, 0.98495, 0.13481]
+bvec1   = [-0.10354, 0.98495, 0.13481]
+bvec2   = [-0.11454, 0.98511, 0.12405]
+bvec3   = [-0.11454, 0.98511, 0.12405]
+bvec4   = [ 0.01768, 0.99264,-0.07935]
+bvec5   = [ 0.01685, 0.99131,-0.09978]
+bvec6   = [ 0.00739, 0.98962,-0.11754]
+
+bmag0   = [18.06781]
+bmag1   = [18.06781]
+bmag2   = [18.78031]
+bmag3   = [18.78031]
+bmag4   = [19.07114]
+bmag5   = [19.13271]
+bmag6   = [19.16086]
+
+strg0   = ['26.3237 - 26.5264']
+strg1   = ['26.3744 - 26.4997']
+strg2   = ['26.3920 - 26.6000']
+strg3   = ['26.3920 - 26.5899']
+strg4   = ['26.6656 - 27.2117']
+strg5   = ['26.6656 - 27.0400']
+strg6   = ['26.6656 - 27.0197']
+
+tr_10_30   = CREATE_STRUCT(tags[0:6],tr0,tr1,tr2,tr3,tr4,tr5,tr6)
+kv_10_30   = CREATE_STRUCT(tags[0:6],kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6)
+bv_10_30   = CREATE_STRUCT(tags[0:6],bvec0,bvec1,bvec2,bvec3,bvec4,bvec5,bvec6)
+bm_10_30   = CREATE_STRUCT(tags[0:6],bmag0,bmag1,bmag2,bmag3,bmag4,bmag5,bmag6)
+st_10_30   = CREATE_STRUCT(tags[0:6],strg0,strg1,strg2,strg3,strg4,strg5,strg6)
+lamb_10_30 = CREATE_STRUCT(tags[0:6],elam0,elam1,elam2,elam3,elam4,elam5,elam6)
+np         = N_TAGS(kv_10_30)
+
+nvc00  = REFORM(gnorm)
+bv_str = bv_10_30
+kv_str = kv_10_30
+np     = N_TAGS(bv_str)
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  str_element,thkb_10_30,jstr,[thkb0,thkb1],/ADD_REPLACE            & $
+  str_element,thkn_10_30,jstr,[thkn0,thkn1],/ADD_REPLACE
+
+
+latexform = '(a17," & $<$",f6.3,",",f6.3,",",f6.3,"$>$ & ",f6.3," & $<$",'
+latexform += 'f6.3,",",f6.3,",",f6.3,"$>$ & $\frac{",f6.2,"^{o}}{(",f6.2,'
+latexform += '"^{o})}$ & $\frac{",f6.2,"^{o}}{(",f6.2,"^{o})}$ '
+latexform += '& ",f7.3," & ",f7.3,"  \ML")'
+
+; -Print in LaTeX format for my_wave_stats.tex
+FOR j=0L, np - 1L DO BEGIN                                                   $
+  PRINT, st_10_30.(j),kv_10_30.(j),bm_10_30.(j),bv_10_30.(j),thkb_10_30.(j), $
+         thkn_10_30.(j),lamb_10_30.(j),FORMAT=latexform
+
+
+;
+; => For 60 Hz < f < 150 Hz on 1998-08-26
+;
+prefd   = '1998-08-26/'
+tr0     = time_double([prefd[0]+'06:40:27.0528',prefd[0]+'06:40:27.1051'])
+kvec0   = [ 0.23114,-0.97065,-0.06637]
+elam0   = [31.097998,1.2591099]
+bvec0   = [ 0.05494, 0.99809,-0.02826]
+bmag0   = [19.02011]
+strg0   = ['27.0528 - 27.1051']
+
+tr_60_150    = CREATE_STRUCT(tags[0],tr0)
+kv_60_150    = CREATE_STRUCT(tags[0],kvec0)
+bv_60_150    = CREATE_STRUCT(tags[0],bvec0)
+bm_60_150    = CREATE_STRUCT(tags[0],bmag0)
+st_60_150    = CREATE_STRUCT(tags[0],strg0)
+lamb_60_150  = CREATE_STRUCT(tags[0],elam0)
+
+nvc00  = REFORM(gnorm)
+bv_str = bv_60_150
+kv_str = kv_60_150
+np     = N_TAGS(kv_str)
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  str_element,thkb_60_150,jstr,[thkb0,thkb1],/ADD_REPLACE           & $
+  str_element,thkn_60_150,jstr,[thkn0,thkn1],/ADD_REPLACE
+
+latexform = '(a17," & $<$",f6.3,",",f6.3,",",f6.3,"$>$ & ",f6.3," & $<$",'
+latexform += 'f6.3,",",f6.3,",",f6.3,"$>$ & $\frac{",f6.2,"^{o}}{(",f6.2,'
+latexform += '"^{o})}$ & $\frac{",f6.2,"^{o}}{(",f6.2,"^{o})}$ '
+latexform += '& ",f7.3," & ",f7.3,"  \ML")'
+
+; -Print in LaTeX format for my_wave_stats.tex
+FOR j=0L, np - 1L DO BEGIN                                                   $
+  PRINT, st_60_150.(j),kv_60_150.(j),bm_60_150.(j),bv_60_150.(j),thkb_60_150.(j), $
+         thkn_60_150.(j),lamb_60_150.(j),FORMAT=latexform
+
+
+;
+; => For 60 Hz < f < 200 Hz on 1998-08-26
+;
+prefd   = '1998-08-26/'
+tr0     = time_double([prefd[0]+'06:40:26.5813',prefd[0]+'06:40:26.6197'])
+tr1     = time_double([prefd[0]+'06:40:26.6768',prefd[0]+'06:40:26.7147'])
+tr2     = time_double([prefd[0]+'06:40:26.8784',prefd[0]+'06:40:26.9248'])
+tr3     = time_double([prefd[0]+'06:40:27.0640',prefd[0]+'06:40:27.0992'])
+tr4     = time_double([prefd[0]+'06:40:27.1056',prefd[0]+'06:40:27.1184'])
+
+kvec0   = [-0.97078,-0.01012, 0.23974]
+kvec1   = [-0.65773, 0.44369,-0.60872]
+kvec2   = [-0.73401,-0.65436,-0.18178]
+kvec3   = [ 0.25802,-0.96360,-0.06999]
+kvec4   = [ 0.33709,-0.93821,-0.07830]
+
+elam0   = [25.656457,1.4057131]
+elam1   = [10.198478,2.7093540]
+elam2   = [12.793261,1.3638889]
+elam3   = [51.577664,1.1701637]
+elam4   = [30.867511,2.0740140]
+
+bvec0   = [-0.13421, 0.98539, 0.10481]
+bvec1   = [-0.00351, 0.99226,-0.12409]
+bvec2   = [ 0.00530, 0.99930,-0.03697]
+bvec3   = [ 0.03853, 0.99877,-0.00190]
+bvec4   = [ 0.02189, 0.99945, 0.02482]
+
+bmag0   = [20.20531]
+bmag1   = [20.17358]
+bmag2   = [19.07654]
+bmag3   = [18.89170]
+bmag4   = [18.76329]
+
+strg0   = ['26.5813 - 26.6197']
+strg1   = ['26.6768 - 26.7147']
+strg2   = ['26.8784 - 26.9248']
+strg3   = ['27.0640 - 27.0992']
+strg4   = ['27.1056 - 27.1184']
+
+tr_60_200   = CREATE_STRUCT(tags[0:4],tr0,tr1,tr2,tr3,tr4)
+kv_60_200   = CREATE_STRUCT(tags[0:4],kvec0,kvec1,kvec2,kvec3,kvec4)
+bv_60_200   = CREATE_STRUCT(tags[0:4],bvec0,bvec1,bvec2,bvec3,bvec4)
+bm_60_200   = CREATE_STRUCT(tags[0:4],bmag0,bmag1,bmag2,bmag3,bmag4)
+st_60_200   = CREATE_STRUCT(tags[0:4],strg0,strg1,strg2,strg3,strg4)
+lamb_60_200 = CREATE_STRUCT(tags[0:4],elam0,elam1,elam2,elam3,elam4)
+
+nvc00  = REFORM(gnorm)
+bv_str = bv_60_200
+kv_str = kv_60_200
+np     = N_TAGS(kv_str)
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  str_element,thkb_60_200,jstr,[thkb0,thkb1],/ADD_REPLACE           & $
+  str_element,thkn_60_200,jstr,[thkn0,thkn1],/ADD_REPLACE
+
+latexform = '(a17," & $<$",f6.3,",",f6.3,",",f6.3,"$>$ & ",f6.3," & $<$",'
+latexform += 'f6.3,",",f6.3,",",f6.3,"$>$ & $\frac{",f6.2,"^{o}}{(",f6.2,'
+latexform += '"^{o})}$ & $\frac{",f6.2,"^{o}}{(",f6.2,"^{o})}$ '
+latexform += '& ",f7.3," & ",f7.3,"  \ML")'
+
+; -Print in LaTeX format for my_wave_stats.tex
+FOR j=0L, np - 1L DO BEGIN                                                   $
+  PRINT, st_60_200.(j),kv_60_200.(j),bm_60_200.(j),bv_60_200.(j),thkb_60_200.(j), $
+         thkn_60_200.(j),lamb_60_200.(j),FORMAT=latexform
+
+
+;
+; => For 150 Hz < f < 200 Hz on 1998-08-26
+;
+prefd   = '1998-08-26/'
+tr0     = time_double([prefd[0]+'06:40:26.7200',prefd[0]+'06:40:26.8000'])
+tr1     = time_double([prefd[0]+'06:40:26.7301',prefd[0]+'06:40:26.7899'])
+tr2     = time_double([prefd[0]+'06:40:26.7301',prefd[0]+'06:40:26.7659'])
+tr3     = time_double([prefd[0]+'06:40:27.0325',prefd[0]+'06:40:27.0725'])
+
+kvec0   = [-0.07895,-0.99658, 0.02448]
+kvec1   = [-0.06465,-0.99725, 0.03609]
+kvec2   = [-0.02118,-0.99832, 0.05399]
+kvec3   = [-0.23192,-0.97041,-0.06713]
+
+elam0   = [9.1368162,1.9366657]
+elam1   = [14.761899,2.0848445]
+elam2   = [29.837023,1.8748883]
+elam3   = [18.973829,1.2996175]
+
+bvec0   = [ 0.07496, 0.97223,-0.22171]
+bvec1   = [ 0.07496, 0.97223,-0.22171]
+bvec2   = [ 0.07496, 0.97223,-0.22171]
+bvec3   = [ 0.05494, 0.99809,-0.02826]
+
+bmag0   = [19.45824]
+bmag1   = [19.45824]
+bmag2   = [19.45824]
+bmag3   = [19.02011]
+
+strg0   = ['26.7200 - 26.8000']
+strg1   = ['26.7301 - 26.7899']
+strg2   = ['26.7301 - 26.7659']
+strg3   = ['27.0325 - 27.0725']
+
+tr_150_200   = CREATE_STRUCT(tags[0:3],tr0,tr1,tr2,tr3)
+kv_150_200   = CREATE_STRUCT(tags[0:3],kvec0,kvec1,kvec2,kvec3)
+bv_150_200   = CREATE_STRUCT(tags[0:3],bvec0,bvec1,bvec2,bvec3)
+bm_150_200   = CREATE_STRUCT(tags[0:3],bmag0,bmag1,bmag2,bmag3)
+st_150_200   = CREATE_STRUCT(tags[0:3],strg0,strg1,strg2,strg3)
+lamb_150_200 = CREATE_STRUCT(tags[0:3],elam0,elam1,elam2,elam3)
+
+nvc00  = REFORM(gnorm)
+bv_str = bv_150_200
+kv_str = kv_150_200
+np     = N_TAGS(kv_str)
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  str_element,thkb_150_200,jstr,[thkb0,thkb1],/ADD_REPLACE          & $
+  str_element,thkn_150_200,jstr,[thkn0,thkn1],/ADD_REPLACE
+
+latexform = '(a17," & $<$",f6.3,",",f6.3,",",f6.3,"$>$ & ",f6.3," & $<$",'
+latexform += 'f6.3,",",f6.3,",",f6.3,"$>$ & $\frac{",f6.2,"^{o}}{(",f6.2,'
+latexform += '"^{o})}$ & $\frac{",f6.2,"^{o}}{(",f6.2,"^{o})}$ '
+latexform += '& ",f7.3," & ",f7.3,"  \ML")'
+
+; -Print in LaTeX format for my_wave_stats.tex
+FOR j=0L, np - 1L DO BEGIN                                                   $
+  PRINT, st_150_200.(j),kv_150_200.(j),bm_150_200.(j),bv_150_200.(j),thkb_150_200.(j), $
+         thkn_150_200.(j),lamb_150_200.(j),FORMAT=latexform
+
+
+
+
+
+
+
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => old
+;-----------------------------------------------------------------------------------------
+magf     = magf_htr.Y
+magtt    = magf_htr.X
+bmag     = SQRT(TOTAL(magf^2,2L,/NAN))
+
+tr_str   = tr_150_200
+DELVAR,bv_str,bm_str,st_str
+
+np       = N_TAGS(tr_str)
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  tr_00  = tr_str.(j)                                               & $
+  JUMP_RETRY:                                                       & $
+  good   = WHERE(magtt LE tr_00[1] AND magtt GE tr_00[0],gd)        & $
+  IF (gd EQ 0) THEN tr_00 += [-0.010d0,0.010d0]                     & $
+  IF (gd EQ 0) THEN GOTO,JUMP_RETRY                              & $
+  avgbm  = MEAN(bmag[good],/NAN)                                 & $
+  avmagx = MEAN(magf[good,0],/NAN)                               & $
+  avmagy = MEAN(magf[good,1],/NAN)                               & $
+  avmagz = MEAN(magf[good,2],/NAN)                               & $
+  avbvec = [avmagx,avmagy,avmagz]/avgbm[0]                          & $
+  trs000 = time_string(tr_str.(j),PREC=4)                           & $
+  trs001 = STRMID(trs000[*],11L,13L)                                & $
+  tshort = STRMID(trs001[*],6L)                                     & $
+  t_rang = tshort[0]+' - '+tshort[1]                                & $
+  str_element,bv_str,jstr,avbvec,/ADD_REPLACE                       & $
+  str_element,bm_str,jstr,avgbm,/ADD_REPLACE                        & $
+  str_element,st_str,jstr,t_rang,/ADD_REPLACE
+
+spref = 'bvec'
+ssuff = '   = ['
+mform = '(a11,f8.5,",",f8.5,",",f8.5,"]")'
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = STRTRIM(j,2L)                                            & $
+  strg   = spref[0]+jstr[0]+ssuff[0]                                & $
+  PRINT,FORMAT=mform,strg[0],REFORM(bv_str.(j))
+  
+
+spref = 'bmag'
+ssuff = '   = ['
+mform = '(a11,f8.5,"]")'
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = STRTRIM(j,2L)                                            & $
+  strg   = spref[0]+jstr[0]+ssuff[0]                                & $
+  PRINT,FORMAT=mform,strg[0],REFORM(bm_str.(j))
+
+
+spref = 'strg'
+ssuff = '   = ['
+mform = '(a11,"`",a17,"`]")'
+FOR j=0L, np - 1L DO BEGIN                                            $
+  jstr   = STRTRIM(j,2L)                                            & $
+  strg   = spref[0]+jstr[0]+ssuff[0]                                & $
+  PRINT,FORMAT=mform,strg[0],REFORM(st_str.(j))

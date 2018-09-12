@@ -1,0 +1,565 @@
+@load_tdss_lhw_stats.pro
+
+good_lhw   = array_where(evns,evns_lhw,/N_UNIQ)
+good_lhw   = good_lhw[*,0]
+PRINT,';  ', N_ELEMENTS(good_lhw)
+;           118
+
+good_whi   = array_where(evns,evns_whi,/N_UNIQ)
+good_whi   = good_whi[*,0]
+PRINT,';  ', N_ELEMENTS(good_whi)
+;           138
+
+good_mix   = array_where(evns,evns_mix,/N_UNIQ)
+good_mix   = good_mix[*,0]
+PRINT,';  ', N_ELEMENTS(good_mix)
+;           200
+
+; => use the SC frame filter values to separate high from low
+test_high  = (freql[good_mix] GT wlh[good_mix]/(2d0*!DPI)) AND $
+             (freqh[good_mix] GT 40d0)
+good_high  = WHERE(test_high,gdhg,COMPLEMENT=good_low,NCOMPLEMENT=gdlw)
+PRINT,''
+PRINT,'MIXED [Low, High]'
+PRINT,';  ', gdlw,  gdhg
+;            38         162
+good_mixlw = good_mix[good_low]
+good_mixhg = good_mix[good_high]
+
+
+gels        = [good_lhw,good_whi,good_mix]
+evns_a      = evns[gels]
+s_scets     = scets[gels]
+s_scete     = scete[gels]
+beta_cpars  = betapacs[gels]
+beta_cpare  = betapace[gels]
+tanic_s     = tanis_cs[gels]
+tanic_e     = tanis_ce[gels]
+tanih_s     = tanis_hs[gels]
+tanih_e     = tanis_he[gels]
+tpar_hc_s   = thc_pars[gels]
+tpar_hc_e   = thc_pare[gels]
+
+unq         = UNIQ(evns_a,SORT(evns_a))
+s_scets     = s_scets[unq]
+s_scete     = s_scete[unq]
+s_unixs     = time_double(s_scets)
+beta_cpars  = beta_cpars[unq]
+beta_cpare  = beta_cpare[unq]
+tanic_s     = tanic_s[unq]
+tanic_e     = tanic_e[unq]
+tanih_s     = tanih_s[unq]
+tanih_e     = tanih_e[unq]
+tpar_hc_s   = tpar_hc_s[unq]
+tpar_hc_e   = tpar_hc_e[unq]
+sp          = SORT(s_unixs)
+s_scets     = s_scets[sp]
+s_scete     = s_scete[sp]
+beta_cpars  = beta_cpars[sp]
+beta_cpare  = beta_cpare[sp]
+tanic_s     = tanic_s[sp]
+tanic_e     = tanic_e[sp]
+tanih_s     = tanih_s[sp]
+tanih_e     = tanih_e[sp]
+tpar_hc_s   = tpar_hc_s[sp]
+tpar_hc_e   = tpar_hc_e[sp]
+;-----------------------------------------------------------------------------------------
+; => Look at threshold conditions for Gary et. al. [1994,1999]
+;
+; => whistler heat flux instability  = WHFI
+; => whistler anisotropy instability = WAI
+;
+; => Gary et al., [1999] found the whistler heat flux instability (WHFI) to ALWAYS be 
+;      unstable if Thperp/Thpara > 1.01 and ALWAYS stable for beta_para,c < 0.25.  
+;      Also, Gary et al., [1994] suggested that even when Thpara/Tcpara is small but 
+;      Thperp/Thpara > 1.01, the WAI can still be unstable even in the absence of a
+;      relative drift between halo and core.
+;
+;
+; => Figure 7 in Gary et. al. [1994] is a factor of 2 too large
+;      {S. Peter Gary Personal Communication, Dec. 6th, 2011}
+;-----------------------------------------------------------------------------------------
+xdumb      = DINDGEN(100L)*(4.0 - 0.25)/(100L - 1L) + 0.25
+xdumblog   = ALOG(xdumb)
+; => Construct the line in Figure 7 of Gary et al., [1994]
+xdat7      = [0.25,0.3,0.7,0.8,1.00,1.2,2.00,3.00,4.00]
+ydat7      = [8.00,7.5,5.9,5.5,5.33,5.1,4.63,4.33,4.16]
+
+; => Construct the line in Figure 8 of Gary et al., [1994]
+xdat8      = [0.25,0.40000,0.50,0.7000,1.0000,2.0000,4.0000]
+ydat8      = [0.84,0.78699,0.76,0.7336,0.7066,0.6687,0.6575]
+; => natural log
+xdatlog7   = ALOG(xdat7)
+ydatlog7   = ALOG(ydat7)
+
+xdatlog8   = ALOG(xdat8)
+ydatlog8   = ALOG(ydat8)
+; => Ln|F(x)| = Ln|A| + B Ln|x|
+pfit7      = LADFIT(xdatlog7,ydatlog7,/DOUBLE)
+pfit8      = LADFIT(xdatlog8,ydatlog8,/DOUBLE)
+PRINT, pfit7, pfit8
+;       1.6926014     -0.23088540
+;     -0.33840346    -0.092284297
+; => Power-Law Line
+fitlinplo7 = pfit7[0] + pfit7[1]*xdumblog
+fitlinp7   = EXP(fitlinplo7)
+fitlinplo8 = pfit8[0] + pfit8[1]*xdumblog
+fitlinp8   = EXP(fitlinplo8)
+
+; => Power-Law Line with initial offset
+dfit7      = COMFIT(xdat7,ydat7,[pfit7[0],pfit7[1],10.0],/DOUBLE,/GEOMETRIC,ITMAX=100)
+dfit8      = COMFIT(xdat8,ydat8,[pfit8[0],pfit8[1],0.8394],/DOUBLE,/GEOMETRIC,ITMAX=100)
+PRINT, dfit7, dfit8
+;       2.0210338     -0.60954489       3.2945367
+;      -2.2904976     0.027343356       3.0156473
+fitlind7   = dfit7[2] + dfit7[0]*xdumb^(dfit7[1])
+fitlind8   = dfit8[2] + dfit8[0]*xdumb^(dfit8[1])
+
+xttl       = '!7b!3'+'!D'+'!9#'+'!3'+',c'+'!N'
+yttl7      = 'T!D!9#'+'!3'+',h'+'!N'+'/T!D!9#'+'!3'+',c'+'!N'
+yttl8      = 'T!D!9x'+'!3'+',h'+'!N'+'/T!D!9#'+'!3'+',h'+'!N'
+xtv        = [0.3,0.5,0.7,1.0,1.5,2.0,3.0,4.0]
+ytv7       = [4.0,5.0,6.0,7.0,8.0,9.0,10.]
+ytv8       = [0.6,0.7,0.8,0.9,1.0,1.5]
+xtn        = STRTRIM(STRING(FORMAT='(f8.1)',xtv),2)
+ytn7       = STRTRIM(STRING(FORMAT='(f8.1)',ytv7),2)
+ytn8       = STRTRIM(STRING(FORMAT='(f8.1)',ytv8),2)
+xts        = N_ELEMENTS(xtn) - 1L
+yts7       = N_ELEMENTS(ytn7) - 1L
+yts8       = N_ELEMENTS(ytn8) - 1L
+plim7      = {XRANGE:[0.25,4.0],YRANGE:[4.0,10.0],XSTYLE:1,YSTYLE:1,XLOG:1,YLOG:1,$
+              YMINOR:10,XTITLE:xttl,YTITLE:yttl7,CHARSIZE:2.0,TICKLEN:1.  ,$
+              XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,YTICKNAME:ytn7,YTICKV:ytv7,YTICKS:yts7}
+
+plim8      = {XRANGE:[0.25,4.0],YRANGE:[0.6,1.5],XSTYLE:1,YSTYLE:1,XLOG:1,YLOG:1,$
+              YMINOR:10,XTITLE:xttl,YTITLE:yttl8,CHARSIZE:2.0,TICKLEN:1.  ,$
+              XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,YTICKNAME:ytn8,YTICKV:ytv8,YTICKS:yts8}
+WSET,0
+PLOT,xdumb,fitlinp7,/NODATA,_EXTRA=plim7,XGRIDSTYLE=1,YGRIDSTYLE=1
+  OPLOT,xdumb,fitlinp7,LINESTYLE=1,COLOR=250L,THICK=2.0
+  OPLOT,xdumb,fitlind7,LINESTYLE=1,COLOR= 50L,THICK=2.0
+
+WSET,1
+PLOT,xdumb,fitlinp8,/NODATA,_EXTRA=plim8,XGRIDSTYLE=1,YGRIDSTYLE=1
+  OPLOT,xdumb,fitlinp8,LINESTYLE=1,COLOR=250L,THICK=2.0
+  OPLOT,xdumb,fitlind8,LINESTYLE=1,COLOR= 50L,THICK=2.0
+
+
+; => Figure 7:  (Th/Tc)_par vs. beta_cpar
+temp_7ts    = interp(fitlind7,xdumb,beta_cpars,/NO_EXTRAP)
+temp_7te    = interp(fitlind7,xdumb,beta_cpare,/NO_EXTRAP)
+; => Figure 8:  T_anis,h vs. beta_cpar
+temp_8ts    = interp(fitlind8,xdumb,beta_cpars,/NO_EXTRAP)
+temp_8te    = interp(fitlind8,xdumb,beta_cpare,/NO_EXTRAP)
+
+
+garytest_0s = (beta_cpars GT 6d-1 AND tanih_s GT 75d-2) OR  (beta_cpars GT 6d-1 AND tpar_hc_s GT 75d-1)
+garytest_0e = (beta_cpare GT 6d-1 AND tanih_e GT 75d-2) OR  (beta_cpare GT 6d-1 AND tpar_hc_e GT 75d-1)
+garytest_1s = (beta_cpars GT 6d-1 AND tanih_s GT 75d-2) AND (beta_cpars GT 6d-1 AND tpar_hc_s GT 75d-1)
+garytest_1e = (beta_cpare GT 6d-1 AND tanih_e GT 75d-2) AND (beta_cpare GT 6d-1 AND tpar_hc_e GT 75d-1)
+garytest_2s = (beta_cpars GT 6d-1 AND tanih_s GT 75d-2)
+garytest_2e = (beta_cpare GT 6d-1 AND tanih_e GT 75d-2)
+garytest_7s = (temp_7ts LE tpar_hc_s*2d0)               ; => Figure 7 threshold
+garytest_7e = (temp_7te LE tpar_hc_e*2d0)               ; => Figure 7 threshold
+garytest_8s = (temp_8ts LE tanih_s)                     ; => Figure 8 threshold
+garytest_8e = (temp_8te LE tanih_e)                     ; => Figure 8 threshold
+
+
+mform       = '(";   ",a23,5I11.1)'
+FOR j=0L, N_ELEMENTS(s_scets) - 1L DO BEGIN  $
+  PRINT,FORMAT=mform,s_scets[j],garytest_0s[j],garytest_1s[j],garytest_2s[j],$
+                     garytest_7s[j],garytest_8s[j]
+;----------------------------------------------------------------------------------------------
+;       Date        Time           Test 0     Test 1     Test 2     Test 3     Test 4
+;         [Start TDSS]
+;==============================================================================================
+;   1998-08-26/06:40:53.292          1          0          1          1          1
+;   1998-08-26/06:41:08.353          1          0          1          1          1
+;   1998-08-26/06:41:35.975          1          0          1          1          1
+;   1998-08-26/06:41:42.365          1          0          1          1          1
+;   1998-08-26/06:41:51.600          1          0          1          1          1
+;   1998-08-26/06:41:54.666          1          0          1          1          1
+;   1998-08-26/06:41:56.261          1          0          1          1          1
+;   1998-08-26/06:41:57.584          1          0          1          1          1
+;   1998-08-26/06:42:04.115          1          0          1          1          1
+;   1998-08-26/06:42:07.483          1          0          1          1          1
+;   1998-09-24/23:22:24.983          0          0          0          0          0
+;   1998-09-24/23:22:46.502          0          0          0          0          0
+;   1998-09-24/23:30:46.893          0          0          0          0          0
+;   1998-09-24/23:43:17.303          0          0          0          1          1
+;   1998-09-24/23:45:50.535          0          0          0          0          1
+;   1998-09-24/23:45:51.730          0          0          0          0          1
+;   1998-09-24/23:48:37.371          0          0          0          1          1
+;   1998-09-24/23:48:40.482          0          0          0          1          1
+;   1998-09-24/23:48:49.973          0          0          0          1          0
+;   1998-09-25/00:04:02.897          1          0          1          1          1
+;   1998-09-25/00:05:21.783          1          0          1          1          1
+;   1998-09-25/00:14:48.955          0          0          0          1          1
+;   2000-02-11/23:33:56.703          1          0          1          1          1
+;   2000-02-11/23:33:59.082          1          0          1          1          1
+;   2000-02-11/23:34:25.854          0          0          0          1          1
+;   2000-02-11/23:34:27.416          0          0          0          1          1
+;   2000-02-12/00:14:20.060          1          1          1          1          1
+;   2000-02-12/00:26:15.569          1          1          1          1          1
+;   2000-02-12/00:27:17.494          1          0          1          1          1
+;   2000-04-06/16:33:08.622          1          0          1          1          1
+;   2000-04-06/16:33:37.993          0          0          0          1          1
+;   2000-04-06/16:35:10.964          0          0          0          1          1
+;   2000-04-06/16:35:28.336          0          0          0          1          1
+;   2000-04-06/16:37:34.651          0          0          0          1          1
+;   2000-04-06/16:44:03.915          0          0          0          1          1
+;   2000-04-06/16:45:13.405          0          0          0          1          1
+;   2000-04-06/16:45:17.075          0          0          0          1          1
+;   2000-04-06/16:45:29.053          0          0          0          1          1
+;   2000-04-06/16:45:30.676          0          0          0          1          1
+;   2000-04-06/16:46:37.595          0          0          0          1          1
+;   2000-04-06/16:49:14.931          0          0          0          1          1
+;   2000-04-06/16:49:24.620          0          0          0          1          1
+;   2000-04-06/16:57:46.847          0          0          0          1          1
+;   2000-04-06/18:24:15.248          0          0          0          0          0
+;   2000-04-06/18:24:27.643          0          0          0          0          0
+;   2000-04-06/18:30:59.901          0          0          0          1          1
+;----------------------------------------------------------------------------------------------
+
+
+mform       = '(";   ",a23,5I11.1)'
+FOR j=0L, N_ELEMENTS(s_scete) - 1L DO BEGIN  $
+  PRINT,FORMAT=mform,s_scete[j],garytest_0e[j],garytest_1e[j],garytest_2e[j],$
+                     garytest_7e[j],garytest_8e[j]
+;----------------------------------------------------------------------------------------------
+;       Date        Time           Test 0     Test 1     Test 2     Test 3     Test 4
+;          [End TDSS]
+;==============================================================================================
+;   1998-08-26/06:40:54.383          1          0          1          1          1
+;   1998-08-26/06:41:09.444          1          0          1          1          1
+;   1998-08-26/06:41:37.066          1          0          1          1          1
+;   1998-08-26/06:41:43.456          1          0          1          1          1
+;   1998-08-26/06:41:52.691          1          0          1          1          1
+;   1998-08-26/06:41:55.757          1          0          1          1          1
+;   1998-08-26/06:41:57.352          1          0          1          1          1
+;   1998-08-26/06:41:58.675          1          0          1          1          1
+;   1998-08-26/06:42:05.206          1          0          1          1          1
+;   1998-08-26/06:42:08.575          1          0          1          1          1
+;   1998-09-24/23:22:26.074          0          0          0          0          0
+;   1998-09-24/23:22:47.593          0          0          0          0          0
+;   1998-09-24/23:30:47.984          0          0          0          0          0
+;   1998-09-24/23:43:18.394          0          0          0          1          1
+;   1998-09-24/23:45:51.626          0          0          0          0          1
+;   1998-09-24/23:45:52.821          0          0          0          0          0
+;   1998-09-24/23:48:38.462          0          0          0          1          1
+;   1998-09-24/23:48:41.573          0          0          0          1          1
+;   1998-09-24/23:48:51.064          0          0          0          1          0
+;   1998-09-25/00:04:03.988          1          0          1          1          1
+;   1998-09-25/00:05:22.874          1          0          1          1          1
+;   1998-09-25/00:14:50.046          0          0          0          1          1
+;   2000-02-11/23:33:57.794          1          0          1          1          1
+;   2000-02-11/23:34:00.173          1          0          1          1          1
+;   2000-02-11/23:34:26.945          0          0          0          1          1
+;   2000-02-11/23:34:28.507          0          0          0          1          1
+;   2000-02-12/00:14:21.151          1          1          1          1          1
+;   2000-02-12/00:26:16.660          1          1          1          1          1
+;   2000-02-12/00:27:18.585          1          0          1          1          1
+;   2000-04-06/16:33:09.713          1          0          1          1          1
+;   2000-04-06/16:33:39.084          0          0          0          1          1
+;   2000-04-06/16:35:12.055          0          0          0          1          1
+;   2000-04-06/16:35:29.427          0          0          0          1          1
+;   2000-04-06/16:37:35.742          0          0          0          1          1
+;   2000-04-06/16:44:05.006          0          0          0          1          1
+;   2000-04-06/16:45:14.496          0          0          0          1          1
+;   2000-04-06/16:45:18.166          0          0          0          1          1
+;   2000-04-06/16:45:30.144          0          0          0          1          1
+;   2000-04-06/16:45:31.767          0          0          0          1          1
+;   2000-04-06/16:46:38.686          0          0          0          1          1
+;   2000-04-06/16:49:16.022          0          0          0          1          1
+;   2000-04-06/16:49:25.711          0          0          0          1          1
+;   2000-04-06/16:57:47.938          0          0          0          1          1
+;   2000-04-06/18:24:16.339          0          0          0          0          0
+;   2000-04-06/18:24:28.734          0          0          0          0          0
+;   2000-04-06/18:31:00.992          0          0          0          1          1
+;----------------------------------------------------------------------------------------------
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Look at only the lower hybrid waves
+;-----------------------------------------------------------------------------------------
+gels        = good_lhw
+evns_a      = evns[gels]
+s_scets     = scets[gels]
+s_scete     = scete[gels]
+beta_cpars  = betapacs[gels]
+beta_cpare  = betapace[gels]
+tanic_s     = tanis_cs[gels]
+tanic_e     = tanis_ce[gels]
+tanih_s     = tanis_hs[gels]
+tanih_e     = tanis_he[gels]
+tpar_hc_s   = thc_pars[gels]
+tpar_hc_e   = thc_pare[gels]
+unq         = UNIQ(evns_a,SORT(evns_a))
+s_scets     = s_scets[unq]
+s_scete     = s_scete[unq]
+s_unixs     = time_double(s_scets)
+beta_cpars  = beta_cpars[unq]
+beta_cpare  = beta_cpare[unq]
+tanic_s     = tanic_s[unq]
+tanic_e     = tanic_e[unq]
+tanih_s     = tanih_s[unq]
+tanih_e     = tanih_e[unq]
+tpar_hc_s   = tpar_hc_s[unq]
+tpar_hc_e   = tpar_hc_e[unq]
+sp          = SORT(s_unixs)
+s_scets     = s_scets[sp]
+s_scete     = s_scete[sp]
+beta_cpars  = beta_cpars[sp]
+beta_cpare  = beta_cpare[sp]
+tanic_s     = tanic_s[sp]
+tanic_e     = tanic_e[sp]
+tanih_s     = tanih_s[sp]
+tanih_e     = tanih_e[sp]
+tpar_hc_s   = tpar_hc_s[sp]
+tpar_hc_e   = tpar_hc_e[sp]
+
+
+;-----------------------------------------------------------------------------------------
+; => Look at only the whistlers
+;-----------------------------------------------------------------------------------------
+gels        = good_whi
+evns_a      = evns[gels]
+s_scets     = scets[gels]
+s_scete     = scete[gels]
+beta_cpars  = betapacs[gels]
+beta_cpare  = betapace[gels]
+tanic_s     = tanis_cs[gels]
+tanic_e     = tanis_ce[gels]
+tanih_s     = tanis_hs[gels]
+tanih_e     = tanis_he[gels]
+tpar_hc_s   = thc_pars[gels]
+tpar_hc_e   = thc_pare[gels]
+unq         = UNIQ(evns_a,SORT(evns_a))
+s_scets     = s_scets[unq]
+s_scete     = s_scete[unq]
+s_unixs     = time_double(s_scets)
+beta_cpars  = beta_cpars[unq]
+beta_cpare  = beta_cpare[unq]
+tanic_s     = tanic_s[unq]
+tanic_e     = tanic_e[unq]
+tanih_s     = tanih_s[unq]
+tanih_e     = tanih_e[unq]
+tpar_hc_s   = tpar_hc_s[unq]
+tpar_hc_e   = tpar_hc_e[unq]
+sp          = SORT(s_unixs)
+s_scets     = s_scets[sp]
+s_scete     = s_scete[sp]
+beta_cpars  = beta_cpars[sp]
+beta_cpare  = beta_cpare[sp]
+tanic_s     = tanic_s[sp]
+tanic_e     = tanic_e[sp]
+tanih_s     = tanih_s[sp]
+tanih_e     = tanih_e[sp]
+tpar_hc_s   = tpar_hc_s[sp]
+tpar_hc_e   = tpar_hc_e[sp]
+
+
+;-----------------------------------------------------------------------------------------
+; => Look at only the mixed-mode waves [without precursors]
+;-----------------------------------------------------------------------------------------
+gels        = good_mix
+evns_a      = evns[gels]
+s_scets     = scets[gels]
+s_scete     = scete[gels]
+beta_cpars  = betapacs[gels]
+beta_cpare  = betapace[gels]
+tanic_s     = tanis_cs[gels]
+tanic_e     = tanis_ce[gels]
+tanih_s     = tanis_hs[gels]
+tanih_e     = tanis_he[gels]
+tpar_hc_s   = thc_pars[gels]
+tpar_hc_e   = thc_pare[gels]
+unq         = UNIQ(evns_a,SORT(evns_a))
+s_scets     = s_scets[unq]
+s_scete     = s_scete[unq]
+s_unixs     = time_double(s_scets)
+beta_cpars  = beta_cpars[unq]
+beta_cpare  = beta_cpare[unq]
+tanic_s     = tanic_s[unq]
+tanic_e     = tanic_e[unq]
+tanih_s     = tanih_s[unq]
+tanih_e     = tanih_e[unq]
+tpar_hc_s   = tpar_hc_s[unq]
+tpar_hc_e   = tpar_hc_e[unq]
+sp          = SORT(s_unixs)
+s_scets     = s_scets[sp]
+s_scete     = s_scete[sp]
+beta_cpars  = beta_cpars[sp]
+beta_cpare  = beta_cpare[sp]
+tanic_s     = tanic_s[sp]
+tanic_e     = tanic_e[sp]
+tanih_s     = tanih_s[sp]
+tanih_e     = tanih_e[sp]
+tpar_hc_s   = tpar_hc_s[sp]
+tpar_hc_e   = tpar_hc_e[sp]
+
+
+; => Figure 7:  (Th/Tc)_par vs. beta_cpar
+temp_7ts    = interp(fitlind7,xdumb,beta_cpars,/NO_EXTRAP)
+temp_7te    = interp(fitlind7,xdumb,beta_cpare,/NO_EXTRAP)
+; => Figure 8:  T_anis,h vs. beta_cpar
+temp_8ts    = interp(fitlind8,xdumb,beta_cpars,/NO_EXTRAP)
+temp_8te    = interp(fitlind8,xdumb,beta_cpare,/NO_EXTRAP)
+
+garytest_0s = (beta_cpars GT 6d-1 AND tanih_s GT 75d-2) OR  (beta_cpars GT 6d-1 AND tpar_hc_s GT 75d-1)
+garytest_0e = (beta_cpare GT 6d-1 AND tanih_e GT 75d-2) OR  (beta_cpare GT 6d-1 AND tpar_hc_e GT 75d-1)
+garytest_1s = (beta_cpars GT 6d-1 AND tanih_s GT 75d-2) AND (beta_cpars GT 6d-1 AND tpar_hc_s GT 75d-1)
+garytest_1e = (beta_cpare GT 6d-1 AND tanih_e GT 75d-2) AND (beta_cpare GT 6d-1 AND tpar_hc_e GT 75d-1)
+garytest_2s = (beta_cpars GT 6d-1 AND tanih_s GT 75d-2)
+garytest_2e = (beta_cpare GT 6d-1 AND tanih_e GT 75d-2)
+garytest_7s = (temp_7ts LE tpar_hc_s*2d0)               ; => Figure 7 threshold
+garytest_7e = (temp_7te LE tpar_hc_e*2d0)               ; => Figure 7 threshold
+garytest_8s = (temp_8ts LE tanih_s)                     ; => Figure 8 threshold
+garytest_8e = (temp_8te LE tanih_e)                     ; => Figure 8 threshold
+
+
+
+mform       = '(";   ",a23,5I11.1)'
+FOR j=0L, N_ELEMENTS(s_scets) - 1L DO BEGIN  $
+  PRINT,FORMAT=mform,s_scets[j],garytest_0s[j],garytest_1s[j],garytest_2s[j],$
+                     garytest_7s[j],garytest_8s[j]
+;----------------------------------------------------------------------------------------------
+; => Results for only the lower hybrid waves
+;----------------------------------------------------------------------------------------------
+;       Date        Time           Test 0     Test 1     Test 2     Test 3     Test 4
+;         [Start TDSS]
+;==============================================================================================
+;   1998-08-26/06:40:53.292          1          0          1          1          1
+;   1998-08-26/06:41:08.353          1          0          1          1          1
+;   1998-09-24/23:43:17.303          0          0          0          1          1
+;   1998-09-24/23:48:37.371          0          0          0          1          1
+;   1998-09-24/23:48:49.973          0          0          0          1          0
+;   1998-09-25/00:04:02.897          1          0          1          1          1
+;   1998-09-25/00:14:48.955          0          0          0          1          1
+;   2000-04-06/16:33:37.993          0          0          0          1          1
+;   2000-04-06/16:35:10.964          0          0          0          1          1
+;   2000-04-06/16:35:28.336          0          0          0          1          1
+;   2000-04-06/16:37:34.651          0          0          0          1          1
+;   2000-04-06/16:44:03.915          0          0          0          1          1
+;   2000-04-06/16:45:13.405          0          0          0          1          1
+;   2000-04-06/16:45:17.075          0          0          0          1          1
+;   2000-04-06/16:45:29.053          0          0          0          1          1
+;   2000-04-06/16:45:30.676          0          0          0          1          1
+;   2000-04-06/16:46:37.595          0          0          0          1          1
+;   2000-04-06/16:49:14.931          0          0          0          1          1
+;   2000-04-06/16:49:24.620          0          0          0          1          1
+;   2000-04-06/16:57:46.847          0          0          0          1          1
+;   2000-04-06/18:24:15.248          0          0          0          0          0
+;   2000-04-06/18:24:27.643          0          0          0          0          0
+;----------------------------------------------------------------------------------------------
+; => Results for only the whistler waves
+;----------------------------------------------------------------------------------------------
+;       Date        Time           Test 0     Test 1     Test 2     Test 3     Test 4
+;         [Start TDSS]
+;==============================================================================================
+;   1998-08-26/06:41:35.975          1          0          1          1          1
+;   1998-08-26/06:41:42.365          1          0          1          1          1
+;   1998-08-26/06:41:51.600          1          0          1          1          1
+;   1998-08-26/06:41:54.666          1          0          1          1          1
+;   1998-08-26/06:41:56.261          1          0          1          1          1
+;   1998-08-26/06:41:57.584          1          0          1          1          1
+;   1998-08-26/06:42:04.115          1          0          1          1          1
+;   1998-08-26/06:42:07.483          1          0          1          1          1
+;   2000-02-11/23:34:25.854          0          0          0          1          1
+;   2000-02-11/23:34:27.416          0          0          0          1          1
+;   2000-02-12/00:14:20.060          1          1          1          1          1
+;   2000-02-12/00:26:15.569          1          1          1          1          1
+;   2000-02-12/00:27:17.494          1          0          1          1          1
+;----------------------------------------------------------------------------------------------
+; => Results for only the mixed-mode waves
+;----------------------------------------------------------------------------------------------
+;       Date        Time           Test 0     Test 1     Test 2     Test 3     Test 4
+;         [Start TDSS]
+;==============================================================================================
+;   1998-09-24/23:22:24.983          0          0          0          0          0
+;   1998-09-24/23:22:46.502          0          0          0          0          0
+;   1998-09-24/23:30:46.893          0          0          0          0          0
+;   1998-09-24/23:45:50.535          0          0          0          0          1
+;   1998-09-24/23:45:51.730          0          0          0          0          1
+;   1998-09-24/23:48:40.482          0          0          0          1          1
+;   1998-09-25/00:05:21.783          1          0          1          1          1
+;   2000-02-11/23:33:56.703          1          0          1          1          1
+;   2000-02-11/23:33:59.082          1          0          1          1          1
+;   2000-04-06/16:33:08.622          1          0          1          1          1
+;   2000-04-06/18:30:59.901          0          0          0          1          1
+;----------------------------------------------------------------------------------------------
+
+
+mform       = '(";   ",a23,5I11.1)'
+FOR j=0L, N_ELEMENTS(s_scete) - 1L DO BEGIN  $
+  PRINT,FORMAT=mform,s_scete[j],garytest_0e[j],garytest_1e[j],garytest_2e[j],$
+                     garytest_7e[j],garytest_8e[j]
+;----------------------------------------------------------------------------------------------
+; => Results for only the lower hybrid waves
+;----------------------------------------------------------------------------------------------
+;       Date        Time           Test 0     Test 1     Test 2     Test 3     Test 4
+;          [End TDSS]
+;==============================================================================================
+;   1998-08-26/06:40:54.383          1          0          1          1          1
+;   1998-08-26/06:41:09.444          1          0          1          1          1
+;   1998-09-24/23:43:18.394          0          0          0          1          1
+;   1998-09-24/23:48:38.462          0          0          0          1          1
+;   1998-09-24/23:48:51.064          0          0          0          1          0
+;   1998-09-25/00:04:03.988          1          0          1          1          1
+;   1998-09-25/00:14:50.046          0          0          0          1          1
+;   2000-04-06/16:33:39.084          0          0          0          1          1
+;   2000-04-06/16:35:12.055          0          0          0          1          1
+;   2000-04-06/16:35:29.427          0          0          0          1          1
+;   2000-04-06/16:37:35.742          0          0          0          1          1
+;   2000-04-06/16:44:05.006          0          0          0          1          1
+;   2000-04-06/16:45:14.496          0          0          0          1          1
+;   2000-04-06/16:45:18.166          0          0          0          1          1
+;   2000-04-06/16:45:30.144          0          0          0          1          1
+;   2000-04-06/16:45:31.767          0          0          0          1          1
+;   2000-04-06/16:46:38.686          0          0          0          1          1
+;   2000-04-06/16:49:16.022          0          0          0          1          1
+;   2000-04-06/16:49:25.711          0          0          0          1          1
+;   2000-04-06/16:57:47.938          0          0          0          1          1
+;   2000-04-06/18:24:16.339          0          0          0          0          0
+;   2000-04-06/18:24:28.734          0          0          0          0          0
+;----------------------------------------------------------------------------------------------
+; => Results for only the whistler waves
+;----------------------------------------------------------------------------------------------
+;       Date        Time           Test 0     Test 1     Test 2     Test 3     Test 4
+;          [End TDSS]
+;==============================================================================================
+;   1998-08-26/06:41:37.066          1          0          1          1          1
+;   1998-08-26/06:41:43.456          1          0          1          1          1
+;   1998-08-26/06:41:52.691          1          0          1          1          1
+;   1998-08-26/06:41:55.757          1          0          1          1          1
+;   1998-08-26/06:41:57.352          1          0          1          1          1
+;   1998-08-26/06:41:58.675          1          0          1          1          1
+;   1998-08-26/06:42:05.206          1          0          1          1          1
+;   1998-08-26/06:42:08.575          1          0          1          1          1
+;   2000-02-11/23:34:26.945          0          0          0          1          1
+;   2000-02-11/23:34:28.507          0          0          0          1          1
+;   2000-02-12/00:14:21.151          1          1          1          1          1
+;   2000-02-12/00:26:16.660          1          1          1          1          1
+;   2000-02-12/00:27:18.585          1          0          1          1          1
+;----------------------------------------------------------------------------------------------
+; => Results for only the mixed-mode waves
+;----------------------------------------------------------------------------------------------
+;       Date        Time           Test 0     Test 1     Test 2     Test 3     Test 4
+;          [End TDSS]
+;==============================================================================================
+;   1998-09-24/23:22:26.074          0          0          0          0          0
+;   1998-09-24/23:22:47.593          0          0          0          0          0
+;   1998-09-24/23:30:47.984          0          0          0          0          0
+;   1998-09-24/23:45:51.626          0          0          0          0          1
+;   1998-09-24/23:45:52.821          0          0          0          0          0
+;   1998-09-24/23:48:41.573          0          0          0          1          1
+;   1998-09-25/00:05:22.874          1          0          1          1          1
+;   2000-02-11/23:33:57.794          1          0          1          1          1
+;   2000-02-11/23:34:00.173          1          0          1          1          1
+;   2000-04-06/16:33:09.713          1          0          1          1          1
+;   2000-04-06/18:31:00.992          0          0          0          1          1
+;----------------------------------------------------------------------------------------------
+
+
+

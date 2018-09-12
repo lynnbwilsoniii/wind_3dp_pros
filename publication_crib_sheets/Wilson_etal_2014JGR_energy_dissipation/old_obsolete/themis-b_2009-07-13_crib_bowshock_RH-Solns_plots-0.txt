@@ -1,0 +1,903 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+; => Compile necessary routines
+@comp_lynn_pros
+
+;-----------------------------------------------------------------------------------------
+; => Date/Times/Probes
+;-----------------------------------------------------------------------------------------
+tdate     = '2009-07-13'
+probe     = 'b'
+probef    = probe[0]
+gprobes   = probe[0]
+tr_00     = tdate[0]+'/'+['07:50:00','10:10:00']
+; => initialize themis routines and default parameters
+thm_init
+
+; Data parameters, load data, and set color table:
+;
+dur       = 1.0   ; # of days
+
+timespan,tdate[0],dur[0],/DAY
+tr        = timerange()
+probes    = ['a','b','c','d','e']
+
+tplot_options,'XMARGIN',[ 20, 15]
+tplot_options,'YMARGIN',[ 5, 5]
+;-----------------------------------------------------------------------------------------
+; => Load TPLOT data
+;-----------------------------------------------------------------------------------------
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+sc     = probe[0]
+;;=================================================================
+; Load magnetic field and level 2 velocity data (for coord rotation).
+;;=================================================================
+mode   = 'fg?'
+sc     = probe[0]
+thm_load_fgm,PROBE=sc[0],DATATYPE=mode[0],LEVEL=2,COORD='all',TRANGE=tr
+
+pref   = 'th'+sc[0]+'_fg*'+['_dsl','_gse','_gsm']
+names  = tnames(pref)
+tplot,names
+;-----------------------------------------------------------------------------------------
+; => Calculate Magnetic Local Time (MLT), Magnetic Latitude (MLAT), L-Shell, and 
+;      Invariant Latitude (ILAT)
+;-----------------------------------------------------------------------------------------
+
+;-----------------------------------------------------
+; => Convert GSM SC position to SM position
+;-----------------------------------------------------
+; => call again so that spin model common blocks are loaded...
+sc        = probe[0]
+thm_load_state,PROBE=sc[0],/GET_SUPPORT_DATA
+
+sc      = probe[0]
+pos_gsm = 'th'+sc[0]+'_state_pos_gsm'
+pos__sm = 'th'+sc[0]+'_state_pos__sm'
+cotrans,pos_gsm[0],pos__sm[0],/GSM2SM
+posnm          = pos__sm[0]
+get_data,posnm[0],DATA=temp,DLIM=dlim,LIM=lim
+th_pos_time    = temp.X
+th_pos_vec__sm = temp.Y
+th_pos_rad__sm = SQRT(TOTAL(th_pos_vec__sm^2,2,/NAN))
+;-----------------------------------------------------
+; => MLT (hours)
+;-----------------------------------------------------
+t_x            = th_pos_vec__sm[*,0]
+t_y            = th_pos_vec__sm[*,1]
+t_z            = th_pos_vec__sm[*,2]
+th_mlt         = ATAN(t_y/t_x)*18d1/!DPI/15d0 + 12d0
+; => Check for negative X-SM coordinate points
+low_tmp        = WHERE(th_pos_vec__sm[*,0] LT 0d0,lwtp)
+IF (lwtp GT 0L) THEN th_mlt[low_tmp] = (ATAN(t_y[low_tmp]/t_x[low_tmp]) + !DPI)*18d1/(!DPI*15d0) + 12d0
+; => make sure LT 24
+th_mlt         = th_mlt MOD 24d0
+;-----------------------------------------------------
+; => MLAT (deg)
+;-----------------------------------------------------
+t_ratio        = t_z/th_pos_rad__sm
+th_mlat        = ATAN(t_ratio)*18d1/!DPI
+;-----------------------------------------------------
+; => L-Shell (Re)
+;-----------------------------------------------------
+cmlat          = COS(th_mlat*!DPI/18d1)
+th_lshell      = th_pos_rad__sm/(R_E[0]*cmlat^2)
+;-----------------------------------------------------
+; => ILAT (deg)
+;-----------------------------------------------------
+irt_lsh        = SQRT(1d0/th_lshell)
+th_ilat        = ACOS(irt_lsh)*18d1/!DPI
+
+; => send to TPLOT
+pref           = 'th'+sc[0]+'_'
+store_data,pref[0]+'_MLT',DATA={X:th_pos_time,Y:th_mlt}
+store_data,pref[0]+'MLAT',DATA={X:th_pos_time,Y:th_mlat}
+store_data,pref[0]+'_LSH',DATA={X:th_pos_time,Y:th_lshell}
+store_data,pref[0]+'ILAT',DATA={X:th_pos_time,Y:th_ilat}
+
+pref           = 'th'+sc[0]+'_'
+tpref          = 'th'+sc[0]+' '
+options,pref[0]+'_MLT','YTITLE',tpref[0]+'MLT [Hr]',/DEF
+options,pref[0]+'MLAT','YTITLE',tpref[0]+'MLAT [Deg]',/DEF
+options,pref[0]+'_LSH','YTITLE',tpref[0]+'LShell [Re]',/DEF
+options,pref[0]+'ILAT','YTITLE',tpref[0]+'ILAT [Deg]',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+; => Add SC position to TPLOT plots
+names          = [pref[0]+'_LSH',pref[0]+'_MLT',pref[0]+'MLAT',pref[0]+'ILAT']
+tplot_options,VAR_LABEL=names
+;-----------------------------------------------------
+; => Create |B| TPLOT variable
+;-----------------------------------------------------
+sc     = probe[0]
+mode   = 'fgs'
+; => rotate DSL to GSE
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_dsl',OUT_SUFFIX='_gse',OUT_COORD='gse'
+; => rotate GSE to GSM
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_gse',OUT_SUFFIX='_gsm',OUT_COORD='gsm'
+
+pref    = 'th'+sc[0]+'_fg*'
+names   = tnames(pref[0])
+hed_nm  = tnames('*_hed')
+good_nm = array_where(names,hed_nm,/N_UNIQ,NCOMP1=comp1,NCOMP2=comp2)
+names   = names[comp1]
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+mode    = 'fgs'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+mode    = 'fgl'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+mode    = 'fgh'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+mode    = 'fgs'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+
+mode    = 'fgl'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+
+mode    = 'fgh'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+;-----------------------------------------------------
+; => Fix the Y-Axis Titles
+;-----------------------------------------------------
+mode    = 'fg'+['s','l','h']
+coord   = ['dsl','gse','gsm','mag']
+modeu   = STRUPCASE(mode)
+coordu  = STRUPCASE(coord)
+
+FOR j=0L, 2L DO BEGIN                                                               $
+  FOR k=0L, 3L DO BEGIN                                                             $
+    pref    = 'th'+sc[0]+'_'+mode[j]+'_'+coord[k]                                 & $
+    names   = tnames(pref[0])                                                     & $
+    get_data,names[0],DATA=temp,DLIM=dlim,LIM=lim                                 & $
+    smrate  = sample_rate(temp.X,GAP_THRESH=2d0,/AVE)                             & $
+    strsmr  = STRTRIM(STRING(FORMAT='(f15.0)',smrate[0]),2L)                      & $
+    yttl    = 'B ['+modeu[j]+', '+coordu[k]+', nT]'                               & $
+    ysubt   = '[th'+sc[0]+' '+strsmr[0]+' sps, L2]'                               & $
+    str_element,dlim,'YTITLE',yttl[0],/ADD_REPLACE                                & $
+    str_element,dlim,'YSUBTITLE',ysubt[0],/ADD_REPLACE                            & $
+    store_data,names[0],DATA=temp,DLIM=dlim,LIM=lim
+
+
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+mode[0]+['_mag','_gsm']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+;-----------------------------------------------------------------------------------------
+; => Load ESA data
+;-----------------------------------------------------------------------------------------
+; => Load level 2 densities and SC potentials
+sc      = probe[0]
+thm_load_esa,PROBE=sc[0],DATAT=' peer_avgtemp peir_avgtemp pe?r_density peer_sc_pot ',LEVEL=2
+thm_load_esa,PROBE=sc[0],DATAT=' pee?_density pee?_avgtemp ',LEVEL=2
+thm_load_esa,PROBE=sc[0],DATAT=' pei?_density pei?_avgtemp ',LEVEL=2
+thm_load_esa,PROBE=sc[0],DATAT=' pee?_velocity_dsl pei?_velocity_dsl ',LEVEL=2
+; => rotate DSL to GSE
+partn     = ['e','i']
+coords    = ['dsl','gse']
+in_suffe  = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[0]
+out_suffe = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[1]
+in_suffi  = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[0]
+out_suffi = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[1]
+in_name   = 'th'+sc[0]+'_'+[[in_suffe],[in_suffi]]
+out_name  = 'th'+sc[0]+'_'+[[out_suffe],[out_suffi]]
+FOR j=0L, 1L DO BEGIN                                                              $
+  thm_cotrans,in_name[0,j],out_name[0,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[1,j],out_name[1,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[2,j],out_name[2,j],OUT_COORD=coords[1],IN_COORD=coords[0]
+
+names     = tnames([REFORM(in_name,3*2),REFORM(out_name,3*2)])
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+; => rotate GSE to GSM
+partn     = ['e','i']
+coords    = ['gse','gsm']
+in_suffe  = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[0]
+out_suffe = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[1]
+in_suffi  = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[0]
+out_suffi = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[1]
+in_name   = 'th'+sc[0]+'_'+[[in_suffe],[in_suffi]]
+out_name  = 'th'+sc[0]+'_'+[[out_suffe],[out_suffi]]
+FOR j=0L, 1L DO BEGIN                                                              $
+  thm_cotrans,in_name[0,j],out_name[0,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[1,j],out_name[1,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[2,j],out_name[2,j],OUT_COORD=coords[1],IN_COORD=coords[0]
+
+names     = tnames([REFORM(in_name,3*2),REFORM(out_name,3*2)])
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+dens_nm = tnames('*b_density')
+temp_nm = tnames('*b_avgtemp')
+options,dens_nm,'YLOG',0,/DEF
+options,temp_nm,'YLOG',0,/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+;-----------------------------------------------------------------------------------------
+; => Look at shock paramters
+;-----------------------------------------------------------------------------------------
+t_RH_0  = time_double(tdate[0]+'/'+['08:57:00.000','09:02:30.000'])
+pref    = 'th'+sc[0]+'_'
+coord   = 'gse'
+plasnm  = ['_velocity_'+coord[0],'_density','_avgtemp']
+fgmnm   = 'fgl_'+['mag',coord[0]]
+partn   = 'pe'+['e','i']+'b'
+
+name_i  = pref[0]+[fgmnm,partn[1]+plasnm[0:1],partn+plasnm[2]]
+tplot,name_i,/NOM,TRANGE=t_RH_0
+
+t_up    = time_double(tdate[0]+'/'+['09:00:08.700','09:01:38.800'])
+t_dn    = time_double(tdate[0]+'/'+['08:57:35.000','08:59:00.000'])
+
+fnm     = file_name_times(t_RH_0,PREC=3)
+ftimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+fpref   = 'FGM-fgl-GSE_TH-B_Vi_Ni_Te_Ti_'
+fname   = fpref[0]+ftimes[0]+'_Down-Blue_Up-Red'
+popen,fname[0],/LAND
+  tplot,name_i,/NOM,TRANGE=t_RH_0
+  time_bar,t_up,VARNAME=name_i,COLOR=250L
+  time_bar,t_dn,VARNAME=name_i,COLOR= 50L
+pclose
+
+
+; => need :
+;      1)  Ti and Te
+;      2)  Ni
+;      3)  Bo
+;      4)  Vsw
+
+;  Bo
+pref    = 'th'+sc[0]+'_'
+fgmnm   = 'fgl_'+['mag',coord[0]]
+get_data,pref[0]+fgmnm[1],DATA=th_magf,DLIM=dlim,LIM=lim
+; => Smooth the B-field
+nsm       = 30L
+nsms      = STRING(FORMAT='(I3.3)',nsm[0])
+suffx     = '_sm'+nsms[0]+'pts'
+name1     = pref[0]+fgmnm[1]+suffx[0]
+xmagf     = SMOOTH(th_magf.Y[*,0],nsm[0],/NAN,/EDGE_TRUNCATE)
+ymagf     = SMOOTH(th_magf.Y[*,1],nsm[0],/NAN,/EDGE_TRUNCATE)
+zmagf     = SMOOTH(th_magf.Y[*,2],nsm[0],/NAN,/EDGE_TRUNCATE)
+smmagf    = [[xmagf],[ymagf],[zmagf]]
+smbmag    = SQRT(TOTAL(smmagf^2,2,/NAN))
+smmagf    = [[xmagf],[ymagf],[zmagf],[smbmag]]
+store_data,name1[0],DATA={X:th_magf.X,Y:smmagf},DLIM=dlim,LIM=lim
+options,name1[0],'COLORS',[250,150,50,25],/DEF
+options,name1[0],'LABELS',['Bx','By','Bz','|B|'],/DEF
+
+name_i  = [name1[0],pref[0]+[partn[1]+plasnm[0:1],partn+plasnm[2]]]
+  tplot,name_i,/NOM,TRANGE=t_RH_0
+  time_bar,t_up,VARNAME=name_i,COLOR=250L
+  time_bar,t_dn,VARNAME=name_i,COLOR= 50L
+
+fpref   = 'FGM-fgl-GSE'+suffx[0]+'_TH-B_Vi_Ni_Te_Ti_'
+fname   = fpref[0]+ftimes[0]+'_Down-Blue_Up-Red'
+popen,fname[0],/LAND
+  tplot,name_i,/NOM,TRANGE=t_RH_0
+  time_bar,t_up,VARNAME=name_i,COLOR=250L
+  time_bar,t_dn,VARNAME=name_i,COLOR= 50L
+pclose
+
+
+
+
+;  Ni
+get_data,pref[0]+partn[1]+plasnm[1],DATA=ti_dens
+;  Ti
+get_data,pref[0]+partn[1]+plasnm[2],DATA=ti_temp
+;  Vsw
+get_data,pref[0]+partn[1]+plasnm[0],DATA=ti_vsw
+;  Te
+get_data,pref[0]+partn[0]+plasnm[2],DATA=te_temp
+
+good_up_Bo = WHERE(th_magf.X GE t_up[0] AND th_magf.X LE t_up[1],gdupBo)
+good_up_Ni = WHERE(ti_dens.X GE t_up[0] AND ti_dens.X LE t_up[1],gdupNi)
+good_up_Ti = WHERE(ti_temp.X GE t_up[0] AND ti_temp.X LE t_up[1],gdupTi)
+good_up_Te = WHERE(te_temp.X GE t_up[0] AND te_temp.X LE t_up[1],gdupTe)
+good_up_Vi = WHERE(ti_vsw.X  GE t_up[0] AND ti_vsw.X  LE t_up[1],gdupVi)
+
+good_dn_Bo = WHERE(th_magf.X GE t_dn[0] AND th_magf.X LE t_dn[1],gddnBo)
+good_dn_Ni = WHERE(ti_dens.X GE t_dn[0] AND ti_dens.X LE t_dn[1],gddnNi)
+good_dn_Ti = WHERE(ti_temp.X GE t_dn[0] AND ti_temp.X LE t_dn[1],gddnTi)
+good_dn_Te = WHERE(te_temp.X GE t_dn[0] AND te_temp.X LE t_dn[1],gddnTe)
+good_dn_Vi = WHERE(ti_vsw.X  GE t_dn[0] AND ti_vsw.X  LE t_dn[1],gddnVi)
+
+PRINT,';', gdupBo, gdupNi, gdupTi, gdupTe, gdupVi
+PRINT,';', gddnBo, gddnNi, gddnTi, gddnTe, gddnVi
+;         360          29          29          30          29
+;         340          29          29          29          29
+
+; => Interpolate to ion times
+;  Bo
+tx_magf = interp(smmagf[*,0],th_magf.X,ti_dens.X,/NO_EXTRAP)
+ty_magf = interp(smmagf[*,1],th_magf.X,ti_dens.X,/NO_EXTRAP)
+tz_magf = interp(smmagf[*,2],th_magf.X,ti_dens.X,/NO_EXTRAP)
+tm_magf = [[tx_magf],[ty_magf],[tz_magf]]
+;  Vsw
+tx_vsw  = interp(ti_vsw.Y[*,0],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+ty_vsw  = interp(ti_vsw.Y[*,1],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+tz_vsw  = interp(ti_vsw.Y[*,2],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+tv_vsw  = [[tx_vsw],[ty_vsw],[tz_vsw]]
+;  Ti
+ti_temp = interp(ti_temp.Y,ti_temp.X,ti_dens.X,/NO_EXTRAP)
+;  Te
+te_temp = interp(te_temp.Y,te_temp.X,ti_dens.X,/NO_EXTRAP)
+
+; => Define [up,down]stream
+up_magf = tm_magf[good_up_Ni,*]
+up_Vsw  = tv_vsw[good_up_Ni,*]
+up_Ti   = ti_temp[good_up_Ni]
+up_Te   = te_temp[good_up_Ni]
+up_Ni   = ti_dens.Y[good_up_Ni]
+
+dn_magf = tm_magf[good_dn_Ni,*]
+dn_Vsw  = tv_vsw[good_dn_Ni,*]
+dn_Ti   = ti_temp[good_dn_Ni]
+dn_Te   = te_temp[good_dn_Ni]
+dn_Ni   = ti_dens.Y[good_dn_Ni]
+
+PRINT,';', up_Ni
+PRINT,';', up_Ti
+PRINT,';', up_Te
+;       10.492314       9.6057987       9.4848032       9.6199398       9.2339535       8.6731071       8.7769480       8.7919569       8.4657831       8.7491970       7.9786835       7.9909315       7.8905368       7.9880352       7.9813509       7.9611845       7.8424263       8.0624046       8.0674877       7.7535858       8.1734800       8.1494284       8.5141010       8.4393463       8.3660755       8.5864878       9.1271343       10.491794       9.3186817
+;       325.91592       320.36951       312.16245       314.90503       286.88147       346.91653       327.72598       322.68387       305.82150       301.62271       309.02533       298.84399       271.75247       233.62141       231.43066       250.44740       257.12958       247.18892       257.91678       270.90842       273.82373       287.68024       285.42651       279.09427       268.98788       240.55653       227.58278       218.83661       237.16356
+;       13.419991       13.863358       13.106758       13.336205       12.009370       12.239438       12.080978       11.955414       11.705899       11.211782       10.994113       10.554955       10.480340       10.783696       10.806020       10.523615       10.393574       10.187079       10.405693       10.176997       10.471030       10.561646       10.689648       10.669145       10.496284       10.878242       11.117191       10.504341       10.257567
+
+PRINT,';', up_Vsw[*,0]
+PRINT,';', up_Vsw[*,1]
+PRINT,';', up_Vsw[*,2]
+;      -198.39782      -213.97245      -227.58298      -222.65030      -247.95987      -216.52256      -219.51793      -229.37350      -240.28686      -244.40539      -246.54706      -252.83987      -263.88985      -276.56919      -277.14649      -271.64703      -267.38324      -275.94087      -277.80102      -267.75675      -266.00073      -258.82121      -254.05316      -258.56518      -266.55825      -267.64218      -280.16383      -281.90207      -261.72227
+;       36.814850       21.950059       8.5849283       11.045026       6.7933274       16.371210       14.181231       3.8455909      -3.2891416      -6.2215962      -6.1784927      -18.693918      -18.795381      -17.108940      -21.728643      -26.451531      -17.143160      -23.763585      -47.778542      -32.352764      -33.229716      -37.676295      -36.913341      -10.233414      -9.5188194       7.6447028       12.201699       9.5083863       5.7265420
+;       134.74226       125.11780       116.77361       127.38341       93.295210       116.60983       117.30034       105.21773       100.54820       93.545515       88.959243       90.244997       80.306784       61.796104       58.885898       64.157651       65.533080       64.945824       63.198675       64.235031       65.723894       71.149307       68.803631       69.547102       70.189979       60.091609       61.729282       59.023323       54.382862
+
+PRINT,';', up_magf[*,0]
+PRINT,';', up_magf[*,1]
+PRINT,';', up_magf[*,2]
+;      -2.7192060      -2.6376725      -2.5702988      -2.6122175      -2.6400749      -2.7351387      -2.8183972      -2.8607154      -2.8569902      -2.8982759      -2.8591297      -2.7951906      -2.8362705      -2.8673473      -2.9045445      -2.9343462      -2.9633883      -2.9528928      -2.9624804      -3.0070106      -2.9752134      -3.0340722      -3.0465501      -2.9671180      -2.9246921      -3.0090747      -3.0474292      -3.1893663      -3.1646801
+;       2.7671735       2.6188984       2.5163856       2.4362860       2.2564358       2.2115386       2.2104804       2.1529355       2.0273837       1.8847899       1.8351192       1.9359179       1.9476682       1.8638392       1.7336992       1.6462637       1.4978774       1.3967050       1.3196643       1.2559367       1.3341023       1.3724965       1.3811557       1.3744155       1.4782682       1.4131823       1.4019568       1.3458211       1.3065934
+;      -1.3305667      -1.2441086      -1.2338506      -1.3351701      -1.4759293      -1.3427092      -1.2674976      -1.2604535      -1.2483755      -1.2147603      -1.2646037      -1.3124555      -1.3703716      -1.4483315      -1.5009355      -1.4908366      -1.5134633      -1.5278235      -1.4219461      -1.4350906      -1.4860166      -1.4945576      -1.4829331      -1.5328459      -1.4284302      -1.3508222      -1.4287311      -1.2851691      -1.2842954
+
+PRINT,';', dn_Ni
+PRINT,';', dn_Ti
+PRINT,';', dn_Te
+;       52.572590       49.544201       53.476055       53.381714       52.855297       49.557495       49.088287       47.304909       44.780872       45.153786       46.521297       47.797813       46.300930       47.967556       45.199181       46.862720       45.899021       50.133743       47.308235       49.807289       49.679493       47.188217       47.125824       46.934185       44.569477       47.994122       47.762924       46.972439       41.862568
+;       133.40675       144.66283       136.78729       137.93518       138.11736       147.69276       141.22292       149.32677       153.58955       153.86572       159.97891       153.03134       155.32594       158.63811       164.98531       160.27780       165.74371       159.15602       169.79881       163.35986       165.10753       160.45644       165.71205       166.13878       161.94643       167.75491       171.83630       168.35246       188.84258
+;       35.406406       34.393063       33.861195       33.000744       32.686584       32.196697       31.433306       31.007446       29.682556       29.368334       29.072641       28.929550       28.681007       29.549097       29.599649       30.301203       29.394709       29.820700       30.366074       30.013323       28.911736       29.536995       29.632919       29.459883       28.830835       29.714483       31.672815       29.366831       28.629313
+
+PRINT,';', dn_Vsw[*,0]
+PRINT,';', dn_Vsw[*,1]
+PRINT,';', dn_Vsw[*,2]
+;      -100.13720      -91.895442      -100.87264      -91.929407      -85.232989      -88.048845      -89.858359      -90.612261      -89.184381      -92.515069      -94.371420      -93.899288      -89.122115      -91.444982      -88.365914      -86.878669      -97.834897      -96.614220      -97.213696      -98.063203      -110.05955      -104.04081      -112.96741      -108.24409      -104.83406      -102.95307      -109.11555      -110.48213      -96.665581
+;      0.69575527      -3.5713018      -1.8920672       2.1493048       17.116473       12.854861       12.487408       24.277678       21.036593       25.734396       29.070390       30.727299       29.973640       30.695871       32.254748       30.367189       24.924086       33.882041       35.465480       31.285581       41.737839       39.547239       31.649709       28.155118       19.928887       29.429076       26.241296       25.949581       20.826367
+;      -40.450119      -39.767771      -29.771936      -27.116820      -16.143413      -23.712040      -27.421386      -18.936434      -18.086587      -9.4793544      -10.151689      -19.294801      -19.941601      -13.297618      -13.275191      -18.832349      -12.049047      -12.789640      -8.6038670     -0.34809327       8.2011400      -9.5290487      -3.7442725      -2.1021840      -2.9297843      -4.4680113       6.7123935       2.1674525      -1.6091666
+
+PRINT,';', dn_magf[*,0]
+PRINT,';', dn_magf[*,1]
+PRINT,';', dn_magf[*,2]
+;      -2.8525374      -4.3879070      -5.2507427      -5.7155547      -5.0950556      -5.0701934      -3.5066737      -2.0339705     -0.55957812      -1.0386611      -1.6948897      -2.3018063      -3.0439483      -3.7818925      -3.7942682      -3.0214442      -2.5547477      -1.6815118      -1.5683706      -1.8819460      -2.5338890      -3.1938584      -4.3861152      -3.6844606      -3.0118556      -6.6655889      -8.2971833      -10.294554      -8.9420468
+;       9.1088986       8.9860832       9.7564074       10.975603       12.065201       11.915290       11.236278       11.048807       10.507234       10.808046       10.638352       11.700957       11.940225       12.291933       11.432767       10.680565       9.7978622       8.8189577       9.0566689       10.492625       12.326349       12.654887       10.501751       10.019947       10.378610       11.516831       10.790333       11.526929       10.747037
+;      -11.789103      -10.946490      -10.221192      -8.8420235      -8.1617246      -8.5990727      -9.5687483      -10.367598      -10.032216      -10.881957      -12.206065      -14.241420      -13.340018      -11.649970      -9.9184042      -11.209746      -11.660910      -9.9031451      -6.0482782      -1.2043294      -1.5950029      -2.8608864      -5.0263366      -5.0150090      -6.2197600      -5.0383142      -6.3336373      -9.4235157      -10.795819
+
+
+; => Upstream values
+dens_up  = [10.492314,9.6057987,9.4848032,9.6199398,9.2339535,8.6731071,8.7769480,8.7919569,8.4657831,8.7491970,7.9786835,7.9909315,7.8905368,7.9880352,7.9813509,7.9611845,7.8424263,8.0624046,8.0674877,7.7535858,8.1734800,8.1494284,8.5141010,8.4393463,8.3660755,8.5864878,9.1271343,10.491794,9.3186817]
+ti_avgu  = [325.91592,320.36951,312.16245,314.90503,286.88147,346.91653,327.72598,322.68387,305.82150,301.62271,309.02533,298.84399,271.75247,233.62141,231.43066,250.44740,257.12958,247.18892,257.91678,270.90842,273.82373,287.68024,285.42651,279.09427,268.98788,240.55653,227.58278,218.83661,237.16356]
+te_avgu  = [13.419991,13.863358,13.106758,13.336205,12.009370,12.239438,12.080978,11.955414,11.705899,11.211782,10.994113,10.554955,10.480340,10.783696,10.806020,10.523615,10.393574,10.187079,10.405693,10.176997,10.471030,10.561646,10.689648,10.669145,10.496284,10.878242,11.117191,10.504341,10.257567]
+vsw_x_up = [-198.39782,-213.97245,-227.58298,-222.65030,-247.95987,-216.52256,-219.51793,-229.37350,-240.28686,-244.40539,-246.54706,-252.83987,-263.88985,-276.56919,-277.14649,-271.64703,-267.38324,-275.94087,-277.80102,-267.75675,-266.00073,-258.82121,-254.05316,-258.56518,-266.55825,-267.64218,-280.16383,-281.90207,-261.72227]
+vsw_y_up = [ 36.814850, 21.950059, 8.5849283, 11.045026, 6.7933274, 16.371210, 14.181231, 3.8455909,-3.2891416,-6.2215962,-6.1784927,-18.693918,-18.795381,-17.108940,-21.728643,-26.451531,-17.143160,-23.763585,-47.778542,-32.352764,-33.229716,-37.676295,-36.913341,-10.233414,-9.5188194, 7.6447028, 12.201699, 9.5083863, 5.7265420]
+vsw_z_up = [ 134.74226, 125.11780, 116.77361, 127.38341, 93.295210, 116.60983, 117.30034, 105.21773, 100.54820, 93.545515, 88.959243, 90.244997, 80.306784, 61.796104, 58.885898, 64.157651, 65.533080, 64.945824, 63.198675, 64.235031, 65.723894, 71.149307, 68.803631, 69.547102, 70.189979, 60.091609, 61.729282, 59.023323, 54.382862]
+vsw_up   = [[vsw_x_up],[vsw_y_up],[vsw_z_up]]
+mag_x_up = [-2.7192060,-2.6376725,-2.5702988,-2.6122175,-2.6400749,-2.7351387,-2.8183972,-2.8607154,-2.8569902,-2.8982759,-2.8591297,-2.7951906,-2.8362705,-2.8673473,-2.9045445,-2.9343462,-2.9633883,-2.9528928,-2.9624804,-3.0070106,-2.9752134,-3.0340722,-3.0465501,-2.9671180,-2.9246921,-3.0090747,-3.0474292,-3.1893663,-3.1646801]
+mag_y_up = [ 2.7671735, 2.6188984, 2.5163856, 2.4362860, 2.2564358, 2.2115386, 2.2104804, 2.1529355, 2.0273837, 1.8847899, 1.8351192, 1.9359179, 1.9476682, 1.8638392, 1.7336992, 1.6462637, 1.4978774, 1.3967050, 1.3196643, 1.2559367, 1.3341023, 1.3724965, 1.3811557, 1.3744155, 1.4782682, 1.4131823, 1.4019568, 1.3458211, 1.3065934]
+mag_z_up = [-1.3305667,-1.2441086,-1.2338506,-1.3351701,-1.4759293,-1.3427092,-1.2674976,-1.2604535,-1.2483755,-1.2147603,-1.2646037,-1.3124555,-1.3703716,-1.4483315,-1.5009355,-1.4908366,-1.5134633,-1.5278235,-1.4219461,-1.4350906,-1.4860166,-1.4945576,-1.4829331,-1.5328459,-1.4284302,-1.3508222,-1.4287311,-1.2851691,-1.2842954]
+magf_up  = [[mag_x_up],[mag_y_up],[mag_z_up]]
+temp_up  = te_avgu + ti_avgu
+PRINT,';', MEAN(vsw_x_up,/NAN), MEAN(vsw_y_up,/NAN), MEAN(vsw_z_up,/NAN)
+PRINT,';', MEAN(mag_x_up,/NAN), MEAN(mag_y_up,/NAN), MEAN(mag_z_up,/NAN)
+;     -252.883     -7.32447      83.2220
+;     -2.88930      1.79045     -1.37976
+
+; => Downstream values
+dens_dn  = [ 52.572590, 49.544201, 53.476055, 53.381714, 52.855297, 49.557495, 49.088287, 47.304909, 44.780872, 45.153786, 46.521297, 47.797813, 46.300930, 47.967556, 45.199181, 46.862720, 45.899021, 50.133743, 47.308235, 49.807289, 49.679493, 47.188217, 47.125824, 46.934185, 44.569477, 47.994122, 47.762924, 46.972439, 41.862568]
+ti_avgd  = [133.40675, 144.66283, 136.78729, 137.93518, 138.11736, 147.69276, 141.22292, 149.32677, 153.58955, 153.86572, 159.97891, 153.03134, 155.32594, 158.63811, 164.98531, 160.27780, 165.74371, 159.15602, 169.79881, 163.35986, 165.10753, 160.45644, 165.71205, 166.13878, 161.94643, 167.75491, 171.83630, 168.35246, 188.84258]
+te_avgd  = [ 35.406406, 34.393063, 33.861195, 33.000744, 32.686584, 32.196697, 31.433306, 31.007446, 29.682556, 29.368334, 29.072641, 28.929550, 28.681007, 29.549097, 29.599649, 30.301203, 29.394709, 29.820700, 30.366074, 30.013323, 28.911736, 29.536995, 29.632919, 29.459883, 28.830835, 29.714483, 31.672815, 29.366831, 28.629313]
+vsw_x_dn = [-100.13720,-91.895442,-100.87264,-91.929407,-85.232989,-88.048845,-89.858359,-90.612261,-89.184381,-92.515069,-94.371420,-93.899288,-89.122115,-91.444982,-88.365914,-86.878669,-97.834897,-96.614220,-97.213696,-98.063203,-110.05955,-104.04081,-112.96741,-108.24409,-104.83406,-102.95307,-109.11555,-110.48213,-96.665581]
+vsw_y_dn = [0.69575527,-3.5713018,-1.8920672, 2.1493048, 17.116473, 12.854861, 12.487408, 24.277678, 21.036593, 25.734396, 29.070390, 30.727299, 29.973640, 30.695871, 32.254748, 30.367189, 24.924086, 33.882041, 35.465480, 31.285581, 41.737839, 39.547239, 31.649709, 28.155118, 19.928887, 29.429076, 26.241296, 25.949581, 20.826367]
+vsw_z_dn = [-40.450119,-39.767771,-29.771936,-27.116820,-16.143413,-23.712040,-27.421386,-18.936434,-18.086587,-9.4793544,-10.151689,-19.294801,-19.941601,-13.297618,-13.275191,-18.832349,-12.049047,-12.789640,-8.6038670,-0.34809327, 8.2011400,-9.5290487,-3.7442725,-2.1021840,-2.9297843,-4.4680113, 6.7123935, 2.1674525,-1.6091666]
+vsw_dn   = [[vsw_x_dn],[vsw_y_dn],[vsw_z_dn]]
+mag_x_dn = [-2.8525374,-4.3879070,-5.2507427,-5.7155547,-5.0950556,-5.0701934,-3.5066737,-2.0339705,-0.55957812,-1.0386611,-1.6948897,-2.3018063,-3.0439483,-3.7818925,-3.7942682,-3.0214442,-2.5547477,-1.6815118,-1.5683706,-1.8819460,-2.5338890,-3.1938584,-4.3861152,-3.6844606,-3.0118556,-6.6655889,-8.2971833,-10.294554,-8.9420468]
+mag_y_dn = [ 9.1088986, 8.9860832, 9.7564074, 10.975603, 12.065201, 11.915290, 11.236278, 11.048807, 10.507234, 10.808046, 10.638352, 11.700957, 11.940225, 12.291933, 11.432767, 10.680565, 9.7978622, 8.8189577, 9.0566689, 10.492625, 12.326349, 12.654887, 10.501751, 10.019947, 10.378610, 11.516831, 10.790333, 11.526929, 10.747037]
+mag_z_dn = [-11.789103,-10.946490,-10.221192,-8.8420235,-8.1617246,-8.5990727,-9.5687483,-10.367598,-10.032216,-10.881957,-12.206065,-14.241420,-13.340018,-11.649970,-9.9184042,-11.209746,-11.660910,-9.9031451,-6.0482782,-1.2043294,-1.5950029,-2.8608864,-5.0263366,-5.0150090,-6.2197600,-5.0383142,-6.3336373,-9.4235157,-10.795819]
+magf_dn  = [[mag_x_dn],[mag_y_dn],[mag_z_dn]]
+temp_dn  = te_avgd + ti_avgd
+; => combine terms
+vsw      = [[[vsw_up]],[[vsw_dn]]]
+mag      = [[[magf_up]],[[magf_dn]]]
+dens     = [[dens_up],[dens_dn]]
+temp     = [[temp_up],[temp_dn]]
+
+nqq      = [1,1,1,1,1]
+chisq0   = rh_solve_lmq(dens,vsw,mag,temp,NEQS=nqq,SOLN=soln0,/BOWSH)
+nqq      = [1,1,1,1,0]
+chisq2   = rh_solve_lmq(dens,vsw,mag,temp,NEQS=nqq,SOLN=soln2,/BOWSH)
+
+;chisq    = chisq0
+;soln     = soln0
+chisq    = chisq2
+soln     = soln2
+; => Print out best fit angles
+PRINT,';', soln.THETA*18d1/!DPI
+;-----------------------------------------------------------
+;         Avg.          Std. Dev.
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;       41.515152       6.1640359
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;      -48.168547       7.2408941
+;-----------------------------------------------------------
+
+PRINT,';', soln.PHI*18d1/!DPI
+;-----------------------------------------------------------
+;         Avg.          Std. Dev.
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;      -174.39394       4.6820232
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;      -4.9787596       8.8239939
+;-----------------------------------------------------------
+
+; => Print out best fit shock normal speed in spacecraft frame [km/s]
+PRINT,';', soln.VSHN
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;       21.345308       15.988058
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;      -16.969794       18.741842
+;-----------------------------------------------------------
+
+; => Print out best fit upstream shock normal speed in shock frame [km/s]
+PRINT,';', soln.USHN_UP
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;       220.78799       18.611462
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;      -208.86162       27.260293
+;-----------------------------------------------------------
+
+
+; => Print out best fit shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,0]
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;     -0.73850550    -0.072466263      0.65904086
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;      0.65137484    -0.056795786     -0.73929364
+;-----------------------------------------------------------
+
+; => Print out uncertainty of shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,1]
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;     0.070220438     0.060357225     0.080323048
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;     0.090978769      0.10157369     0.085657889
+;-----------------------------------------------------------
+
+
+;dens_up  = [
+;ti_avgu  = [
+;te_avgu  = [
+;vsw_x_up = [
+;vsw_y_up = [
+;vsw_z_up = [
+;vsw_up   = [[vsw_x_up],[vsw_y_up],[vsw_z_up]]
+;mag_x_up = [
+;mag_y_up = [
+;mag_z_up = [
+;magf_up  = [[mag_x_up],[mag_y_up],[mag_z_up]]
+;temp_up  = te_avgu + ti_avgu
+;
+;dens_dn  = [
+;ti_avgd  = [
+;te_avgd  = [
+;vsw_x_dn = [
+;vsw_y_dn = [
+;vsw_z_dn = [
+;vsw_dn   = [[vsw_x_dn],[vsw_y_dn],[vsw_z_dn]]
+;mag_x_dn = [
+;mag_y_dn = [
+;mag_z_dn = [
+;magf_dn  = [[mag_x_dn],[mag_y_dn],[mag_z_dn]]
+;temp_dn  = te_avgd + ti_avgd
+;
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+t_RH_1  = time_double(tdate[0]+'/'+['09:18:40.000','09:40:15.000'])
+t_up    = time_double(tdate[0]+'/'+['09:36:40.000','09:38:40.000'])
+t_dn    = time_double(tdate[0]+'/'+['09:20:15.000','09:22:15.000'])
+pref    = 'th'+sc[0]+'_'
+coord   = 'gse'
+plasnm  = ['_velocity_'+coord[0],'_density','_avgtemp']
+fgmnm   = 'fgl_'+['mag',coord[0]]
+partn   = 'pe'+['e','i']+'b'
+
+pref    = 'th'+sc[0]+'_'
+fgmnm   = 'fgl_'+['mag',coord[0]]
+name_i  = pref[0]+[fgmnm,[partn[1]+plasnm[0:1],partn+plasnm[2]]]
+tplot,name_i,/NOM,TRANGE=t_RH_1
+
+
+fnm     = file_name_times(t_RH_1,PREC=3)
+ftimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+fpref   = 'FGM-fgl-GSE_TH-B_Vi_Ni_Te_Ti_'
+fname   = fpref[0]+ftimes[0]+'_Down-Blue_Up-Red'
+popen,fname[0],/LAND
+  tplot,name_i,/NOM,TRANGE=t_RH_1
+  time_bar,t_up,VARNAME=name_i,COLOR=250L
+  time_bar,t_dn,VARNAME=name_i,COLOR= 50L
+pclose
+
+
+nsm     = 30L
+nsms    = STRING(FORMAT='(I3.3)',nsm[0])
+suffx   = '_sm'+nsms[0]+'pts'
+name1   = pref[0]+fgmnm[1]+suffx[0]
+name_i  = [name1[0],pref[0]+[partn[1]+plasnm[0:1],partn+plasnm[2]]]
+  tplot,name_i,/NOM,TRANGE=t_RH_1
+  time_bar,t_up,VARNAME=name_i,COLOR=250L
+  time_bar,t_dn,VARNAME=name_i,COLOR= 50L
+
+fpref   = 'FGM-fgl-GSE'+suffx[0]+'_TH-B_Vi_Ni_Te_Ti_'
+fname   = fpref[0]+ftimes[0]+'_Down-Blue_Up-Red'
+popen,fname[0],/LAND
+  tplot,name_i,/NOM,TRANGE=t_RH_1
+  time_bar,t_up,VARNAME=name_i,COLOR=250L
+  time_bar,t_dn,VARNAME=name_i,COLOR= 50L
+pclose
+
+
+;  Bo
+get_data,name1[0],DATA=th_magf,DLIM=dlim,LIM=lim
+;  Ni
+get_data,pref[0]+partn[1]+plasnm[1],DATA=ti_dens
+;  Ti
+get_data,pref[0]+partn[1]+plasnm[2],DATA=ti_temp
+;  Vsw
+get_data,pref[0]+partn[1]+plasnm[0],DATA=ti_vsw
+;  Te
+get_data,pref[0]+partn[0]+plasnm[2],DATA=te_temp
+
+good_up_Bo = WHERE(th_magf.X GE t_up[0] AND th_magf.X LE t_up[1],gdupBo)
+good_up_Ni = WHERE(ti_dens.X GE t_up[0] AND ti_dens.X LE t_up[1],gdupNi)
+good_up_Ti = WHERE(ti_temp.X GE t_up[0] AND ti_temp.X LE t_up[1],gdupTi)
+good_up_Te = WHERE(te_temp.X GE t_up[0] AND te_temp.X LE t_up[1],gdupTe)
+good_up_Vi = WHERE(ti_vsw.X  GE t_up[0] AND ti_vsw.X  LE t_up[1],gdupVi)
+
+good_dn_Bo = WHERE(th_magf.X GE t_dn[0] AND th_magf.X LE t_dn[1],gddnBo)
+good_dn_Ni = WHERE(ti_dens.X GE t_dn[0] AND ti_dens.X LE t_dn[1],gddnNi)
+good_dn_Ti = WHERE(ti_temp.X GE t_dn[0] AND ti_temp.X LE t_dn[1],gddnTi)
+good_dn_Te = WHERE(te_temp.X GE t_dn[0] AND te_temp.X LE t_dn[1],gddnTe)
+good_dn_Vi = WHERE(ti_vsw.X  GE t_dn[0] AND ti_vsw.X  LE t_dn[1],gddnVi)
+
+PRINT,';', gdupBo, gdupNi, gdupTi, gdupTe, gdupVi
+PRINT,';', gddnBo, gddnNi, gddnTi, gddnTe, gddnVi
+;         480          41          41          41          41
+;         480          41          41          41          41
+
+; => Interpolate to ion times
+;  Bo
+tx_magf = interp(smmagf[*,0],th_magf.X,ti_dens.X,/NO_EXTRAP)
+ty_magf = interp(smmagf[*,1],th_magf.X,ti_dens.X,/NO_EXTRAP)
+tz_magf = interp(smmagf[*,2],th_magf.X,ti_dens.X,/NO_EXTRAP)
+tm_magf = [[tx_magf],[ty_magf],[tz_magf]]
+;  Vsw
+tx_vsw  = interp(ti_vsw.Y[*,0],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+ty_vsw  = interp(ti_vsw.Y[*,1],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+tz_vsw  = interp(ti_vsw.Y[*,2],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+tv_vsw  = [[tx_vsw],[ty_vsw],[tz_vsw]]
+;  Ti
+ti_temp = interp(ti_temp.Y,ti_temp.X,ti_dens.X,/NO_EXTRAP)
+;  Te
+te_temp = interp(te_temp.Y,te_temp.X,ti_dens.X,/NO_EXTRAP)
+
+; => Define [up,down]stream
+up_magf = tm_magf[good_up_Ni,*]
+up_Vsw  = tv_vsw[good_up_Ni,*]
+up_Ti   = ti_temp[good_up_Ni]
+up_Te   = te_temp[good_up_Ni]
+up_Ni   = ti_dens.Y[good_up_Ni]
+
+dn_magf = tm_magf[good_dn_Ni,*]
+dn_Vsw  = tv_vsw[good_dn_Ni,*]
+dn_Ti   = ti_temp[good_dn_Ni]
+dn_Te   = te_temp[good_dn_Ni]
+dn_Ni   = ti_dens.Y[good_dn_Ni]
+
+PRINT,';', up_Ni
+PRINT,';', up_Ti
+PRINT,';', up_Te
+;       7.5222044       7.9462323       7.9992857       8.6728926       8.0632677       8.0270624       7.3544693       8.2908678       8.0491333       8.0054417       7.7871008       8.0300245       8.8509655       7.7582979       7.8470736       8.1713486       8.3922291       8.4902897       8.6829672       8.0797720       8.1024437       7.9611387       7.6341310       7.6814084       7.5914135       7.7870731       7.3783741       7.8490257       8.2680273       7.9678965       7.7047524       8.5897408       8.2165575       8.3775759       8.0988464       7.9849510       7.7653008       7.6424561       7.5285788       7.7548752       7.7685232
+;       223.24632       184.40822       155.22206       166.82071       187.98259       181.29314       190.29829       165.51138       177.59987       181.59503       182.92085       166.82745       152.46117       228.26485       242.77629       225.71831       213.99609       202.35567       185.44276       195.64806       191.23517       179.11064       211.78905       208.70396       203.72469       198.02747       227.31708       190.68059       202.67677       213.14339       221.78308       186.69304       177.72926       166.61089       161.06079       146.91606       145.15709       182.82005       182.37495       167.84393       176.12715
+;       10.846157       10.409366       11.021599       11.208795       11.094653       10.953534       10.912659       11.072688       11.087478       10.970874       10.762070       10.820381       11.148902       10.794583       10.653541       10.898159       11.012241       11.231949       11.401992       11.263550       11.089046       11.157979       11.010807       11.119720       11.017026       10.991020       10.857762       10.904488       11.016345       10.762727       10.973233       11.399472       11.500690       11.425827       11.503612       11.311905       11.097959       11.329086       11.064117       10.931186       11.150447
+
+PRINT,';', up_Vsw[*,0]
+PRINT,';', up_Vsw[*,1]
+PRINT,';', up_Vsw[*,2]
+;      -276.04639      -288.59861      -297.35085      -294.88786      -291.17737      -295.33990      -290.26694      -293.22189      -292.10061      -288.85282      -286.26577      -289.35186      -290.80246      -267.88943      -259.88608      -267.37405      -269.79584      -275.06809      -280.89481      -278.73291      -282.72095      -286.38831      -277.84409      -279.40524      -278.32831      -281.40110      -270.26894      -280.30555      -277.69077      -274.04881      -271.24247      -279.91482      -285.51987      -289.29412      -294.53900      -299.40461      -302.07561      -292.28859      -290.26398      -294.79929      -293.06878
+;      -8.1008998      -15.233995      -22.310233      -19.933261      -13.430019      -14.485336      -12.517990      -16.996066      -15.311171      -16.987504      -17.337092      -17.655221      -18.927642      -7.4646118      -7.7393624      -12.273295      -17.555324      -19.636016      -14.515683      -9.7269307      -10.710500      -8.5241576       4.2072414      -4.3796129      -8.7471504      -9.0669009      -3.6397293      -17.079548      -10.649418      -12.785661      -11.532854      -15.821498      -18.420363      -21.292005      -23.215223      -26.396750      -23.945206      -14.671766      -17.215562      -23.418809      -21.597090
+;      -21.997581      -13.934752      -7.3453755      -11.445554      -15.964589      -14.998498      -13.972840      -9.1683182      -11.551719      -11.736319      -12.519757      -9.8400073      -9.5507411      -31.131759      -37.367907      -30.623941      -26.082964      -23.865247      -18.296885      -19.637745      -17.024195      -14.314877      -18.373095      -19.401149      -17.824718      -17.269592      -24.919519      -16.551000      -18.849355      -22.900435      -24.769995      -16.315669      -15.602907      -12.332701      -13.381009      -10.950505      -9.3514853      -17.944729      -18.413472      -15.097696      -16.409211
+
+PRINT,';', up_magf[*,0]
+PRINT,';', up_magf[*,1]
+PRINT,';', up_magf[*,2]
+;      -2.1414513      -2.1477518      -2.1538222      -2.1959901      -2.1833244      -2.0953289      -2.0853344      -2.1643788      -2.2240060      -2.2025246      -2.1674029      -2.2673120      -2.2594926      -2.1612360      -2.0469798      -2.0958721      -2.2176666      -2.2583091      -2.2571297      -2.2717120      -2.2855338      -2.2772103      -2.2413419      -2.2154952      -2.2211639      -2.2128438      -2.2251606      -2.2409577      -2.2400688      -2.1768748      -2.1765004      -2.2089067      -2.1802140      -2.1144011      -2.0531432      -2.0313500      -1.9954033      -1.9701165      -1.9790295      -2.0231913      -2.0470581
+;      -1.4467411      -1.6422731      -1.7622388      -1.7675377      -1.6490210      -1.5910179      -1.6434789      -1.6719571      -1.6051590      -1.5698120      -1.5728707      -1.6329951      -1.4205598      -1.2586205      -1.1797560      -1.2723368      -1.3438403      -1.4245491      -1.4048524      -1.3655324      -1.3785148      -1.3907422      -1.3939263      -1.3689625      -1.3972403      -1.3877999      -1.4225836      -1.4246286      -1.4436877      -1.4382752      -1.5342139      -1.5650761      -1.5247488      -1.4297896      -1.3706693      -1.3108303      -1.2435369      -1.2172423      -1.1878651      -1.1989612      -1.1651816
+;       1.6533055       1.7177857       1.8351693       1.9046647       1.9302383       1.8751917       1.8799612       1.8169984       1.8493367       1.7776119       1.7674489       1.8551235       1.9368261       1.9435995       1.9044489       1.9603191       2.0153524       2.0706394       2.1300763       2.0933188       2.0947481       2.1635371       2.1839911       2.1515313       2.1242532       2.1086047       2.0801420       2.0638528       2.0539609       1.9926573       1.9784404       2.0144411       2.0467143       1.9934004       1.9940007       2.0189855       2.0362140       2.0304143       2.0177657       1.9887996       1.9952666
+
+
+PRINT,';', dn_Ni
+PRINT,';', dn_Ti
+PRINT,';', dn_Te
+;       34.766048       31.752127       31.806112       29.270479       27.583946       26.737093       37.688412       38.172264       33.825165       31.777800       27.276337       30.649267       28.377815       25.399490       38.171635       57.095619       37.551189       39.297707       29.991337       31.971416       44.276688       56.705528       69.485222       87.433594       85.013084       78.493050       75.733727       59.914665       48.831924       47.806965       47.130905       41.532269       31.960609       38.048634       49.656551       43.667583       35.928055       42.243984       41.481445       33.543896       35.169708
+;       277.14734       280.83945       300.07617       295.78397       294.11127       324.19693       286.46313       265.02029       260.84927       265.70242       298.20990       236.46602       218.15215       217.96655       155.93990       121.09965       220.50496       232.58716       293.42273       306.80164       184.51080       145.07542       100.08271       78.126213       77.715034       82.202255       84.427025       129.51924       169.36577       203.20776       197.41553       191.05519       177.37852       168.47536       172.15009       185.99532       213.92970       189.84297       190.56242       247.33727       188.40002
+;       31.243093       30.669319       30.268433       29.926619       29.242729       30.751265       32.716869       35.859379       34.259186       34.733654       32.979244       29.098772       28.378073       29.370890       29.612379       30.279348       29.467318       28.442947       29.000692       29.959940       26.571449       30.219627       32.216671       32.511112       33.644745       34.563168       35.362080       32.920414       34.440056       37.144398       36.245819       33.821953       31.911089       32.765762       34.639099       31.235468       29.640190       27.676865       25.265715       23.567183       24.583605
+
+PRINT,';', dn_Vsw[*,0]
+PRINT,';', dn_Vsw[*,1]
+PRINT,';', dn_Vsw[*,2]
+;      -59.394207      -43.369103      -59.350552      -57.836015      -42.233185      -35.280282      -80.180014      -57.620351      -51.005009      -58.063165      -67.130319      -67.945339      -57.219607      -35.322747      -44.088720      -79.250854      -64.983582      -68.889481      -68.098377      -72.072911      -72.342157      -67.506074      -79.592132      -71.356344      -67.651795      -77.236941      -81.254797      -77.231356      -69.263114      -77.845465      -74.867311      -69.801660      -44.790586      -52.929855      -81.980290      -95.461044      -97.596644      -96.581452      -109.80928      -125.76323      -110.88458
+;      -28.237112      -22.003947      -7.0486046       5.6334130       7.0050587       7.6614860       12.135169     -0.64344766      -10.923930      -14.838518      -22.780581      -34.598235      -39.380952      -24.546566      -43.390836      -10.606860      -5.0647215       8.9126876       21.381357       25.528610       17.407998       41.517394       59.791272       76.716625       68.490430       58.352837       48.823802       40.736646       45.297504       53.618807       55.820556       58.427974       27.816242       11.275350      -14.107475      -30.541798      -42.132692      -26.796573      -14.864762      -5.4158402       38.065295
+;      -24.685816      -28.004281      -22.737207      -44.246647      -53.602085      -53.129305      -82.177412      -101.28533      -96.544516      -100.37288      -68.573005      -40.794180      -42.075187      -56.085514      -62.366541      -33.841600      -44.185774      -46.443592      -48.858221      -70.563943      -103.52237      -84.165752      -60.867711      -46.513872      -39.038149      -36.101850      -35.627889      -31.400293      -19.689913      -13.620655      -10.264645      -4.5171721      -1.7468289      -9.2721885      -3.6248345      -14.585515      -36.683120      0.87364100       18.209513      -16.062789      -62.188075
+
+PRINT,';', dn_magf[*,0]
+PRINT,';', dn_magf[*,1]
+PRINT,';', dn_magf[*,2]
+;      -8.2198382      -7.0415750      -5.9330712      -4.9293034      -4.8415310      -6.9280302      -9.4701929      -12.585365      -13.005782      -9.5357719      -2.6888456      -1.5298736      -1.9378553      -1.3360804      -2.8575086      -6.7081091      -6.0596506      -4.7942648      -2.1134257      -1.5775336      -1.9360475      -4.5664569      -7.6919721      -10.251821      -10.828818      -11.181482      -10.587530      -10.264784      -9.1389593      -7.2092687      -5.4062192      -5.2215285      -4.2052131      -2.5275283     -0.92612675      -3.0550550      -2.4927009     -0.96609476       2.1846791       1.4078292     -0.77759971
+;      -4.8508696      -5.0658692      -5.1516605      -3.5875279     -0.27765829      -3.1641971      -8.3220120      -10.011093      -7.2239858      -2.6166632     -0.85218182      -4.9339218      -12.112590      -13.974393      -12.183954      -4.9243756      0.71351251      -3.3653459      -9.7591282      -8.3647795       1.0360467       15.767509       23.000946       21.755063       20.460517       22.464906       24.615672       24.406456       17.085700       7.0703041       1.9146050      -2.1084584      -2.0699031      -2.6023571     -0.14273983      -8.5658742      -10.329849      -9.9149493      -6.7837180      -7.0084501      0.12389841
+;       3.2172787       3.9328824       5.6871671       4.1585627      0.19226877      -4.7784985      -8.9512019      -12.450197      -5.4387235       4.9338866       13.354375       11.167257       9.8968512       11.661251       12.812988       8.6524710       6.7495440       5.1222049       5.8278366      0.43864849      -2.1525190      -4.7788485      -5.0106927      -5.3987696      -4.2705126      -3.7308923      -6.4586915      -7.5139516      -5.6273025      -2.2240359       1.7934319       11.573975       17.335694       13.774946       8.9576769       3.7079572      0.66986299       3.9379654       6.6266515       8.3208986      -2.9558030
+
+dens_up  = [ 7.5222044, 7.9462323, 7.9992857, 8.6728926, 8.0632677, 8.0270624, 7.3544693, 8.2908678, 8.0491333, 8.0054417, 7.7871008, 8.0300245, 8.8509655, 7.7582979, 7.8470736, 8.1713486, 8.3922291, 8.4902897, 8.6829672, 8.0797720, 8.1024437, 7.9611387, 7.6341310, 7.6814084, 7.5914135, 7.7870731, 7.3783741, 7.8490257, 8.2680273, 7.9678965, 7.7047524, 8.5897408, 8.2165575, 8.3775759, 8.0988464, 7.9849510, 7.7653008, 7.6424561, 7.5285788, 7.7548752, 7.7685232]
+ti_avgu  = [223.24632, 184.40822, 155.22206, 166.82071, 187.98259, 181.29314, 190.29829, 165.51138, 177.59987, 181.59503, 182.92085, 166.82745, 152.46117, 228.26485, 242.77629, 225.71831, 213.99609, 202.35567, 185.44276, 195.64806, 191.23517, 179.11064, 211.78905, 208.70396, 203.72469, 198.02747, 227.31708, 190.68059, 202.67677, 213.14339, 221.78308, 186.69304, 177.72926, 166.61089, 161.06079, 146.91606, 145.15709, 182.82005, 182.37495, 167.84393, 176.12715]
+te_avgu  = [ 10.846157, 10.409366, 11.021599, 11.208795, 11.094653, 10.953534, 10.912659, 11.072688, 11.087478, 10.970874, 10.762070, 10.820381, 11.148902, 10.794583, 10.653541, 10.898159, 11.012241, 11.231949, 11.401992, 11.263550, 11.089046, 11.157979, 11.010807, 11.119720, 11.017026, 10.991020, 10.857762, 10.904488, 11.016345, 10.762727, 10.973233, 11.399472, 11.500690, 11.425827, 11.503612, 11.311905, 11.097959, 11.329086, 11.064117, 10.931186, 11.150447]
+vsw_x_up = [-276.04639,-288.59861,-297.35085,-294.88786,-291.17737,-295.33990,-290.26694,-293.22189,-292.10061,-288.85282,-286.26577,-289.35186,-290.80246,-267.88943,-259.88608,-267.37405,-269.79584,-275.06809,-280.89481,-278.73291,-282.72095,-286.38831,-277.84409,-279.40524,-278.32831,-281.40110,-270.26894,-280.30555,-277.69077,-274.04881,-271.24247,-279.91482,-285.51987,-289.29412,-294.53900,-299.40461,-302.07561,-292.28859,-290.26398,-294.79929,-293.06878]
+vsw_y_up = [-8.1008998,-15.233995,-22.310233,-19.933261,-13.430019,-14.485336,-12.517990,-16.996066,-15.311171,-16.987504,-17.337092,-17.655221,-18.927642,-7.4646118,-7.7393624,-12.273295,-17.555324,-19.636016,-14.515683,-9.7269307,-10.710500,-8.5241576, 4.2072414,-4.3796129,-8.7471504,-9.0669009,-3.6397293,-17.079548,-10.649418,-12.785661,-11.532854,-15.821498,-18.420363,-21.292005,-23.215223,-26.396750,-23.945206,-14.671766,-17.215562,-23.418809,-21.597090]
+vsw_z_up = [-21.997581,-13.934752,-7.3453755,-11.445554,-15.964589,-14.998498,-13.972840,-9.1683182,-11.551719,-11.736319,-12.519757,-9.8400073,-9.5507411,-31.131759,-37.367907,-30.623941,-26.082964,-23.865247,-18.296885,-19.637745,-17.024195,-14.314877,-18.373095,-19.401149,-17.824718,-17.269592,-24.919519,-16.551000,-18.849355,-22.900435,-24.769995,-16.315669,-15.602907,-12.332701,-13.381009,-10.950505,-9.3514853,-17.944729,-18.413472,-15.097696,-16.409211]
+vsw_up   = [[vsw_x_up],[vsw_y_up],[vsw_z_up]]
+mag_x_up = [-2.1414513,-2.1477518,-2.1538222,-2.1959901,-2.1833244,-2.0953289,-2.0853344,-2.1643788,-2.2240060,-2.2025246,-2.1674029,-2.2673120,-2.2594926,-2.1612360,-2.0469798,-2.0958721,-2.2176666,-2.2583091,-2.2571297,-2.2717120,-2.2855338,-2.2772103,-2.2413419,-2.2154952,-2.2211639,-2.2128438,-2.2251606,-2.2409577,-2.2400688,-2.1768748,-2.1765004,-2.2089067,-2.1802140,-2.1144011,-2.0531432,-2.0313500,-1.9954033,-1.9701165,-1.9790295,-2.0231913,-2.0470581]
+mag_y_up = [-1.4467411,-1.6422731,-1.7622388,-1.7675377,-1.6490210,-1.5910179,-1.6434789,-1.6719571,-1.6051590,-1.5698120,-1.5728707,-1.6329951,-1.4205598,-1.2586205,-1.1797560,-1.2723368,-1.3438403,-1.4245491,-1.4048524,-1.3655324,-1.3785148,-1.3907422,-1.3939263,-1.3689625,-1.3972403,-1.3877999,-1.4225836,-1.4246286,-1.4436877,-1.4382752,-1.5342139,-1.5650761,-1.5247488,-1.4297896,-1.3706693,-1.3108303,-1.2435369,-1.2172423,-1.1878651,-1.1989612,-1.1651816]
+mag_z_up = [ 1.6533055, 1.7177857, 1.8351693, 1.9046647, 1.9302383, 1.8751917, 1.8799612, 1.8169984, 1.8493367, 1.7776119, 1.7674489, 1.8551235, 1.9368261, 1.9435995, 1.9044489, 1.9603191, 2.0153524, 2.0706394, 2.1300763, 2.0933188, 2.0947481, 2.1635371, 2.1839911, 2.1515313, 2.1242532, 2.1086047, 2.0801420, 2.0638528, 2.0539609, 1.9926573, 1.9784404, 2.0144411, 2.0467143, 1.9934004, 1.9940007, 2.0189855, 2.0362140, 2.0304143, 2.0177657, 1.9887996, 1.9952666]
+magf_up  = [[mag_x_up],[mag_y_up],[mag_z_up]]
+temp_up  = te_avgu + ti_avgu
+PRINT,';', MEAN(vsw_x_up,/NAN), MEAN(vsw_y_up,/NAN), MEAN(vsw_z_up,/NAN)
+PRINT,';', MEAN(mag_x_up,/NAN), MEAN(mag_y_up,/NAN), MEAN(mag_z_up,/NAN)
+;     -284.261     -14.5620     -17.2934
+;     -2.16373     -1.43950      1.97681
+
+dens_dn  = [ 34.766048, 31.752127, 31.806112, 29.270479, 27.583946, 26.737093, 37.688412, 38.172264, 33.825165, 31.777800, 27.276337, 30.649267, 28.377815, 25.399490, 38.171635, 57.095619, 37.551189, 39.297707, 29.991337, 31.971416, 44.276688, 56.705528, 69.485222, 87.433594, 85.013084, 78.493050, 75.733727, 59.914665, 48.831924, 47.806965, 47.130905, 41.532269, 31.960609, 38.048634, 49.656551, 43.667583, 35.928055, 42.243984, 41.481445, 33.543896, 35.169708]
+ti_avgd  = [277.14734, 280.83945, 300.07617, 295.78397, 294.11127, 324.19693, 286.46313, 265.02029, 260.84927, 265.70242, 298.20990, 236.46602, 218.15215, 217.96655, 155.93990, 121.09965, 220.50496, 232.58716, 293.42273, 306.80164, 184.51080, 145.07542, 100.08271, 78.126213, 77.715034, 82.202255, 84.427025, 129.51924, 169.36577, 203.20776, 197.41553, 191.05519, 177.37852, 168.47536, 172.15009, 185.99532, 213.92970, 189.84297, 190.56242, 247.33727, 188.40002]
+te_avgd  = [ 31.243093, 30.669319, 30.268433, 29.926619, 29.242729, 30.751265, 32.716869, 35.859379, 34.259186, 34.733654, 32.979244, 29.098772, 28.378073, 29.370890, 29.612379, 30.279348, 29.467318, 28.442947, 29.000692, 29.959940, 26.571449, 30.219627, 32.216671, 32.511112, 33.644745, 34.563168, 35.362080, 32.920414, 34.440056, 37.144398, 36.245819, 33.821953, 31.911089, 32.765762, 34.639099, 31.235468, 29.640190, 27.676865, 25.265715, 23.567183, 24.583605]
+vsw_x_dn = [-59.394207,-43.369103,-59.350552,-57.836015,-42.233185,-35.280282,-80.180014,-57.620351,-51.005009,-58.063165,-67.130319,-67.945339,-57.219607,-35.322747,-44.088720,-79.250854,-64.983582,-68.889481,-68.098377,-72.072911,-72.342157,-67.506074,-79.592132,-71.356344,-67.651795,-77.236941,-81.254797,-77.231356,-69.263114,-77.845465,-74.867311,-69.801660,-44.790586,-52.929855,-81.980290,-95.461044,-97.596644,-96.581452,-109.80928,-125.76323,-110.88458]
+vsw_y_dn = [-28.237112,-22.003947,-7.0486046, 5.6334130, 7.0050587, 7.6614860, 12.135169,-0.64344766,-10.923930,-14.838518,-22.780581,-34.598235,-39.380952,-24.546566,-43.390836,-10.606860,-5.0647215, 8.9126876, 21.381357, 25.528610, 17.407998, 41.517394, 59.791272, 76.716625, 68.490430, 58.352837, 48.823802, 40.736646, 45.297504, 53.618807, 55.820556, 58.427974, 27.816242, 11.275350,-14.107475,-30.541798,-42.132692,-26.796573,-14.864762,-5.4158402, 38.065295]
+vsw_z_dn = [-24.685816,-28.004281,-22.737207,-44.246647,-53.602085,-53.129305,-82.177412,-101.28533,-96.544516,-100.37288,-68.573005,-40.794180,-42.075187,-56.085514,-62.366541,-33.841600,-44.185774,-46.443592,-48.858221,-70.563943,-103.52237,-84.165752,-60.867711,-46.513872,-39.038149,-36.101850,-35.627889,-31.400293,-19.689913,-13.620655,-10.264645,-4.5171721,-1.7468289,-9.2721885,-3.6248345,-14.585515,-36.683120,0.87364100, 18.209513,-16.062789,-62.188075]
+vsw_dn   = [[vsw_x_dn],[vsw_y_dn],[vsw_z_dn]]
+mag_x_dn = [-8.2198382,-7.0415750,-5.9330712,-4.9293034,-4.8415310,-6.9280302,-9.4701929,-12.585365,-13.005782,-9.5357719,-2.6888456,-1.5298736,-1.9378553,-1.3360804,-2.8575086,-6.7081091,-6.0596506,-4.7942648,-2.1134257,-1.5775336,-1.9360475,-4.5664569,-7.6919721,-10.251821,-10.828818,-11.181482,-10.587530,-10.264784,-9.1389593,-7.2092687,-5.4062192,-5.2215285,-4.2052131,-2.5275283,-0.92612675,-3.0550550,-2.4927009,-0.96609476, 2.1846791, 1.4078292,-0.77759971]
+mag_y_dn = [-4.8508696,-5.0658692,-5.1516605,-3.5875279,-0.27765829,-3.1641971,-8.3220120,-10.011093,-7.2239858,-2.6166632,-0.85218182,-4.9339218,-12.112590,-13.974393,-12.183954,-4.9243756,0.71351251,-3.3653459,-9.7591282,-8.3647795, 1.0360467, 15.767509, 23.000946, 21.755063, 20.460517, 22.464906, 24.615672, 24.406456, 17.085700, 7.0703041, 1.9146050,-2.1084584,-2.0699031,-2.6023571,-0.14273983,-8.5658742,-10.329849,-9.9149493,-6.7837180,-7.0084501,0.12389841]
+mag_z_dn = [ 3.2172787, 3.9328824, 5.6871671, 4.1585627,0.19226877,-4.7784985,-8.9512019,-12.450197,-5.4387235, 4.9338866, 13.354375, 11.167257, 9.8968512, 11.661251, 12.812988, 8.6524710, 6.7495440, 5.1222049, 5.8278366,0.43864849,-2.1525190,-4.7788485,-5.0106927,-5.3987696,-4.2705126,-3.7308923,-6.4586915,-7.5139516,-5.6273025,-2.2240359, 1.7934319, 11.573975, 17.335694, 13.774946, 8.9576769, 3.7079572,0.66986299, 3.9379654, 6.6266515, 8.3208986,-2.9558030]
+magf_dn  = [[mag_x_dn],[mag_y_dn],[mag_z_dn]]
+temp_dn  = te_avgd + ti_avgd
+; => combine terms
+vsw      = [[[vsw_up]],[[vsw_dn]]]
+mag      = [[[magf_up]],[[magf_dn]]]
+dens     = [[dens_up],[dens_dn]]
+temp     = [[temp_up],[temp_dn]]
+
+nqq      = [1,1,1,1,1]
+chisq0   = rh_solve_lmq(dens,vsw,mag,temp,NEQS=nqq,SOLN=soln0,/BOWSH)
+nqq      = [1,1,1,1,0]
+chisq2   = rh_solve_lmq(dens,vsw,mag,temp,NEQS=nqq,SOLN=soln2,/BOWSH)
+
+;chisq    = chisq0
+;soln     = soln0
+chisq    = chisq2
+soln     = soln2
+; => Print out best fit angles
+PRINT,';', soln.THETA*18d1/!DPI
+;-----------------------------------------------------------
+;         Avg.          Std. Dev.
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;       1.1019284       6.8150863
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;      0.40683074       7.1146815
+;-----------------------------------------------------------
+
+PRINT,';', soln.PHI*18d1/!DPI
+;-----------------------------------------------------------
+;         Avg.          Std. Dev.
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;      -173.65419       4.8155746
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;      -173.31378       4.9358348
+;-----------------------------------------------------------
+
+; => Print out best fit shock normal speed in spacecraft frame [km/s]
+PRINT,';', soln.VSHN
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;       8.4184628       39.611442
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;       8.9187740       39.426383
+;-----------------------------------------------------------
+
+; => Print out best fit upstream shock normal speed in shock frame [km/s]
+PRINT,';', soln.USHN_UP
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;       272.36355       41.285058
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;       271.77714       41.031602
+;-----------------------------------------------------------
+
+; => Print out best fit shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,0]
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;     -0.98332048     -0.10933472     0.019092888
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;     -0.98198796     -0.11510345    0.0070259621
+;-----------------------------------------------------------
+
+; => Print out uncertainty of shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,1]
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, and 5 for 2000-04-10 bow shock
+;===========================================================
+;     0.013102826     0.081868290      0.11785560
+;-----------------------------------------------------------
+;  => Equations 2, 3, 4, 5, and 6 for 2000-04-10 bow shock
+;===========================================================
+;     0.013693700     0.083985175      0.12313228
+;-----------------------------------------------------------
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+tr_bb   = time_double('2009-07-13/'+['08:50:20.000','10:07:00.000'])
+
+pref    = 'th'+sc[0]+'_'
+fgmnm   = 'fgl_'+['mag',coord[0]]
+name_i  = pref[0]+[fgmnm,[partn[1]+plasnm[0:1],partn+plasnm[2]]]
+tplot,name_i,/NOM,TRANGE=tr_bb
+
+fnm     = file_name_times(tr_bb,PREC=3)
+ftimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+fpref   = 'FGM-fgl-GSE_TH-B_Vi_Ni_Te_Ti_'
+fname   = fpref[0]+ftimes[0]
+popen,fname[0],/LAND
+  tplot,name_i,/NOM,TRANGE=tr_bb
+pclose
+
+
+tr_11   = time_double('2009-07-13/'+['08:55:00.000','09:10:30.000'])
+tr_22   = time_double('2009-07-13/'+['09:14:00.000','09:44:00.000'])
+tr_33   = time_double('2009-07-13/'+['09:56:00.000','10:07:00.000'])
+
+pref    = 'th'+sc[0]+'_'
+fgmnm   = 'fgl_'+['mag',coord[0]]
+name_i  = pref[0]+[fgmnm,[partn[1]+plasnm[0:1],partn+plasnm[2]]]
+tplot,name_i,/NOM,TRANGE=tr_11
+
+
+tr_aa   = tr_11
+tr_aa   = tr_22
+tr_aa   = tr_33
+fnm     = file_name_times(tr_aa,PREC=3)
+ftimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+fpref   = 'FGM-fgl-GSE_TH-B_Vi_Ni_Te_Ti_'
+fname   = fpref[0]+ftimes[0]
+popen,fname[0],/LAND
+  tplot,name_i,/NOM,TRANGE=tr_aa
+pclose
+
+
+
+
+
+

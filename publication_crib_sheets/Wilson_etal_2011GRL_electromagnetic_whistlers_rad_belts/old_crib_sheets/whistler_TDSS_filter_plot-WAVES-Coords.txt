@@ -1,0 +1,744 @@
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables
+;-----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+epo            = 8.854187817d-12        ; => Permittivity of free space (F/m)
+muo            = 4d0*!DPI*1d-7          ; => Permeability of free space (N/A^2 or H/m)
+me             = 9.1093897d-31          ; => Electron mass (kg)
+mp             = 1.6726231d-27          ; => Proton mass (kg)
+qq             = 1.60217733d-19         ; => Fundamental charge (C)
+kB             = 1.380658d-23           ; => Boltzmann Constant (J/K)
+c              = 2.99792458d8           ; -Speed of light in vacuum (m/s)
+fcefac         = qq/me*1d-9/(2d0*!DPI)  ; => Multiplication factor for electron cyclotron frequency
+fcpfac         = qq/mp*1d-9/(2d0*!DPI)  ; => Multiplication factor for proton cyclotron frequency
+fpefac         = SQRT(1d6*qq^2/me/epo)/(2d0*!DPI)  ; => Multiplication factor for electron plasma frequency
+;-----------------------------------------------------------------------------------------
+; => Check date 
+;-----------------------------------------------------------------------------------------
+date   = '111398'
+t      = ['1998-11-13/13:00:00','1998-11-14/05:00:00'] 
+
+date   = '040900'
+t      = ['2000-04-09/19:48:00','2000-04-10/14:43:00']
+
+
+tr3    = time_double(t)
+mydate = my_str_date(DATE=date)
+sdate  = mydate.S_DATE[0]  ; -('MMDDYY')
+ldate  = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate  = mydate.TDATE[0]   ; => 'YYYY-MM-DD'
+
+mag3   = read_wind_mfi(TRANGE=tr3)
+t3x    = mag3.MAG.X
+magf4  = mag3.BGSE.Y
+bmag4  = mag3.MAG.Y
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+wi,0
+wset,0
+tplot_options,'xmargin',[18,12]
+tplot_options,'ymargin',[5,5]
+tplot,nn0,TRANGE=tr3
+;-----------------------------------------------------------------------------------------
+; => Find Wind/3DP IDL Save Files
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+
+
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;-----------------------------------------------------------------------------------------
+; => TDS times
+;-----------------------------------------------------------------------------------------
+temp       = tds_whist_ehole_times(DATE=date[0],FIXFILE=fixfile)
+ymdb_whist = temp.WHISTLER_T
+unix_whist = temp.WHISTLER_UNX
+;-----------------------------------------------------------------------------------------
+; => Load orbit data
+;-----------------------------------------------------------------------------------------
+tds_magneto_orbits,DATE=date
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+tplot_options, var_label=['Wind_Radial_Distance','Wind_L-Shell','Wind_MLT']
+;-----------------------------------------------------------------------------------------
+; => Calc Density, temp, etc... for ions
+;-----------------------------------------------------------------------------------------
+pesa_low_moment_calibrate,DATE=date,/NOLOAD,PLM=apl,PLBM=aplb,TRANGE=tr3
+
+pesa_high_moment_calibrate,DATE=date,/NOLOAD,PHM=aph,PHBM=aphb,TRANGE=tr3
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+options,['N_i2','N_ph'],'ylog',1
+nna = tnames([nn0,'N_i2','N_ph'])
+tplot,nna
+time_bar,unix_whist,VARNAME=nna,COLOR=250L
+;-----------------------------------------------------------------------------------------
+; => Look at EL moments in Magnetosphere
+;-----------------------------------------------------------------------------------------
+t_o       = ['1998-11-13/15:00:00','1998-11-13/22:30:00'] 
+t_o       = ['2000-04-09/20:20:00','2000-04-10/14:00:00']
+
+t_u       = time_double(t_o)
+el_times  = REFORM(ael.TIME)
+elb_times = REFORM(aelb.TIME)
+g_el      = WHERE(el_times LE MAX(t_u,/NAN) AND el_times GE MIN(t_u,/NAN),g_l)
+g_elb     = WHERE(elb_times LE MAX(t_u,/NAN) AND elb_times GE MIN(t_u,/NAN),g_lb)
+eh_times  = REFORM(aeh.TIME)
+g_eh      = WHERE(eh_times LE MAX(t_u,/NAN) AND eh_times GE MIN(t_u,/NAN),g_h)
+
+IF (g_l GT 0)  THEN gael  = ael[g_el]   ELSE gael  = 0
+IF (g_lb GT 0) THEN gaelb = aelb[g_elb] ELSE gaelb = 0
+IF (g_h GT 0)  THEN gaeh  = aeh[g_eh]   ELSE gaeh  = 0
+
+add_scpot,gael,'sc_pot_3'
+add_scpot,gaelb,'sc_pot_3'
+add_scpot,gaeh,'sc_pot_3'
+
+moments_array_3dp,PLM=gael,PLBM=gaelb,AVGTEMP=avtempe,T_PERP=tperp_e, $
+                  T_PARA=tpara_e,V_THERM=vtherme,VELOCITY=elb_vels,   $
+                  PRESSURE=press_e,MOMS=moms,/TO_TPLOT,SUFFX='el'
+
+moments_array_3dp,PLM=gaeh,PLBM=gaehb,AVGTEMP=avtempeh,T_PERP=tperp_eh, $
+                  T_PARA=tpara_eh,V_THERM=vthermeh,VELOCITY=ehb_vels,   $
+                  PRESSURE=press_eh,MOMS=momsh,/TO_TPLOT,SUFFX='eh'
+
+add_vsw2,gael,'Velocity_el'
+add_vsw2,gaelb,'Velocity_el'
+
+add_vsw2,gaeh,'Velocity_eh'
+
+get_data,'Velocity_el',DATA=el_vel
+tvels = el_vel.Y*1e-3
+store_data,'Velocity_el',DATA={X:el_vel.X,Y:tvels}
+get_data,'Velocity_eh',DATA=el_vel
+tvels = el_vel.Y*1e-3
+store_data,'Velocity_eh',DATA={X:el_vel.X,Y:tvels}
+DELVAR,tvels,el_vel
+options,'Velocity_el','YTITLE','V!Del!N (1000 km/s)'
+options,'Velocity_eh','YTITLE','V!Deh!N (1000 km/s)'
+options,'Velocity_eh','MAX_VALUE',5e0
+options,'Velocity_eh','MIN_VALUE',-5e0
+;-----------------------------------------------------------------------------------------
+; => Get TDSS data in GSE Coordinates
+;-----------------------------------------------------------------------------------------
+my_tds = get_wind_tds_data(DATE=date,/FIXFILE,/TDSS)
+
+evnum  = my_tds.EVENT_N
+scets  = my_tds.SCET
+mts    = my_time_string(scets,STR=1,FORM=1,/NOMSSG)  
+tdsunx = mts.UNIX
+nsams  = N_ELEMENTS(REFORM(my_tds.TIME[0,*]))
+
+shfnm  = my_tds.SH_FNAME
+t0     = STRMID(shfnm[*],22L,20L,/REVERSE_OFFSET)  ; => E.G.   '20000406_1533-59x859'
+tddat  = STRMID(t0[*],0L,4L)+'-'+STRMID(t0[*],4L,2L)+'-'+STRMID(t0[*],6L,2L)
+tx     = (REFORM(my_tds.TIME))
+tunx   = tx*1d-3 + (tdsunx # REPLICATE(1d0,nsams))
+
+; => For whistlers on 1998-11-13 near 18:20:00 UT
+g_evns = [5881612L,5881617L,5881644L]
+; => For whistlers on 2000-04-10 between 02:45:00 UT and 04:40:00 UT
+g_evns = [27517469L,27517553L,27517555L,27518225L,27520153L,27520603L,$
+          27524827L,27524948L]
+
+test   = my_array_where(g_evns,evnum,/N_UNIQ)
+
+scets  = scets[test[*,1]]
+tunx   = REFORM(tunx[test[*,1],*])
+fields = REFORM(my_tds.EFIELD[test[*,1],*])
+atype  = my_tds.A_TYPE[test[*,1]]
+sangs  = my_tds.S_ANG[test[*,1]]
+eangs  = my_tds.E_ANG[test[*,1]]
+evnum  = evnum[test[*,1]]
+t0     = t0[test[*,1]]
+tddat  = tddat[test[*,1]]
+shfnm  = shfnm[test[*,1]]
+n_avgs = N_ELEMENTS(tunx[*,0]) - 1L
+print, atype
+; => For whistlers on 1998-11-13 near 18:20:00 UT
+;  EXDC EYDC BY EZDC EYDC BY EXDC EZDC BY EXDC EYDC EZDC
+; => For whistlers on 2000-04-10 between 02:45:00 UT and 04:40:00 UT
+;  EXDC EYDC EZDC BY EZDC BY EXDC EYDC BY EXDC EYDC EZDC BY EXDC EYDC EZDC BY 
+;  EXDC EYDC EZDC EXDC EYDC BY EZDC EYDC BY EXDC EZDC BY EXDC EYDC EZDC
+evlen  = MAX(REFORM(tunx[0,*]),/NAN) - MIN(REFORM(tunx[0,*]),/NAN)
+fsamp  = (nsams - 1L)/evlen[0]
+print, evlen, fsamp
+; => For whistlers on 1998-11-13 near 18:20:00 UT
+;      0.27293301       7500.0090
+; => For whistlers on 2000-04-10 between 02:45:00 UT and 04:40:00 UT
+;      0.27293301       7500.0090
+
+
+efxyz   = DBLARR(N_ELEMENTS(g_evns),nsams,3L)  ; => Dummy array of E-fields (mV/m)
+bfxyz   = DBLARR(N_ELEMENTS(g_evns),nsams,3L)  ; => Dummy array of B-fields (nT)
+FOR k=0L, n_avgs DO BEGIN                                                          $
+  t_type = STRMID(atype[k],0L,2L)                                                & $
+  t_evn  = evnum[k]                                                              & $
+  test0  = my_array_where(t_evn,g_evns,/N_UNIQ)                                  & $
+  g      = REFORM(test0[0,1])                                                    & $
+  IF (t_type EQ 'EX') THEN efxyz[g,*,0] = fields[k,*]                            & $
+  IF (t_type EQ 'EY') THEN efxyz[g,*,1] = fields[k,*]                            & $
+  IF (t_type EQ 'EZ') THEN efxyz[g,*,2] = fields[k,*]                            & $
+  IF (t_type EQ 'BX') THEN bfxyz[g,*,0] = fields[k,*]                            & $
+  IF (t_type EQ 'BY') THEN bfxyz[g,*,1] = fields[k,*]                            & $
+  IF (t_type EQ 'BZ') THEN bfxyz[g,*,2] = fields[k,*]
+
+
+unqel   = UNIQ(tunx[*,0],SORT(tunx[*,0]))
+ntunx   = REFORM(tunx[unqel,*])
+nsangs  = REFORM(sangs[unqel])
+neangs  = REFORM(eangs[unqel])
+nscets  = REFORM(scets[unqel])
+nevnm   = REFORM(evnum[unqel])
+nshfnm  = REFORM(t0[unqel])
+
+t_mag0     = tds_bfield(ntunx,nsangs,neangs,B3SMAG={X:t3x,Y:magf4},DATE=date,/NOCURR,HTRMAG=0)
+g_magf     = t_mag0.G3MAG 
+gse_dcbf   = REFORM(g_magf)
+bmagh      = SQRT(TOTAL(gse_dcbf^2,3,/NAN))
+fce0h      = fcefac[0]*bmagh
+fcp0h      = fcpfac[0]*bmagh
+flh0h      = SQRT(fce0h*fcp0h)
+
+
+;-----------------------------------------------------------------------------------------
+; => Filter data
+;-----------------------------------------------------------------------------------------
+; => Filter whistlers on 1998-11-13 near 18:20:00 UT
+flow     = [9e2,8e2,6e2]
+fhigh    = [2.3e3,2.2e3,2.5e3]
+
+filt_ef0 = vector_bandpass(REFORM(efxyz[0,*,*]),fsamp[0],flow[0],fhigh[0],/MIDF)
+filt_ef1 = vector_bandpass(REFORM(efxyz[1,*,*]),fsamp[0],flow[1],fhigh[1],/MIDF)
+filt_ef2 = vector_bandpass(REFORM(efxyz[2,*,*]),fsamp[0],flow[2],fhigh[2],/MIDF)
+
+filt_bf0 = vector_bandpass(REFORM(bfxyz[0,*,*]),fsamp[0],flow[0],fhigh[0],/MIDF)
+filt_bf1 = vector_bandpass(REFORM(bfxyz[1,*,*]),fsamp[0],flow[1],fhigh[1],/MIDF)
+filt_bf2 = vector_bandpass(REFORM(bfxyz[2,*,*]),fsamp[0],flow[2],fhigh[2],/MIDF)
+
+; => Filter whistlers on 2000-04-10 between 02:45:00 UT and 04:40:00 UT
+flow     = [4e2,5e2,5.5e2,6e2,8e2,7e2,1e3,6.5e2]
+fhigh    = [1.6e3,1.2e3,1.2e3,1.7e3,2.1e3,2.0e3,2.1e3,1.8e3]
+
+filt_ef0 = vector_bandpass(REFORM(efxyz[0,*,*]),fsamp[0],flow[0],fhigh[0],/MIDF)
+filt_ef1 = vector_bandpass(REFORM(efxyz[1,*,*]),fsamp[0],flow[1],fhigh[1],/MIDF)
+filt_ef2 = vector_bandpass(REFORM(efxyz[2,*,*]),fsamp[0],flow[2],fhigh[2],/MIDF)
+filt_ef3 = vector_bandpass(REFORM(efxyz[3,*,*]),fsamp[0],flow[3],fhigh[3],/MIDF)
+filt_ef4 = vector_bandpass(REFORM(efxyz[4,*,*]),fsamp[0],flow[4],fhigh[4],/MIDF)
+filt_ef5 = vector_bandpass(REFORM(efxyz[5,*,*]),fsamp[0],flow[5],fhigh[5],/MIDF)
+filt_ef6 = vector_bandpass(REFORM(efxyz[6,*,*]),fsamp[0],flow[6],fhigh[6],/MIDF)
+filt_ef7 = vector_bandpass(REFORM(efxyz[7,*,*]),fsamp[0],flow[7],fhigh[7],/MIDF)
+
+filt_bf0 = vector_bandpass(REFORM(bfxyz[0,*,*]),fsamp[0],flow[0],fhigh[0],/MIDF)
+filt_bf1 = vector_bandpass(REFORM(bfxyz[1,*,*]),fsamp[0],flow[1],fhigh[1],/MIDF)
+filt_bf2 = vector_bandpass(REFORM(bfxyz[2,*,*]),fsamp[0],flow[2],fhigh[2],/MIDF)
+filt_bf3 = vector_bandpass(REFORM(bfxyz[3,*,*]),fsamp[0],flow[3],fhigh[3],/MIDF)
+filt_bf4 = vector_bandpass(REFORM(bfxyz[4,*,*]),fsamp[0],flow[4],fhigh[4],/MIDF)
+filt_bf5 = vector_bandpass(REFORM(bfxyz[5,*,*]),fsamp[0],flow[5],fhigh[5],/MIDF)
+filt_bf6 = vector_bandpass(REFORM(bfxyz[6,*,*]),fsamp[0],flow[6],fhigh[6],/MIDF)
+filt_bf7 = vector_bandpass(REFORM(bfxyz[7,*,*]),fsamp[0],flow[7],fhigh[7],/MIDF)
+;-----------------------------------------------------------------------------------------
+; => Plot data
+;-----------------------------------------------------------------------------------------
+xtv      = [0.,40.,80.,120.,160.,200.,240.]*1d-3
+xtn      = ['0','40','80','120','160','200','240']
+xts      = N_ELEMENTS(xtn) - 1L
+xttl     = 'Time (ms)'
+
+base_str = {YSTYLE:1,XSTYLE:1,NODATA:1,XMINOR:5,YMINOR:5,$
+            XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,XTITLE:xttl}
+
+efname_pref   = 'E'+['x','y','z']+'-WAVES_filtered_'
+bfname_pref   = 'B'+['x','y','z']+'-WAVES_filtered_'
+
+
+yttl_suff0 = '[WAVES]'
+ef_suff    = ' (mV/m)'
+bf_suff    = ' (nT)'
+epref      = '!7d!3'+'E!D'+['x','y','z']+'!N'
+bpref      = '!7d!3'+'B!D'+['x','y','z']+'!N'
+exgse      = epref[0]+ef_suff[0]+'!C'+yttl_suff0[0]
+eygse      = epref[1]+ef_suff[0]+'!C'+yttl_suff0[0]
+ezgse      = epref[2]+ef_suff[0]+'!C'+yttl_suff0[0]
+bxgse      = bpref[0]+bf_suff[0]+'!C'+yttl_suff0[0]
+bygse      = bpref[1]+bf_suff[0]+'!C'+yttl_suff0[0]
+bzgse      = bpref[2]+bf_suff[0]+'!C'+yttl_suff0[0]
+egse_yttls = [exgse,eygse,ezgse]
+bgse_yttls = [bxgse,bygse,bzgse]
+pttl_suff0 = ' '+yttl_suff0[0]+' at '+nscets[*]+', Event #: '+STRTRIM(nevnm[*],2)
+
+
+; => WAVES-Coordinate whistlers on 1998-11-13 near 18:20:00 UT
+a_filt_b   = {T0:filt_bf0,T1:filt_bf1,T2:filt_bf2}
+a_filt_e   = {T0:filt_ef0,T1:filt_ef1,T2:filt_ef2}
+; => WAVES-Coordinate whistlers on 2000-04-10 between 02:45:00 UT and 04:40:00 UT
+a_filt_b   = {T0:filt_bf0,T1:filt_bf1,T2:filt_bf2,T3:filt_bf3,T4:filt_bf4,T5:filt_bf5,$
+              T6:filt_bf6,T7:filt_bf7}
+a_filt_e   = {T0:filt_ef0,T1:filt_ef1,T2:filt_ef2,T3:filt_ef3,T4:filt_ef4,T5:filt_ef5,$
+              T6:filt_ef6,T7:filt_ef7}
+
+nfs        = N_TAGS(a_filt_b)
+; => Band-Pass Filtered FACs
+FOR j=0L, nfs - 1L DO BEGIN                                       $
+  yrae = MAX(ABS(a_filt_e.(j)),/NAN)                            & $
+  yrab = MAX(ABS(a_filt_b.(j)),/NAN)                            & $
+  efd  = REFORM(a_filt_e.(j))                                   & $
+  bfd  = REFORM(a_filt_b.(j))                                   & $
+  tex  = REFORM(ntunx[j,*]) - MIN(REFORM(ntunx[j,*]),/NAN)      & $
+  extract_tags,temp,base_str                                    & $
+  FOR k=0L, 2L DO BEGIN                                           $
+    yttl0 = egse_yttls[k]+' (band-pass)'                        & $
+    pttl0 = epref[k]+pttl_suff0[j]                              & $
+    str_element,temp,'YRANGE',[-1.*yrae,yrae],/ADD_REPLACE      & $
+    popen,efname_pref[k]+nshfnm[j],/LAND                        & $
+      PLOT,tex,efd[*,k],_EXTRA=temp,YTITLE=yttl0,TITLE=pttl0    & $
+        OPLOT,tex,efd[*,k],COLOR=50                             & $
+    pclose                                                      & $
+    yttl0 = bgse_yttls[k]+' (band-pass)'                        & $
+    pttl0 = bpref[k]+pttl_suff0[j]                              & $
+    str_element,temp,'YRANGE',[-1.*yrab,yrab],/ADD_REPLACE      & $
+    popen,bfname_pref[k]+nshfnm[j],/LAND                        & $
+      PLOT,tex,bfd[*,k],_EXTRA=temp,YTITLE=yttl0,TITLE=pttl0    & $
+        OPLOT,tex,bfd[*,k],COLOR=50                             & $
+    pclose                                                      & $
+  ENDFOR                                                        & $
+  temp = 0
+
+
+
+fcepfx = 'fce_plus_1_Harmonic_flh_fcp_'
+mother = 'Morlet'
+; => Send to TPLOT
+FOR j=0L, nfs - 1L DO BEGIN                                       $
+  yrae = MAX(ABS(a_filt_e.(j)),/NAN)                            & $
+  yrab = MAX(ABS(a_filt_b.(j)),/NAN)                            & $
+  efd  = REFORM(a_filt_e.(j))                                   & $
+  bfd  = REFORM(a_filt_b.(j))                                   & $
+  tex  = REFORM(ntunx[j,*]) - MIN(REFORM(ntunx[j,*]),/NAN)      & $
+  extract_tags,temp,base_str                                    & $
+  flht = REFORM(flh0h[j,*])                                     & $
+  fcet = REFORM(fce0h[j,*])                                     & $
+  fcpt = REFORM(fcp0h[j,*])                                     & $
+  fce1 = 2d0*fcet                                               & $
+  fce_th    = [[[fcpt]],[[flht]],[[fcet]],[[fce1]]]             & $
+  fce_nh = fcepfx[0]+nshfnm[j]                                  & $
+  store_data,fce_nh,DATA={X:tex,Y:fce_th}                       & $
+  options,fce_nh,'COLORS',[0,0,0,0]                             & $
+  options,fce_nh,'LABELS',f_labels                              & $
+  FOR k=0L, 2L DO BEGIN                                           $
+    yttl0 = egse_yttls[k]+' (band-pass)'                        & $
+    pttl0 = epref[k]+pttl_suff0[j]                              & $
+    str_element,temp,'YRANGE',[-1.*yrae,yrae],/ADD_REPLACE      & $
+    str_element,temp,'TITLE',pttl0,/ADD_REPLACE                 & $
+    str_element,temp,'YTITLE',yttl0,/ADD_REPLACE                & $
+    tnme0 = efname_pref[k]+nshfnm[j]                            & $
+    twwe0 = tnme0+'_wavelet'                                    & $
+    edat  = REFORM(efd[*,k])                                    & $
+    store_data,tnme0,DATA={X:tex,Y:edat},LIMIT=temp             & $
+    wavelet_to_tplot,tex,edat,NEW_NAME=twwe0,MOTHER=mother      & $
+    IF (k EQ 1) THEN BEGIN                                        $
+      tnme0 = bfname_pref[k]+nshfnm[j]                          & $
+      twwe0 = tnme0+'_wavelet'                                  & $
+      bdat  = REFORM(bfd[*,k])                                  & $
+      yttl0 = bgse_yttls[k]+' (band-pass)'                      & $
+      pttl0 = bpref[k]+pttl_suff0[j]                            & $
+      str_element,temp,'YRANGE',[-1.*yrab,yrab],/ADD_REPLACE    & $
+      str_element,temp,'TITLE',pttl0,/ADD_REPLACE               & $
+      str_element,temp,'YTITLE',yttl0,/ADD_REPLACE              & $
+      store_data,tnme0,DATA={X:tex,Y:bdat},LIMIT=temp           & $
+      wavelet_to_tplot,tex,bdat,NEW_NAME=twwe0,MOTHER=mother    & $
+    ENDIF                                                       & $
+  ENDFOR                                                        & $
+  tnms = efname_pref[*]+nshfnm[j]+'_wavelet'                    & $
+  get_data,tnms[0],DATA=wav0h                                   & $
+  get_data,tnms[1],DATA=wav1h                                   & $
+  get_data,tnms[2],DATA=wav2h                                   & $
+  mxzrah = MAX(ABS([wav0h.Y,wav1h.Y,wav2h.Y]),/NAN)/1.10        & $
+  options,tnms,'ZRANGE',[1e-2,1e0*roundsig(mxzrah,SIGFIG=1)]
+  
+  
+    
+xtnpwhg   = ['10.0','100.0','1000.0']  ; => Freq. Ticks for higher freq. TDSS samples
+xtvpwhg   = [1e1,1e2,1e3]              ; => Freq. Tick Values " "
+xrapwhg2  = [4e0,4e3]                  ; => High Freq. ranges (7500 Hz sample rate)
+default   = {YTICKNAME:xtnpwhg,YTICKV:xtvpwhg,YTICKS:2,YRANGE:xrapwhg2}
+wave_nms  = tnames('*_wavelet*')
+conf_nme  = TRANSPOSE(REFORM(tnames('E*_Conf_Level_95'),3,nfs))
+conf_nmb  = tnames('B*_Conf_Level_95')
+cone_nme  = TRANSPOSE(REFORM(tnames('E*_Cone_of_Influence'),3,nfs))
+cone_nmb  = tnames('B*_Cone_of_Influence')
+
+options,wave_nms,'YTICKNAME',xtnpwhg
+options,wave_nms,'YTICKV',xtvpwhg
+options,wave_nms,'YTICKS',2
+options,wave_nms,'YRANGE',xrapwhg2
+options,wave_nms,'YMINOR',9
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+wavesx   = '_wavelet'
+all_tpwv = tnames('*-WAVES_filtered_*')
+ex_tpwva = tnames('Ex-WAVES_filtered_*')
+ey_tpwva = tnames('Ey-WAVES_filtered_*')
+ez_tpwva = tnames('Ez-WAVES_filtered_*')
+by_tpwva = tnames('By-WAVES_filtered_*')
+
+gdefx    = WHERE(STRPOS(ex_tpwva,wavesx) LE 0,gdex)
+gdefy    = WHERE(STRPOS(ey_tpwva,wavesx) LE 0,gdey)
+gdefz    = WHERE(STRPOS(ez_tpwva,wavesx) LE 0,gdez)
+gdbfy    = WHERE(STRPOS(by_tpwva,wavesx) LE 0,gdby)
+
+ex_tpwv  = ex_tpwva[gdefx]
+ey_tpwv  = ey_tpwva[gdefy]
+ez_tpwv  = ez_tpwva[gdefz]
+by_tpwv  = by_tpwva[gdbfy]
+
+options,[ex_tpwv,ey_tpwv,ez_tpwv],'COLORS',50L
+options,by_tpwv,'COLORS',250L
+
+exwave_n = tnames('Ex-*_wavelet')
+eywave_n = tnames('Ey-*_wavelet')
+ezwave_n = tnames('Ez-*_wavelet')
+bywave_n = tnames('By-*_wavelet')
+
+
+
+tnms     = tnames(bywave_n)
+FOR j=0L, N_ELEMENTS(tnms) - 1L DO BEGIN $
+  get_data,tnms[j],DATA=test       & $
+  mxzrah = MAX(ABS(test.Y),/NAN)/1.10 & $
+  options,tnms[j],'ZRANGE',[1e-2,1e0*roundsig(mxzrah,SIGFIG=1)]
+
+
+all_efnms = [[ex_tpwv],[ey_tpwv],[ez_tpwv]]
+all_ewvs  = [[exwave_n],[eywave_n],[ezwave_n]]
+all_fnms  = tnames('fce_*')
+
+lims      = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',1.5)
+;---------------------------------------------------------------------------------------
+; => Plot wavelets
+;---------------------------------------------------------------------------------------
+FOR j=0L, N_ELEMENTS(tnms) - 1L DO BEGIN                                  $
+  temp_vecs  = REFORM(all_efnms[j,*])                                   & $
+  temp_waves = REFORM(all_ewvs[j,*])                                    & $
+  temp_cone  = REFORM(cone_nme[j,*])                                    & $
+  temp_conf  = REFORM(conf_nme[j,*])                                    & $
+  temp_freqs = REFORM(all_fnms[j])                                      & $
+  FOR i=0L, 2L DO BEGIN                                                   $
+    nn0 = [temp_vecs[i],temp_waves[i]]                                  & $
+    nn2 = [temp_cone[i],temp_conf[i],temp_freqs[0]]                     & $
+    get_data,nn0[0],DATA=temporary_data                                 & $
+    tr_new = [MIN(temporary_data.X,/NAN),MAX(temporary_data.X,/NAN)]    & $
+    popen,temp_waves[i],/LAND                                           & $
+      oplot_tplot_spec,nn0,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr_new        & $
+    pclose
+
+; => B-fields
+FOR j=0L, N_ELEMENTS(tnms) - 1L DO BEGIN                                  $
+  temp_vecs  = by_tpwv[j]                                               & $
+  temp_waves = temp_vecs+wavesx[0]                                      & $
+  temp_cone  = REFORM(cone_nme[j,1])                                    & $
+  temp_conf  = REFORM(conf_nme[j,1])                                    & $
+  temp_freqs = REFORM(all_fnms[j])                                      & $
+  nn0 = [temp_vecs[0],temp_waves[0]]                                    & $
+  nn2 = [temp_cone[0],temp_conf[0],temp_freqs[0]]                       & $
+  get_data,nn0[0],DATA=temporary_data                                   & $
+  tr_new = [MIN(temporary_data.X,/NAN),MAX(temporary_data.X,/NAN)]      & $
+  popen,temp_waves[0],/LAND                                             & $
+    oplot_tplot_spec,nn0,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr_new          & $
+  pclose
+;---------------------------------------------------------------------------------------
+; => Plot wavelets w/ linear Y-Scale
+;---------------------------------------------------------------------------------------
+wave_nms  = tnames('*_wavelet*')
+options,wave_nms,'YLOG',0
+options,wave_nms,'YTICKNAME',['100','1000','2000','3000']
+options,wave_nms,'YTICKV',[1e2,1e3,2e3,3e3]
+options,wave_nms,'YTICKS',3
+options,wave_nms,'YMINOR',9
+
+FOR j=0L, N_ELEMENTS(tnms) - 1L DO BEGIN                                  $
+  temp_vecs  = REFORM(all_efnms[j,*])                                   & $
+  temp_waves = REFORM(all_ewvs[j,*])                                    & $
+  temp_cone  = REFORM(cone_nme[j,*])                                    & $
+  temp_conf  = REFORM(conf_nme[j,*])                                    & $
+  temp_freqs = REFORM(all_fnms[j])                                      & $
+  FOR i=0L, 2L DO BEGIN                                                   $
+    nn0 = [temp_vecs[i],temp_waves[i]]                                  & $
+    nn2 = [temp_cone[i],temp_conf[i],temp_freqs[0]]                     & $
+    get_data,nn0[0],DATA=temporary_data                                 & $
+    tr_new = [MIN(temporary_data.X,/NAN),MAX(temporary_data.X,/NAN)]    & $
+    popen,temp_waves[i]+'_y-lin',/LAND                                  & $
+      oplot_tplot_spec,nn0,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr_new        & $
+    pclose
+
+; => B-fields
+FOR j=0L, N_ELEMENTS(tnms) - 1L DO BEGIN                                  $
+  temp_vecs  = by_tpwv[j]                                               & $
+  temp_waves = temp_vecs+wavesx[0]                                      & $
+  temp_cone  = REFORM(cone_nme[j,1])                                    & $
+  temp_conf  = REFORM(conf_nme[j,1])                                    & $
+  temp_freqs = REFORM(all_fnms[j])                                      & $
+  nn0 = [temp_vecs[0],temp_waves[0]]                                    & $
+  nn2 = [temp_cone[0],temp_conf[0],temp_freqs[0]]                       & $
+  get_data,nn0[0],DATA=temporary_data                                   & $
+  tr_new = [MIN(temporary_data.X,/NAN),MAX(temporary_data.X,/NAN)]      & $
+  popen,temp_waves[0]+'_y-lin',/LAND                                    & $
+    oplot_tplot_spec,nn0,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr_new          & $
+  pclose
+;---------------------------------------------------------------------------------------
+; => Plot wavelets w/ new Y-Ranges
+;---------------------------------------------------------------------------------------
+xtnpwhg   = ['100.0','1000.0']  ; => Freq. Ticks for higher freq. TDSS samples
+xtvpwhg   = [1e2,1e3]              ; => Freq. Tick Values " "
+xrapwhg2  = [1e2,4e3]                  ; => High Freq. ranges (7500 Hz sample rate)
+options,wave_nms,'YTICKNAME',xtnpwhg
+options,wave_nms,'YTICKV',xtvpwhg
+options,wave_nms,'YTICKS',1
+options,wave_nms,'YRANGE',xrapwhg2
+options,wave_nms,'YMINOR',9
+
+
+FOR j=0L, N_ELEMENTS(tnms) - 1L DO BEGIN                                  $
+  temp_vecs  = REFORM(all_efnms[j,*])                                   & $
+  temp_waves = REFORM(all_ewvs[j,*])                                    & $
+  temp_cone  = REFORM(cone_nme[j,*])                                    & $
+  temp_conf  = REFORM(conf_nme[j,*])                                    & $
+  temp_freqs = REFORM(all_fnms[j])                                      & $
+  FOR i=0L, 2L DO BEGIN                                                   $
+    nn0 = [temp_vecs[i],temp_waves[i]]                                  & $
+    nn2 = [temp_cone[i],temp_conf[i],temp_freqs[0]]                     & $
+    get_data,nn0[0],DATA=temporary_data                                 & $
+    tr_new = [MIN(temporary_data.X,/NAN),MAX(temporary_data.X,/NAN)]    & $
+    popen,temp_waves[i]+'_2nd-yrange',/LAND                             & $
+      oplot_tplot_spec,nn0,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr_new        & $
+    pclose
+
+; => B-fields
+FOR j=0L, N_ELEMENTS(tnms) - 1L DO BEGIN                                  $
+  temp_vecs  = by_tpwv[j]                                               & $
+  temp_waves = temp_vecs+wavesx[0]                                      & $
+  temp_cone  = REFORM(cone_nme[j,1])                                    & $
+  temp_conf  = REFORM(conf_nme[j,1])                                    & $
+  temp_freqs = REFORM(all_fnms[j])                                      & $
+  nn0 = [temp_vecs[0],temp_waves[0]]                                    & $
+  nn2 = [temp_cone[0],temp_conf[0],temp_freqs[0]]                       & $
+  get_data,nn0[0],DATA=temporary_data                                   & $
+  tr_new = [MIN(temporary_data.X,/NAN),MAX(temporary_data.X,/NAN)]      & $
+  popen,temp_waves[0]+'_2nd-yrange',/LAND                               & $
+    oplot_tplot_spec,nn0,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr_new          & $
+  pclose
+;---------------------------------------------------------------------------------------
+; => 
+;---------------------------------------------------------------------------------------
+j          = 0
+temp_waves = REFORM(all_ewvs[j,*])
+temp_vecs  = REFORM(all_efnms[j,*])
+get_data,temp_vecs[0],DATA=testd
+get_data,temp_waves[0],DATA=test
+
+pkpower    = FLTARR(nsams)
+pkfreq     = FLTARR(nsams)
+frqs       = test.V
+tt0s       = test.X - MIN(test.X,/NAN)
+FOR j=0L, nsams - 1L DO BEGIN                                  $
+  dat = REFORM(test.Y[j,*])                                  & $
+  mxp = MAx(dat,/NAN,lx)                                     & $
+  pkpower[j] = mxp[0]                                        & $
+  pkfreq[j]  = frqs[lx]
+
+yra      = MAX(ABS(testd.Y),/NAN)*1.05
+xttl     = 'Time (s)'
+!p.multi = [0,1,3]
+pstr     = {nodata:1,ystyle:1,xstyle:1,ytitle:'E-field (mV/m)',yrange:[-1e0*yra,yra],charsize:2.}
+plot,tt0s,testd.Y,_extra=pstr,xtitle=xttl
+  oplot,tt0s,testd.Y,color=50
+
+pstr     = {nodata:1,ystyle:1,xstyle:1,ytitle:'peak power',yrange:[1e1,4e4],charsize:2.,ylog:1}
+plot,tt0s,pkpower,_extra=pstr,xtitle=xttl
+  oplot,tt0s,pkpower,color=50
+
+pstr     = {nodata:1,ystyle:1,xstyle:1,ytitle:'peak frequency',yrange:[0e0,4e3],charsize:2.,ylog:0}
+plot,tt0s,pkfreq,_extra=pstr,xtitle=xttl
+  oplot,tt0s,pkfreq,color=50
+
+
+xttl       = 'Time (s)'
+def_str    = {nodata:1,ystyle:1,xstyle:1,charsize:2.,xtitle:xttl}
+pkpower    = FLTARR(nsams)
+pkfreq     = FLTARR(nsams)
+FOR j=0L, N_ELEMENTS(tnms) - 1L DO BEGIN                                      $
+  temp_vecs  = REFORM(all_efnms[j,*])                                       & $
+  temp_waves = REFORM(all_ewvs[j,*])                                        & $
+  FOR i=0L, 2L DO BEGIN                                                       $
+    get_data,temp_vecs[i],DATA=testd                                        & $
+    get_data,temp_waves[i],DATA=test                                        & $
+    frqs = test.V                                                           & $
+    tt0s = test.X - MIN(test.X,/NAN)                                        & $
+    pkpower = FLTARR(nsams)                                                 & $
+    pkfreq = FLTARR(nsams)                                                  & $
+    FOR k=0L, nsams - 1L DO BEGIN                                             $
+      dat = REFORM(test.Y[k,*])                                             & $
+      mxp = MAx(dat,/NAN,lx)                                                & $
+      pkpower[k] = mxp[0]                                                   & $
+      pkfreq[k]  = frqs[lx]                                                 & $
+    ENDFOR                                                                  & $
+    smpkfr = SMOOTH(pkfreq,8,/NAN,/EDGE_TRUNCATE)                           & $
+    yra  = MAX(ABS(testd.Y),/NAN)*1.05                                      & $
+    !p.multi = [0,1,3]                                                      & $
+    fd  = STRMID(temp_vecs[i],0,2)                                          & $
+    popen,temp_vecs[i]+'_peak-power-freq',/PORT                             & $
+      plot,tt0s,testd.Y,_extra=def_str,ytitle=fd[0]+'-field (mV/m)',          $
+        yrange=[-1e0*yra,yra]                                               & $
+        oplot,tt0s,testd.Y,color=50                                         & $
+      plot,tt0s,pkpower,_extra=def_str,ytitle='peak power',/ylog,             $
+        yrange=[1e1,1e5]                                                    & $
+        oplot,tt0s,pkpower,color=50                                         & $
+      plot,tt0s,smpkfr,_extra=def_str,ytitle='peak frequency',                $
+        yrange=[0e0,25e2]                                                   & $
+        oplot,tt0s,smpkfr,color=50                                          & $
+    pclose
+
+
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables and constants
+;-----------------------------------------------------------------------------------------
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+me         = 9.1093897d-31            ; -Electron mass (kg)
+mp         = 1.6726231d-27            ; -Proton mass (kg)
+qq         = 1.60217733d-19           ; -Fundamental charge (C)
+fcefac     = qq/me/(2d0*!DPI)
+;-----------------------------------------------------------------------------------------
+; => ALL TDS whistlers 
+;-----------------------------------------------------------------------------------------
+temp        = whistler_insta_loc_read()
+
+; => Phase Velocities
+Vph_fln   = temp.VPH_FLOW_MN
+Vph_flx   = temp.VPH_FLOW_MX
+Vph_fhn   = temp.VPH_FHIGH_MN
+Vph_fhx   = temp.VPH_FHIGH_MX
+; => Define L-Shell, MLT, and Radial Distance
+w_lsh     = temp.WIND_L_SHELL
+w_mlt     = temp.WIND_MLT
+w_rad     = temp.WIND_RAD_DIST
+; => Define Gendrin Angles
+phi_gen   = temp.GENDRIN_ANG
+;-----------------------------------------------------------------------------------------
+; => Define separation tests (by finite Vph and radial distance)
+;-----------------------------------------------------------------------------------------
+lshell    = 10.
+;lshell    = 20.
+l_string   = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+test_f    = FINITE(Vph_fln) AND FINITE(Vph_flx) AND FINITE(Vph_fhn) AND FINITE(Vph_fhx)
+test_l    = (w_rad LE lshell)
+test_g    = (phi_gen NE 90.)
+test      = test_f AND test_l AND test_g
+good      = WHERE(test,gd)
+
+; => Wave RMS Amplitudes
+rms_mag   = temp.RMS[good,3L]
+; => Phase Velocities (m/s)
+Vph_fln   = temp.VPH_FLOW_MN[good]*1d3
+Vph_flx   = temp.VPH_FLOW_MX[good]*1d3
+Vph_flavg = (Vph_fln + Vph_flx)/2d0
+Vph_fhn   = temp.VPH_FHIGH_MN[good]*1d3
+Vph_fhx   = temp.VPH_FHIGH_MX[good]*1d3
+Vph_fhavg = (Vph_fhn + Vph_fhx)/2d0
+; => Define L-Shell and MLT
+w_lsh     = temp.WIND_L_SHELL[good]
+w_mlt     = temp.WIND_MLT[good]
+; => Define radial distance and invariant latitude
+w_rad     = temp.WIND_RAD_DIST[good]
+; => Define Gendrin Angles
+phi_gen   = phi_gen[good]
+prop_angs = 9d1 - phi_gen
+
+
+units     = STRTRIM(temp.UNITS[good],2)
+good_nt   = WHERE(STRLOWCASE(units) EQ 'nt',gdnt,COMPLEMENT=good_mv,NCOMPLEMENT=gdmv)
+print, gdnt, gdmv
+; => For Re < 10.
+;          23         184
+; => For Re < 20.
+;          50         184
+
+cold_rms  = DBLARR(gd,2L,2L)             ; => [B-field,E-field]
+cold_rms[good_nt,0,0] = rms_mag[good_nt]*1d-9
+cold_rms[good_nt,0,1] = rms_mag[good_nt]*1d-9
+cold_rms[good_mv,1,0] = rms_mag[good_mv]*1d-3
+cold_rms[good_mv,1,1] = rms_mag[good_mv]*1d-3
+; => Cold Plasma E-field with Vph low estimate
+cold_rms[good_nt,1,0] = rms_mag[good_nt]*1d-9*Vph_flavg[good_nt];*SIN(prop_angs[good_nt]*!DPI/18d1)
+; => Cold Plasma E-field with Vph high estimate
+cold_rms[good_nt,1,1] = rms_mag[good_nt]*1d-9*Vph_fhavg[good_nt];*SIN(prop_angs[good_nt]*!DPI/18d1)
+; => Cold Plasma B-field with Vph low estimate
+cold_rms[good_mv,0,0] = rms_mag[good_mv]*1d-3/Vph_flavg[good_mv];/SIN(prop_angs[good_mv]*!DPI/18d1)
+; => Cold Plasma B-field with Vph high estimate
+cold_rms[good_mv,0,1] = rms_mag[good_mv]*1d-3/Vph_fhavg[good_mv];/SIN(prop_angs[good_mv]*!DPI/18d1)
+
+cold_rms_avg = (cold_rms[*,*,0] + cold_rms[*,*,1])/2d0
+
+
+xttl       = 'Radial Distance (R!DE!N)'
+yttl       = 'B!DRMS!N (nT)'
+ttle       = 'Red = Cold Plasma Estimates, Blue = Measured (R!DE!N < '+l_string[0]+')'
+def_str    = {nodata:1,ystyle:1,xstyle:1,xtitle:xttl,ytitle:yttl,ylog:1,title:ttle,charsize:1.}
+plot,w_rad[good_nt],cold_rms_avg[good_nt,0]*1d9,_extra=def_str,yrange=[1e-3,6e1],xrange=[2e0,lshell]
+  oplot,w_rad[good_nt],cold_rms_avg[good_nt,0]*1d9,psym=4,color=50
+  oplot,w_rad[good_mv],cold_rms_avg[good_mv,0]*1d9,psym=5,color=250
+
+popen,'B-RMS_vs_Rad-Dist_Rad-LT-'+l_string[0],/LAND
+plot,w_rad[good_nt],cold_rms_avg[good_nt,0]*1d9,_extra=def_str,yrange=[1e-3,6e1],xrange=[2e0,lshell]
+  oplot,w_rad[good_nt],cold_rms_avg[good_nt,0]*1d9,psym=4,color=50
+  oplot,w_rad[good_mv],cold_rms_avg[good_mv,0]*1d9,psym=5,color=250
+pclose
+
+
+xttl       = 'Radial Distance (R!DE!N)'
+yttl       = 'E!DRMS!N (mV/m)'
+ttle       = 'Red = Cold Plasma Estimates, Blue = Measured (R!DE!N < '+l_string[0]+')'
+def_str    = {nodata:1,ystyle:1,xstyle:1,xtitle:xttl,ytitle:yttl,ylog:1,title:ttle,charsize:1.}
+plot,w_rad[good_mv],cold_rms_avg[good_mv,1]*1d3,_extra=def_str,yrange=[1e-1,1e2],xrange=[2e0,lshell]
+  oplot,w_rad[good_mv],cold_rms_avg[good_mv,1]*1d3,psym=4,color=50
+  oplot,w_rad[good_nt],cold_rms_avg[good_nt,1]*1d3,psym=5,color=250
+
+popen,'E-RMS_vs_Rad-Dist_Rad-LT-'+l_string[0],/LAND
+plot,w_rad[good_mv],cold_rms_avg[good_mv,1]*1d3,_extra=def_str,yrange=[1e-1,1e2],xrange=[2e0,lshell]
+  oplot,w_rad[good_mv],cold_rms_avg[good_mv,1]*1d3,psym=4,color=50
+  oplot,w_rad[good_nt],cold_rms_avg[good_nt,1]*1d3,psym=5,color=250
+pclose
+
+;popen,'B-RMS_vs_Rad-Dist_Rad-LT-20',/LAND
+;plot,w_rad[good_nt],cold_rms_avg[good_nt,0]*1d9,_extra=def_str,yrange=[1e-3,2e1],xrange=[2e0,2e1]
+;  oplot,w_rad[good_nt],cold_rms_avg[good_nt,0]*1d9,psym=4,color=50
+;  oplot,w_rad[good_mv],cold_rms_avg[good_mv,0]*1d9,psym=5,color=250
+;pclose
+
+
+
+
+
+

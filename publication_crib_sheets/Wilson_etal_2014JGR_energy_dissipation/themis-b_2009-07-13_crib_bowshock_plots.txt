@@ -1,0 +1,1347 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+; => Compile necessary routines
+@comp_lynn_pros
+; => Load all relevant data
+tdate     = '2009-07-13'
+tr_00     = tdate[0]+'/'+['07:50:00','10:10:00']
+date      = '071309'
+probe     = 'b'
+themis_load_all_inst,DATE=date[0],PROBE=probe[0],/LOAD_EFI,/LOAD_SCM,/TRAN_FAC,         $
+                         /TCLIP_FIELDS,SE_T_EFI_OUT=tr_all_efi,SE_T_SCM_OUT=tr_all_scm
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+
+sc             = probe[0]
+del_data,'th'+sc[0]+'_efw_cal_*_18*'
+del_data,'th'+sc[0]+'_efw_cal_facx_18*'
+
+del_data,'th'+sc[0]+'_scw_*_L2_'+['00','01','02','03']+'*'
+nefi           = N_ELEMENTS(REFORM(tr_all_efi[0,*]))
+nscm           = N_ELEMENTS(REFORM(tr_all_scm[0,*]))
+tr_all_scm     = REFORM(tr_all_scm[*,4L:(nscm - 1L)])
+tr_all_efi     = REFORM(tr_all_efi[*,0L:(nefi - 2L)])
+tr_all_scm_s   = time_string(tr_all_scm,PREC=3)
+tr_all_efi_s   = time_string(tr_all_efi,PREC=3)
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+efisuff        = 'efw_cal_facx_*'
+scmsuff        = 'scw_facx_L2_*'
+;; => define names of clipped tplot data
+efi_wave_nms   = tnames(pref[0]+efisuff[0])
+scm_wave_nms   = tnames(pref[0]+scmsuff[0])
+;-----------------------------------------------------------------------------------------
+; => Plot special
+;-----------------------------------------------------------------------------------------
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/power_of_2.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/vector_bandpass.pro
+
+
+sc      = probe[0]
+pref    = 'th'+sc[0]+'_'
+coord   = 'gse'
+efinm   = pref[0]+'efw_cal_'+coord[0]
+scmnm   = pref[0]+'scw_'+coord[0]+'_L2'
+get_data,efinm[0],DATA=efi_dat,ALIM=alim_efi
+get_data,scmnm[0],DATA=scm_dat,ALIM=alim_scm
+
+efy     = efi_dat.Y
+scy     = scm_dat.Y
+;; => filter the data between 1 Hz and 4 kHz
+;lf      = 1d0
+lf      = 1d1
+hf      = 4d3
+filt_e  = vector_bandpass(efy,16384d0,lf[0],hf[0],/MIDF)
+filt_b  = vector_bandpass(scy, 8192d0,lf[0],hf[0],/MIDF)
+strc_e  = {X:efi_dat.X,Y:filt_e,V:[1,2,3]}
+strc_b  = {X:scm_dat.X,Y:filt_b,V:[1,2,3]}
+
+lf_str  = STRTRIM(STRING(lf[0],FORMAT='(f10.1)'),2L)
+hf_str  = STRTRIM(STRING(hf[0],FORMAT='(f10.1)'),2L)
+lh_tnm  = STRMID(lf_str[0],0L,STRPOS(lf_str[0],'.'))+'_'+$
+          STRMID(hf_str[0],0L,STRPOS(hf_str[0],'.'))+'Hz'
+lh_ytl  = lf_str[0]+'-'+STRMID(hf_str[0],0L,STRPOS(hf_str[0],'.'))+' Hz'
+PRINT,';  ', lh_tnm[0],'  ', lh_ytl[0]
+;  10_4000Hz  10.0-4000 Hz
+
+str_element,alim_efi,'YTITLE','efw [Filt: '+lh_ytl[0]+', GSE, mV/m]',/ADD_REPLACE
+str_element,alim_scm,'YTITLE','scw [Filt: '+lh_ytl[0]+', GSE, nT]',/ADD_REPLACE
+suffx   = '_filtered_'+lh_tnm[0]
+efinm_f = pref[0]+'efw_cal_'+coord[0]+suffx[0]
+scmnm_f = pref[0]+'scw_'+coord[0]+'_L2'+suffx[0]
+store_data,efinm_f[0],DATA=strc_e,DLIM=alim_efi
+store_data,scmnm_f[0],DATA=strc_b,DLIM=alim_scm
+
+names   = [efinm_f,scmnm_f]
+
+;; => Change Y-Range for time range of interest
+tra_0   = time_double(tdate[0]+'/'+['08:59:40.000','09:00:00.000'])
+good_e  = WHERE(efi_dat.X GE tra_0[0] AND efi_dat.X LE tra_0[1],gde)
+good_b  = WHERE(scm_dat.X GE tra_0[0] AND scm_dat.X LE tra_0[1],gdb)
+PRINT,';', gde[0], gdb[0]
+;      209408      104450
+mx_ef   = MAX(ABS(filt_e[good_e,*]),/NAN)*1.05
+mx_bf   = MAX(ABS(filt_b[good_b,*]),/NAN)*1.05
+PRINT,';', mx_ef[0], mx_bf[0], '  => For '+lh_ytl[0]
+;       424.53252       8.2122453  => For  1.0-4000 Hz
+;       425.25632       1.8075092  => For 10.0-4000 Hz
+
+options,efinm_f[0],'YRANGE',[-1d0,1d0]*mx_ef[0],/DEF
+options,scmnm_f[0],'YRANGE',[-1d0,1d0]*mx_bf[0],/DEF
+
+tr_zz   = time_double(tdate[0]+'/'+['08:59:42.800','08:59:49.200'])
+;tr_zz   = time_double(tdate[0]+'/'+['08:59:49.300','08:59:55.650'])
+;tr_zz   = time_double(tdate[0]+'/'+['08:59:43.450','08:59:48.600'])
+;tr_zz   = time_double(tdate[0]+'/'+['08:59:49.900','08:59:55.200'])
+
+fnm     = file_name_times(tr_zz,PREC=3)
+ftimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+fname   = 'EFI-SCM-GSE_'+suffx[0]+'_TH-B_'+ftimes[0]
+
+  tplot,names,/NOM,TRANGE=tr_zz
+popen,fname[0],/LAND
+  tplot,names,/NOM,TRANGE=tr_zz
+pclose
+
+;; => Decrease the # of data points so Illustrator and Preview don't puke
+rn      = 10L
+rn      = 20L
+rn      = 30L
+rnstr   = STRING(rn,FORMAT='(I2.2)')
+nn_e    = N_ELEMENTS(efi_dat.X)
+nn_b    = N_ELEMENTS(scm_dat.X)
+PRINT,';', nn_e[0], nn_b[0], nn_e[0]/rn[0], '  => For '+rnstr[0]
+;     1358336      674836      135833  => For 10
+;     1358336      674836       67916  => For 20
+;     1358336      674836       45277  => For 30
+
+gel_e   = LINDGEN(nn_e/rn)*rn
+suffx   = '_filtered_'+lh_tnm[0]+'_Reduced-Res_1-'+rnstr[0]+'th'
+efinm_r = pref[0]+'efw_cal_'+coord[0]+suffx[0]
+
+strc_e  = {X:efi_dat.X[gel_e],Y:filt_e[gel_e,*],V:[1,2,3]}
+tra_1   = time_double(tdate[0]+'/'+['08:59:43.000','08:59:56.000'])
+good_e  = WHERE(strc_e.X GE tra_1[0] AND strc_e.X LE tra_1[1],gde)
+mx_ef   = MAX(ABS(strc_e.Y[good_e,*]),/NAN)*1.1
+PRINT,';', gde[0], mx_ef[0], '  => For '+rnstr[0], '  => For '+lh_ytl[0]
+;       20655       335.96966  => For 10  => For  1.0-4000 Hz
+;       10327       207.70045  => For 20  => For  1.0-4000 Hz
+;        6885       335.96966  => For 30  => For  1.0-4000 Hz
+;------------------------------------------------------------
+;       20655       335.02195  => For 10  => For 10.0-4000 Hz
+;       10327       210.30880  => For 20  => For 10.0-4000 Hz
+;        6885       335.02195  => For 30  => For 10.0-4000 Hz
+
+str_element,alim_efi,'YSUBTITLE','[thb 16384 sps, Reduced Res. 1/'+rnstr[0]+']',/ADD_REPLACE
+str_element,alim_efi,'YRANGE',[-1d0,1d0]*mx_ef[0],/ADD_REPLACE
+;str_element,alim_efi,'YRANGE',[-1d0,1d0]*2d2,/ADD_REPLACE
+store_data,efinm_r[0],DATA=strc_e,DLIM=alim_efi
+
+names   = [efinm_r,scmnm_f]
+
+tr_zz   = time_double(tdate[0]+'/'+['08:59:43.450','08:59:48.600'])
+tr_zz   = time_double(tdate[0]+'/'+['08:59:49.900','08:59:55.200'])
+
+fnm     = file_name_times(tr_zz,PREC=3)
+ftimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+fname   = 'EFI-Reduced-Res_1-'+rnstr[0]+'th_SCM-GSE_'+suffx[0]+'_TH-B_'+ftimes[0]
+
+  tplot,names,/NOM,TRANGE=tr_zz
+popen,fname[0],/LAND
+  tplot,names,/NOM,TRANGE=tr_zz
+pclose
+
+;; => Plot FGM zooms
+sc      = probe[0]
+pref    = 'th'+sc[0]+'_'
+coord   = 'gse'
+fgmnm   = pref[0]+'fgl_'+['mag',coord[0]]
+
+tr_dd   = time_double(tdate[0]+'/'+['08:59:00.000','09:00:20.000'])
+fnm     = file_name_times(tr_dd,PREC=3)
+ftpref  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+
+;tr_zz   = time_double(tdate[0]+'/'+['08:59:42.800','08:59:49.200'])
+;tr_zz   = time_double(tdate[0]+'/'+['08:59:49.300','08:59:55.650'])
+;tr_zz   = time_double(tdate[0]+'/'+['08:59:43.450','08:59:48.600'])
+tr_zz   = time_double(tdate[0]+'/'+['08:59:49.900','08:59:55.200'])
+
+fnm     = file_name_times(tr_zz,PREC=3)
+ztimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+fname   = 'FGM-fgl-GSE_TH-B_'+ftpref[0]+'_zoom-to_'+ztimes[0]
+
+  tplot,fgmnm,/NOM,TRANGE=tr_dd
+  time_bar,tr_zz,VARNAME=fgmnm,COLOR=250L
+popen,fname[0],/LAND
+  tplot,fgmnm,/NOM,TRANGE=tr_dd
+  time_bar,tr_zz,VARNAME=fgmnm,COLOR=250L
+pclose
+
+tr_zz   = time_double(tdate[0]+'/'+['08:59:44.911','08:59:45.057'])
+tr_zz   = time_double(tdate[0]+'/'+['08:59:45.496','08:59:45.616'])
+tr_zz   = time_double(tdate[0]+'/'+['08:59:52.864','08:59:52.945'])
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;; => Remove "bad" data points
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+; => EFI
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+mode           = 'fgh'
+fgnames        = pref[0]+mode[0]+['_mag','_gsm']
+
+j              = 0L
+nefi           = N_ELEMENTS(REFORM(tr_all_efi[0,*]))
+kstr_e         = STRING(FORMAT='(I2.2)',LINDGEN(nefi))
+efi_names      = 'th'+sc[0]+'_efw_cal_*_'+kstr_e
+
+enames         = tnames(efi_names[j])
+names          = [fgnames,enames]
+tplot,names,/NOM
+
+kill_data_tr,NAMES=enames
+
+
+; => SCM
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+mode           = 'fgh'
+fgnames        = pref[0]+mode[0]+['_mag','_gsm']
+
+j              = 0L
+nscm           = N_ELEMENTS(REFORM(tr_all_scm[0,*]))
+kstr_b         = STRING(FORMAT='(I2.2)',LINDGEN(nscm))
+scm_names      = 'th'+sc[0]+'_scw_*_'+kstr_b
+
+bnames         = tnames(scm_names[j])
+names          = [fgnames,bnames]
+tplot,names,/NOM
+
+kill_data_tr,NAMES=bnames
+
+;-----------------------------------------------------------------------------------------
+; => Wavelets
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------
+; => Calculate EFI Wavelets
+;-----------------------------------------------------
+efi_efw_nms_x  = efi_wave_nms[*]+'_Bo_x_Xgse_x_Bo'
+efi_efw_nms_y  = efi_wave_nms[*]+'_Bo_x_Xgse'
+efi_efw_nms_z  = efi_wave_nms[*]+'_Bo'
+in_names       = efi_wave_nms
+out_names      = [[efi_efw_nms_x],[efi_efw_nms_y],[efi_efw_nms_z]]
+
+themis_load_wavelets,in_names,out_names,COORD='fac',UNITS='mV/m',$
+                         INSTRUMENT='efi',SPACECRAFT='THEMIS-'+STRUPCASE(sc[0])
+
+efi_wave_nms_x   = efi_efw_nms_x[*]+'_wavelet'
+efi_wave_nms_y   = efi_efw_nms_y[*]+'_wavelet'
+efi_wave_nms_z   = efi_efw_nms_z[*]+'_wavelet'
+all_efi_wave_nms = [efi_wave_nms_x,efi_wave_nms_y,efi_wave_nms_z]
+options,all_efi_wave_nms+'*','YRANGE',[1e0,8e3],/DEF
+options,all_efi_wave_nms+'*','YRANGE'
+;; set labels in case routine failed to do so
+options,efi_efw_nms_x,'LABELS','(Bo x Xgse) x Bo',/DEF
+options,efi_efw_nms_y,'LABELS','Bo x Xgse',/DEF
+options,efi_efw_nms_z,'LABELS','Bo',/DEF
+;-----------------------------------------------------
+; => Plot EFI Wavelets
+;-----------------------------------------------------
+coord       = 'gse'
+sc          = probe[0]
+pref        = 'th'+sc[0]+'_'
+mode        = 'fgh'
+fgnames     = pref[0]+mode[0]+['_mag','_gse']
+
+efi_efw_nms_x  = tnames(efi_wave_nms[*]+'_Bo_x_Xgse_x_Bo')
+efi_efw_nms_y  = tnames(efi_wave_nms[*]+'_Bo_x_Xgse')
+efi_efw_nms_z  = tnames(efi_wave_nms[*]+'_Bo')
+efi_xyz_nms    = [[efi_efw_nms_x],[efi_efw_nms_y],[efi_efw_nms_z]]
+efi_xyz_wav    = efi_xyz_nms+'_wavelet'
+efi_xyz_ext    = efi_xyz_nms+'_wavelet_*'
+efi_xyzcone    = efi_xyz_nms+'_wavelet_Cone_*'
+fcs_h_n        = 'th'+sc[0]+'_fgh_fci_flh_fce'
+freq_nms_h     = fcs_h_n[0]
+options,fcs_h_n[0],'YRANGE',[1e0,8e3],/DEF
+options,fcs_h_n[0],'YRANGE'
+options,fcs_h_n[0],'YLOG',1
+
+j           = 7L
+k           = 0L
+lims        = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+names       = [fgnames,efi_xyz_nms[j,k],efi_xyz_wav[j,k]]
+  tplot,names,TRANGE=time_double(REFORM(tr_all_efi[*,j])),/NOM
+
+;aname       = tnames([efi_xyz_ext[j,k],freq_nms_h[0]])
+aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])
+  oplot_tplot_spec,names,aname,TRANGE=time_double(REFORM(tr_all_efi[*,j])),LIMITS=lims
+
+nefi    = N_ELEMENTS(REFORM(efi_xyz_wav[*,0]))
+;tra_all = time_double(REFORM(tr_all_efi))
+;fnm0    = file_name_times(REFORM(tra_all[0,*]),PREC=3)
+;fnm1    = file_name_times(REFORM(tra_all[1,*]),PREC=3)
+;ftimes  = fnm0.F_TIME+'-'+STRMID(fnm1.F_TIME,11L)
+comps   = ['Bo_x_Xgse_x_Bo','Bo_x_Xgse','Bo']
+fpref   = 'FGM-fgh-GSE_TH-B_efw_'+comps+'_wavelet_Cone_fci-flh-fce_'
+;fnames  = STRARR(nefi,3L)
+;FOR k=0L, 2L DO fnames[*,k] = fpref[k]+ftimes
+
+lims    = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+FOR j=0L, nefi - 1L DO BEGIN                                                   $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [fgnames,efi_xyz_nms[j,k],efi_xyz_wav[j,k]]                & $
+    aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])                   & $
+    get_data,efi_xyz_wav[j,k],DATA=temp                                      & $
+    IF (SIZE(temp,/TYPE) NE 8L) THEN CONTINUE                                & $
+    tr_all      = minmax(temp.X)                                             & $
+    fnm         = file_name_times(tr_all,PREC=3)                             & $
+    ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                & $
+    fname       = fpref[k]+ftimes[0]                                         & $
+;    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN del_data,tnames([efi_xyz_nms[j,k],efi_xyz_wav[j,k]+'*']) & $
+;    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN tr_all_efi[*,j] = d       & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    popen,fname[0],/LAND                                                     & $
+;    popen,fnames[j,k],/LAND                                                  & $
+;      oplot_tplot_spec,names,aname,TRANGE=REFORM(tra_all[*,j]),LIMITS=lims   & $
+      oplot_tplot_spec,names,aname,TRANGE=tr_all,LIMITS=lims                 & $
+    pclose
+
+;-----------------------------------------------------
+; => Plot specific zoomed in views
+;-----------------------------------------------------
+comps            = ['Bo_x_Xgse_x_Bo','Bo_x_Xgse','Bo']
+fpref            = 'TH-B_efw_'+comps+'_wavelet_Cone_fci-flh-fce_'
+
+j                = 0L
+temp0            = tdate[0]+'/'+['07:25:26.750','07:25:27.292']
+temp1            = tdate[0]+'/'+['07:25:27.972','07:25:28.758']
+temp2            = tdate[0]+'/'+['07:25:30.710','07:25:30.990']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2]])
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tr_all      = time_double(REFORM(temp_a[i,*]))                             & $
+  get_data,efi_xyz_nms[j,0],DATA=temp0                                       & $
+  get_data,efi_xyz_nms[j,1],DATA=temp1                                       & $
+  get_data,efi_xyz_nms[j,2],DATA=temp2                                       & $
+  test = (SIZE(temp0,/TYPE) NE 8L) OR (SIZE(temp1,/TYPE) NE 8L) OR (SIZE(temp2,/TYPE) NE 8L)   & $
+  IF (test) THEN CONTINUE                                                    & $
+  good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)      & $
+  IF (gd EQ 0) THEN CONTINUE                                                 & $
+  IF (gd GT 0) THEN ydat_a   = [temp0.Y[good],temp1.Y[good],temp2.Y[good]]   & $
+  IF (gd GT 0) THEN yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydat_a),/NAN)       & $
+  IF (gd GT 0) THEN options,REFORM(efi_xyz_nms[j,*]),'YRANGE',yra_00,/DEF    & $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [efi_xyz_nms[j,k],efi_xyz_wav[j,k]]                        & $
+    aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])                   & $
+    fnm         = file_name_times(tr_all,PREC=3)                             & $
+    ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                & $
+    fname       = fpref[k]+ftimes[0]                                         & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    popen,fname[0],/LAND                                                     & $
+      oplot_tplot_spec,names,aname,TRANGE=tr_all,LIMITS=lims,/NOM            & $
+    pclose
+
+
+j                = 2L
+temp0            = tdate[0]+'/'+['08:59:43.488','08:59:43.789']
+temp1            = tdate[0]+'/'+['08:59:43.982','08:59:44.460']
+temp2            = tdate[0]+'/'+['08:59:44.580','08:59:44.769']
+temp3            = tdate[0]+'/'+['08:59:44.761','08:59:44.894']
+temp4            = tdate[0]+'/'+['08:59:44.911','08:59:45.057']
+temp5            = tdate[0]+'/'+['08:59:45.246','08:59:45.414']
+temp6            = tdate[0]+'/'+['08:59:45.496','08:59:45.616']
+temp7            = tdate[0]+'/'+['08:59:45.616','08:59:45.909']
+temp8            = tdate[0]+'/'+['08:59:45.943','08:59:46.235']
+temp9            = tdate[0]+'/'+['08:59:46.240','08:59:46.566']
+temp10           = tdate[0]+'/'+['08:59:46.661','08:59:47.087']
+temp11           = tdate[0]+'/'+['08:59:47.087','08:59:47.332']
+temp12           = tdate[0]+'/'+['08:59:47.383','08:59:47.590']
+temp13           = tdate[0]+'/'+['08:59:47.740','08:59:48.020']
+temp14           = tdate[0]+'/'+['08:59:48.015','08:59:48.243']
+temp15           = tdate[0]+'/'+['08:59:48.299','08:59:48.544']
+temp16           = tdate[0]+'/'+['08:59:48.652','08:59:48.940']
+temp17           = tdate[0]+'/'+['08:59:48.948','08:59:49.232']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],[temp7],[temp8],[temp9],$
+                    [temp10],[temp11],[temp12],[temp13],[temp14],[temp15],[temp16],[temp17]])
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tr_all      = time_double(REFORM(temp_a[i,*]))                             & $
+  get_data,efi_xyz_nms[j,0],DATA=temp0                                       & $
+  get_data,efi_xyz_nms[j,1],DATA=temp1                                       & $
+  get_data,efi_xyz_nms[j,2],DATA=temp2                                       & $
+  test = (SIZE(temp0,/TYPE) NE 8L) OR (SIZE(temp1,/TYPE) NE 8L) OR (SIZE(temp2,/TYPE) NE 8L)   & $
+  IF (test) THEN CONTINUE                                                    & $
+  good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)      & $
+  IF (gd EQ 0) THEN CONTINUE                                                 & $
+  IF (gd GT 0) THEN ydat_a   = [temp0.Y[good],temp1.Y[good],temp2.Y[good]]   & $
+  IF (gd GT 0) THEN yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydat_a),/NAN)       & $
+  IF (gd GT 0) THEN options,REFORM(efi_xyz_nms[j,*]),'YRANGE',yra_00,/DEF    & $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [efi_xyz_nms[j,k],efi_xyz_wav[j,k]]                        & $
+    aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])                   & $
+    fnm         = file_name_times(tr_all,PREC=3)                             & $
+    ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                & $
+    fname       = fpref[k]+ftimes[0]                                         & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    popen,fname[0],/LAND                                                     & $
+      oplot_tplot_spec,names,aname,TRANGE=tr_all,LIMITS=lims,/NOM            & $
+    pclose
+
+
+j                = 3L
+temp0            = tdate[0]+'/'+['08:59:49.326','08:59:50.241']
+temp1            = tdate[0]+'/'+['08:59:50.301','08:59:50.605']
+temp2            = tdate[0]+'/'+['08:59:50.635','08:59:50.905']
+temp3            = tdate[0]+'/'+['08:59:51.080','08:59:51.392']
+temp4            = tdate[0]+'/'+['08:59:51.422','08:59:51.504']
+temp5            = tdate[0]+'/'+['08:59:51.555','08:59:51.630']
+temp6            = tdate[0]+'/'+['08:59:51.683','08:59:51.876']
+temp7            = tdate[0]+'/'+['08:59:51.987','08:59:52.252']
+temp8            = tdate[0]+'/'+['08:59:52.496','08:59:52.595']
+temp9            = tdate[0]+'/'+['08:59:52.864','08:59:52.945']
+temp10           = tdate[0]+'/'+['08:59:53.574','08:59:53.771']
+temp11           = tdate[0]+'/'+['08:59:54.370','08:59:54.570']
+temp12           = tdate[0]+'/'+['08:59:54.875','08:59:55.055']
+temp13           = tdate[0]+'/'+['08:59:55.393','08:59:55.701']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],[temp7],[temp8],[temp9],$
+                    [temp10],[temp11],[temp12],[temp13]])
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tr_all      = time_double(REFORM(temp_a[i,*]))                             & $
+  get_data,efi_xyz_nms[j,0],DATA=temp0                                       & $
+  get_data,efi_xyz_nms[j,1],DATA=temp1                                       & $
+  get_data,efi_xyz_nms[j,2],DATA=temp2                                       & $
+  test = (SIZE(temp0,/TYPE) NE 8L) OR (SIZE(temp1,/TYPE) NE 8L) OR (SIZE(temp2,/TYPE) NE 8L)   & $
+  IF (test) THEN CONTINUE                                                    & $
+  good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)      & $
+  IF (gd EQ 0) THEN CONTINUE                                                 & $
+  IF (gd GT 0) THEN ydat_a   = [temp0.Y[good],temp1.Y[good],temp2.Y[good]]   & $
+  IF (gd GT 0) THEN yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydat_a),/NAN)       & $
+  IF (gd GT 0) THEN options,REFORM(efi_xyz_nms[j,*]),'YRANGE',yra_00,/DEF    & $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [efi_xyz_nms[j,k],efi_xyz_wav[j,k]]                        & $
+    aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])                   & $
+    fnm         = file_name_times(tr_all,PREC=3)                             & $
+    ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                & $
+    fname       = fpref[k]+ftimes[0]                                         & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    popen,fname[0],/LAND                                                     & $
+      oplot_tplot_spec,names,aname,TRANGE=tr_all,LIMITS=lims,/NOM            & $
+    pclose
+
+
+j                = 4L
+temp0            = tdate[0]+'/'+['09:04:20.540','09:04:21.233']
+temp1            = tdate[0]+'/'+['09:04:24.271','09:04:24.634']
+temp_a           = TRANSPOSE([[temp0],[temp1]])
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tr_all      = time_double(REFORM(temp_a[i,*]))                             & $
+  get_data,efi_xyz_nms[j,0],DATA=temp0                                       & $
+  get_data,efi_xyz_nms[j,1],DATA=temp1                                       & $
+  get_data,efi_xyz_nms[j,2],DATA=temp2                                       & $
+  test = (SIZE(temp0,/TYPE) NE 8L) OR (SIZE(temp1,/TYPE) NE 8L) OR (SIZE(temp2,/TYPE) NE 8L)   & $
+  IF (test) THEN CONTINUE                                                    & $
+  good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)      & $
+  IF (gd EQ 0) THEN CONTINUE                                                 & $
+  IF (gd GT 0) THEN ydat_a   = [temp0.Y[good],temp1.Y[good],temp2.Y[good]]   & $
+  IF (gd GT 0) THEN yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydat_a),/NAN)       & $
+  IF (gd GT 0) THEN options,REFORM(efi_xyz_nms[j,*]),'YRANGE',yra_00,/DEF    & $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [efi_xyz_nms[j,k],efi_xyz_wav[j,k]]                        & $
+    aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])                   & $
+    fnm         = file_name_times(tr_all,PREC=3)                             & $
+    ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                & $
+    fname       = fpref[k]+ftimes[0]                                         & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    popen,fname[0],/LAND                                                     & $
+      oplot_tplot_spec,names,aname,TRANGE=tr_all,LIMITS=lims,/NOM            & $
+    pclose
+
+
+j                = 7L
+temp0            = tdate[0]+'/'+['09:19:01.322','09:19:01.695']
+temp1            = tdate[0]+'/'+['09:19:02.080','09:19:02.824']
+temp2            = tdate[0]+'/'+['09:19:03.042','09:19:03.830']
+temp3            = tdate[0]+'/'+['09:19:03.851','09:19:04.754']
+temp4            = tdate[0]+'/'+['09:19:04.835','09:19:05.567']
+temp5            = tdate[0]+'/'+['09:19:05.571','09:19:05.956']
+temp6            = tdate[0]+'/'+['09:19:05.965','09:19:06.354']
+temp7            = tdate[0]+'/'+['09:19:06.362','09:19:06.833']
+temp8            = tdate[0]+'/'+['09:19:06.893','09:19:07.000']
+temp9            = tdate[0]+'/'+['09:19:07.090','09:19:07.171']
+temp10           = tdate[0]+'/'+['09:19:07.338','09:19:07.513']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],$
+                              [temp7],[temp8],[temp9],[temp10]])
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tr_all      = time_double(REFORM(temp_a[i,*]))                             & $
+  get_data,efi_xyz_nms[j,0],DATA=temp0                                       & $
+  get_data,efi_xyz_nms[j,1],DATA=temp1                                       & $
+  get_data,efi_xyz_nms[j,2],DATA=temp2                                       & $
+  test = (SIZE(temp0,/TYPE) NE 8L) OR (SIZE(temp1,/TYPE) NE 8L) OR (SIZE(temp2,/TYPE) NE 8L)   & $
+  IF (test) THEN CONTINUE                                                    & $
+  good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)      & $
+  IF (gd EQ 0) THEN CONTINUE                                                 & $
+  IF (gd GT 0) THEN ydat_a   = [temp0.Y[good],temp1.Y[good],temp2.Y[good]]   & $
+  IF (gd GT 0) THEN yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydat_a),/NAN)       & $
+  IF (gd GT 0) THEN options,REFORM(efi_xyz_nms[j,*]),'YRANGE',yra_00,/DEF    & $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [efi_xyz_nms[j,k],efi_xyz_wav[j,k]]                        & $
+    aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])                   & $
+    fnm         = file_name_times(tr_all,PREC=3)                             & $
+    ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                & $
+    fname       = fpref[k]+ftimes[0]                                         & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    popen,fname[0],/LAND                                                     & $
+      oplot_tplot_spec,names,aname,TRANGE=tr_all,LIMITS=lims,/NOM            & $
+    pclose
+
+
+j                = 9L
+temp0            = tdate[0]+'/'+['09:19:56.581','09:19:57.601']
+temp1            = tdate[0]+'/'+['09:19:57.605','09:19:57.896']
+temp2            = tdate[0]+'/'+['09:19:57.917','09:19:58.469']
+temp3            = tdate[0]+'/'+['09:19:58.625','09:19:58.912']
+temp4            = tdate[0]+'/'+['09:19:58.908','09:19:58.984']
+temp5            = tdate[0]+'/'+['09:19:58.979','09:19:59.768']
+temp6            = tdate[0]+'/'+['09:19:59.848','09:20:00.236']
+temp7            = tdate[0]+'/'+['09:20:00.417','09:20:00.809']
+temp8            = tdate[0]+'/'+['09:20:00.906','09:20:01.277']
+temp9            = tdate[0]+'/'+['09:20:01.285','09:20:01.884']
+temp10           = tdate[0]+'/'+['09:20:02.124','09:20:02.263']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],$
+                              [temp7],[temp8],[temp9],[temp10]])
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tr_all      = time_double(REFORM(temp_a[i,*]))                             & $
+  get_data,efi_xyz_nms[j,0],DATA=temp0                                       & $
+  get_data,efi_xyz_nms[j,1],DATA=temp1                                       & $
+  get_data,efi_xyz_nms[j,2],DATA=temp2                                       & $
+  test = (SIZE(temp0,/TYPE) NE 8L) OR (SIZE(temp1,/TYPE) NE 8L) OR (SIZE(temp2,/TYPE) NE 8L)   & $
+  IF (test) THEN CONTINUE                                                    & $
+  good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)      & $
+  IF (gd EQ 0) THEN CONTINUE                                                 & $
+  IF (gd GT 0) THEN ydat_a   = [temp0.Y[good],temp1.Y[good],temp2.Y[good]]   & $
+  IF (gd GT 0) THEN yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydat_a),/NAN)       & $
+  IF (gd GT 0) THEN options,REFORM(efi_xyz_nms[j,*]),'YRANGE',yra_00,/DEF    & $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [efi_xyz_nms[j,k],efi_xyz_wav[j,k]]                        & $
+    aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])                   & $
+    fnm         = file_name_times(tr_all,PREC=3)                             & $
+    ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                & $
+    fname       = fpref[k]+ftimes[0]                                         & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    popen,fname[0],/LAND                                                     & $
+      oplot_tplot_spec,names,aname,TRANGE=tr_all,LIMITS=lims,/NOM            & $
+    pclose
+
+
+j                = 12L
+temp0            = tdate[0]+'/'+['09:32:10.888','09:32:11.778']
+temp1            = tdate[0]+'/'+['09:32:12.399','09:32:13.186']
+temp2            = tdate[0]+'/'+['09:32:13.327','09:32:14.521']
+temp3            = tdate[0]+'/'+['09:32:15.009','09:32:16.228']
+temp4            = tdate[0]+'/'+['09:32:16.335','09:32:17.028']
+temp5            = tdate[0]+'/'+['09:32:17.049','09:32:17.260']
+temp6            = tdate[0]+'/'+['09:32:10.916','09:32:11.062']
+temp7            = tdate[0]+'/'+['09:32:11.282','09:32:11.401']
+temp8            = tdate[0]+'/'+['09:32:11.404','09:32:11.441']
+temp9            = tdate[0]+'/'+['09:32:11.442','09:32:11.482']
+temp10           = tdate[0]+'/'+['09:32:11.483','09:32:11.499']
+temp11           = tdate[0]+'/'+['09:32:11.499','09:32:11.518']
+temp12           = tdate[0]+'/'+['09:32:11.617','09:32:11.638']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],[temp7],[temp8],[temp9],$
+                              [temp10],[temp11],[temp12]])
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tr_all      = time_double(REFORM(temp_a[i,*]))                             & $
+  get_data,efi_xyz_nms[j,0],DATA=temp0                                       & $
+  get_data,efi_xyz_nms[j,1],DATA=temp1                                       & $
+  get_data,efi_xyz_nms[j,2],DATA=temp2                                       & $
+  test = (SIZE(temp0,/TYPE) NE 8L) OR (SIZE(temp1,/TYPE) NE 8L) OR (SIZE(temp2,/TYPE) NE 8L)   & $
+  IF (test) THEN CONTINUE                                                    & $
+  good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)      & $
+  IF (gd EQ 0) THEN CONTINUE                                                 & $
+  IF (gd GT 0) THEN ydat_a   = [temp0.Y[good],temp1.Y[good],temp2.Y[good]]   & $
+  IF (gd GT 0) THEN yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydat_a),/NAN)       & $
+  IF (gd GT 0) THEN options,REFORM(efi_xyz_nms[j,*]),'YRANGE',yra_00,/DEF    & $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [efi_xyz_nms[j,k],efi_xyz_wav[j,k]]                        & $
+    aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])                   & $
+    fnm         = file_name_times(tr_all,PREC=3)                             & $
+    ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                & $
+    fname       = fpref[k]+ftimes[0]                                         & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    popen,fname[0],/LAND                                                     & $
+      oplot_tplot_spec,names,aname,TRANGE=tr_all,LIMITS=lims,/NOM            & $
+    pclose
+
+
+
+comps       = ['Bo_x_Xgse_x_Bo','Bo_x_Xgse','Bo']
+fpref       = 'TH-B_efw_'+comps+'_wavelet_Cone_fci-flh-fce_'
+
+fra_00      = [1e2,8e3]
+options,REFORM(efi_xyz_wav[j,*]+'*'),'YRANGE',fra_00,/DEF
+fcs_h_n        = 'th'+sc[0]+'_fgh_fci_flh_fce'
+freq_nms_h     = fcs_h_n[0]
+options,fcs_h_n[0],'YRANGE',fra_00,/DEF
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tr_all      = time_double(REFORM(temp_a[i,*]))                             & $
+  get_data,efi_xyz_nms[j,0],DATA=temp0                                       & $
+  get_data,efi_xyz_nms[j,1],DATA=temp1                                       & $
+  get_data,efi_xyz_nms[j,2],DATA=temp2                                       & $
+  test = (SIZE(temp0,/TYPE) NE 8L) OR (SIZE(temp1,/TYPE) NE 8L) OR (SIZE(temp2,/TYPE) NE 8L)   & $
+  IF (test) THEN CONTINUE                                                    & $
+  good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)      & $
+  IF (gd EQ 0) THEN CONTINUE                                                 & $
+  IF (gd GT 0) THEN ydat_a   = [temp0.Y[good],temp1.Y[good],temp2.Y[good]]   & $
+  IF (gd GT 0) THEN yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydat_a),/NAN)       & $
+  IF (gd GT 0) THEN options,REFORM(efi_xyz_nms[j,*]),'YRANGE',yra_00,/DEF    & $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [efi_xyz_nms[j,k],efi_xyz_wav[j,k]]                        & $
+    aname       = tnames([efi_xyzcone[j,k],freq_nms_h[0]])                   & $
+    fnm         = file_name_times(tr_all,PREC=3)                             & $
+    ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                & $
+    fname       = fpref[k]+ftimes[0]+'_2nd-Wavelet-YRA'                      & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    popen,fname[0],/LAND                                                     & $
+      oplot_tplot_spec,names,aname,TRANGE=tr_all,LIMITS=lims,/NOM            & $
+    pclose
+
+
+
+;; => chorus in the solar wind???
+j           = 12L
+k           =  0L
+tr_ch       = tdate[0]+'/'+['09:31:00.000','09:33:30.000']
+t_efi_ch    = time_double(REFORM(tr_all_efi[*,j]))
+fnm         = file_name_times(tr_ch,PREC=3)
+fnm_e       = file_name_times(t_efi_ch,PREC=3)
+ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)
+fzoom       = fnm_e.F_TIME[0]+'-'+STRMID(fnm_e.F_TIME[1],11L)
+fpref       = 'TH-B_FGM-fgh-GSE_IESA-Burst-Ni-Ti-Vi_'
+suffx       = '_zoom-to-efw_'+fzoom[0]
+fname       = fpref[0]+ftimes[0]+suffx[0]
+
+mode        = 'fgh'
+pref        = 'th'+sc[0]+'_'
+fgnames     = pref[0]+mode[0]+['_mag','_gse']
+iesa_moms   = pref[0]+'peib'+['_density','_avgtemp','_velocity_gse']
+names       = [fgnames,iesa_moms]
+  tplot,names,TRANGE=time_double(tr_ch),/NOM
+  time_bar,t_efi_ch,VARNAME=names,COLOR=250
+popen,fname[0],/LAND
+  tplot,names,TRANGE=time_double(tr_ch),/NOM
+  time_bar,t_efi_ch,VARNAME=names,COLOR=250
+pclose
+
+
+tr_ch       = tdate[0]+'/'+['09:20:00.000','09:44:30.000']
+t_efi_ch    = time_double(REFORM(tr_all_efi[*,j]))
+fnm         = file_name_times(tr_ch,PREC=3)
+fnm_e       = file_name_times(t_efi_ch,PREC=3)
+ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)
+fzoom       = fnm_e.F_TIME[0]+'-'+STRMID(fnm_e.F_TIME[1],11L)
+fpref       = 'TH-B_FGM-fgh-GSE_IESA-Burst-Ni-Ti-Vi_'
+suffx       = '_zoom-to-efw_'+fzoom[0]
+fname       = fpref[0]+ftimes[0]+suffx[0]
+
+mode        = 'fgh'
+pref        = 'th'+sc[0]+'_'
+fgnames     = pref[0]+mode[0]+['_mag','_gse']
+iesa_moms   = pref[0]+'peib'+['_density','_avgtemp','_velocity_gse']
+names       = [fgnames,iesa_moms]
+  tplot,names,TRANGE=time_double(tr_ch),/NOM
+  time_bar,t_efi_ch,VARNAME=names,COLOR=250
+popen,fname[0],/LAND
+  tplot,names,TRANGE=time_double(tr_ch),/NOM
+  time_bar,t_efi_ch,VARNAME=names,COLOR=250
+pclose
+
+
+j           = 12L
+get_data,efi_xyz_nms[j,0],DATA=temp0
+get_data,efi_xyz_nms[j,1],DATA=temp1
+get_data,efi_xyz_nms[j,2],DATA=temp2
+temp00      = temp10
+tr_all      = time_double(temp00)
+
+good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)
+print, gd
+ydat   = [[temp0.Y[good]],[temp1.Y[good]],[temp2.Y[good]]]
+xdat = temp0.X[good]
+yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydat),/NAN)
+print, yra_00
+
+plotxy,ydat,xrange=yra_00,yrange=yra_00,multi='1 3',color=2,ysize=900,xsize=300
+plotxy,ydat,xrange=yra_00,yrange=yra_00,/add,versus='xz',color=3
+plotxy,ydat,xrange=yra_00,yrange=yra_00,/add,versus='yz',color=4
+
+
+
+
+
+
+
+
+;-----------------------------------------------------
+; => Calculate SCM Wavelets
+;-----------------------------------------------------
+;;scm_wave_nms   = REFORM(scm_wave_nms[4L:(nscm - 1L)])
+scm_scw_nms_x  = scm_wave_nms[*]+'_Bo_x_Xgse_x_Bo'
+scm_scw_nms_y  = scm_wave_nms[*]+'_Bo_x_Xgse'
+scm_scw_nms_z  = scm_wave_nms[*]+'_Bo'
+
+in_names       = scm_wave_nms
+out_names      = [[scm_scw_nms_x],[scm_scw_nms_y],[scm_scw_nms_z]]
+
+themis_load_wavelets,in_names,out_names,COORD='fac',UNITS='nT',$
+                         INSTRUMENT='scm',SPACECRAFT='THEMIS-'+STRUPCASE(sc[0])
+
+scm_wave_nms_x = scm_scw_nms_x[*]+'_wavelet'
+scm_wave_nms_y = scm_scw_nms_y[*]+'_wavelet'
+scm_wave_nms_z = scm_scw_nms_z[*]+'_wavelet'
+all_scm_wave_nms = [scm_wave_nms_x,scm_wave_nms_y,scm_wave_nms_z]
+options,all_scm_wave_nms+'*','YRANGE',[7e-1,4e3],/DEF
+options,all_scm_wave_nms+'*','YRANGE'
+;; set labels in case routine failed to do so
+options,scm_scw_nms_x,'LABELS','(Bo x Xgse) x Bo',/DEF
+options,scm_scw_nms_y,'LABELS','Bo x Xgse',/DEF
+options,scm_scw_nms_z,'LABELS','Bo',/DEF
+
+;-----------------------------------------------------
+; => Plot SCM Wavelets
+;-----------------------------------------------------
+coord       = 'gse'
+sc          = probe[0]
+pref        = 'th'+sc[0]+'_'
+mode        = 'fgh'
+fgnames     = pref[0]+mode[0]+['_mag','_gse']
+
+scm_xyz_nms = [[scm_scw_nms_x],[scm_scw_nms_y],[scm_scw_nms_z]]
+scm_xyz_wav = scm_xyz_nms+'_wavelet'
+scm_xyz_ext = scm_xyz_nms+'_wavelet_*'
+scm_xyzcone = scm_xyz_nms+'_wavelet_Cone_*'
+freq_nms_h  = fcs_h_n[0]
+options,fcs_h_n[0],'YRANGE',[7e-1,4e3],/DEF
+options,fcs_h_n[0],'YRANGE'
+options,fcs_h_n[0],'YLOG',1
+options,fcs_h_n[0],'COLORS',[255,255,255],/DEF
+
+
+;; => adjust time ranges
+temp0            = tdate[0]+'/'+['08:59:43.450','08:59:48.600']
+tr_all_scm[*,0]  = time_double(temp0)
+temp0            = tdate[0]+'/'+['08:59:50.050','08:59:55.150']
+tr_all_scm[*,1]  = time_double(temp0)
+temp0            = tdate[0]+'/'+['09:04:21.050','09:04:25.700']
+tr_all_scm[*,2]  = time_double(temp0)
+temp0            = tdate[0]+'/'+['09:19:56.600','09:20:01.600']
+tr_all_scm[*,8]  = time_double(temp0)
+temp0            = tdate[0]+'/'+['09:32:11.650','09:32:16.600']
+tr_all_scm[*,11] = time_double(temp0)
+temp0            = tdate[0]+'/'+['10:00:03.650','10:00:08.850']
+tr_all_scm[*,16] = time_double(temp0)
+
+
+
+j           = 0L
+k           = 0L
+
+nscm        = N_ELEMENTS(REFORM(tr_all_scm[0,*]))
+tra_all     = time_double(REFORM(tr_all_scm))
+lims        = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+names       = [fgnames,scm_xyz_nms[j,k],scm_xyz_wav[j,k]]
+  tplot,names,TRANGE=time_double(REFORM(tr_all_scm[*,j])),/NOM
+
+;aname       = tnames([scm_xyz_ext[j,k],freq_nms_h[0]])
+aname       = tnames([scm_xyzcone[j,k],freq_nms_h[0]])
+  oplot_tplot_spec,names,aname,TRANGE=REFORM(tra_all[*,j]),LIMITS=lims,/NOM
+
+fnm0    = file_name_times(REFORM(tra_all[0,*]),PREC=3)
+fnm1    = file_name_times(REFORM(tra_all[1,*]),PREC=3)
+ftimes  = fnm0.F_TIME+'-'+STRMID(fnm1.F_TIME,11L)
+comps   = ['Bo_x_Xgse_x_Bo','Bo_x_Xgse','Bo']
+fpref   = 'FGM-fgh-GSE_TH-B_scw_'+comps+'_wavelet_Cone_fci-flh-fce_'
+fnames  = STRARR(nscm,3L)
+FOR k=0L, 2L DO fnames[*,k] = fpref[k]+ftimes
+
+lims    = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',2.0)
+FOR j=0L, nscm - 1L DO BEGIN                                                   $
+  FOR k=0L, 2L DO BEGIN                                                        $
+    names       = [fgnames,scm_xyz_nms[j,k],scm_xyz_wav[j,k]]                & $
+    get_data,scm_xyz_wav[j,k],DATA=temp                                      & $
+    IF (SIZE(temp,/TYPE) NE 8) THEN CONTINUE                                 & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN del_data,tnames([scm_xyz_nms[j,k],scm_xyz_wav[j,k]+'*']) & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN tr_all_scm[*,j] = d       & $
+    IF (MIN(temp.Y,/NAN) EQ MAX(temp.Y,/NAN)) THEN CONTINUE                  & $
+    aname       = tnames([scm_xyzcone[j,k],freq_nms_h[0]])                   & $
+    popen,fnames[j,k],/LAND                                                  & $
+      oplot_tplot_spec,names,aname,TRANGE=REFORM(tra_all[*,j]),LIMITS=lims   & $
+    pclose
+
+good           = WHERE(FINITE(REFORM(tr_all_scm[0,*])),gd)
+IF (gd GT 0) THEN tr_all_scm = REFORM(tr_all_scm[*,good])
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+scmsuff0       = 'scw_facx_L2_*'
+scm_scw_nms_x  = tnames(pref[0]+scmsuff[0]+'_Bo_x_Xgse_x_Bo')
+scm_scw_nms_y  = tnames(pref[0]+scmsuff[0]+'_Bo_x_Xgse')
+scm_scw_nms_z  = tnames(pref[0]+scmsuff[0]+'_Bo')
+bad            = WHERE(STRLEN(scm_scw_nms_z) EQ STRLEN(scm_scw_nms_x[0]),bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (gd GT 0) THEN scm_scw_nms_z = scm_scw_nms_z[good]
+scm_xyz_nms    = [[scm_scw_nms_x],[scm_scw_nms_y],[scm_scw_nms_z]]
+scm_xyz_wav    = scm_xyz_nms+'_wavelet'
+scm_xyzconf    = scm_xyz_nms+'_wavelet_Conf_*'
+scm_xyzcone    = scm_xyz_nms+'_wavelet_Cone_*'
+;; => define names of clipped tplot data
+scm_wave_nms   = tnames(pref[0]+scmsuff[0])
+;-----------------------------------------------------------------------------------------
+; => Plot FGM with [EFI,SCM] Zoom Times
+;-----------------------------------------------------------------------------------------
+tr_all  = time_double(tdate[0]+'/'+['08:50:20.000','10:07:00.000'])
+
+tr_cc   = time_double(tdate[0]+'/'+['08:50:32.000','09:02:12.000'])
+tr_dd   = time_double(tdate[0]+'/'+['08:57:02.000','09:02:12.000'])
+tr_ee   = time_double(tdate[0]+'/'+['09:02:14.000','09:06:24.000'])
+tr_ff   = time_double(tdate[0]+'/'+['09:17:14.000','09:21:10.000'])
+tr_gg   = time_double(tdate[0]+'/'+['09:30:02.000','09:35:14.000'])
+tr_zz   = [[tr_cc],[tr_dd],[tr_ee],[tr_ff],[tr_gg]]
+fpref   = 'FGM-fgl-GSE_TH-B_'
+fnm     = file_name_times(tr_all,PREC=3)
+ftimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+zfnms   = file_name_times(REFORM(tr_zz[0,*]),PREC=3)
+zfnme   = file_name_times(REFORM(tr_zz[1,*]),PREC=3)
+suffx   = '_zoom-to_'+zfnms.F_TIME+'-'+STRMID(zfnme.F_TIME,11L)
+
+coord   = 'gse'
+fnames  = fpref[0]+ftimes[0]+suffx
+pref    = 'th'+sc[0]+'_'
+fgmnm   = pref[0]+'fgl_'+['mag',coord[0]]
+FOR k=0L, N_ELEMENTS(suffx) - 1L DO BEGIN                      $
+  popen,fnames[k],/LAND                                      & $
+    tplot,fgmnm,/NOM,TRANGE=tr_all                           & $
+    time_bar,REFORM(tr_zz[*,k]),VARNAME=fgmnm,COLOR=250L     & $
+  pclose
+
+;; => zoom in and look at fgh w/ EFI zoom times
+fpref   = 'FGM-fgh-GSE_TH-B_'
+zfnms   = file_name_times(REFORM(tr_zz[0,*]),PREC=3)
+zfnme   = file_name_times(REFORM(tr_zz[1,*]),PREC=3)
+midname = zfnms.F_TIME+'-'+STRMID(zfnme.F_TIME,11L)
+zfnms   = file_name_times(REFORM(tr_all_efi[0,*]),PREC=3)
+zfnme   = file_name_times(REFORM(tr_all_efi[1,*]),PREC=3)
+suffx   = '_zoom-to_EFI_'+zfnms.F_TIME+'-'+STRMID(zfnme.F_TIME,11L)
+
+coord   = 'gse'
+pref    = 'th'+sc[0]+'_'
+fgmnm   = pref[0]+'fgh_'+['mag',coord[0]]
+FOR j=0L, N_ELEMENTS(midname) - 1L DO BEGIN                     $
+  FOR k=0L, N_ELEMENTS(suffx) - 1L DO BEGIN                     $
+    fname = fpref[0]+midname[j]+suffx[k]                      & $
+    tra_l = REFORM(tr_zz[*,j])                                & $
+    tra_z = time_double(REFORM(tr_all_efi[*,j]))              & $
+    testl = (tra_z[0] GE tra_l[0]) AND (tra_z[0] LE tra_l[1]) & $
+    testh = (tra_z[1] GE tra_l[0]) AND (tra_z[1] LE tra_l[1]) & $
+    test  = testl OR testh                                    & $
+    IF (NOT test) THEN GOTO,JUMP_SKIP                         & $
+    popen,fname[0],/LAND                                      & $
+      tplot,fgmnm,/NOM,TRANGE=tra_l                           & $
+      time_bar,tra_z,VARNAME=fgmnm,COLOR=250L                 & $
+    pclose                                                    & $
+    JUMP_SKIP:
+
+;; => zoom in and look at fgh w/ SCM zoom times
+fpref   = 'FGM-fgh-GSE_TH-B_'
+zfnms   = file_name_times(REFORM(tr_zz[0,*]),PREC=3)
+zfnme   = file_name_times(REFORM(tr_zz[1,*]),PREC=3)
+midname = zfnms.F_TIME+'-'+STRMID(zfnme.F_TIME,11L)
+zfnms   = file_name_times(REFORM(tr_all_scm[0,*]),PREC=3)
+zfnme   = file_name_times(REFORM(tr_all_scm[1,*]),PREC=3)
+suffx   = '_zoom-to_SCM_'+zfnms.F_TIME+'-'+STRMID(zfnme.F_TIME,11L)
+
+coord   = 'gse'
+pref    = 'th'+sc[0]+'_'
+fgmnm   = pref[0]+'fgh_'+['mag',coord[0]]
+FOR j=0L, N_ELEMENTS(midname) - 1L DO BEGIN                     $
+  FOR k=0L, N_ELEMENTS(suffx) - 1L DO BEGIN                     $
+    fname = fpref[0]+midname[j]+suffx[k]                      & $
+    tra_l = REFORM(tr_zz[*,j])                                & $
+    tra_z = time_double(REFORM(tr_all_scm[*,j]))              & $
+    testl = (tra_z[0] GE tra_l[0]) AND (tra_z[0] LE tra_l[1]) & $
+    testh = (tra_z[1] GE tra_l[0]) AND (tra_z[1] LE tra_l[1]) & $
+    test  = testl OR testh                                    & $
+    IF (NOT test) THEN GOTO,JUMP_SKIP                         & $
+    popen,fname[0],/LAND                                      & $
+      tplot,fgmnm,/NOM,TRANGE=tra_l                           & $
+      time_bar,tra_z,VARNAME=fgmnm,COLOR=250L                 & $
+    pclose                                                    & $
+    JUMP_SKIP:
+
+
+
+
+
+
+t_RH_0  = time_double(tdate[0]+'/'+['08:57:00.000','09:02:30.000'])
+t_RH_1  = time_double(tdate[0]+'/'+['09:18:40.000','09:40:15.000'])
+tr_bb   = time_double(tdate[0]+'/'+['08:50:20.000','10:07:00.000'])
+pref    = 'th'+sc[0]+'_'
+fgmnm   = pref[0]+'fgl_'+['mag',coord[0]]
+
+tr_aa   = [[t_RH_0],[t_RH_1],[tr_bb]]
+fpref   = 'FGM-fgl-GSE_TH-B_'
+fnm     = file_name_times(tr_bb,PREC=3)
+ftimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+jstr    = ['0857x00-0902x30','0918x40-0940x15']
+fname   = fpref[0]+ftimes[0]+'_zoom-to-FGM_'+jstr
+FOR k=0L, 1L DO BEGIN                                          $
+  popen,fname[k],/LAND                                       & $
+    tplot,fgmnm,/NOM,TRANGE=tr_bb                            & $
+    time_bar,tr_aa[*,k],VARNAME=fgmnm,COLOR=250L             & $
+  pclose
+
+;-----------------------------------------------------
+; => Plot EFI Zooms
+;-----------------------------------------------------
+j       = 0L
+k       = 0L
+tr_aa   = [[t_RH_0],[t_RH_1],[tr_bb]]
+tra_all = time_double(REFORM(tr_all_efi))
+jstr    = STRING(FORMAT='(I2.2)',LINDGEN(nefi))
+fnm     = file_name_times(tr_aa[*,k],PREC=3)
+ftimes  = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)  ; e.g. 1998-08-09_0801x09.494
+
+fpref   = 'FGM-fgl-GSE_TH-B_'
+fname   = fpref[0]+ftimes[0]+'_zoom-to-EFI_'+jstr[j]
+  tplot,fgmnm,/NOM,TRANGE=tr_aa[*,k]
+  time_bar,REFORM(tra_all[*,j]),VARNAME=fgmnm,COLOR=250L
+
+
+tr_aa   = [[t_RH_0],[t_RH_1],[tr_bb]]
+tra_all = time_double(REFORM(tr_all_efi))
+jstr    = STRING(FORMAT='(I2.2)',LINDGEN(nefi))
+fnames  = STRARR(nefi,3L)
+FOR k=0L, 2L DO BEGIN                                                        $
+  fnm    = file_name_times(tr_aa[*,k],PREC=3)                              & $
+  ftimes = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                     & $
+  fnames[*,k] = fpref[0]+ftimes[0]+'_zoom-to-EFI_'+jstr
+
+
+FOR j=0L, nefi - 2L DO BEGIN                                                   $
+  FOR k=0L, 2L DO BEGIN                                                        $
+      tplot,fgmnm,/NOM,TRANGE=tr_aa[*,k]                                     & $
+      time_bar,REFORM(tra_all[*,j]),VARNAME=fgmnm,COLOR=250L                 & $
+    popen,fnames[j,k],/LAND                                                  & $
+      tplot,fgmnm,/NOM,TRANGE=tr_aa[*,k]                                     & $
+      time_bar,REFORM(tra_all[*,j]),VARNAME=fgmnm,COLOR=250L                 & $
+    pclose
+
+;-----------------------------------------------------
+; => Plot SCM Zooms
+;-----------------------------------------------------
+fpref   = 'FGM-fgl-GSE_TH-B_'
+tr_aa   = [[t_RH_0],[t_RH_1],[tr_bb]]
+tra_all = time_double(REFORM(tr_all_scm))
+jstr    = STRING(FORMAT='(I2.2)',LINDGEN(nscm))
+fnames  = STRARR(nscm,3L)
+FOR k=0L, 2L DO BEGIN                                                        $
+  fnm    = file_name_times(tr_aa[*,k],PREC=3)                              & $
+  ftimes = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                     & $
+  fnames[*,k] = fpref[0]+ftimes[0]+'_zoom-to-SCM_'+jstr
+
+FOR j=0L, nscm - 1L DO BEGIN                                                   $
+  FOR k=0L, 2L DO BEGIN                                                        $
+      tplot,fgmnm,/NOM,TRANGE=tr_aa[*,k]                                     & $
+      time_bar,REFORM(tra_all[*,j]),VARNAME=fgmnm,COLOR=250L                 & $
+    popen,fnames[j,k],/LAND                                                  & $
+      tplot,fgmnm,/NOM,TRANGE=tr_aa[*,k]                                     & $
+      time_bar,REFORM(tra_all[*,j]),VARNAME=fgmnm,COLOR=250L                 & $
+    pclose
+
+
+
+;fgmnm   = pref[0]+'fgh_'+['mag',coord[0]]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Transform into Xgse field aligned coordinates 
+;      built from time averaged fgm data
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+coord          = 'dsl'
+fgm_mode       = 'fgl'
+thscs_fgm_mode = 'th'+sc[0]+'_'+fgm_mode[0]
+
+time_av        = 3.
+old_name       = thscs_fgm_mode[0]+'_'+coord[0]
+new_name       = thscs_fgm_mode[0]+'_'+coord[0]+'_av'
+avg_data,old_name[0],time_av[0],NEWNAME=new_name[0]
+; => interpolate
+tinterpol_mxn,new_name[0],old_name[0]
+; => define rotation matrix
+thm_fac_matrix_make, thscs_fgm_mode+'_'+coord+'_av_interp'
+new_name2      = new_name[0]+'_interp_fac_mat'
+
+
+;-----------------------------------------------------
+; => rotate SCF data
+;-----------------------------------------------------
+suffx          = '_dsl_L2'
+mode           = 'scf'
+thscf_name     = 'th'+sc[0]+'_'+mode[0]+suffx[0]
+scf_wave_fac   = thscf_name[0]+'_fac'
+tvector_rotate,new_name2[0],thscf_name[0],NEWNAME=scf_wave_fac[0]
+;-----------------------------------------------------
+; => rotate SCP data
+;-----------------------------------------------------
+suffx          = '_dsl_L2'
+mode           = 'scp'
+thscp_name     = 'th'+sc[0]+'_'+mode[0]+suffx[0]
+scp_wave_fac   = thscp_name[0]+'_fac'
+tvector_rotate,new_name2[0],thscp_name[0],NEWNAME=scp_wave_fac[0]
+;-----------------------------------------------------
+; => rotate SCW data
+;-----------------------------------------------------
+suffx          = '_dsl_L2'
+mode           = 'scw'
+thscw_name     = 'th'+sc[0]+'_'+mode[0]+suffx[0]
+scw_wave_fac   = thscw_name[0]+'_fac'
+tvector_rotate,new_name2[0],thscw_name[0],NEWNAME=scw_wave_fac[0]
+; => collect all names
+scm_wave_fac   = [scf_wave_fac[0],scp_wave_fac[0],scw_wave_fac[0]]
+
+
+;-----------------------------------------------------
+; => rotate EFF data
+;-----------------------------------------------------
+mode           = 'eff'
+coord          = 'dsl'
+theff_mode     = 'th'+sc[0]+'_'+mode[0]+'_cal_'+coord[0]
+eff_wave_fac   = theff_mode[0]+'_fac'
+tvector_rotate,new_name2[0],theff_mode[0],NEWNAME=eff_wave_fac[0]
+;-----------------------------------------------------
+; => rotate EFP data
+;-----------------------------------------------------
+mode           = 'efp'
+coord          = 'dsl'
+thefp_mode     = 'th'+sc[0]+'_'+mode[0]+'_cal_'+coord[0]
+efp_wave_fac   = thefp_mode[0]+'_fac'
+tvector_rotate,new_name2[0],thefp_mode[0],NEWNAME=efp_wave_fac[0]
+;-----------------------------------------------------
+; => rotate EFW data
+;-----------------------------------------------------
+mode           = 'efw'
+coord          = 'dsl'
+thefw_mode     = 'th'+sc[0]+'_'+mode[0]+'_cal_'+coord[0]
+efw_wave_fac   = thefw_mode[0]+'_fac'
+tvector_rotate,new_name2[0],thefw_mode[0],NEWNAME=efw_wave_fac[0]
+; => collect all names
+efi_wave_fac   = [eff_wave_fac[0],efp_wave_fac[0],efw_wave_fac[0]]
+
+
+options,[scm_wave_fac,efi_wave_fac],'COLORS',[250,150, 50],/DEF
+options,[scm_wave_fac,efi_wave_fac],'LABELS',['(Bo x Xgse) x Bo','Bo x Xgse','Bo'],/DEF
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+mode    = 'fgl'
+names   = ['th'+sc[0]+'_'+mode[0]+['_mag','_gsm'],scm_wave_fac,efi_wave_fac]
+tplot,names,TRANGE=time_double(tr_00),/NOM
+
+;-----------------------------------------------------
+; Wave polarization analysis
+;-----------------------------------------------------
+mode             = 'scw'
+nopfft_input     = 512L
+steplength_input = nopfft_input[0]/2
+thresh           = 0.50
+FOR j=0L, nscm - 1L DO BEGIN $
+  wavpol_to_tplot,scm_wave_nms[j],NOPFFT=nopfft_input,STEPLENGTH=steplength_input,DEGTHRESH=thresh[0]
+
+mode             = 'efw'
+nopfft_input     = 1024L
+steplength_input = nopfft_input[0]/2
+FOR j=0L, nefi - 1L DO BEGIN $
+  wavpol_to_tplot,efi_wave_nms[j],NOPFFT=nopfft_input,STEPLENGTH=steplength_input,DEGTHRESH=thresh[0]
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_efw_'
+pows_efi_nm    = tnames(pref[0]+'*_powspec')
+degp_efi_nm    = tnames(pref[0]+'*_degpol')
+wava_efi_nm    = tnames(pref[0]+'*_waveangle')
+ellp_efi_nm    = tnames(pref[0]+'*_elliptict')
+helc_efi_nm    = tnames(pref[0]+'*_helict')
+names_efi_all  = [pows_efi_nm,degp_efi_nm,wava_efi_nm,ellp_efi_nm,helc_efi_nm]
+options,names_efi_all,'YLOG',1,/DEF
+options,names_efi_all,'YRANGE',[3d1,8200d0],/DEF
+
+pref           = 'th'+sc[0]+'_scw_'
+pows_scm_nm    = tnames(pref[0]+'*_powspec')
+degp_scm_nm    = tnames(pref[0]+'*_degpol')
+wava_scm_nm    = tnames(pref[0]+'*_waveangle')
+ellp_scm_nm    = tnames(pref[0]+'*_elliptict')
+helc_scm_nm    = tnames(pref[0]+'*_helict')
+names_scm_all = [pows_scm_nm,degp_scm_nm,wava_scm_nm,ellp_scm_nm,helc_scm_nm]
+options,names_scm_all,'YLOG',1,/DEF
+options,names_scm_all,'YRANGE',[3d1,4100d0],/DEF
+
+;-----------------------------------------------------
+; Plot wave polarization analysis
+;-----------------------------------------------------
+;  EFI
+j              = 4L
+names          = [efi_wave_nms[j]+['','_powspec','_degpol','_waveangle','_elliptict','_helict']]
+tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_efi[*,j]))
+
+;  SCM
+j              = 3L
+names          = [scm_wave_nms[j]+['','_powspec','_degpol','_waveangle','_elliptict','_helict']]
+tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_scm[*,j]))
+
+
+
+
+coord   = 'gse'
+sc      = probe[0]
+pref    = 'th'+sc[0]+'_'
+mode    = 'fgh'
+fgnames = pref[0]+mode[0]+['_mag','_gsm']
+
+j       = 0L
+names   = [fgnames,efi_wave_nms[j]]
+tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_efi[*,j]))
+
+fnm0    = file_name_times(REFORM(tr_all_efi[0,*]),PREC=3)
+fnm1    = file_name_times(REFORM(tr_all_efi[1,*]),PREC=3)
+ftimes  = fnm0.F_TIME+'-'+STRMID(fnm1.F_TIME,11L)
+fpref   = 'FGM-fgh-GSE_TH-B_efi_'
+fnames  = fpref[0]+ftimes
+FOR j=0L, nefi - 2L DO BEGIN                                        $
+    names   = [fgnames,efi_wave_nms[j]]                           & $
+    tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_efi[*,j]))  & $
+  popen,fnames[j],/LAND                                           & $
+    tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_efi[*,j]))  & $
+  pclose
+
+
+j       = 0L
+names   = [fgnames,scm_wave_nms[j]]
+tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_scm[*,j]))
+
+fnm0    = file_name_times(REFORM(tr_all_scm[0,*]),PREC=3)
+fnm1    = file_name_times(REFORM(tr_all_scm[1,*]),PREC=3)
+ftimes  = fnm0.F_TIME+'-'+STRMID(fnm1.F_TIME,11L)
+fpref   = 'FGM-fgh-GSE_TH-B_scw_'
+fnames  = fpref[0]+ftimes
+
+FOR j=0L, nscm - 1L DO BEGIN $
+    names   = [fgnames,scm_wave_nms[j]]                           & $
+    tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_scm[*,j]))  & $
+  popen,fnames[j],/LAND                                           & $
+    tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_scm[*,j]))  & $
+  pclose
+;-----------------------------------------------------------------------------------------
+; => Load ESA data
+;-----------------------------------------------------------------------------------------
+; => Load level 2 densities and SC potentials
+sc      = probe[0]
+thm_load_esa,PROBE=sc[0],DATAT=' peer_avgtemp peir_avgtemp pe?r_density peer_sc_pot ',LEVEL=2
+thm_load_esa,PROBE=sc[0],DATAT=' pee?_density pee?_avgtemp ',LEVEL=2
+thm_load_esa,PROBE=sc[0],DATAT=' pei?_density pei?_avgtemp ',LEVEL=2
+thm_load_esa,PROBE=sc[0],DATAT=' pee?_velocity_dsl pei?_velocity_dsl ',LEVEL=2
+; => rotate DSL to GSE
+partn     = ['e','i']
+coords    = ['dsl','gse']
+in_suffe  = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[0]
+out_suffe = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[1]
+in_suffi  = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[0]
+out_suffi = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[1]
+in_name   = 'th'+sc[0]+'_'+[[in_suffe],[in_suffi]]
+out_name  = 'th'+sc[0]+'_'+[[out_suffe],[out_suffi]]
+FOR j=0L, 1L DO BEGIN                                                              $
+  thm_cotrans,in_name[0,j],out_name[0,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[1,j],out_name[1,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[2,j],out_name[2,j],OUT_COORD=coords[1],IN_COORD=coords[0]
+
+names     = tnames([REFORM(in_name,3*2),REFORM(out_name,3*2)])
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+; => rotate GSE to GSM
+partn     = ['e','i']
+coords    = ['gse','gsm']
+in_suffe  = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[0]
+out_suffe = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[1]
+in_suffi  = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[0]
+out_suffi = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[1]
+in_name   = 'th'+sc[0]+'_'+[[in_suffe],[in_suffi]]
+out_name  = 'th'+sc[0]+'_'+[[out_suffe],[out_suffi]]
+FOR j=0L, 1L DO BEGIN                                                              $
+  thm_cotrans,in_name[0,j],out_name[0,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[1,j],out_name[1,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[2,j],out_name[2,j],OUT_COORD=coords[1],IN_COORD=coords[0]
+
+names     = tnames([REFORM(in_name,3*2),REFORM(out_name,3*2)])
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+dens_nm = tnames('*b_density')
+temp_nm = tnames('*b_avgtemp')
+options,dens_nm,'YLOG',0,/DEF
+options,temp_nm,'YLOG',0,/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+dat_aa  = dat_i0
+modify_themis_esa_struc,dat_aa
+
+get_data,'thb_fgh_mag',DATA=tp_bmag,DLIM=dlim_bm,LIM=lim_bm
+get_data,'thb_fgh_dsl',DATA=tp_magf,DLIM=dlim_bv,LIM=lim_bv
+
+dat0       = tp_bmag
+str_element,dat0,'LIM',{YTITLE:dlim_bm.YTITLE,YSTYLE:1,XSTYLE:1,XMINOR:5},/ADD_REPLACE
+dat1       = tp_magf
+str_element,dat1,'LIM',{YTITLE:dlim_bv.YTITLE,YSTYLE:1,XSTYLE:1,XMINOR:5},/ADD_REPLACE
+timeseries = {T0:dat0,T1:dat1}
+
+ngrid      = 30L
+xname      = 'B!Do!N'
+yname      = 'V!Dsw!N'
+vlim       = 25e2
+ns         = 7L
+smc        = 1
+smct       = 1
+dfmax      = 1d-1
+dfmin      = 1d-15
+tbow00     = time_double(tdate[0]+'/'+['09:00:00.000','09:06:40.000'])
+
+gnorm   = gnorm_0
+normnm  = 'Shock Normal[0]'
+vcirc   = Vgy_rs_0[0]
+
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/contour_df_pos_slide_plot.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/contour_df_pos_slide_plot.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/contour_df_pos_slide_wrapper.pro
+
+WSET,0
+contour_df_pos_slide_plot,timeseries,dat_aa,VLIM=vlim,NGRID=ngrid,PLANE='xy',          $
+                          XNAME=xname,YNAME=yname,TRANGE=tbow00,SM_CONT=smct,          $
+                          DFMIN=dfmin[0],DFMAX=dfmax[0],EX_VEC0=gnorm,EX_VN0=normnm[0],$
+                          VCIRC=vcirc[0];,/NO_TRANS
+
+; => call wrapper
+timename   = ['thb_fgh_mag','thb_fgh_gse']
+dat_aa     = dat_i0
+modify_themis_esa_struc,dat_aa
+ngrid      = 30L
+xname      = 'B!Do!N'
+yname      = 'V!Dsw!N'
+vlim       = 25e2
+ns         = 7L
+smc        = 1
+smct       = 1
+dfmax      = 1d-1
+dfmin      = 1d-15
+tbow00     = time_double(tdate[0]+'/'+['09:00:00.000','09:06:40.000'])
+
+gnorm   = gnorm_0
+normnm  = 'Shock Normal[0]'
+vcirc   = Vgy_rs_0[0]
+contour_df_pos_slide_wrapper,timename,dat_aa,VLIM=vlim[0],NGRID=ngrid[0],XNAME=xname[0], $
+                              YNAME=yname[0],VCIRC=vcirc[0],EX_VEC0=gnorm,      $
+                              EX_VN0=normnm[0],PLANE=plane,SM_CONT=smct,$
+                              DFMIN=dfmin[0],DFMAX=dfmax[0], $
+                              TRANGE=tbow00,TROUTER=21d0,LIVE=1
+
+; => Plot snapshots
+contour_df_pos_slide_wrapper,timename,dat_aa,VLIM=vlim[0],NGRID=ngrid[0],XNAME=xname[0], $
+                              YNAME=yname[0],VCIRC=vcirc[0],EX_VEC0=gnorm,      $
+                              EX_VN0=normnm[0],PLANE=plane,SM_CONT=smct,$
+                              DFMIN=dfmin[0],DFMAX=dfmax[0],TRANGE=tbow00, $
+                              TROUTER=21d0,SNAPSHOTS=1,TSNAMES='FGM-fgh-GSE_'
+
+
+; => Make a short movie
+tbow00     = time_double(tdate[0]+'/'+['09:00:00.000','09:02:00.000'])
+contour_df_pos_slide_wrapper,timename,dat_aa,VLIM=vlim[0],NGRID=ngrid[0],XNAME=xname[0], $
+                              YNAME=yname[0],VCIRC=vcirc[0],EX_VEC0=gnorm,               $
+                              EX_VN0=normnm[0],PLANE=plane,SM_CONT=smct,                 $
+                              DFMIN=dfmin[0],DFMAX=dfmax[0],TRANGE=tbow00,               $
+                              TROUTER=21d0,TSNAMES='FGM-fgh-GSE_',EXFRAMES=3L
+
+
+

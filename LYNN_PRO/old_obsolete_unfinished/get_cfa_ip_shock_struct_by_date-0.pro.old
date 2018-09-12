@@ -1,0 +1,497 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   get_cfa_ip_shock_struct_by_date.pro
+;  PURPOSE  :   This routine returns a structure containing the proper interplanetary
+;                 (IP) shock analysis results from the Harvard Smithsonian's Center
+;                 for Astrophysics (CfA) Wind shock database.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               
+;
+;  KEYWORDS:    
+;               TDATE   :  Scalar or [N]-element [string] array defining the date on
+;                            which Wind observed an IP shock for which to return data
+;                            [Default = '1995-01-01']
+;               IND_IP  :  Scalar or [N]-element [integer/long] array defining the index
+;                            of the shock in the case where multiple shocks are observed
+;                            [Default = 0]
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Definitions
+;                     SCF   :  spacecraft frame of reference
+;                     SHF   :  shock rest frame of reference
+;
+;                     They assume several things, as they only use the SWE Faraday cup
+;                     data (i.e., only ions).  They must assume Te ~ Ti, for instance.
+;                     Let use define the following:
+;                       Cs    :  ion-acoustic sound speed or just sound speed
+;                       VA    :  Alfvén speed
+;                       W_j   :  thermal speed (i.e., rms speed) of species j
+;                       ß     :  Total plasma beta
+;                       Zi    :  Charge state of ion
+;                       ¥j    :  polytrope index of species j (i.e., ratio of specific heats)
+;                       T_j   :  Temperature of species j
+;                       M_j   :  Mass " "
+;                       kB    :  Boltzmann constant
+;                     Then we can define these in terms of their parameter dependencies
+;                     as follows:
+;                       Cs^2  = [kB ( Zi ¥e T_e + ¥i T_i )/M_i]
+;                             = (5/3)*W_i^2 [for CfA database results]
+;                       W_e^2 = kB T_e/M_e = (M_i/2 M_e) W_i^2
+;                       W_i^2 = kB T_i/M_i
+;                       ß     = (3/5)*Cs^2/VA^2
+;
+;  REFERENCES:  
+;               Harvard Smithsonian's CfA Wind shock database at:
+;                 https://www.cfa.harvard.edu/shocks/wi_data/
+;
+;   CREATED:  09/10/2018
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/10/2018   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION get_cfa_ip_shock_struct_by_date,TDATE=tdate0,IND_IP=ind_ip
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+one_3          = REPLICATE(1d0,3L)
+pert           = [-1d0,0d0,1d0]
+;;  Fundamental
+c              = 2.9979245800d+08                            ;;  Speed of light in vacuum [m s^(-1), 2014 CODATA/NIST]
+kB             = 1.3806485200d-23                            ;;  Boltzmann Constant [J K^(-1), 2014 CODATA/NIST]
+hh             = 6.6260700400d-34                            ;;  Planck Constant [J s, 2014 CODATA/NIST]
+;;  Electromagnetic
+qq             = 1.6021766208d-19                            ;;  Fundamental charge [C, 2014 CODATA/NIST]
+epo            = 8.8541878170d-12                            ;;  Permittivity of free space [F m^(-1), 2014 CODATA/NIST]
+muo            = !DPI*4.00000d-07                            ;;  Permeability of free space [N A^(-2) or H m^(-1), 2014 CODATA/NIST]
+;;  Atomic
+me             = 9.1093835600d-31                            ;;  Electron mass [kg, 2014 CODATA/NIST]
+mp             = 1.6726218980d-27                            ;;  Proton mass [kg, 2014 CODATA/NIST]
+mn             = 1.6749274710d-27                            ;;  Neutron mass [kg, 2014 CODATA/NIST]
+ma             = 6.6446572300d-27                            ;;  Alpha particle mass [kg, 2014 CODATA/NIST]
+;;  --> Define mass of particles in units of energy [eV]
+ma_eV          = ma[0]*c[0]^2/qq[0]                          ;;  ~3727.379378(23) [MeV, 2014 CODATA/NIST]
+me_eV          = me[0]*c[0]^2/qq[0]                          ;;  ~0.5109989461(31) [MeV, 2014 CODATA/NIST]
+mn_eV          = mn[0]*c[0]^2/qq[0]                          ;;  ~939.5654133(58) [MeV, 2014 CODATA/NIST]
+mp_eV          = mp[0]*c[0]^2/qq[0]                          ;;  ~938.2720813(58) [MeV, 2014 CODATA/NIST]
+;;  Astronomical
+R_S___m        = 6.9600000d08                                ;;  Sun's Mean Equatorial Radius [m, 2015 AA values]
+R_Ea__m        = 6.3781366d06                                ;;  Earth's Mean Equatorial Radius [m, 2015 AA values]
+M_E            = 5.9722000d24                                ;;  Earth's mass [kg, 2015 AA values]
+M_S__kg        = 1.9884000d30                                ;;  Sun's mass [kg, 2015 AA values]
+au             = 1.49597870700d+11                           ;;  1 astronomical unit or AU [m, from Mathematica 10.1 on 2015-04-21]
+R_E            = R_Ea__m[0]*1d-3                             ;;  m --> km
+;;  Energy and Temperature
+f_1eV          = qq[0]/hh[0]                                 ;;  Freq. associated with 1 eV of energy [ Hz --> f_1eV*energy{eV} = freq{Hz} ]
+eV2J           = hh[0]*f_1eV[0]                              ;;  Energy associated with 1 eV of energy [ J --> J_1eV*energy{eV} = energy{J} ]
+eV2K           = qq[0]/kB[0]                                 ;;  Temp. associated with 1 eV of energy [11,604.5221 K/eV, 2014 CODATA/NIST --> K_eV*energy{eV} = Temp{K}]
+K2eV           = kB[0]/qq[0]                                 ;;  Energy associated with 1 K Temp. [8.6173303 x 10^(-5) eV/K, 2014 CODATA/NIST --> eV_K*Temp{K} = energy{eV}]
+;;  Define some conversion factors
+vte2tekfac     = 1d6*me[0]/2d0/kB[0]                         ;;  Converts thermal speed squared to temperature [K]
+vte2teevfac    = vte2tekfac[0]*K2eV[0]                       ;;  Converts thermal speed squared to temperature [eV]
+invdenf        = 1d-6*(2d0*!DPI)^2*(me[0]*epo[0]/qq[0]^2d0)  ;;  [cm^(-3) s^2]
+vtisq2eV       = vte2teevfac[0]*mp[0]/me[0]*2d0              ;;  Converts RMS proton thermal speed squared to T [eV]
+;;  Define all possible method abbreviations
+;;                  0    1    2     3     4      5      6      7
+all_cfa_meth   = ['MC','VC','MX1','MX2','MX3','RH08','RH09','RH10']
+;;  Defaults
+def_tdate      = '1995-01-01'
+def_indip      = 0L
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check TDATE
+IF (test_tdate_format(tdate0,/NOMSSG)) THEN tdate = REFORM(tdate0) ELSE tdate = def_tdate[0]
+;;  Check IND_IP
+IF (is_a_number(ind_ip,/NOMSSG)) THEN kk = (LONG(REFORM(ind_ip)) > 0L) < 2L ELSE kk = def_indip[0]
+nd             = N_ELEMENTS(tdate)
+nk             = N_ELEMENTS(kk)
+IF (nk[0] NE nd[0]) THEN kk = REPLICATE(kk[0],nd[0])     ;;  Force to the same dimensions
+;;----------------------------------------------------------------------------------------
+;;  Get Rankine-Hugoniot results, if available, from CfA Harvard Wind shock database at:
+;;    https://www.cfa.harvard.edu/shocks/wi_data/
+;;
+;;  Let use define the following:
+;;      SCF   :  spacecraft frame of reference
+;;      SHF   :  shock rest frame of reference
+;;
+;;
+;;  They assume several things, as they only use the SWE Faraday cup data (i.e., only
+;;    ions).  They must assume Te ~ Ti, for instance.  Let use define the following:
+;;      Cs    :  ion-acoustic sound speed or just sound speed
+;;      VA    :  Alfvén speed
+;;      W_j   :  thermal speed (i.e., rms speed) of species j
+;;      ß     :  Total plasma beta
+;;      Zi    :  Charge state of ion
+;;      ¥j    :  polytrope index of species j (i.e., ratio of specific heats)
+;;      T_j   :  Temperature of species j
+;;      M_j   :  Mass " "
+;;      kB    :  Boltzmann constant
+;;    Then we can define these in terms of their parameter dependencies as:
+;;      Cs^2  = [kB ( Zi ¥e T_e + ¥i T_i )/M_i]
+;;            = (5/3)*W_i^2 [for CfA database results]
+;;      W_e^2 = kB T_e/M_e = (M_i/2 M_e) W_i^2
+;;      W_i^2 = kB T_i/M_i
+;;      ß     = (3/5)*Cs^2/VA^2
+;;----------------------------------------------------------------------------------------
+change_dateL   = REPLICATE(0b,nd[0])
+all_m_ind0     = REPLICATE(5L,nd[0])              ;;  Default to RH08 as that is the most common suggestion
+;;  Check if shock solutions should be altered
+;;    -->  For the following dates, use a method other than that suggested by website
+m_dates        = ['1996-04-02','1998-03-04','1998-08-26','1998-09-24','1999-08-23']
+n_md           = N_ELEMENTS(m_dates)
+FOR jj=0L, n_md[0] - 1L DO BEGIN
+  chdate = WHERE(m_dates[jj] EQ tdate,chd)
+  IF (chd[0] GT 0) THEN BEGIN
+    change_dateL[chdate[0]] = 1b
+    CASE jj[0] OF
+      0L    :  all_m_ind0[chdate[0]] = 6L      ;;  Use RH09 instead
+      1L    :  all_m_ind0[chdate[0]] = 4L      ;;  Use MX3 instead
+      4L    :  all_m_ind0[chdate[0]] = 3L      ;;  Use MX2 instead
+      ELSE  :  ;;  Else leave as is
+    ENDCASE
+  ENDIF
+ENDFOR
+change_dates   = (TOTAL(change_dateL) GT 0)
+;;  Get general structure
+test_bst       = read_shocks_jck_database_new(GIND_3D=gind_3d_bst)
+all_sugg_meth  = test_bst.GEN_INFO.RH_METHOD                  ;;  All methods suggested by CfA website
+n_all_cfa      = N_ELEMENTS(all_sugg_meth)
+all_sugg_mind  = REPLICATE(5L,n_all_cfa[0])
+FOR jj=0L, n_all_cfa[0] - 1L DO BEGIN
+  gind = WHERE(all_sugg_meth[jj] EQ all_cfa_meth,gd)
+  IF (gd[0] GT 0) THEN all_sugg_mind[jj] = gind[0]
+ENDFOR
+;change_dates   = (tdate[0] EQ '1998-08-26') OR (tdate[0] EQ '1998-09-24') OR $
+;                 (tdate[0] EQ '1996-04-02') OR (tdate[0] EQ '1998-03-04') OR $
+;                 (tdate[0] EQ '1999-08-23')
+;mm             = 0L                                          ;;  Index of shock solution method
+;IF (change_dates[0]) THEN BEGIN
+;  ;;  Get structure with all methods
+;  test_bst = read_shocks_jck_database_new(GIND_3D=gind_3d_bst)
+;  IF (change_dates[0]) THEN IF (tdate[0] EQ '1996-04-02') THEN mm = 6L ELSE $
+;                            IF (tdate[0] EQ '1998-03-04') THEN mm = 4L ELSE $
+;                            IF (tdate[0] EQ '1999-08-23') THEN mm = 3L ELSE mm = 5L
+;ENDIF ELSE BEGIN
+;  ;;  Get structure with CfA method
+;  test_bst  = read_shocks_jck_database_new(/CFA_METH_ONLY,GIND_3D=gind_3d_bst)
+;  rhmeth_bst = gen_info_str.RH_METHOD                        ;;  String defining shock analysis method [e.g., 'RH08']
+;ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define internal structures
+;;----------------------------------------------------------------------------------------
+gen_info_str   = test_bst.GEN_INFO
+asy_info_str   = test_bst.ASY_INFO
+bvn_info_str   = test_bst.BVN_INFO
+key_info_str   = test_bst.KEY_INFO
+ups_info_str   = test_bst.UPS_INFO
+dns_info_str   = test_bst.DNS_INFO
+;;----------------------------------------------
+;;  Define general info
+;;----------------------------------------------
+tdates_bst     = gen_info_str.TDATES                  ;;  Date of measurement ['YYYY-MM-DD']
+tura_all       = gen_info_str.ARRT_UNIX.Y             ;;  Unix time [s] of shock ramp center
+ymdb_all       = time_string(tura_all,PREC=3)         ;;  String associated with Unix times ['YYYY-MM-DD/hh:mm:ss.xxx']
+n_all_cfa      = N_ELEMENTS(tura_all)
+;;  Define indices matching input dates
+tind           = REPLICATE(0L,nd[0])
+cc             = 0L                                   ;;  Count number of matching dates to ensure user did not supply bad dates
+FOR jj=0L, nd[0] - 1L DO BEGIN
+  jk   = kk[jj]
+  good = WHERE(tdate[jj] EQ tdates_bst,gd)
+  IF (gd[0] GT 0) THEN BEGIN
+    tind[jj] = good[jk[0]]
+    cc      += 1L
+  ENDIF
+ENDFOR
+IF (cc[0] EQ 0) THEN RETURN,0b
+sh_r_unix      = tura_all[tind]
+sh_r_ymdb      = ymdb_all[tind]
+;;  Define methods
+rhmeth_bst0    = all_cfa_meth[all_m_ind0]
+rhmeth_cfa     = all_sugg_meth[tind]
+rhmeth_bst     = rhmeth_cfa
+all_m_inds     = all_sugg_mind[tind]
+IF (change_dates[0]) THEN BEGIN
+  gchange = WHERE(change_dateL,gch)
+  IF (gd[0] GT 0) THEN BEGIN
+    rhmeth_bst[gchange] = rhmeth_bst0[gchange]
+    all_m_inds[gchange] =  all_m_ind0[gchange]
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define plasma params and uncertainties
+;;----------------------------------------------------------------------------------------
+;;  Define upstream values
+vi_gse_up      = 1d0*asy_info_str.VBULK_GSE.Y[tind,*,0]       ;;  Bulk flow velocity [km/s]
+bo_gse_up      = 1d0*asy_info_str.MAGF_GSE.Y[tind,*,0]        ;;  Quasi-static magnetic field [nT]
+wi_rms_up      = 1d0*asy_info_str.VTH_ION.Y[tind,0]           ;;  Ion thermal speed (i.e., rms speed) [km/s]
+ni_avg_up      = 1d0*asy_info_str.DENS_ION.Y[tind,0]          ;;  Ion number density [cm^(-3)]
+beta_t_up      = 1d0*asy_info_str.PLASMA_BETA.Y[tind,0]       ;;  Total plasma beta
+Cs_avg_up      = 1d0*asy_info_str.SOUND_SPEED.Y[tind,0]       ;;  ion-acoustic sound speed [km/s]
+VA_avg_up      = 1d0*asy_info_str.ALFVEN_SPEED.Y[tind,0]      ;;  Alfvén speed [km/s]
+dvigse_up      = 1d0*asy_info_str.VBULK_GSE.DY[tind,*,0]
+dbogse_up      = 1d0*asy_info_str.MAGF_GSE.DY[tind,*,0]
+dwirms_up      = 1d0*asy_info_str.VTH_ION.DY[tind,0]
+dniavg_up      = 1d0*asy_info_str.DENS_ION.DY[tind,0]
+dbetat_up      = 1d0*asy_info_str.PLASMA_BETA.DY[tind,0]
+dCsavg_up      = 1d0*asy_info_str.SOUND_SPEED.DY[tind,0]
+dVAavg_up      = 1d0*asy_info_str.ALFVEN_SPEED.DY[tind,0]
+;;  Define downstream values
+vi_gse_dn      = 1d0*asy_info_str.VBULK_GSE.Y[tind,*,1]      ;;  Bulk flow velocity [km/s]
+bo_gse_dn      = 1d0*asy_info_str.MAGF_GSE.Y[tind,*,1]       ;;  Quasi-static magnetic field [nT]
+wi_rms_dn      = 1d0*asy_info_str.VTH_ION.Y[tind,1]          ;;  Ion thermal speed (i.e., rms speed) [km/s]
+ni_avg_dn      = 1d0*asy_info_str.DENS_ION.Y[tind,1]         ;;  Ion number density [cm^(-3)]
+beta_t_dn      = 1d0*asy_info_str.PLASMA_BETA.Y[tind,1]      ;;  Total plasma beta
+Cs_avg_dn      = 1d0*asy_info_str.SOUND_SPEED.Y[tind,1]      ;;  ion-acoustic sound speed [km/s]
+VA_avg_dn      = 1d0*asy_info_str.ALFVEN_SPEED.Y[tind,1]     ;;  Alfvén speed [km/s]
+dvigse_dn      = 1d0*asy_info_str.VBULK_GSE.DY[tind,*,1]
+dbogse_dn      = 1d0*asy_info_str.MAGF_GSE.DY[tind,*,1]
+dwirms_dn      = 1d0*asy_info_str.VTH_ION.DY[tind,1]
+dniavg_dn      = 1d0*asy_info_str.DENS_ION.DY[tind,1]
+dbetat_dn      = 1d0*asy_info_str.PLASMA_BETA.DY[tind,1]
+dCsavg_dn      = 1d0*asy_info_str.SOUND_SPEED.DY[tind,1]
+dVAavg_dn      = 1d0*asy_info_str.ALFVEN_SPEED.DY[tind,1]
+;;----------------------------------------------------------------------------------------
+;;  Define Key Shock Analysis parameters
+;;----------------------------------------------------------------------------------------
+thetbn_up      = 1d0*key_info_str.THETA_BN.Y[tind,all_m_inds]
+dthebn_up      = 1d0*key_info_str.THETA_BN.DY[tind,all_m_inds]
+vshn___up      = 1d0*ABS(key_info_str.VSHN_UP.Y[tind,all_m_inds])
+dvshn__up      = 1d0*ABS(key_info_str.VSHN_UP.DY[tind,all_m_inds])
+N2_N1__up      = 1d0*ABS(key_info_str.NIDN_NIUP.Y[tind,all_m_inds])
+dN2_N1_up      = 1d0*ABS(key_info_str.NIDN_NIUP.DY[tind,all_m_inds])
+n_gse__up      = REPLICATE(d,nd[0],3L)
+dngse__up      = n_gse__up
+temp_v         = 1d0*bvn_info_str.SH_N_GSE.Y[tind,*,*]
+temp_u         = 1d0*bvn_info_str.SH_N_GSE.DY[tind,*,*]
+FOR jk=0L, nd[0] - 1L DO BEGIN
+  n_gse__up[jk,*] = REFORM(temp_v[jk,*,all_m_inds[jk]])
+  dngse__up[jk,*] = REFORM(temp_u[jk,*,all_m_inds[jk]])
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define Shock Analysis results
+;;----------------------------------------------------------------------------------------
+;;  Define upstream values
+ushn___up      = 1d0*ABS(ups_info_str.USHN.Y[tind,all_m_inds])
+Vslow__up      = 1d0*ABS(ups_info_str.V_SLOW.Y[tind,all_m_inds])
+Vint___up      = 1d0*ABS(ups_info_str.V_INTM.Y[tind,all_m_inds])
+Vfast__up      = 1d0*ABS(ups_info_str.V_FAST.Y[tind,all_m_inds])
+Mslow__up      = 1d0*ABS(ups_info_str.M_SLOW.Y[tind,all_m_inds])
+Mfast__up      = 1d0*ABS(ups_info_str.M_FAST.Y[tind,all_m_inds])
+dushn__up      = 1d0*ABS(ups_info_str.USHN.DY[tind,all_m_inds])
+dVslow_up      = 1d0*ABS(ups_info_str.V_SLOW.DY[tind,all_m_inds])
+dVint__up      = 1d0*ABS(ups_info_str.V_INTM.DY[tind,all_m_inds])
+dVfast_up      = 1d0*ABS(ups_info_str.V_FAST.DY[tind,all_m_inds])
+dMslow_up      = 1d0*ABS(ups_info_str.M_SLOW.DY[tind,all_m_inds])
+dMfast_up      = 1d0*ABS(ups_info_str.M_FAST.DY[tind,all_m_inds])
+;;  Define downstream values
+ushn___dn      = 1d0*ABS(dns_info_str.USHN.Y[tind,all_m_inds])
+Vslow__dn      = 1d0*ABS(dns_info_str.V_SLOW.Y[tind,all_m_inds])
+Vint___dn      = 1d0*ABS(dns_info_str.V_INTM.Y[tind,all_m_inds])
+Vfast__dn      = 1d0*ABS(dns_info_str.V_FAST.Y[tind,all_m_inds])
+Mslow__dn      = 1d0*ABS(dns_info_str.M_SLOW.Y[tind,all_m_inds])
+Mfast__dn      = 1d0*ABS(dns_info_str.M_FAST.Y[tind,all_m_inds])
+dushn__dn      = 1d0*ABS(dns_info_str.USHN.DY[tind,all_m_inds])
+dVslow_dn      = 1d0*ABS(dns_info_str.V_SLOW.DY[tind,all_m_inds])
+dVint__dn      = 1d0*ABS(dns_info_str.V_INTM.DY[tind,all_m_inds])
+dVfast_dn      = 1d0*ABS(dns_info_str.V_FAST.DY[tind,all_m_inds])
+dMslow_dn      = 1d0*ABS(dns_info_str.M_SLOW.DY[tind,all_m_inds])
+dMfast_dn      = 1d0*ABS(dns_info_str.M_FAST.DY[tind,all_m_inds])
+IF (change_dates[0]) THEN BEGIN
+  ;;  Calculate sound and Alfvenic Mach numbers (if necessary)
+  M_Cs___up = 1d0*ABS(ushn___up/Cs_avg_up)
+  M_VA___up = 1d0*ABS(ushn___up/VA_avg_up)
+  dM_Cs__up = 1d0*M_Cs___up*SQRT((dushn__up/ushn___up)^2d0 + (dCsavg_up/Cs_avg_up)^2d0)
+  dM_VA__up = 1d0*M_VA___up*SQRT((dushn__up/ushn___up)^2d0 + (dVAavg_up/VA_avg_up)^2d0)
+  M_Cs___dn = 1d0*ABS(ushn___dn/Cs_avg_dn)
+  M_VA___dn = 1d0*ABS(ushn___dn/VA_avg_dn)
+  dM_Cs__dn = 1d0*M_Cs___dn*SQRT((dushn__dn/ushn___dn)^2d0 + (dCsavg_dn/Cs_avg_dn)^2d0)
+  dM_VA__dn = 1d0*M_VA___dn*SQRT((dushn__dn/ushn___dn)^2d0 + (dVAavg_dn/VA_avg_dn)^2d0)
+ENDIF ELSE BEGIN
+  M_Cs___up = 1d0*ABS(ups_info_str.M_CS.Y[tind,all_m_inds])
+  M_VA___up = 1d0*ABS(ups_info_str.M_VA.Y[tind,all_m_inds])
+  dM_Cs__up = 1d0*ABS(ups_info_str.M_CS.DY[tind,all_m_inds])
+  dM_VA__up = 1d0*ABS(ups_info_str.M_VA.DY[tind,all_m_inds])
+  M_Cs___dn = 1d0*ABS(dns_info_str.M_CS.Y[tind,all_m_inds])
+  M_VA___dn = 1d0*ABS(dns_info_str.M_VA.Y[tind,all_m_inds])
+  dM_Cs__dn = 1d0*ABS(dns_info_str.M_CS.DY[tind,all_m_inds])
+  dM_VA__dn = 1d0*ABS(dns_info_str.M_VA.DY[tind,all_m_inds])
+ENDELSE
+;;----------------------------------------------
+;;  Define magnitudes for vectors
+;;----------------------------------------------
+vi_mag_up      = 1d0*mag__vec(vi_gse_up,/NAN)
+vi_mag_dn      = 1d0*mag__vec(vi_gse_dn,/NAN)
+bo_mag_up      = 1d0*mag__vec(bo_gse_up,/NAN)
+bo_mag_dn      = 1d0*mag__vec(bo_gse_dn,/NAN)
+;;----------------------------------------------
+;;  Define unit vectors for vectors
+;;----------------------------------------------
+vi_uvc_up      = 1d0*unit_vec(vi_gse_up,/NAN)
+vi_uvc_dn      = 1d0*unit_vec(vi_gse_dn,/NAN)
+bo_uvc_up      = 1d0*unit_vec(bo_gse_up,/NAN)
+bo_uvc_dn      = 1d0*unit_vec(bo_gse_dn,/NAN)
+dviuvc_up      = 1d0*dvigse_up/(vi_mag_up # one_3)
+dviuvc_dn      = 1d0*dvigse_dn/(vi_mag_dn # one_3)
+dbouvc_up      = 1d0*dbogse_up/(bo_mag_up # one_3)
+dbouvc_dn      = 1d0*dbogse_dn/(bo_mag_dn # one_3)
+;;----------------------------------------------
+;;  Convert thermal speed to temperature [eV]
+;;----------------------------------------------
+Ti_avg_up      = wi_rms_up^2d0*vtisq2eV[0]            ;;  Ion temperature [eV]
+Ti_avg_dn      = wi_rms_dn^2d0*vtisq2eV[0]            ;;  Ion temperature [eV]
+;;  Perturb to get uncertainties
+wi_ran_up      = wi_rms_up # one_3
+wi_ran_dn      = wi_rms_dn # one_3
+vi_rmg_up      = REPLICATE(0d0,nd[0],3)
+vi_rmg_dn      = vi_rmg_up
+bo_rmg_up      = vi_rmg_up
+bo_rmg_dn      = vi_rmg_up
+FOR jk=0L, 2L DO BEGIN
+  IF (jk[0] EQ 1) THEN CONTINUE
+  wi_ran_up[*,jk]   = wi_rms_up + pert[jk]*dwirms_up
+  wi_ran_dn[*,jk]   = wi_rms_dn + pert[jk]*dwirms_dn
+  vi_rmg_up[*,jk]   = mag__vec(vi_gse_up + pert[jk]*dvigse_up,/NAN)
+  vi_rmg_dn[*,jk]   = mag__vec(vi_gse_dn + pert[jk]*dvigse_dn,/NAN)
+  bo_rmg_up[*,jk]   = mag__vec(bo_gse_up + pert[jk]*dbogse_up,/NAN)
+  bo_rmg_dn[*,jk]   = mag__vec(bo_gse_dn + pert[jk]*dbogse_dn,/NAN)
+ENDFOR
+;;  Define lower and upper bounds for permutted params
+Ti_low_up      = wi_ran_up[*,0]^2d0*vtisq2eV[0]
+Ti_upp_up      = wi_ran_up[*,1]^2d0*vtisq2eV[0]
+Ti_low_dn      = wi_ran_dn[*,0]^2d0*vtisq2eV[0]
+Ti_dnp_dn      = wi_ran_dn[*,1]^2d0*vtisq2eV[0]
+vi_mlo_up      = 1d0*MIN(vi_rmg_up,/NAN,DIMENSION=2)
+vi_mup_up      = 1d0*MAX(vi_rmg_up,/NAN,DIMENSION=2)
+vi_mlo_dn      = 1d0*MIN(vi_rmg_dn,/NAN,DIMENSION=2)
+vi_mup_dn      = 1d0*MAX(vi_rmg_dn,/NAN,DIMENSION=2)
+bo_mlo_up      = 1d0*MIN(bo_rmg_up,/NAN,DIMENSION=2)
+bo_mup_up      = 1d0*MAX(bo_rmg_up,/NAN,DIMENSION=2)
+bo_mlo_dn      = 1d0*MIN(bo_rmg_dn,/NAN,DIMENSION=2)
+bo_mup_dn      = 1d0*MAX(bo_rmg_dn,/NAN,DIMENSION=2)
+;;  Define range uncertainties
+dTiavg_up      = 1d0*ABS(Ti_low_up - Ti_upp_up)/2d0
+dTiavg_dn      = 1d0*ABS(Ti_low_dn - Ti_dnp_dn)/2d0
+dvimag_up      = 1d0*ABS(vi_mlo_up - vi_mup_up)
+dvimag_dn      = 1d0*ABS(vi_mlo_dn - vi_mup_dn)
+dbomag_up      = 1d0*ABS(bo_mlo_up - bo_mup_up)
+dbomag_dn      = 1d0*ABS(bo_mlo_dn - bo_mup_dn)
+;;----------------------------------------------
+;;  Define angle between upstream/downstream
+;;----------------------------------------------
+vi_ang_ud      = perturb_dot_prod_angle(vi_uvc_up,vi_uvc_dn,/NAN,DELTA_V1=dviuvc_up,DELTA_V2=dviuvc_dn)
+bo_ang_ud      = perturb_dot_prod_angle(bo_uvc_up,bo_uvc_dn,/NAN,DELTA_V1=dbouvc_up,DELTA_V2=dbouvc_dn)
+;;  Define angle between shock normal and bulk flow velocity [deg]
+n_mag__up      = 1d0*mag__vec(n_gse__up,/TWO,/NAN)
+n_ugse_up      = 1d0*unit_vec(n_gse__up,/NAN)
+dnugse_up      = 1d0*dngse__up/n_mag__up
+vinup_ang      = perturb_dot_prod_angle(vi_uvc_up,n_ugse_up,/NAN,DELTA_V1=dviuvc_up,DELTA_V2=dnugse_up)
+;;  Define angle between magnetic field and bulk flow velocity [deg]
+viboupang      = perturb_dot_prod_angle(vi_uvc_up,bo_uvc_up,/NAN,DELTA_V1=dviuvc_up,DELTA_V2=dbouvc_dn)
+vibodnang      = perturb_dot_prod_angle(vi_uvc_dn,bo_uvc_dn,/NAN,DELTA_V1=dviuvc_dn,DELTA_V2=dbouvc_dn)
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+udtags         = ['UPSTREAM','DOWNSTREAM']
+vutags         = ['VALS','UNCER']
+gentags        = ['TDATE','RH_METHOD','UNIX','YMDB','THETA_BN_UP','THETA_VN_UP',       $
+                  'V_SHN_UP','NDN_NUP_RATIO','ANG_VI_UPDN','ANG_BO_UPDN','N_SH_GSE',   $
+                  udtags]
+tags           = ['VI_VEC','BO_VEC','VI_MAG','BO_MAG','WI_RMS','TI_AVG','NI_AVG',      $
+                  'BETA_AVG','CS_AVG','VA_AVG','ANG_VI_BO','U_SHN','V_SLOW','V__INT',  $
+                  'V_FAST','M_SLOW','M_FAST','M___CS','M___VA'                         ]
+;;  Upstream results
+val_str_up     = CREATE_STRUCT(tags,vi_gse_up,bo_gse_up,vi_mag_up,bo_mag_up,wi_rms_up,  $
+                                    Ti_avg_up,Ni_avg_up,beta_t_up,Cs_avg_up,VA_avg_up,  $
+                                    viboupang[*,0],ushn___up,Vslow__up,Vint___up,       $
+                                    Vfast__up,Mslow__up,Mfast__up,M_Cs___up,M_VA___up   )
+unc_str_up     = CREATE_STRUCT(tags,dvigse_up,dbogse_up,dvimag_up,dbomag_up,dwirms_up,  $
+                                    dTiavg_up,dNiavg_up,dbetat_up,dCsavg_up,dVAavg_up,  $
+                                    viboupang[*,1],dushn__up,dVslow_up,dVint__up,       $
+                                    dVfast_up,dMslow_up,dMfast_up,dM_Cs__up,dM_VA__up   )
+up_struc       = CREATE_STRUCT(vutags,val_str_up,unc_str_up)
+;;  Downstream results
+val_str_dn     = CREATE_STRUCT(tags,vi_gse_dn,bo_gse_dn,vi_mag_dn,bo_mag_dn,wi_rms_dn,  $
+                                    Ti_avg_dn,Ni_avg_dn,beta_t_dn,Cs_avg_dn,VA_avg_dn,  $
+                                    vibodnang[*,0],ushn___dn,Vslow__dn,Vint___dn,       $
+                                    Vfast__dn,Mslow__dn,Mfast__dn,M_Cs___dn,M_VA___dn   )
+unc_str_dn     = CREATE_STRUCT(tags,dvigse_dn,dbogse_dn,dvimag_dn,dbomag_dn,dwirms_dn,  $
+                                    dTiavg_dn,dNiavg_dn,dbetat_dn,dCsavg_dn,dVAavg_dn,  $
+                                    vibodnang[*,1],dushn__dn,dVslow_dn,dVint__dn,       $
+                                    dVfast_dn,dMslow_dn,dMfast_dn,dM_Cs__dn,dM_VA__dn   )
+dn_struc       = CREATE_STRUCT(vutags,val_str_dn,unc_str_dn)
+;;  Shock analysis results
+TheBn_out      = [[thetbn_up],[dthebn_up]]                   ;;  [N,2]-element array [Val,Unc]
+TheVn_out      = vinup_ang
+Vshn__out      = [[vshn___up],[dvshn__up]]
+compr_out      = [[N2_N1__up],[dN2_N1_up]]
+Ang_Vi_UD      = vi_ang_ud
+Ang_Bo_UD      = bo_ang_ud
+n_sh__gse      = REPLICATE(d,nd[0],3L,2L)
+n_sh__gse[*,*,0] = n_ugse_up
+n_sh__gse[*,*,1] = dnugse_up
+;;  Output structure
+cfa_struc      = CREATE_STRUCT(gentags,tdate,rhmeth_bst,sh_r_unix,sh_r_ymdb,  $
+                                   TheBn_out,TheVn_out,Vshn__out,compr_out,Ang_Vi_UD,    $
+                                   Ang_Bo_UD,n_sh__gse,up_struc,dn_struc)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,cfa_struc
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

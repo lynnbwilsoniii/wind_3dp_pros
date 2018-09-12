@@ -1,0 +1,682 @@
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.3806504d-23     ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+
+invdenf = 1d-6*(2d0*!DPI)^2*(me*epo/qq^2)  ; => [cm^(-3) s^2]
+
+fcefac  = qq/me*1d-9/(2d0*!DPI)
+fpefac  = SQRT(1d6*qq^2/me/epo)/(2d0*!DPI)
+;-----------------------------------------------------------------------------------------
+; => Load data
+;-----------------------------------------------------------------------------------------
+date = '111398'
+date = '040900'
+date = '050300'
+date = '052600'
+date = '061000'
+date = '062600'
+date = '071000'
+date = '072300'
+date = '080400'
+date = '081500'
+date = '100301'
+date = '102401'
+date = '111501'
+date = '072002'
+date = '101002'
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate  = mydate.DATE[0]    ; -('YYYYMMDD')
+ldate  = STRMID(mdate,4L,4L)+STRMID(mdate,0L,4L)
+tdate  = mydate.TDATE[0]
+;-----------------------------------------------------------------------------------------
+; => Find Wind/3DP IDL Save Files
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+
+
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;-----------------------------------------------------------------------------------------
+; => Load mag data
+;-----------------------------------------------------------------------------------------
+t = ['1998-11-13/13:00:00','1998-11-14/02:00:00'] 
+t = ['2000-04-09/19:48:00','2000-04-10/14:43:00']
+t = ['2000-05-02/20:00:00','2000-05-03/10:00:00']
+t = ['2000-05-25/15:52:00','2000-05-26/11:32:00']
+t = ['2000-06-10/05:48:00','2000-06-10/16:00:00']
+t = ['2000-06-26/16:00:00','2000-06-26/22:00:00']
+t = ['2000-07-09/20:00:00','2000-07-10/08:00:00']
+t = ['2000-07-23/05:10:00','2000-07-23/12:48:00']
+t = ['2000-08-03/19:58:00','2000-08-04/08:00:00']
+t = ['2000-08-15/19:00:00','2000-08-16/00:00:00']
+t = ['2001-10-03/09:36:00','2001-10-04/05:00:00']
+t = ['2001-10-23/13:08:00','2001-10-24/09:10:00']
+t = ['2001-11-14/00:00:00','2001-11-16/06:00:00']
+t = ['2002-07-20/00:00:00','2002-07-22/02:00:00']
+t = ['2002-10-09/20:00:00','2002-10-10/04:00:00']
+tr3 = time_double(t)
+mag3  = read_wind_mfi(TRANGE=tr3)
+t3x   = mag3.MAG.X
+bmag4 = mag3.MAG.Y
+magf4 = mag3.BGSE.Y
+nt    = N_ELEMENTS(t3x) 
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+tplot_options,'xmargin',[18,12]
+tplot_options,'ymargin',[5,5]
+tplot,nn0,TRANGE=tr3
+
+zero  = replicate(0e0,nt)
+magf5 = mag3.BGSM.Y
+data  = [[magf4],[bmag4],[zero]]
+store_data,'B3_GSE_mag',data={x:t3x,y:data}
+data  = [[magf5],[bmag4],[zero]]
+store_data,'B3_GSM_mag',data={x:t3x,y:data}
+options,['B3_GSE_mag','B3_GSM_mag'],'yrange',[-560.,560.]
+options,['B3_GSE_mag','B3_GSM_mag'],'COLORS',[250,150,50,0,0]
+
+
+fce   = fcefac[0]*bmag4*1d-3
+store_data,'fce',DATA={X:mag3.MAG.X,Y:fce}
+options,'fce','YTITLE','f!Dce!N (kHz)'
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => TDS times
+;-----------------------------------------------------------------------------------------
+temp       = tds_whist_ehole_times(DATE=date[0],FIXFILE=fixfile)
+ymdb_whist = temp.WHISTLER_T
+unix_whist = temp.WHISTLER_UNX
+;-----------------------------------------------------------------------------------------
+; => Load orbit data
+;-----------------------------------------------------------------------------------------
+tds_magneto_orbits,DATE=date
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+tplot_options, var_label=['Wind_Radial_Distance','Wind_L-Shell','Wind_MLT']
+;-----------------------------------------------------------------------------------------
+; => Calc Density, temp, etc... for ions
+;-----------------------------------------------------------------------------------------
+pesa_low_moment_calibrate,DATE=date,/NOLOAD,PLM=apl,PLBM=aplb,TRANGE=tr3
+
+pesa_high_moment_calibrate,DATE=date,/NOLOAD,PHM=aph,PHBM=aphb,TRANGE=tr3
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+options,['N_i2','N_ph'],'ylog',1
+nna = tnames([nn0,'N_i2','N_ph'])
+tplot,nna
+time_bar,unix_whist,VARNAME=nna,COLOR=250L
+
+;-----------------------------------------------------------------------------------------
+; => fix Pesa Low data
+;-----------------------------------------------------------------------------------------
+get_data,'N_i2',DATA=ions,DLIM=dlim,LIM=lim
+idens      = ions.Y
+test       = idens
+get_data,'N_ph',DATA=iph,DLIM=dlph,LIM=liph
+iphden     = iph.Y
+iphtime    = iph.X
+IF (date EQ '111398') THEN i_max = 350.
+IF (date EQ '040900') THEN i_max = 100.
+IF (date EQ '050300') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '052600') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '061000') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '062600') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '071000') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '101002') THEN i_max = 950.  ; => never gets above this
+badd       = WHERE(idens GT i_max,bdd,COMPLEMENT=goodd)
+IF (bdd GT 0L) THEN idens[badd] = f
+test2      = interp(idens[goodd],ions.X[goodd],ions.X,/NO_EXTRAP)
+store_data,'N_i2',DATA={X:ions.X,Y:test2},DLIM=dlim,LIM=lim
+badd       = WHERE(iphden GT i_max,bdd,COMPLEMENT=goodd)
+IF (bdd GT 0L) THEN iphden[badd] = f
+test2      = interp(iphden[goodd],iphtime[goodd],iphtime,/NO_EXTRAP)
+store_data,'N_ph',DATA={X:iphtime,Y:test2},DLIM=dlph,LIM=liph
+
+get_data,'N_ph',DATA=ions,DLIM=dlim,LIM=lim
+idens      = ions.Y
+fpe        = fpefac[0]*SQRT(idens)*1d-3
+store_data,'fpe',DATA={X:ions.X,Y:fpe}
+options,'fpe','YTITLE','f!Dpe!N (kHz)'
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+
+stime  = STRMID(t[*],0,10)+'_'+STRMID(t[*],11,2)+STRMID(t[*],14,2)
+sfname = stime[0]+'_'+stime[1]+'_TDS-Locations_whistlers-red'
+prefn  = 'Wind_MFI-3sGSE_PL-Ni_PH-Ni_'
+nna = tnames([nn0,'N_i2','N_ph'])
+popen,prefn[0]+sfname[0],/PORT
+  tplot,nna
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+pclose
+
+nna = tnames([nn0,'V_sw2','Vel_ph','T_i2','Tavg_ph'])
+tplot,nna
+time_bar,unix_whist,VARNAME=nna,COLOR=250L
+prefn  = 'Wind_MFI-3sGSE_PL-Ti-Vel_PH-Ti-Vel_'
+popen,prefn[0]+sfname[0],/PORT
+  tplot,nna
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+pclose
+;-----------------------------------------------------------------------------------------
+; => Look at SST 
+;-----------------------------------------------------------------------------------------
+; => Write SST Open and Foil data to ASCII files if necessary
+
+RESTORE,mfiles[2]
+guni = 'df'
+guni = 'flux'
+guni = 'eflux'
+write_padspec_ascii,'sf',NUM_PA=10L,DAT_ARR=asf,UNITS=guni,/G_MAGF,/NO_KILL
+write_padspec_ascii,'so',NUM_PA=10L,DAT_ARR=aso,UNITS=guni,/G_MAGF,/NO_KILL
+
+; => Read in SST Open and Foil data from ASCII files
+name      = 'sf'
+units     = 'flux'
+padspec_ascii_to_tplot,name,DATE=date,/DAT_NORM,/DAT_CLN,UNITS=units
+
+store_data,delete=tnames('nsf_pads_'+units[0]+'_c*')
+store_data,delete=tnames('nsf_pads_'+units[0]+'_n*')
+store_data,delete=tnames('nsf_pads_'+units[0]+'-2-*')
+
+name      = 'so'
+units     = 'flux'
+padspec_ascii_to_tplot,name,DATE=date,/DAT_NORM,/DAT_CLN,UNITS=units
+
+store_data,delete=tnames('nso_pads_'+units[0]+'_c*')
+store_data,delete=tnames('nso_pads_'+units[0]+'_n*')
+store_data,delete=tnames('nso_pads_'+units[0]+'-2-*')
+
+prefn  = 'Wind_MFI-3sGSE_SST-Open-Foil-Omni-Flux_'
+nna    = tnames([nn0,'nsf_pads_'+units[0]+'_omni_cln','nso_pads_'+units[0]+'_omni_cln'])
+tplot,nna
+time_bar,unix_whist,VARNAME=nna,COLOR=250L
+
+popen,prefn[0]+sfname[0],/PORT
+  tplot,nna
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+pclose
+;-----------------------------------------------------------------------------------------
+; => Load WAVES data
+;-----------------------------------------------------------------------------------------
+fl        = 4.
+fh        = 13e3
+yscl      = 'log'
+wave_tnr_rad_to_tplot,DATE=date,FLOW=fl,FHIGH=fh,YSCL=yscl,TRANGE=tr3,/NODCBLS
+
+pref = ['TNR','RAD1','RAD2']
+wnam = tnames(pref[*]+'_'+date[0])
+;options,wnam,'ZTITLE','dB Above'+'!C'+'Background'
+options,wnam,'ZTITLE','!7l!3'+'V/!9S!3'+'(Hz)'
+options,tnames(pref[0]+'_'+date[0]),'YRANGE',[4.00000,245.148]
+
+pref = ['TNR','RAD1']
+wnam = tnames(pref[*]+'_'+date[0])
+nna  = tnames([nn0,'N_i2','N_ph',wnam])
+tplot,nna,TRANGE=tr3
+time_bar,unix_whist,VARNAME=nna,COLOR=250L
+
+stime  = STRMID(t[*],0,10)+'_'+STRMID(t[*],11,2)+STRMID(t[*],14,2)
+sfname = stime[0]+'_'+stime[1]+'_TDS-Locations_whistlers-red'
+prefn  = 'Wind_MFI-3sGSE_Ni_RAD1-TNR_'
+popen,prefn[0]+sfname[0],/PORT
+  tplot,nna
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+pclose
+
+get_data,'fce',data=test0,dlim=dlim0,lim=lim0
+get_data,'fpe',data=test1,dlim=dlim1,lim=lim1
+temp   = interp(test0.Y,test0.X,test1.X,/NO_EXTRAP)
+upperh = SQRT(temp^2 + fpe^2)
+freqs  = [[temp],[fpe],[upperh]]
+store_data,'freq_fce_fpe_fuh',DATA={X:test1.X,Y:freqs}
+options,'freq_fce_fpe_fuh','YTITLE','f!Dce!N and f!Dpe!N'+'!C'+'Frequency (kHz)'
+options,'freq_fce_fpe_fuh','COLORS',[255,255,255]
+options,'freq_fce_fpe_fuh','YLOG',1
+;options,'freq_fce_fpe_fuh','YRANGE',[4.00000,245.148]
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+
+
+lims = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',1.5)
+nna  = tnames([nn0[0],'N_i2','N_ph',wnam[1]])
+nn2  = tnames(['freq_fce_fpe_fuh'])
+oplot_tplot_spec,nna,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr3
+time_bar,unix_whist,VARNAME=nna,COLOR=250L
+
+nna  = tnames([nn0[0],'N_i2','N_ph',wnam[1]])
+nn2  = tnames(['freq_fce_fpe_fuh'])
+oplot_tplot_spec,nna,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr3
+prefn  = 'Wind_MFI-3sMAG_PL-Ni_PH-Ni_TNR-fce-fpe-fuh_'
+popen,prefn[0]+sfname[0],/PORT
+  oplot_tplot_spec,nna,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr3
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+pclose
+
+nna  = tnames([nn0[0],'N_i2','N_ph',wnam[0]])
+nn2  = tnames(['freq_fce_fpe_fuh'])
+oplot_tplot_spec,nna,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr3
+prefn  = 'Wind_MFI-3sMAG_PL-Ni_PH-Ni_RAD1-fce-fpe-fuh_'
+popen,prefn[0]+sfname[0],/PORT
+  oplot_tplot_spec,nna,nn2,LIMITS=lims,/NOMSSG,TRANGE=tr3
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+pclose
+;-----------------------------------------------------------------------------------------
+; => fix Pesa Low data
+;-----------------------------------------------------------------------------------------
+nna = tnames([nn0,'N_i2','Wind_Radial_Distance','Wind_MLT'])
+tplot,nna
+time_bar,unix_whist,VARNAME=nna,COLOR=250L
+
+
+store_data,delete=tnames()
+delvar,ael,aelb,aeh,aehb,apl,aplb,aph,aphb
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Get orbit data for each day
+;-----------------------------------------------------------------------------------------
+date = '111398'
+date = '040900'
+date = '050300'
+date = '052600'
+date = '061000'
+date = '062600'
+date = '071000'
+date = '072300'
+date = '080400'
+date = '081500'
+date = '100301'
+date = '102401'
+date = '111501'
+date = '072002'
+date = '101002'
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate  = mydate.DATE[0]    ; -('YYYYMMDD')
+ldate  = STRMID(mdate,4L,4L)+STRMID(mdate,0L,4L)
+tdate  = mydate.TDATE[0]
+
+
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','111501','072002',$
+          '101002']
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN $
+  temp_whist_orbit_plots,DATE=gdates[j]
+
+
+gtr         = [['1998-11-13/13:00:00','1998-11-14/02:00:00'],$
+               ['2000-04-09/19:48:00','2000-04-10/14:43:00'],$
+               ['2000-05-02/20:00:00','2000-05-03/10:00:00'],$
+               ['2000-05-25/15:52:00','2000-05-26/11:32:00'],$
+               ['2000-06-10/05:48:00','2000-06-10/16:00:00'],$
+               ['2000-06-26/16:00:00','2000-06-26/22:00:00'],$
+               ['2000-07-09/20:00:00','2000-07-10/08:00:00'],$
+               ['2000-07-23/05:10:00','2000-07-23/12:48:00'],$
+               ['2000-08-03/19:58:00','2000-08-04/08:00:00'],$
+               ['2000-08-15/19:00:00','2000-08-16/03:00:00'],$
+               ['2001-10-03/09:36:00','2001-10-04/05:00:00'],$
+               ['2001-10-23/13:08:00','2001-10-24/09:10:00'],$
+               ['2001-11-14/00:00:00','2001-11-16/06:00:00'],$
+               ['2002-07-21/02:00:00','2002-07-22/00:24:00'],$
+               ['2002-10-09/20:00:00','2002-10-10/04:00:00'] ]
+
+mydates     = my_str_date(DATE=gdates)
+tdates      = mydates.TDATE
+magnet_test = whistler_insta_loc_read()
+scets       = magnet_test.SCETS
+mts         = my_time_string(scets,STR=1,FORM=1,/NOMSSG)
+unix_whist = mts.UNIX
+; => 16 orbits examined [2001-11-15 not used yet]
+; => 13 orbits with whistlers
+
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN      $
+  tr0        = time_double(gtr[*,j])          & $
+  good_wh    = WHERE(unix_whist GE tr0[0] AND unix_whist LE tr0[1],gdwh)          & $
+  IF (gdwh GT 0) THEN unix_wh = unix_whist[good_wh] ELSE unix_wh = !VALUES.D_NAN  & $
+  n_whist    = TOTAL(FINITE(unix_wh))         & $
+  PRINT,';  # of Whistlers on '+tdates[j]+' : '+STRTRIM(n_whist,2)
+;  # of Whistlers on 1998-11-13 : 24.0000
+;  # of Whistlers on 2000-04-09 : 35.0000
+;  # of Whistlers on 2000-05-03 : 12.0000
+;  # of Whistlers on 2000-05-26 : 33.0000
+;  # of Whistlers on 2000-06-10 : 19.0000
+;  # of Whistlers on 2000-06-26 : 9.00000
+;  # of Whistlers on 2000-07-10 : 15.0000
+;  # of Whistlers on 2000-07-23 : 26.0000
+;  # of Whistlers on 2000-08-04 : 19.0000
+;  # of Whistlers on 2000-08-15 : 8.00000
+;  # of Whistlers on 2001-10-03 : 1.00000
+;  # of Whistlers on 2001-10-24 : 14.0000
+;  # of Whistlers on 2001-11-15 : 0.00000
+;  # of Whistlers on 2002-10-10 : 30.0000
+
+
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','111501','072002',$
+          '101002']
+gtr         = [['1998-11-13/13:00:00','1998-11-14/02:00:00'],$
+               ['2000-04-09/19:48:00','2000-04-10/14:43:00'],$
+               ['2000-05-02/20:00:00','2000-05-03/10:00:00'],$
+               ['2000-05-25/15:52:00','2000-05-26/11:32:00'],$
+               ['2000-06-10/05:48:00','2000-06-10/16:00:00'],$
+               ['2000-06-26/16:00:00','2000-06-26/22:00:00'],$
+               ['2000-07-09/20:00:00','2000-07-10/08:00:00'],$
+               ['2000-07-23/05:10:00','2000-07-23/12:48:00'],$
+               ['2000-08-03/19:58:00','2000-08-04/08:00:00'],$
+               ['2000-08-15/19:00:00','2000-08-16/03:00:00'],$
+               ['2001-10-03/09:36:00','2001-10-04/05:00:00'],$
+               ['2001-10-23/13:08:00','2001-10-24/09:10:00'],$
+               ['2001-11-14/00:00:00','2001-11-16/06:00:00'],$
+               ['2002-07-21/02:00:00','2002-07-22/00:24:00'],$
+               ['2002-10-09/20:00:00','2002-10-10/04:00:00'] ]
+
+mydates     = my_str_date(DATE=gdates)
+tdates      = mydates.TDATE
+
+magnet_beam_test = whistler_insta_loc_read(LOC_ESOURCE='magneto',FREE_ESOURCE='beams')
+magnet_anis_test = whistler_insta_loc_read(LOC_ESOURCE='magneto',FREE_ESOURCE='aniso')
+plasma_anis_test = whistler_insta_loc_read(LOC_ESOURCE='radbelt',FREE_ESOURCE='aniso')
+;-----------------------------------
+; => Define selection parameters
+;-----------------------------------
+; => Phase Velocities
+Vph_flnmgbm = magnet_beam_test.VPH_FLOW_MN
+Vph_flxmgbm = magnet_beam_test.VPH_FLOW_MX
+Vph_fhnmgbm = magnet_beam_test.VPH_FHIGH_MN
+Vph_fhxmgbm = magnet_beam_test.VPH_FHIGH_MX
+
+Vph_flnmgan = magnet_anis_test.VPH_FLOW_MN
+Vph_flxmgan = magnet_anis_test.VPH_FLOW_MX
+Vph_fhnmgan = magnet_anis_test.VPH_FHIGH_MN
+Vph_fhxmgan = magnet_anis_test.VPH_FHIGH_MX
+
+Vph_flnplan = plasma_anis_test.VPH_FLOW_MN
+Vph_flxplan = plasma_anis_test.VPH_FLOW_MX
+Vph_fhnplan = plasma_anis_test.VPH_FHIGH_MN
+Vph_fhxplan = plasma_anis_test.VPH_FHIGH_MX
+; => Define L-Shells
+w_lshmgbm   = magnet_beam_test.WIND_L_SHELL
+w_lshmgan   = magnet_anis_test.WIND_L_SHELL
+w_lshplan   = plasma_anis_test.WIND_L_SHELL
+;----------------------------------------------------------------
+; => Define separation tests (by finite Vph and Radial Distance)
+;----------------------------------------------------------------
+lshell      = 15.
+; => Make sure we only look at cases with finite phase velocity estimates from 
+;      cold plasma dispersion estimates
+test_fmgbm = FINITE(Vph_flnmgbm) AND FINITE(Vph_flxmgbm) AND FINITE(Vph_fhnmgbm) $
+               AND FINITE(Vph_fhxmgbm)
+test_fmgan = FINITE(Vph_flnmgan) AND FINITE(Vph_flxmgan) AND FINITE(Vph_fhnmgan) $
+               AND FINITE(Vph_fhxmgan)
+test_fplan = FINITE(Vph_flnplan) AND FINITE(Vph_flxplan) AND FINITE(Vph_fhnplan) $
+               AND FINITE(Vph_fhxplan)
+; => Make sure we only look at cases within a specific L-shell
+test_lmgbm = (w_lshmgbm LE lshell)
+test_lmgan = (w_lshmgan LE lshell)
+test_lplan = (w_lshplan LE lshell)
+; => Combine two tests
+;testmgbm   = test_fmgbm AND test_lmgbm
+;testmgan   = test_fmgan AND test_lmgan
+;testplan   = test_fplan AND test_lplan
+testmgbm   = test_lmgbm
+testmgan   = test_lmgan
+testplan   = test_lplan
+
+good0      = WHERE(testmgbm,gd0)
+good1      = WHERE(testmgan,gd1)
+good2      = WHERE(testplan,gd2)
+; => For L < 15 (no constraint on Vph)
+;          28          42         172
+
+;-------------------------
+; => Define whistler SCETs
+;-------------------------
+scets_mgbm       = magnet_beam_test.SCETS[good0]
+scets_mgan       = magnet_anis_test.SCETS[good1]
+scets_plan       = plasma_anis_test.SCETS[good2]
+
+mts0        = my_time_string(scets_mgbm,STR=1,FORM=1,/NOMSSG)
+mts1        = my_time_string(scets_mgan,STR=1,FORM=1,/NOMSSG)
+mts2        = my_time_string(scets_plan,STR=1,FORM=1,/NOMSSG)
+unix_whist0 = mts0.UNIX
+unix_whist1 = mts1.UNIX
+unix_whist2 = mts2.UNIX
+
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN      $
+  tr0        = time_double(gtr[*,j])          & $
+  good_wh0   = WHERE(unix_whist0 GE tr0[0] AND unix_whist0 LE tr0[1],gdwh0)  & $
+  good_wh1   = WHERE(unix_whist1 GE tr0[0] AND unix_whist1 LE tr0[1],gdwh1)  & $
+  good_wh2   = WHERE(unix_whist2 GE tr0[0] AND unix_whist2 LE tr0[1],gdwh2)  & $
+  IF (gdwh0 GT 0) THEN unix_wh0 = unix_whist0[good_wh0] ELSE unix_wh0 = !VALUES.D_NAN  & $
+  IF (gdwh1 GT 0) THEN unix_wh1 = unix_whist1[good_wh1] ELSE unix_wh1 = !VALUES.D_NAN  & $
+  IF (gdwh2 GT 0) THEN unix_wh2 = unix_whist2[good_wh2] ELSE unix_wh2 = !VALUES.D_NAN  & $
+  n_whist0   = TOTAL(FINITE(unix_wh0))         & $
+  n_whist1   = TOTAL(FINITE(unix_wh1))         & $
+  n_whist2   = TOTAL(FINITE(unix_wh2))         & $
+  PRINT,';  # of Beam/Flattop Whistlers in Magneto. on '+tdates[j]+' : '+STRTRIM(n_whist0,2)  & $
+  PRINT,';  # of Anis. Whistlers in Magneto. on '+tdates[j]+'        : '+STRTRIM(n_whist1,2)  & $
+  PRINT,';  # of Anis. Whistlers in Rad. Belts. on '+tdates[j]+'     : '+STRTRIM(n_whist2,2)  & $
+  PRINT,'; '
+;  # of Beam/Flattop Whistlers in Magneto. on 1998-11-13 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 1998-11-13        : 0.00000
+;  # of Anis. Whistlers in Rad. Belts. on 1998-11-13     : 24.0000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2000-04-09 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2000-04-09        : 0.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2000-04-09     : 35.0000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2000-05-03 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2000-05-03        : 0.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2000-05-03     : 12.0000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2000-05-26 : 8.00000
+;  # of Anis. Whistlers in Magneto. on 2000-05-26        : 1.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2000-05-26     : 23.0000
+;  # of B/F Whistlers in Rad. Belts. on 2000-05-26       : 1.00000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2000-06-10 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2000-06-10        : 14.0000
+;  # of Anis. Whistlers in Rad. Belts. on 2000-06-10     : 5.00000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2000-06-26 : 8.00000
+;  # of Anis. Whistlers in Magneto. on 2000-06-26        : 0.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2000-06-26     : 1.00000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2000-07-10 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2000-07-10        : 3.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2000-07-10     : 12.0000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2000-07-23 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2000-07-23        : 0.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2000-07-23     : 25.0000
+;  # of B/F Whistlers in Rad. Belts. on 2000-07-23       : 1.00000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2000-08-04 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2000-08-04        : 19.0000
+;  # of Anis. Whistlers in Rad. Belts. on 2000-08-04     : 0.00000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2000-08-15 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2000-08-15        : 2.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2000-08-15     : 6.00000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2001-10-03 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2001-10-03        : 0.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2001-10-03     : 0.00000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2001-10-24 : 12.0000
+;  # of Anis. Whistlers in Magneto. on 2001-10-24        : 2.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2001-10-24     : 0.00000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2001-11-15 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2001-11-15        : 0.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2001-11-15     : 0.00000
+; 
+;  # of Beam/Flattop Whistlers in Magneto. on 2002-10-10 : 0.00000
+;  # of Anis. Whistlers in Magneto. on 2002-10-10        : 1.00000
+;  # of Anis. Whistlers in Rad. Belts. on 2002-10-10     : 29.0000
+; 
+
+
+
+
+t = ['1998-11-13/13:00:00','1998-11-14/02:00:00'] 
+t = ['2000-04-09/19:48:00','2000-04-10/14:43:00']
+t = ['2000-05-02/20:00:00','2000-05-03/10:00:00']
+t = ['2000-05-25/15:52:00','2000-05-26/11:32:00']
+t = ['2000-06-10/05:48:00','2000-06-10/16:00:00']
+t = ['2000-06-26/16:00:00','2000-06-26/22:00:00']
+t = ['2000-07-09/20:00:00','2000-07-10/08:00:00']
+t = ['2000-07-23/05:10:00','2000-07-23/12:48:00']
+t = ['2000-08-03/19:58:00','2000-08-04/08:00:00']
+t = ['2000-08-15/19:00:00','2000-08-16/00:00:00']
+t = ['2001-10-03/09:36:00','2001-10-04/05:00:00']
+t = ['2001-10-23/13:08:00','2001-10-24/09:10:00']
+t = ['2001-11-14/00:00:00','2001-11-16/06:00:00']
+t = ['2002-10-09/20:00:00','2002-10-10/04:00:00']
+tr3 = time_double(t)
+mag3  = read_wind_mfi(TRANGE=tr3)
+t3x   = mag3.MAG.X
+bmag4 = mag3.MAG.Y
+magf4 = mag3.BGSE.Y
+nt    = N_ELEMENTS(t3x) 
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+tplot_options,'xmargin',[18,12]
+tplot_options,'ymargin',[5,5]
+tplot,nn0,TRANGE=tr3
+
+tds_magneto_orbits,DATE=date
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+tplot_options, var_label=['Wind_Radial_Distance','Wind_L-Shell','Wind_MLT']
+
+R_E         = 6.37814d3                ; => Earth's Equitorial Radius (km)
+get_data,'Wind_Radial_Distance',DATA=test
+w_rad0      = test.Y
+w_rad_t     = test.X
+get_data,'Wind_GSM_Location',DATA=test
+w_gsmx      = test.Y[*,0]/R_E
+w_gsmy      = test.Y[*,1]/R_E
+w_gsmz      = test.Y[*,2]/R_E
+w_gsm_t     = test.X
+n_gsm       = N_ELEMENTS(w_gsm_t) - 1L
+
+temp       = tds_whist_ehole_times(DATE=date[0],FIXFILE=fixfile)
+ymdb_whist = temp.WHISTLER_T
+mts        = my_time_string(ymdb_whist,STR=1,FORM=1,/NOMSSG)
+unix_whist = mts.UNIX
+n_whist    = N_ELEMENTS(unix_whist)
+
+whist_xgsm = interp(w_gsmx,w_gsm_t,unix_whist,/NO_EXTRAP)
+whist_ygsm = interp(w_gsmy,w_gsm_t,unix_whist,/NO_EXTRAP)
+whist_zgsm = interp(w_gsmz,w_gsm_t,unix_whist,/NO_EXTRAP)
+
+WINDOW,1,XSIZE=700,YSIZE=700,RETAIN=2
+!P.MULTI  = 0
+faket  = DINDGEN(361)*(!DPI/18d1)
+faker  = REPLICATE(1.,361)
+la     = 40
+ttle   = 'Wind Petal Orbit: '+tdate[0]
+yttl   = '!7D!3 = start,  !9V!3 = end'
+xttl   = '* = Whistler Wave Locations'
+pstr   = {XRANGE:[-20,20],YRANGE:[-20,20],XSTYLE:1,YSTYLE:1,NODATA:1,$
+          TITLE:ttle,XTITLE:xttl,YTITLE:yttl}
+cols   = [250L,150L,50L]
+
+; => Define file name for plot
+pref  = 'Wind-Petal-Orbits_Whistler_polar-locations_XY-GSE-Plane_'
+fname = pref[0]+tdate[0]
+
+popen,fname[0],/LAND
+
+PLOT,w_gsmx,w_gsmy,_EXTRA=pstr
+  OPLOT,w_gsmx,w_gsmy,COLOR=250L
+  OPLOT,[w_gsmx[0]],[w_gsmy[0]],PSYM=5,COLOR=250L,SYMSIZE=2.0
+  OPLOT,[w_gsmx[n_gsm]],[w_gsmy[n_gsm]],PSYM=4,COLOR=250L,SYMSIZE=2.0
+  ; => Plot whistler locations
+  OPLOT,whist_xgsm,whist_ygsm,PSYM=2,COLOR=150L
+  FOR j=0L, n_whist - 1L DO BEGIN                           $
+    jstr  = STRTRIM(j+1L,2L)                              & $
+    xposi = whist_xgsm[j] - ABS(whist_xgsm[j])*5d-1       & $
+    XYOUTS,xposi[0],whist_ygsm[j],jstr[0],/DATA
+
+  OPLOT,faker,faket,COLOR=50L,LINESTYLE=2,/POLAR
+  OPLOT,faker*5,faket,COLOR=50L,LINESTYLE=2,/POLAR
+  OPLOT,faker*10,faket,COLOR=50L,LINESTYLE=2,/POLAR
+  OPLOT,faker*15,faket,COLOR=50L,LINESTYLE=2,/POLAR
+  OPLOT,faker*20,faket,COLOR=50L,LINESTYLE=2,/POLAR
+  OPLOT,faker*25,faket,COLOR=50L,LINESTYLE=2,/POLAR
+  OPLOT,[0e0,0e0],[-2e1,2e1],LINESTYLE=4,COLOR=150L
+  OPLOT,[-2e1,2e1],[0e0,0e0],LINESTYLE=4,COLOR=150L
+  OPLOT,[-2e1,2e1],[-2e1,2e1],LINESTYLE=4,COLOR=150L
+  OPLOT,[-2e1,2e1],[2e1,-2e1],LINESTYLE=4,COLOR=150L
+  XYOUTS,faker[0]*COS(faket[la]),faker[0]*SIN(faket[la]),'1.0',/DATA,COLOR=50L
+  XYOUTS,5*faker[0]*COS(faket[la]),5*faker[0]*SIN(faket[la]),'5.0',/DATA,COLOR=50L
+  XYOUTS,10*faker[0]*COS(faket[la]),10*faker[0]*SIN(faket[la]),'10.0',/DATA,COLOR=50L
+  XYOUTS,15*faker[0]*COS(faket[la]),15*faker[0]*SIN(faket[la]),'15.0',/DATA,COLOR=50L
+  XYOUTS,20*faker[0]*COS(faket[la]),20*faker[0]*SIN(faket[la]),'20.0',/DATA,COLOR=50L
+  XYOUTS,-18*faker[0],0e0,'Dusk',/DATA,COLOR=200L,CHARSIZE=1.2
+  XYOUTS,16*faker[0],0e0,'Dawn',/DATA,COLOR=200L,CHARSIZE=1.2
+  XYOUTS,-4e0,-18*faker[0],'Midnight',/DATA,COLOR=200L,CHARSIZE=1.2
+  XYOUTS,-4e0,18*faker[0],'Noon',/DATA,COLOR=200L,CHARSIZE=1.2
+
+pclose
+
+wdelete,0
+wdelete,1
+store_data,delete=tnames()
+
+
+

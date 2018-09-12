@@ -1,0 +1,2793 @@
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.3806504d-23     ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+
+invdenf = 1d-6*(2d0*!DPI)^2*(me*epo/qq^2)  ; => [cm^(-3) s^2]
+
+; => Factors for electron cyclotron and plasma frequencies [Hz]
+fcefac  = qq/me*1d-9/(2d0*!DPI)
+fpefac  = SQRT(1d6*qq^2/me/epo)/(2d0*!DPI)
+; => Factors for proton cyclotron and plasma frequencies [Hz]
+fcpfac  = qq/mp*1d-9/(2d0*!DPI)
+fppfac  = SQRT(1d6*qq^2/mp/epo)/(2d0*!DPI)
+; => Factor for "electron Alfven" speed
+eAlfvenf = 1d-9/SQRT(2d0*muo*me*1d6)
+; => Factor for electron cyclotron frequency [rad/s]
+wcefac   = qq*1d-9/me
+; => Factor for electron plasma frequency [rad/s]
+wpefac   = SQRT(qq^2*1d6/(epo*me))
+;-----------------------------------------------------------------------------------------
+; => Dates and time ranges and TDSS event numbers
+;-----------------------------------------------------------------------------------------
+date   = '121097'
+t      = ['1997-12-10/03:33:00','1997-12-10/05:33:00']
+tramp  = '1997-12-10/04:33:14.664'
+evns   = [03408599L]
+ni_up  = 11.18    ; => Avg. upstream density [cm^(-3)]
+
+
+date   = '082698'
+t      = ['1998-08-26/05:40:00','1998-08-26/07:40:00']  ; -For moment writing
+tramp  = '1998-08-26/06:40:24.972'
+evns   = [00010488L,00010618L,00010684L,00010807L,00010832L,00010868L,00010881L,00010888L,00010895L,00010923L,00010937L]
+ni_up  = 6.68     ; => Avg. upstream density [cm^(-3)]
+
+
+date   = '092498'
+t      = ['1998-09-24/22:20:00','1998-09-25/00:30:00']
+tramp  = '1998-09-24/23:20:37.374'
+evns   = [02011249L,02011723L,02011820L,02013066L,02013165L,02014864L,02015299L,02015304L,02015635L,02015650L,02015691L,02017428L,02017555L,02018091L]
+ni_up  = 8.40     ; => Avg. upstream density [cm^(-3)]
+
+
+date   = '021100'
+t      = ['2000-02-11/22:33:00','2000-02-12/00:33:00']
+tramp  = '2000-02-11/23:33:55.319'
+evns   = [23145465L,23145474L,23145484L,23145603L,23145610L,23153276L,23154909L,23155087L]
+ni_up  = 5.31     ; => Avg. upstream density [cm^(-3)]
+;-----------------------------------------------------------------------------------------
+; => 
+;-----------------------------------------------------------------------------------------
+tr3   = time_double(t)
+tura  = time_double(tramp)
+
+mydate = my_str_date(DATE=date)
+sdate  = mydate.S_DATE[0]  ; -('MMDDYY')
+ldate  = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate  = mydate.TDATE[0]   ; => 'YYYY-MM-DD'
+;-----------------------------------------------------------------------------------------
+; => Load MFI data
+;-----------------------------------------------------------------------------------------
+htr_mfi2tplot,DATE=date
+get_data,'WIND_B3_HTR(GSE,nT)',DATA=magf_htr
+
+mag3  = read_wind_mfi(TRANGE=tr3)
+t3x   = mag3.MAG.X
+bmag4 = mag3.MAG.Y
+magf4 = mag3.BGSE.Y
+nt    = N_ELEMENTS(t3x) 
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+;-----------------------------------------------------------------------------------------
+; => Get TDS Times
+;-----------------------------------------------------------------------------------------
+test   = tdss_sort_relevant(DATE=date,FIXFILE=1)
+scets  = test.SCETS       ; => e.g. '2000-10-03/00:01:11.598'
+ntds   = N_ELEMENTS(scets)
+tdsst  = test.TIMES*1d-3  ; => convert to seconds
+tdssen = test.EVENT_N     ; => Event #
+tsunix = time_double(scets)  ; => Unix start time of TDSS samples
+tdsevl = DBLARR(ntds)
+FOR j=0L, ntds - 1L DO tdsevl[j] = MAX(tdsst[j,*],/NAN) - MIN(tdsst[j,*],/NAN)
+teunix = tsunix + tdsevl
+
+good   = array_where(evns,tdssen,/N_UNIQ)
+IF (good[0] GE 0) THEN gscets = scets[good[*,1]]  ELSE gscets = ''
+IF (good[0] GE 0) THEN gsunix = tsunix[good[*,1]] ELSE gsunix = 0d0
+IF (good[0] GE 0) THEN geunix = teunix[good[*,1]] ELSE geunix = 0d0
+IF (good[0] GE 0) THEN gtdevl = tdsevl[good[*,1]] ELSE gtdevl = 0d0
+
+ntds   = N_ELEMENTS(gscets)
+scetst = gscets                        ; => SCET at start of TDSS sample
+sceten = time_string(geunix,PREC=3)    ; => SCET at end   of TDSS sample
+unixst = gsunix                        ; => Unix time at start of TDSS sample
+unixen = geunix                        ; => Unix time at end   of TDSS sample
+
+
+; => Use HTR MFI for B-fields
+tds_magxs  = interp(magf_htr.Y[*,0],magf_htr.X,unixst,/NO_EXTRAP)
+tds_magys  = interp(magf_htr.Y[*,1],magf_htr.X,unixst,/NO_EXTRAP)
+tds_magzs  = interp(magf_htr.Y[*,2],magf_htr.X,unixst,/NO_EXTRAP)
+tds_magfs  = [[tds_magxs],[tds_magys],[tds_magzs]]
+tds_bmags  = SQRT(TOTAL(tds_magfs^2,2L,/NAN))
+
+tds_magxe  = interp(magf_htr.Y[*,0],magf_htr.X,unixen,/NO_EXTRAP)
+tds_magye  = interp(magf_htr.Y[*,1],magf_htr.X,unixen,/NO_EXTRAP)
+tds_magze  = interp(magf_htr.Y[*,2],magf_htr.X,unixen,/NO_EXTRAP)
+tds_magfe  = [[tds_magxe],[tds_magye],[tds_magze]]
+tds_bmage  = SQRT(TOTAL(tds_magfe^2,2L,/NAN))
+
+;-----------------------------------------------------------------------------------------
+; => Define Shock Norms
+;-----------------------------------------------------------------------------------------
+; => 1997-12-10
+gnorm      = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+dgnorm     = [ 0.015, 0.032, 0.374]
+
+gnorm2     = [-0.971, 0.094,-0.218]   ; => Using RH09 from JCK's site
+dgnorm2    = [ 0.016, 0.071, 0.214]
+
+; => 1998-08-26
+gnorm      = [-0.655, 0.040,-0.754]   ; => Using RH08 from JCK's site
+dgnorm     = [ 0.010, 0.009, 0.561]
+
+gnorm2     = [-0.822, 0.138,-0.553]   ; => Using RH09 from JCK's site
+dgnorm2    = [ 0.040, 0.070, 0.488]
+
+; => 1998-09-24
+gnorm      = [-0.914,-0.220,-0.341]   ; => Using RH08 from JCK's site
+dgnorm     = [ 0.004, 0.009, 0.327]
+
+gnorm2     = [-0.939,-0.175,-0.296]   ; => Using RH09 from JCK's site
+dgnorm2    = [ 0.024, 0.070, 0.287]
+
+; => 2000-02-11
+gnorm      = [-0.865,-0.452, 0.218]   ; => Using RH08 from JCK's site
+dgnorm     = [ 0.017, 0.030, 0.214]
+
+gnorm2     = [-0.930,-0.367, 0.028]   ; => Using RH09 from JCK's site
+dgnorm2    = [ 0.025, 0.063, 0.028]
+
+; => Check angle between two shock normal estimates
+ndotn2     = my_dot_prod(gnorm,gnorm2,/NOM)/(NORM(gnorm)*NORM(gnorm2))
+delthn     = ACOS(ndotn2)*18d1/!DPI
+PRINT, delthn[0]
+; => 1997-12-10
+;       11.781141
+; => 1998-08-26
+;       16.044569
+; => 1998-09-24
+;       3.9182166
+; => 2000-02-11
+;       12.517408
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+sh_mit     = read_shocks_jck_database()
+mit_dates  = sh_mit.SDATES                 ; => 'MMDDYY'
+shocks     = sh_mit.SHOCK
+header     = sh_mit.HEADER
+ymdb_ra    = header.DATE_TIME              ; => ['YYYY-MM-DD/HH:MM:SS.sss']
+mts        = my_time_string(ymdb_ra,STR=1,FORM=1)
+unix_ra    = mts.UNIX
+
+a_vshn     = shocks.VSH_N                  ; => Shock normal velocity (SC-Frame) [km/s]
+a_ushn     = shocks.USH_N                  ; => Shock normal velocity (Shock-Frame) [km/s]
+a_compr    = shocks.COMPRESSION            ; => Shock compression ratio
+gshock     = WHERE(mit_dates EQ date,gsh)
+
+IF (sdate[0] EQ '021100') THEN kk = 1 ELSE kk = 0
+gvshn      = (REFORM(a_vshn[gshock[kk]]))[0]
+gushn      = (REFORM(a_ushn[gshock[kk],0]))[0]
+gdshn      = (REFORM(a_ushn[gshock[kk],1]))[0]
+gcomp      = (REFORM(a_compr[gshock[kk]]))[0]
+
+;-----------------------------------------------------------------------------------------
+; => Find Wind/3DP IDL Save Files
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+
+
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;-----------------------------------------------------------------------------------------
+; => Calculate the heat flux vectors
+;-----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(aelb) GT 0) THEN all_el = [ael,aelb] ELSE all_el = ael
+nel     = N_ELEMENTS(all_el)
+sp      = SORT(all_el.TIME)
+all_el  = all_el[sp]
+elunix  = all_el.TIME
+elscets = time_string(elunix,PREC=3)
+
+aqvec   = DBLARR(nel,3L)
+aqmag   = DBLARR(nel)
+FOR j=0L, nel - 1L DO BEGIN                   $
+  dat     = all_el[j]                       & $
+  del     = convert_vframe(dat,/INTERP)     & $
+  sum     = mom_sum(del,SC_POT=del.SC_POT)  & $
+  sumt    = mom_translate(sum)              & $
+  charge  = sumt.CHARGE                     & $
+  mass    = sumt.MASS                       & $
+  nnorm   = SQRT(ABS(2*charge/mass))        & $          ; -[(km/s) eV^(-1/2)]
+  i3      = [[0,4,8],[9,13,17],[18,22,26]]  & $
+  qtens   = (mass*nnorm^2)*sumt.NVVV        & $          ; => Heat flux tensor
+  qqqs    = (sumt.NVVV[sumt.MAP_R3])[i3]    & $ 
+  qvec    = TOTAL(qqqs,1L,/NAN)             & $          ; => Q_vec [eV km/s cm^(-3), GSE]
+  qmag    = SQRT(TOTAL(qvec^2,/NAN))        & $          ; => Magnitude of Heat flux [eV km/s cm^(-3)]
+  qvec    = qvec/qmag[0]                    & $
+  aqvec[j,*] = qvec                         & $
+  aqmag[j]   = qmag
+
+
+elqvecs    = aqvec
+elqmag     = aqmag
+; => Interpolate to the start and end times of data
+; => q_e [eV km/s cm^(-3), GSE]
+tds_qvecxs = interp(elqvecs[*,0],elunix,unixst,/NO_EXTRAP)
+tds_qvecys = interp(elqvecs[*,1],elunix,unixst,/NO_EXTRAP)
+tds_qveczs = interp(elqvecs[*,2],elunix,unixst,/NO_EXTRAP)
+
+tds_qvecxe = interp(elqvecs[*,0],elunix,unixen,/NO_EXTRAP)
+tds_qvecye = interp(elqvecs[*,1],elunix,unixen,/NO_EXTRAP)
+tds_qvecze = interp(elqvecs[*,2],elunix,unixen,/NO_EXTRAP)
+; => Magnitude of Heat flux [eV km/s cm^(-3)]
+tds_qmags  = interp(elqmag,elunix,unixst,/NO_EXTRAP)
+tds_qmage  = interp(elqmag,elunix,unixen,/NO_EXTRAP)
+; => Calculate the unit vectors
+tds_uqvecs = [[tds_qvecxs/tds_qmags],[tds_qvecys/tds_qmags],[tds_qveczs/tds_qmags]]
+tds_uqvece = [[tds_qvecxe/tds_qmage],[tds_qvecye/tds_qmage],[tds_qvecze/tds_qmage]]
+; => Renormalize
+tds_uqvecs = tds_uqvecs/(SQRT(TOTAL(tds_uqvecs^2,2L,/NAN)) # REPLICATE(1d0,3L))
+tds_uqvece = tds_uqvece/(SQRT(TOTAL(tds_uqvece^2,2L,/NAN)) # REPLICATE(1d0,3L))
+
+
+tds_uqvxcs = REFORM(tds_uqvecs[*,0])
+tds_uqvycs = REFORM(tds_uqvecs[*,1])
+tds_uqvzcs = REFORM(tds_uqvecs[*,2])
+
+tds_uqvxce = REFORM(tds_uqvece[*,0])
+tds_uqvyce = REFORM(tds_uqvece[*,1])
+tds_uqvzce = REFORM(tds_uqvece[*,2])
+;-----------------------------------------------------------------------------------------
+; => Load electron and ion moments
+;-----------------------------------------------------------------------------------------
+eesa_pesa_low_to_tplot,DATE=date,TRANGE=tr3,/G_MAGF,PLM=apl,PLBM=aplb, $
+                       ELM=ael,ELBM=aelb,/TO_TPLOT
+;-----------------------------------------------------------------------------------------
+; => Load WAVES Denstiy estimates
+;-----------------------------------------------------------------------------------------
+test  = waves_fpe_ascii_read(DATE=date)
+wunix = test.UNIX          ; => Unix times
+wdens = test.DENSITY       ; => cm^(-3)
+weine = test.E_INERT_L     ; => m
+wfpe  = test.F_PE          ; => Hz
+
+store_data,'waves_density',DATA={X:wunix,Y:wdens}
+options,'waves_density','YTITLE','N!De!N (cm!U-3!N)'
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Interpolate 3DP data to the times associated with TDSS events
+;-----------------------------------------------------------------------------------------
+get_data,'T_avg_el_sw',DATA=temp_ela
+get_data,'T_avg_ce_sw',DATA=temp_elc
+get_data,'T_avg_he_sw',DATA=temp_elh
+get_data,'Tpara_el_sw',DATA=tpara_ela
+get_data,'Tperp_el_sw',DATA=tperp_ela
+get_data,'Tpara_ce_sw',DATA=tpara_elc
+get_data,'Tperp_ce_sw',DATA=tperp_elc
+get_data,'Tpara_he_sw',DATA=tpara_elh
+get_data,'Tperp_he_sw',DATA=tperp_elh
+
+get_data,'V_sw2',DATA=vsw_pl
+get_data,'T_i2',DATA=temp_pl
+get_data,'N_i3',DATA=dens_pl
+
+; => Calculate Beta_ec,para  [3DP times]
+eldens     = interp(wdens,wunix,elunix,/NO_EXTRAP)
+get_data,'WIND_MAG_HTR(GSE,nT)',DATA=bmag_htr
+elbmag     = interp(bmag_htr.Y,bmag_htr.X,elunix,/NO_EXTRAP)
+beta_cpar  = (2d0*kB*muo)*(eldens*1d6)*(tpara_elc.Y*K_eV)/((elbmag*1d-9)^2)
+
+; => Avg Temperature of the entire, core, and halo electron distributions [eV]
+tds_tealls = interp(temp_ela.Y,temp_ela.X,unixst,/NO_EXTRAP)
+tds_tecs   = interp(temp_elc.Y,temp_elc.X,unixst,/NO_EXTRAP)
+tds_tehs   = interp(temp_elh.Y,temp_elh.X,unixst,/NO_EXTRAP)
+
+tds_tealle = interp(temp_ela.Y,temp_ela.X,unixen,/NO_EXTRAP)
+tds_tece   = interp(temp_elc.Y,temp_elc.X,unixen,/NO_EXTRAP)
+tds_tehe   = interp(temp_elh.Y,temp_elh.X,unixen,/NO_EXTRAP)
+; => Parallel Temperature of the entire, core, and halo electron distributions [eV]
+tds_teapas = interp(tpara_ela.Y,tpara_ela.X,unixst,/NO_EXTRAP)
+tds_tecpas = interp(tpara_elc.Y,tpara_elc.X,unixst,/NO_EXTRAP)
+tds_tehpas = interp(tpara_elh.Y,tpara_elh.X,unixst,/NO_EXTRAP)
+
+tds_teapae = interp(tpara_ela.Y,tpara_ela.X,unixen,/NO_EXTRAP)
+tds_tecpae = interp(tpara_elc.Y,tpara_elc.X,unixen,/NO_EXTRAP)
+tds_tehpae = interp(tpara_elh.Y,tpara_elh.X,unixen,/NO_EXTRAP)
+; => Perpendicular Temperature of the entire, core, and halo electron distributions [eV]
+tds_teapes = interp(tperp_ela.Y,tperp_ela.X,unixst,/NO_EXTRAP)
+tds_tecpes = interp(tperp_elc.Y,tperp_elc.X,unixst,/NO_EXTRAP)
+tds_tehpes = interp(tperp_elh.Y,tperp_elh.X,unixst,/NO_EXTRAP)
+
+tds_teapee = interp(tperp_ela.Y,tperp_ela.X,unixen,/NO_EXTRAP)
+tds_tecpee = interp(tperp_elc.Y,tperp_elc.X,unixen,/NO_EXTRAP)
+tds_tehpee = interp(tperp_elh.Y,tperp_elh.X,unixen,/NO_EXTRAP)
+
+; => electron density  [cm^(-3)]
+tds_denss  = interp(wdens,wunix,unixst,/NO_EXTRAP)
+tds_dense  = interp(wdens,wunix,unixen,/NO_EXTRAP)
+; => ion temperature [eV]
+tds_tipls  = interp(temp_pl.Y,temp_pl.X,unixst,/NO_EXTRAP)
+tds_tiple  = interp(temp_pl.Y,temp_pl.X,unixen,/NO_EXTRAP)
+; => solar wind velocity [km/s]
+tds_vswxs  = interp(vsw_pl.Y[*,0],vsw_pl.X,unixst,/NO_EXTRAP)
+tds_vswys  = interp(vsw_pl.Y[*,1],vsw_pl.X,unixst,/NO_EXTRAP)
+tds_vswzs  = interp(vsw_pl.Y[*,2],vsw_pl.X,unixst,/NO_EXTRAP)
+tds_vmags  = SQRT(tds_vswxs^2 + tds_vswys^2 + tds_vswzs^2)
+
+tds_vswxe  = interp(vsw_pl.Y[*,0],vsw_pl.X,unixen,/NO_EXTRAP)
+tds_vswye  = interp(vsw_pl.Y[*,1],vsw_pl.X,unixen,/NO_EXTRAP)
+tds_vswze  = interp(vsw_pl.Y[*,2],vsw_pl.X,unixen,/NO_EXTRAP)
+tds_vmage  = SQRT(tds_vswxe^2 + tds_vswye^2 + tds_vswze^2)
+; => Beta_ec,para  [TDSS times]
+betac_pars  = (2d0*kB*muo)*(tds_denss*1d6)*(tds_tecpas*K_eV)/((tds_bmags*1d-9)^2)
+betac_pare  = (2d0*kB*muo)*(tds_dense*1d6)*(tds_tecpae*K_eV)/((tds_bmage*1d-9)^2)
+
+; => Print out values for later use
+; => Interpolated TNR density [cm^(-3)] at start and end of TDSS samples
+dense_pre   = ['no_se   = [[','           [']
+dens_string = STRARR(ntds)
+; => Interpolated parallel core electron beta at start and end of TDSS samples
+betasepre   = ['betacse = [[','           [']
+beta_string = STRARR(ntds)
+
+; => Interpolated avg ion temperature [eV] at start and end of TDSS samples
+tiase_pre   = ['tavi_se = [[','           [']
+tiav_string = STRARR(ntds)
+; => Interpolated avg electron temperature [eV] at start and end of TDSS samples
+tease_pre   = ['tave_se = [[','           [']
+teav_string = STRARR(ntds)
+; => Interpolated core electron temperature [eV] at start and end of TDSS samples
+tecse_pre   = ['tecorse = [[','           [']
+tec_string  = STRARR(ntds)
+; => Interpolated halo electron temperature [eV] at start and end of TDSS samples
+tehse_pre   = ['tehalse = [[','           [']
+teh_string  = STRARR(ntds)
+; => Interpolated avg parallel electron temperature [eV] at start and end of TDSS samples
+tpase_pre   = ['tpar_se = [[','           [']
+tpar_string = STRARR(ntds)
+; => Interpolated core parallel electron temperature [eV] at start and end of TDSS samples
+tpese_pre   = ['tper_se = [[','           [']
+tper_string = STRARR(ntds)
+; => Interpolated halo parallel electron temperature [eV] at start and end of TDSS samples
+tpacsepre   = ['tpac_se = [[','           [']
+tpac_string = STRARR(ntds)
+; => Interpolated avg perpendicular electron temperature [eV] at start and end of TDSS samples
+tpecsepre   = ['tpec_se = [[','           [']
+tpec_string = STRARR(ntds)
+; => Interpolated core perpendicular electron temperature [eV] at start and end of TDSS samples
+tpahsepre   = ['tpah_se = [[','           [']
+tpah_string = STRARR(ntds)
+; => Interpolated halo perpendicular electron temperature [eV] at start and end of TDSS samples
+tpehsepre   = ['tpeh_se = [[','           [']
+tpeh_string = STRARR(ntds)
+
+; => Interpolated PL solar wind velocity [km/s] at start of TDSS samples
+vsws_pre    = ['vsws    = [[','           [']
+vsws_string = STRARR(ntds)
+; => Interpolated PL solar wind velocity [km/s] at end of TDSS samples
+vswe_pre    = ['vswe    = [[','           [']
+vswe_string = STRARR(ntds)
+; => Interpolated PL solar wind velocity magnitudes [km/s] at start and end of TDSS samples
+vmgse_pre   = ['vmag_se = [[','           [']
+vmag_string = STRARR(ntds)
+
+; => Interpolated electron heat flux vector [GSE] at start of TDSS samples
+qefxs_pre   = ['quvec_s = [[','           [']
+qves_string = STRARR(ntds)
+; => Interpolated electron heat flux vector [GSE] at end of TDSS samples
+qefxe_pre   = ['quvec_e = [[','           [']
+qvee_string = STRARR(ntds)
+; => Interpolated electron heat flux vector magnitude [eV km/s cm^(-3)] at start and end of TDSS samples
+qmagsepre   = ['qmag_se = [[','           [']
+qmag_string = STRARR(ntds)
+
+; => Interpolated HTR magnetic field vector [nT] at start of TDSS samples
+magfs_pre   = ['magf_bs = [[','           [']
+mags_string = STRARR(ntds)
+; => Interpolated HTR magnetic field vector [nT] at end of TDSS samples
+magfe_pre   = ['magf_be = [[','           [']
+mage_string = STRARR(ntds)
+; => Interpolated HTR magnetic field vector magnitude [nT] at start and end of TDSS samples
+bmagsepre   = ['bmag_se = [[','           [']
+bmag_string = STRARR(ntds)
+
+; => List of format statements
+densform  = '(f7.4,",",f7.4,"],$")'
+tempform  = '(f8.4,",",f8.4,"],$")'
+vswform   = '(f10.4,",",f10.4,",",f10.4,"],$")'
+qvecform  = '(f8.4,",",f8.4,",",f8.4,"],$")'
+qmagform  = '(f11.3,",",f11.3,"],$")'
+magfform  = '(f10.4,",",f10.4,",",f10.4,"],$")'
+bmagform  = '(f10.4,",",f10.4,"],$")'
+
+FOR j=0L, N_ELEMENTS(gscets) - 1L DO BEGIN                                               $
+  IF (j EQ 0) THEN k = 0 ELSE k = 1                                                    & $
+  dens_string[j] = dense_pre[k]+STRING(FORMAT=densform,[ tds_denss[j], tds_dense[j]])  & $
+  beta_string[j] = betasepre[k]+STRING(FORMAT=densform,[betac_pars[j],betac_pare[j]])  & $
+  tiav_string[j] = tiase_pre[k]+STRING(FORMAT=tempform,[ tds_tipls[j], tds_tiple[j]])  & $
+  teav_string[j] = tease_pre[k]+STRING(FORMAT=tempform,[tds_tealls[j],tds_tealle[j]])  & $
+  tec_string[j]  = tecse_pre[k]+STRING(FORMAT=tempform,[  tds_tecs[j],  tds_tece[j]])  & $
+  teh_string[j]  = tehse_pre[k]+STRING(FORMAT=tempform,[  tds_tehs[j],  tds_tehe[j]])  & $
+  tpar_string[j] = tpase_pre[k]+STRING(FORMAT=tempform,[tds_teapas[j],tds_teapae[j]])  & $
+  tper_string[j] = tpese_pre[k]+STRING(FORMAT=tempform,[tds_teapes[j],tds_teapee[j]])  & $
+  tpac_string[j] = tpacsepre[k]+STRING(FORMAT=tempform,[tds_tecpas[j],tds_tecpae[j]])  & $
+  tpec_string[j] = tpecsepre[k]+STRING(FORMAT=tempform,[tds_tecpes[j],tds_tecpee[j]])  & $
+  tpah_string[j] = tpahsepre[k]+STRING(FORMAT=tempform,[tds_tehpas[j],tds_tehpae[j]])  & $
+  tpeh_string[j] = tpehsepre[k]+STRING(FORMAT=tempform,[tds_tehpes[j],tds_tehpee[j]])  & $
+  vsws_string[j] =  vsws_pre[k]+STRING(FORMAT=vswform ,[ tds_vswxs[j], tds_vswys[j], tds_vswzs[j]])  & $
+  vswe_string[j] =  vswe_pre[k]+STRING(FORMAT=vswform ,[ tds_vswxe[j], tds_vswye[j], tds_vswze[j]])  & $
+  vmag_string[j] = vmgse_pre[k]+STRING(FORMAT=bmagform,[ tds_vmags[j], tds_vmage[j]])  & $
+  qves_string[j] = qefxs_pre[k]+STRING(FORMAT=qvecform,[tds_uqvxcs[j],tds_uqvycs[j],tds_uqvzcs[j]])  & $
+  qvee_string[j] = qefxe_pre[k]+STRING(FORMAT=qvecform,[tds_uqvxce[j],tds_uqvyce[j],tds_uqvzce[j]])  & $
+  qmag_string[j] = qmagsepre[k]+STRING(FORMAT=qmagform,[ tds_qmags[j], tds_qmage[j]])  & $
+  mags_string[j] = magfs_pre[k]+STRING(FORMAT=magfform,[ tds_magxs[j], tds_magys[j], tds_magzs[j]])  & $
+  mage_string[j] = magfe_pre[k]+STRING(FORMAT=magfform,[ tds_magxe[j], tds_magye[j], tds_magze[j]])  & $
+  bmag_string[j] = bmagsepre[k]+STRING(FORMAT=bmagform,[ tds_bmags[j], tds_bmage[j]])
+
+PRINT, TRANSPOSE(dens_string)
+PRINT, TRANSPOSE(beta_string)
+PRINT, TRANSPOSE(tiav_string)
+PRINT, TRANSPOSE(teav_string)
+PRINT, TRANSPOSE(tec_string)
+PRINT, TRANSPOSE(teh_string)
+PRINT, TRANSPOSE(tpar_string)
+PRINT, TRANSPOSE(tpac_string)
+PRINT, TRANSPOSE(tpah_string)
+PRINT, TRANSPOSE(tper_string)
+PRINT, TRANSPOSE(tpec_string)
+PRINT, TRANSPOSE(tpeh_string)
+PRINT, TRANSPOSE(vsws_string)
+PRINT, TRANSPOSE(vswe_string)
+PRINT, TRANSPOSE(vmag_string)
+PRINT, TRANSPOSE(qves_string)
+PRINT, TRANSPOSE(qvee_string)
+PRINT, TRANSPOSE(qmag_string)
+PRINT, TRANSPOSE(mags_string)
+PRINT, TRANSPOSE(mage_string)
+PRINT, TRANSPOSE(bmag_string)
+
+
+dumbmag = magf_htr
+;-----------------------------------------------------------------------------------------
+; => For 1997-12-10/04:33:15.605 UT
+;-----------------------------------------------------------------------------------------
+jj      = 0L
+; => RH08 shock normal as local gradient normal for events within 15 c/wpi of ramp
+n00vec  = gnorm
+dn00vec = dgnorm
+
+thkn1210_0433x15_605_f025_20   = [23.76,11.08,34.64,72.78]
+thkn1210_0433x15_605_f05_20    = [12.76,31.57,34.54,16.37]
+thkn1210_0433x15_605_f20_100   = [78.74,86.29,77.66,61.51,28.69]
+thkn1210_0433x15_605_f30_100   = [ 9.06,39.49,89.01,52.48,24.71,28.68]
+thkn1210_0433x15_605_f40_200   = [21.44,21.15,87.48,49.74,67.64]
+thkn1210_0433x15_605_f100_200  = [14.23,44.87,62.63,61.91]
+thkn1210_0433x15_605_f100_400  = [15.27,40.16,61.17,65.87]
+
+tags = ['f025_20','f05_20','f20_100','f30_100','f40_200','f100_200','f100_400']
+thkn1210_0433x15_605 = CREATE_STRUCT(tags,thkn1210_0433x15_605_f025_20, $
+                                     thkn1210_0433x15_605_f05_20,       $
+                                     thkn1210_0433x15_605_f20_100,      $
+                                     thkn1210_0433x15_605_f30_100,      $
+                                     thkn1210_0433x15_605_f40_200,      $
+                                     thkn1210_0433x15_605_f100_200,     $
+                                     thkn1210_0433x15_605_f100_400)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn1210_0433x15_605_f025_20,thkn1210_0433x15_605_f05_20
+DELVAR,thkn1210_0433x15_605_f20_100,thkn1210_0433x15_605_f30_100
+DELVAR,thkn1210_0433x15_605_f40_200,thkn1210_0433x15_605_f100_200,thkn1210_0433x15_605_f100_400
+
+'-----------------------------------------------------------------------------------------'
+' => MVA For 1998-08-26'
+'-----------------------------------------------------------------------------------------'
+
+
+dumbmag = magf_htr
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:40:26.120 UT
+;-----------------------------------------------------------------------------------------
+jj      = 0L
+; => RH08 shock normal as local gradient normal for events within 15 c/wpi of ramp
+n00vec  = gnorm
+dn00vec = dgnorm
+
+thkn0826_0640x26_120_f04_20   = [39.17]
+thkn0826_0640x26_120_f07_30   = [22.35,31.76,34.36,38.96,22.84,23.81,56.86,39.30]
+thkn0826_0640x26_120_f10_30   = [44.71,48.13,55.28,55.67,34.24,34.27,34.11]
+thkn0826_0640x26_120_f40_400  = [53.71,52.82,54.93,54.26,80.65,80.74,80.24,82.94,72.10,58.17]
+thkn0826_0640x26_120_f60_150  = [81.94]
+thkn0826_0640x26_120_f60_200  = [62.95,24.83,53.72,81.10,78.50]
+thkn0826_0640x26_120_f150_200 = [89.62,88.58,86.17,80.58]
+
+tags = ['f04_20','f07_30','f10_30','f40_400','f60_150','f60_200','f150_200']
+thkn0826_0640x26_120 = CREATE_STRUCT(tags,thkn0826_0640x26_120_f04_20, $
+                                     thkn0826_0640x26_120_f07_30,      $
+                                     thkn0826_0640x26_120_f10_30,      $
+                                     thkn0826_0640x26_120_f40_400,     $
+                                     thkn0826_0640x26_120_f60_150,     $
+                                     thkn0826_0640x26_120_f60_200,     $
+                                     thkn0826_0640x26_120_f150_200)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0826_0640x26_120_f04_20,thkn0826_0640x26_120_f07_30
+DELVAR,thkn0826_0640x26_120_f10_30,thkn0826_0640x26_120_f40_400
+DELVAR,thkn0826_0640x26_120_f60_150,thkn0826_0640x26_120_f60_200,thkn0826_0640x26_120_f150_200
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:40:54.941 UT
+;-----------------------------------------------------------------------------------------
+jj      = 1L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0640x54_941
+
+struct0 = stats_082698_0640x54_941
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:40:45.1605',prefd[0]+'06:41:05.5845'])
+min_vec0    = [ 0.83494,-0.23113, 0.49945]
+mid_vec0    = [ 0.08461,-0.84284,-0.53148]
+max_vec0    = [-0.54380,-0.48601, 0.68416]
+; => [max, mid, min]
+eig_val0    = [138.7534045450601,0.9632948019757701,0.8609982816675259]
+deig_val0   = ABS([1.468189292469211,0.09112034196035269,0.08190702382792213])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.52086,-0.68992, 0.50270]
+kvec1       = [-0.38681, 0.70088,-0.59929]
+tags        = ['t0','t1']
+kv_str      = CREATE_STRUCT(tags,kvec0,kvec1)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;0    32.2829    68.9988    66.6722
+;1    38.3465    72.2450    57.2961
+
+thkn0826_0640x54_941_f03_30   = [66.67,57.30]
+tags                          = ['f03_30']
+thkn0826_0640x54_941          = CREATE_STRUCT(tags,thkn0826_0640x54_941_f03_30)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0640x54_941_f03_30
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:41:10.001 UT
+;-----------------------------------------------------------------------------------------
+jj      = 2L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0641x10_001
+
+struct0 = stats_082698_0641x10_001
+;-------------------------------------
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:41:00.2485',prefd[0]+'06:41:15.4285'])
+min_vec0    = [-0.32531, 0.70236, 0.63314]
+mid_vec0    = [-0.91322,-0.05962,-0.40308]
+max_vec0    = [-0.24536,-0.70932, 0.66080]
+eig_val0    = [24.25839960680190,1.156823178049688,0.7299507763226084]
+deig_val0   = ABS([0.6522199157287535,0.1187341680289257,0.08060957818882461])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.88332, 0.12394,-0.45209]
+kvec1       = [ 0.11374,-0.01262,-0.99343]
+kvec2       = [ 0.34592, 0.08953, 0.93398]
+kvec3       = [ 0.47222,-0.29015, 0.83236]
+kvec4       = [-0.58702,-0.34816,-0.73089]
+kvec5       = [-0.44233,-0.16770,-0.88103]
+kvec6       = [ 0.48910, 0.49246, 0.71991]
+tags        = ['t0','t1','t2','t3','t4','t5','t6']
+kv_str      = CREATE_STRUCT(tags[0L:6L],kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;0    60.8867    50.8150    52.8872
+;1    47.5579    72.7036    47.5137
+;2    57.2012    45.7566    62.0440
+;3    80.2359    41.4573    50.2105
+;4    58.9139    31.6311    84.7222
+;5    57.8792    39.7297    69.2249
+;6    50.0156    39.9863    89.6334
+
+thkn0826_0641x10_001_f03_30   = [52.89,47.51,62.04,50.21,84.72,69.22,89.63]
+tags                          = ['f03_30']
+thkn0826_0641x10_001          = CREATE_STRUCT(tags,thkn0826_0641x10_001_f03_30)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0641x10_001_f03_30
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:41:37.623 UT
+;-----------------------------------------------------------------------------------------
+jj      = 3L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0641x37_623
+
+struct0 = stats_082698_0641x37_623
+
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:41:35.7605',prefd[0]+'06:41:39.4405'])
+min_vec0    = [ 0.28557, 0.95738,-0.04326]
+mid_vec0    = [ 0.62527,-0.22034,-0.74865]
+max_vec0    = [ 0.72628,-0.18674, 0.66155]
+eig_val0    = [1.367910032148434,0.2809411479847317,0.1141448570590370]
+deig_val0   = ABS([0.1238797476847201,0.05119441373992741,0.02584872004273304])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.54803, 0.39120, 0.73934]
+kvec1       = [ 0.69208,-0.27042,-0.66926]
+kvec2       = [-0.71918, 0.38116, 0.58095]
+kvec3       = [ 0.70806,-0.35198,-0.61218]
+tags        = ['t0','t1','t2','t3']
+kv_str      = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;0    79.2781    10.7745    88.9666
+;1    88.1487     6.6050    83.6620
+;2    82.2757    14.3973    77.9259
+;3    83.7830    11.8768    79.9219
+
+thkn0826_0641x37_623_f30_130  = [88.97,83.67,77.93,79.92]
+tags                          = ['f30_130']
+thkn0826_0641x37_623          = CREATE_STRUCT(tags,thkn0826_0641x37_623_f30_130)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0641x37_623_f30_130
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:41:44.013 UT
+;-----------------------------------------------------------------------------------------
+jj      = 4L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0641x44_013
+
+struct0 = stats_082698_0641x44_013
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:41:41.0965',prefd[0]+'06:41:45.5125'])
+min_vec0    = [ 0.45335,-0.59288,-0.66556]
+mid_vec0    = [ 0.28292, 0.80380,-0.52331]
+max_vec0    = [ 0.84524, 0.04895, 0.53214]
+eig_val0    = [1.706467391560453,0.1723166229631386,0.08267335554760988]
+deig_val0   = ABS([0.1082400576866576,0.03035751731816872,0.01705421108226242])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.54803, 0.39120, 0.73934]
+kvec1       = [ 0.69208,-0.27042,-0.66926]
+kvec2       = [-0.71918, 0.38116, 0.58095]
+kvec3       = [ 0.70806,-0.35198,-0.61218]
+tags        = ['t0','t1','t2','t3']
+kv_str      = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;0    13.4781    76.8497    87.0976
+;1    23.1449    70.8119    77.5495
+;2    20.1690    78.3981    73.7353
+;3    20.4260    76.2455    75.1976
+
+thkn0826_0641x44_013_f30_130  = [87.10,77.55,73.74,75.20]
+tags                          = ['f30_130']
+thkn0826_0641x44_013          = CREATE_STRUCT(tags,thkn0826_0641x44_013_f30_130)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0641x44_013_f30_130
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:41:53.249 UT
+;-----------------------------------------------------------------------------------------
+jj      = 5L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0641x53_249
+
+struct0 = stats_082698_0641x53_249
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:41:46.6165',prefd[0]+'06:41:59.5885'])
+min_vec0    = [ 0.86857,-0.49508, 0.02212]
+mid_vec0    = [ 0.00156,-0.04190,-0.99912]
+max_vec0    = [-0.49557,-0.86784, 0.03562]
+eig_val0    = [1.481189511453636,0.2705074583722191,0.1397841611219683]
+deig_val0   = ABS([0.07507653760775795,0.02830590665038468,0.01670740285047849])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.71857, 0.33705, 0.60832]
+kvec1       = [-0.72340, 0.42194, 0.54649]
+kvec2       = [-0.65096, 0.44022, 0.61843]
+kvec3       = [ 0.79728,-0.36430,-0.48127]
+kvec4       = [-0.79802, 0.29995, 0.52267]
+kvec5       = [ 0.75311,-0.31901,-0.57537]
+kvec6       = [-0.64898, 0.41304, 0.63892]
+kvec7       = [-0.68468, 0.42833, 0.58970]
+kvec8       = [ 0.77272,-0.31673,-0.55008]
+kvec9       = [-0.63062, 0.60421, 0.48707]
+kvec10      = [-0.78678, 0.30459, 0.53684]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10']
+kv_str      = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;00    38.9642    51.4624    85.1088
+;01    34.3984    55.6104    89.3248
+;02    39.6758    50.4058    87.8557
+;03    30.4349    60.1749    84.4855
+;04    33.8936    57.5867    81.1537
+;05    36.9332    53.8852    83.2889
+;06    41.0585    48.9531    89.1933
+;07    37.4668    52.5408    89.3462
+;08    35.3334    55.6621    82.6656
+;09    33.2699    59.1400    78.7850
+;10    34.6848    56.6085    81.6806
+
+thkn0826_0641x53_249_f35_150  = [85.11,89.32,87.86,84.48,81.15,83.29,89.19,89.36,82.67,78.78,81.68]
+tags                          = ['f35_150']
+thkn0826_0641x53_249          = CREATE_STRUCT(tags,thkn0826_0641x53_249_f35_150)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0641x53_249_f35_150
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:41:56.315 UT
+;-----------------------------------------------------------------------------------------
+jj      = 6L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0641x56_315
+
+struct0 = stats_082698_0641x56_315
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:41:46.6165',prefd[0]+'06:42:07.0405'])
+min_vec0    = [ 0.48971,-0.17337,-0.85447]
+mid_vec0    = [ 0.86958, 0.02593, 0.49311]
+max_vec0    = [-0.06334,-0.98452, 0.16346]
+eig_val0    = [14.20077014538336,0.4047188245088971,0.2550254982857016]
+deig_val0   = ABS([0.2548724986887725,0.03577066658870079,0.02426065186141767])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.70166, 0.36776, 0.61027]
+kvec1       = [-0.69818, 0.32148, 0.63968]
+kvec2       = [-0.72924, 0.24473, 0.63899]
+kvec3       = [ 0.76439,-0.25870,-0.59058]
+kvec4       = [-0.73884, 0.27150, 0.61677]
+kvec5       = [ 0.69332,-0.33404,-0.63853]
+kvec6       = [-0.67065, 0.32021, 0.66910]
+kvec7       = [-0.76972, 0.17812, 0.61303]
+kvec8       = [-0.70929, 0.29576, 0.63986]
+kvec9       = [-0.73789, 0.37022, 0.56431]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9']
+kv_str      = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;00    21.7475    72.5614    77.4161
+;01    19.2258    73.5395    80.3448
+;02    18.9957    71.7783    84.8190
+;03    22.5099    68.4835    83.6995
+;04    20.6262    70.6520    83.1263
+;05    19.4310    73.7774    79.5964
+;06    17.1250    75.8217    80.5955
+;07    21.3087    68.7509    88.4871
+;08    19.0273    72.9268    81.8559
+;09    24.8074    69.2808    76.9672
+
+thkn0826_0641x56_315_f30_150  = [77.42,80.35,84.82,83.70,83.13,79.60,80.60,88.50,81.86,76.97]
+tags                          = ['f30_150']
+thkn0826_0641x56_315          = CREATE_STRUCT(tags,thkn0826_0641x56_315_f30_150)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0641x56_315_f30_150
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:41:57.909 UT
+;-----------------------------------------------------------------------------------------
+jj      = 7L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0641x57_909
+
+struct0 = stats_082698_0641x57_909
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:41:55.7245',prefd[0]+'06:41:58.7605'])
+min_vec0    = [ 0.83149,-0.48739, 0.26661]
+mid_vec0    = [ 0.12204,-0.30794,-0.94355]
+max_vec0    = [-0.54197,-0.81708, 0.19657]
+eig_val0    = [2.633545911373065,0.09210741604114245,0.03138270842275463]
+deig_val0   = ABS([0.1013381506766977,0.01731380586128707,0.007845677105688658])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.69946,-0.40614,-0.58805]
+kvec1       = [-0.73531, 0.20694, 0.64537]
+kvec2       = [-0.77695, 0.20943, 0.59370]
+kvec3       = [-0.76155, 0.25899, 0.59411]
+kvec4       = [-0.75206, 0.29026, 0.59174]
+kvec5       = [-0.63854, 0.24379, 0.72996]
+kvec6       = [-0.68236, 0.48338, 0.54838]
+kvec7       = [ 0.78393,-0.31785,-0.53331]
+kvec8       = [-0.65764, 0.47323, 0.58614]
+kvec9       = [-0.78878, 0.32017, 0.52471]
+kvec10      = [-0.06527,-0.00717, 0.99784]
+kvec11      = [ 0.56993,-0.41903,-0.70683]
+kvec12      = [ 0.66194,-0.41899,-0.62151]
+kvec13      = [ 0.70517,-0.38336,-0.59647]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']
+kv_str      = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10,kvec11,kvec12,kvec13)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;00    51.4818    40.0678    80.6288
+;01    57.3027    40.3237    69.1275
+;02    53.8562    43.9871    68.4898
+;03    53.0545    42.8391    71.4637
+;04    52.4801    42.3111    73.3367
+;05    62.9257    32.6742    73.1204
+;06    48.9463    41.4485    85.2589
+;07    48.3513    45.8328    74.3363
+;08    51.5963    38.8275    85.1256
+;09    47.7770    46.3742    74.3933
+;10    77.5694    18.6894    76.2681
+;11    60.6808    30.0579    83.9472
+;12    53.9205    37.2282    82.0347
+;13    52.1089    39.9228    79.2693
+
+thkn0826_0641x57_909_f30_150  = [80.63,69.13,68.49,71.46,73.34,73.12,85.25,74.33,85.12,74.39,76.27,83.95,82.03,79.27]
+tags                          = ['f30_150']
+thkn0826_0641x57_909          = CREATE_STRUCT(tags,thkn0826_0641x57_909_f30_150)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0641x57_909_f30_150
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:41:59.233 UT
+;-----------------------------------------------------------------------------------------
+jj      = 8L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0641x59_233
+
+struct0 = stats_082698_0641x59_233
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:41:54.5285',prefd[0]+'06:42:04.6485'])
+min_vec0    = [ 0.54202,-0.17033,-0.82293]
+mid_vec0    = [ 0.83924, 0.05896, 0.54056]
+max_vec0    = [-0.04355,-0.98362, 0.17491]
+eig_val0    = [12.82324668534537,0.4566415887182866,0.2229930346652687]
+deig_val0   = ABS([0.3225262521636783,0.05314510062017330,0.03020598807795583])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.70808, 0.37290, 0.59964]
+kvec1       = [-0.60926, 0.36730, 0.70278]
+kvec2       = [-0.72152, 0.25778, 0.64262]
+kvec3       = [-0.80005, 0.22679, 0.55542]
+kvec4       = [ 0.78940,-0.25745,-0.55729]
+kvec5       = [ 0.64275,-0.38038,-0.66496]
+kvec6       = [ 0.76937,-0.35960,-0.52798]
+kvec7       = [ 0.70212,-0.38897,-0.59643]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7']
+kv_str      = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;00    19.8185    75.6336    76.6398
+;01    13.8005    83.6983    77.7706
+;02    15.4599    75.9390    83.7000
+;03    21.6672    69.0333    84.7740
+;04    21.5133    69.7530    83.0283
+;05    16.1804    80.9357    76.7118
+;06    24.1111    70.1792    76.8292
+;07    20.3416    75.8827    75.6586
+
+thkn0826_0641x59_233_f30_150  = [76.64,77.77,83.70,84.78,83.03,76.71,76.83,75.66]
+tags                          = ['f30_150']
+thkn0826_0641x59_233          = CREATE_STRUCT(tags,thkn0826_0641x59_233_f30_150)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0641x59_233_f30_150
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:42:05.763 UT
+;-----------------------------------------------------------------------------------------
+jj      = 9L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0642x05_763
+
+struct0 = stats_082698_0642x05_763
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:42:04.7405',prefd[0]+'06:42:06.4885'])
+min_vec0    = [-0.59050, 0.60904,-0.52950]
+mid_vec0    = [-0.79887,-0.53423, 0.27641]
+max_vec0    = [-0.11453, 0.58623, 0.80201]
+eig_val0    = [0.4931098937537950,0.2196132089556566,0.005245656501905574]
+deig_val0   = ABS([0.02391153447492825,0.01590427616428708,0.001748552167301858])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.70233,-0.04321, 0.71054]
+kvec1       = [-0.74212,-0.02971, 0.66961]
+kvec2       = [-0.72277, 0.01366, 0.69096]
+kvec3       = [-0.74717,-0.08665, 0.65896]
+kvec4       = [-0.70841,-0.00184, 0.70580]
+kvec5       = [ 0.76314, 0.12361,-0.63430]
+kvec6       = [-0.67356,-0.05522, 0.73706]
+kvec7       = [ 0.65235, 0.01233,-0.75781]
+kvec8       = [-0.64128, 0.11754, 0.75825]
+kvec9       = [-0.75391, 0.09869, 0.64952]
+kvec10      = [-0.55192,-0.07111, 0.83086]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10']
+kv_str      = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;00    89.3022    38.6886    51.3202
+;01    86.2405    37.4564    52.7991
+;02    86.0290    40.4396    49.8386
+;03    87.7356    34.3785    55.7178
+;04    87.5083    40.3591    49.7507
+;05    87.7369    31.6780    58.4224
+;06    88.5006    39.5276    50.5132
+;07    88.6501    42.5069    47.5259
+;08    87.2046    48.7692    41.3684
+;09    80.7136    43.1901    48.3083
+;10    80.9474    44.8822    46.5373
+
+thkn0826_0642x05_763_f40_200  = [89.30,86.24,86.03,87.74,87.51,87.74,88.50,88.65,87.20,80.71,80.95]
+tags                          = ['f40_200']
+thkn0826_0642x05_763          = CREATE_STRUCT(tags,thkn0826_0642x05_763_f40_200)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0642x05_763_f40_200
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-08-26/06:42:09.131 UT
+;-----------------------------------------------------------------------------------------
+jj      = 10L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '082698'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_082698_0642x09_131
+
+struct0 = stats_082698_0642x09_131
+prefd       = '1998-08-26/'
+tr0         = time_double([prefd[0]+'06:42:07.5005',prefd[0]+'06:42:10.8125'])
+min_vec0    = [-0.64553,-0.62350, 0.44107]
+mid_vec0    = [-0.40414,-0.21116,-0.88999]
+max_vec0    = [-0.64805, 0.75277, 0.11567]
+eig_val0    = [4.419266052262423,0.2955068417352655,0.2073730889210517]
+deig_val0   = ABS([0.3198097743556354,0.06742476659305299,0.04957164973689723])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.66072, 0.05899,-0.74831]
+kvec1       = [ 0.67158, 0.06644,-0.73795]
+kvec2       = [ 0.70597, 0.25995,-0.65882]
+kvec3       = [ 0.51442, 0.14403,-0.84535]
+kvec4       = [ 0.83767, 0.22470,-0.49781]
+kvec5       = [ 0.80344, 0.29902,-0.51486]
+tags        = ['t0','t1','t2','t3','t4','t5']
+kv_str      = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5)
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+;00    37.5001    67.2626    61.9442
+;01    36.8280    68.2026    61.9292
+;02    24.7163    75.7507    70.2433
+;03    37.3698    59.0666    71.1719
+;04    25.7879    86.7288    64.4508
+;05    21.2239    85.9644    69.1986
+
+thkn0826_0642x09_131_f50_200  = [61.94,61.93,70.25,71.17,64.45,69.20]
+tags                          = ['f50_200']
+thkn0826_0642x09_131          = CREATE_STRUCT(tags,thkn0826_0642x09_131_f50_200)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr,eig_rat
+DELVAR,tags,thkn0826_0642x09_131_f50_200
+
+'-----------------------------------------------------------------------------------------'
+' => MVA For 1998-09-24'
+'-----------------------------------------------------------------------------------------'
+
+
+dumbmag = magf_htr
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:20:38.842 UT
+;-----------------------------------------------------------------------------------------
+jj      = 0L
+; => RH08 shock normal as local gradient normal for events within 15 c/wpi of ramp
+n00vec  = gnorm
+dn00vec = dgnorm
+
+thkn0924_2320x38_842_f03_20   = [34.51]
+thkn0924_2320x38_842_f05_20   = [34.41,44.47,45.84]
+thkn0924_2320x38_842_f100_200 = [40.32,75.41,87.05,77.64]
+
+tags                          = ['f03_20','f05_20','f100_200']
+thkn0924_2320x38_842          = CREATE_STRUCT(tags,thkn0924_2320x38_842_f03_20,$
+                                              thkn0924_2320x38_842_f05_20     ,$
+                                              thkn0924_2320x38_842_f100_200)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2320x38_842_f03_20,thkn0924_2320x38_842_f05_20,thkn0924_2320x38_842_f100_200
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:22:26.632 UT
+;-----------------------------------------------------------------------------------------
+jj      = 1L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2322x26_632
+
+struct0 = stats_092498_2322x26_632
+prefd   = '1998-09-24/'
+tr0         = time_double([prefd[0]+'23:22:20.6265',prefd[0]+'23:22:32.0345'])
+min_vec0    = [-0.44756, 0.80479, 0.38988]
+mid_vec0    = [-0.84493,-0.52336, 0.11039]
+max_vec0    = [ 0.29289,-0.28002, 0.91422]
+eig_val0    = [4.058021228825756,1.901785208550363,0.1441110527869785]
+deig_val0   = ABS([0.1366761900806764,0.09260182631980293,0.01837637027040380])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.21261, 0.93610, 0.28021]
+kvec1       = [ 0.12887, 0.49341, 0.86020]
+tags        = ['t0','t1']
+kv_f06_30   = CREATE_STRUCT(tags,kvec0,kvec1)
+kvec0       = [ 0.71280,-0.69465,-0.09679]
+kvec1       = [-0.52456, 0.79264, 0.31075]
+kvec2       = [ 0.34924,-0.85848,-0.37556]
+kvec3       = [-0.44432, 0.89542,-0.02824]
+kvec4       = [-0.32069, 0.88028, 0.34966]
+kvec5       = [ 0.76191,-0.63565,-0.12426]
+kvec6       = [-0.66600, 0.73099, 0.14869]
+tags        = ['t0','t1','t2','t3','t4','t5','t6']
+kv_f30_150  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6)
+
+kv_str      = kv_f06_30
+kv_str      = kv_f30_150
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   6 Hz < f <  30 Hz
+;00    16.7109    73.7789    86.0880
+;01    47.5622    74.2072    46.6863
+; => For  30 Hz < f < 150 Hz
+;00    23.6797    75.5581    71.6512
+;01     6.3649    86.4061    84.7501
+;02     6.4729    83.5260    89.9620
+;03    24.7046    84.4724    66.0029
+;04     8.7753    81.3068    88.8106
+;05    25.7086    71.0463    73.2887
+;06    19.2064    78.6638    74.7031
+
+thkn0924_2322x26_632_f06_30   = [16.71,47.56]
+thkn0924_2322x26_632_f30_150  = [23.68, 6.36, 6.47,24.70, 8.78,25.71,19.21]
+
+tags                          = ['f06_30','f30_150']
+thkn0924_2322x26_632          = CREATE_STRUCT(tags,thkn0924_2322x26_632_f06_30,$
+                                              thkn0924_2322x26_632_f30_150)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2322x26_632_f06_30,thkn0924_2322x26_632_f30_150
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:22:48.150 UT
+;-----------------------------------------------------------------------------------------
+jj      = 2L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2322x48_150
+
+struct0 = stats_092498_2322x48_150
+prefd   = '1998-09-24/'
+tr0         = time_double([prefd[0]+'23:22:43.4425',prefd[0]+'23:22:58.8065'])
+min_vec0    = [-0.29566, 0.87617, 0.38068]
+mid_vec0    = [-0.88365,-0.09942,-0.45747]
+max_vec0    = [ 0.36298, 0.47164,-0.80362]
+eig_val0    = [3.273244730013880,1.695718964493644,0.06451128447539922]
+deig_val0   = ABS([0.07097944196231594,0.05085110691630177,0.007081033401426596])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.01574,-0.76014,-0.64956]
+kvec1       = [-0.07880,-0.70006,-0.70972]
+kvec2       = [-0.19814,-0.74365,-0.63853]
+kvec3       = [-0.20663, 0.82608, 0.52431]
+kvec4       = [ 0.19920, 0.95497, 0.21990]
+kvec5       = [ 0.58830,-0.17706,-0.78902]
+tags        = ['t0','t1','t2','t3','t4','t5']
+kv_f06_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5)
+kvec0       = [ 0.30632,-0.81107,-0.49834]
+kvec1       = [ 0.39593,-0.79206,-0.46462]
+kvec2       = [-0.06917, 0.92173, 0.38161]
+kvec3       = [ 0.66870,-0.70251,-0.24357]
+kvec4       = [ 0.59137,-0.56090,-0.57938]
+kvec5       = [ 0.40501,-0.48346,-0.77603]
+kvec6       = [-0.04915,-0.94556,-0.32172]
+kvec7       = [-0.72440, 0.61616, 0.30918]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7']
+kv_f30_150  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7)
+
+kv_str      = kv_f06_30
+kv_str      = kv_f30_150
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   6 Hz < f <  30 Hz
+;00    24.6829    67.2547    80.9223
+;01    30.6554    62.3605    77.7859
+;02    33.2739    57.2395    84.8088
+;03    10.1098    81.9871    83.8728
+;04    30.5110    68.1879    69.7577
+;05    50.9915    81.8772    40.1726
+; => For  30 Hz < f < 150 Hz
+;00     7.7313    87.8261    82.5806
+;01     8.9179    86.6424    81.7481
+;02    13.2662    78.1651    84.0910
+;03    25.0487    65.8186    83.8501
+;04    27.5204    78.3607    65.4357
+;05    32.9908    87.4100    57.1375
+;06    20.5425    73.4641    78.1551
+;07    29.3390    64.0608    77.2440
+
+thkn0924_2322x48_150_f06_30   = [24.68,30.66,33.27,10.11,30.51,50.99]
+thkn0924_2322x48_150_f30_150  = [ 7.73, 8.92,13.27,25.05,27.52,32.99,20.54,29.34]
+
+tags                          = ['f06_30','f30_150']
+thkn0924_2322x48_150          = CREATE_STRUCT(tags,thkn0924_2322x48_150_f06_30,$
+                                              thkn0924_2322x48_150_f30_150)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2322x48_150_f06_30,thkn0924_2322x48_150_f30_150
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:30:00.465 UT
+;-----------------------------------------------------------------------------------------
+jj      = 3L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2330x00_465
+
+struct0 = stats_092498_2330x00_465
+prefd   = '1998-09-24/'
+
+kvec0       = [ NaN, NaN, NaN]
+thkn0924_2330x00_465          = 0
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:30:48.542 UT
+;-----------------------------------------------------------------------------------------
+jj      = 4L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2330x48_542
+
+struct0 = stats_092498_2330x48_542
+prefd   = '1998-09-24/'
+tr0         = time_double([prefd[0]+'23:30:42.8545',prefd[0]+'23:30:56.0105'])
+min_vec0    = [-0.32682, 0.79466, 0.51157]
+mid_vec0    = [-0.87062,-0.46375, 0.16418]
+max_vec0    = [ 0.36771,-0.39173, 0.84341]
+eig_val0    = [4.146297718026647,2.125782160914371,0.05120725775415402]
+deig_val0   = ABS([0.07709687418977393,0.05504016034916009,0.006077183426903497])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.78336, 0.62028, 0.03993]
+kvec1       = [ 0.69672,-0.60070,-0.39209]
+kvec2       = [ 0.71066,-0.58173,-0.39567]
+tags        = ['t0','t1','t2']
+kv_f04_40   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2)
+kvec0       = [ 0.73044,-0.33271,-0.59646]
+kvec1       = [ 0.67852,-0.37579,-0.63119]
+kvec2       = [ 0.72408,-0.29306,-0.62436]
+kvec3       = [ 0.67540,-0.17251,-0.71699]
+kvec4       = [ 0.72033,-0.15381,-0.67637]
+kvec5       = [ 0.75824,-0.25189,-0.60135]
+kvec6       = [ 0.69150,-0.19666,-0.69509]
+kvec7       = [ 0.73929,-0.14663,-0.65723]
+kvec8       = [ 0.70436,-0.13724,-0.69645]
+kvec9       = [ 0.69449,-0.25131,-0.67419]
+kvec10      = [-0.00132,-0.00100,-1.00000]
+kvec11      = [ 0.00049,-0.00278,-1.00000]
+kvec12      = [ 0.76387,-0.10524,-0.63674]
+kvec13      = [ 0.74922,-0.13205,-0.64902]
+kvec14      = [ 0.70280,-0.01649,-0.71120]
+kvec15      = [ 0.72118,-0.18955,-0.66631]
+kvec16      = [ 0.70746,-0.29336,-0.64299]
+kvec17      = [ 0.70623,-0.21445,-0.67473]
+kvec18      = [ 0.72313, 0.05159,-0.68878]
+kvec19      = [ 0.71911,-0.21629,-0.66038]
+kvec20      = [ 0.73942,-0.17522,-0.65004]
+kvec21      = [ 0.69126,-0.37399,-0.61829]
+kvec22      = [ 0.66885,-0.14658,-0.72880]
+kvec23      = [ 0.71783,-0.13677,-0.68265]
+kvec24      = [ 0.73450,-0.05978,-0.67597]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13',$
+               't14','t15','t16','t17','t18','t19','t20','t21','t22','t23','t24']
+kv_f200_400 = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15,kvec16,kvec17,$
+                            kvec18,kvec19,kvec20,kvec21,kvec22,kvec23,kvec24)
+
+kv_str      = kv_f04_40
+kv_str      = kv_f200_400
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   4 Hz < f <  40 Hz
+;00    75.0888    15.6116    85.4836
+;01    25.0910    66.8975    80.7461
+;02    26.2402    65.5500    81.0550
+; => For 200 Hz < f < 400 Hz
+;00    36.0752    54.5798    84.0225
+;01    32.5122    58.6618    82.2041
+;02    37.9143    53.3447    81.6315
+;03    43.5635    51.2642    73.2146
+;04    45.2790    48.1755    75.7985
+;05    40.9215    50.0548    82.5478
+;06    42.4505    51.3213    75.2302
+;07    46.0242    46.8787    76.9953
+;08    45.9297    48.3999    74.0599
+;09    39.5045    53.2174    77.5961
+;10    59.2073    80.6441    32.4880
+;11    59.0734    80.6005    32.6331
+;12    48.7752    43.8815    77.5889
+;13    47.0144    45.7649    77.2812
+;14    52.6544    43.8638    70.4307
+;15    43.3488    49.5063    77.1420
+;16    37.5080    54.1653    80.3723
+;17    41.7208    51.2309    76.9748
+;18    56.7909    39.9522    70.4134
+;19    41.8643    50.6402    78.0054
+;20    44.4846    47.9932    78.0113
+;21    32.9220    58.0015    83.0626
+;22    44.9351    50.6547    71.8615
+;23    46.1709    47.6539    75.0353
+;24    50.7015    43.7198    73.9415
+
+thkn0924_2330x48_542_f04_40   = [75.09,25.09,26.24]
+thkn0924_2330x48_542_f200_400 = [36.08,32.51,37.91,43.56,45.28,40.92,42.45,46.02,45.93,$
+                                 39.50,59.21,59.07,48.78,47.01,52.65,43.35,37.51,41.72,$
+                                 56.79,41.86,44.48,32.92,44.94,46.17,50.70]
+
+
+tags                          = ['f04_40','f200_400']
+thkn0924_2322x48_150          = CREATE_STRUCT(tags,thkn0924_2330x48_542_f04_40,$
+                                              thkn0924_2330x48_542_f200_400)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2330x48_542_f04_40,thkn0924_2330x48_542_f200_400
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:43:18.951 UT
+;-----------------------------------------------------------------------------------------
+jj      = 5L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2343x18_951
+
+struct0 = stats_092498_2343x18_951
+prefd   = '1998-09-24/'
+tr0         = time_double([prefd[0]+'23:43:18.2665',prefd[0]+'23:43:20.8425'])
+min_vec0    = [-0.31380, 0.91458, 0.25509]
+mid_vec0    = [ 0.69292, 0.40426,-0.59702]
+max_vec0    = [ 0.64915, 0.01059, 0.76059]
+eig_val0    = [1.111117936766832,0.1134378082353630,0.08448151430524119]
+deig_val0   = ABS([0.1156625761301182,0.02985107402878914,0.02299295586060874])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.35115,-0.92369, 0.15326]
+kvec1       = [-0.59098, 0.26256, 0.76276]
+kvec2       = [ 0.31415,-0.94866,-0.03686]
+tags        = ['t0','t1','t2']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2)
+
+kv_str      = kv_f03_30
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  30 Hz
+;00    45.9327    44.9090    83.0408
+;01    51.6726    40.6465    78.5044
+;02    12.6807    81.7311    80.4534
+
+thkn0924_2343x18_951_f03_30   = [83.04,78.50,80.46]
+
+tags                          = ['f03_30']
+thkn0924_2343x18_951          = CREATE_STRUCT(tags,thkn0924_2343x18_951_f03_30)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2343x18_951_f03_30
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:45:52.184 UT
+;-----------------------------------------------------------------------------------------
+jj      = 6L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2345x52_184
+
+struct0 = stats_092498_2345x52_184
+prefd   = '1998-09-24/'
+tr0         = time_double([prefd[0]+'23:45:49.9745',prefd[0]+'23:45:53.4705'])
+min_vec0    = [ 0.97456,-0.20813, 0.08313]
+mid_vec0    = [-0.19055,-0.96474,-0.18157]
+max_vec0    = [-0.11798,-0.16111, 0.97986]
+eig_val0    = [19.74079139528105,1.269619900712410,0.9035041690646246]
+deig_val0   = ABS([1.372617441812890,0.2826413985596051,0.2100604524979182])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.30986, 0.93395, 0.17814]
+kvec1       = [ 0.40732,-0.89024, 0.20388]
+kvec2       = [-0.74647, 0.60257, 0.28228]
+tags        = ['t0','t1','t2']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2)
+
+kvec0       = [ 0.61631, 0.76502, 0.18685]
+kvec1       = [-0.26467, 0.95178,-0.15513]
+kvec2       = [ 0.21001, 0.77953, 0.59011]
+tags        = ['t0','t1','t2']
+kv_f10_100  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2)
+
+kvec0       = [ 0.12098, 0.99264, 0.00599]
+kvec1       = [-0.50622,-0.80133, 0.31875]
+kvec2       = [-0.38381, 0.75559,-0.53082]
+kvec3       = [ 0.48207, 0.15612,-0.86211]
+kvec4       = [-0.91343,-0.28841,-0.28717]
+kvec5       = [-0.13019, 0.95333, 0.27241]
+kvec6       = [-0.00459, 0.45789, 0.88900]
+tags        = ['t0','t1','t2','t3','t4','t5','t6']
+kv_f30_100  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6)
+
+kvec0       = [-0.26831, 0.96178,-0.05470]
+kvec1       = [-0.15521, 0.98393,-0.08824]
+kvec2       = [-0.44551, 0.88835, 0.11117]
+kvec3       = [-0.37382, 0.92745,-0.00937]
+kvec4       = [-0.43834, 0.87636, 0.19961]
+kvec5       = [-0.56609, 0.80905, 0.15807]
+kvec6       = [-0.01452, 0.03111, 0.99941]
+kvec7       = [-0.24328, 0.96967,-0.02354]
+kvec8       = [-0.17117, 0.98360, 0.05690]
+kvec9       = [-0.11893, 0.95587,-0.26864]
+kvec10      = [-0.50855, 0.86087,-0.01666]
+kvec11      = [-0.30145, 0.92449,-0.23332]
+kvec12      = [-0.39123, 0.86238,-0.32129]
+kvec13      = [-0.89916, 0.14206, 0.41392]
+kvec14      = [-0.95488,-0.04277,-0.29390]
+kvec15      = [ 0.95346, 0.29549,-0.05992]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13',$
+               't14','t15']
+kv_f100_300 = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15)
+
+kv_str      = kv_f03_30
+kv_str      = kv_f10_100
+kv_str      = kv_f30_100
+kv_str      = kv_f100_300
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  30 Hz
+;00    82.9692     7.0648    89.2853
+;01    53.1880    41.9081    72.8338
+;02    33.9601    60.6373    74.4795
+; => For  10 Hz < f < 100 Hz
+;00    62.8102    27.2008    89.2621
+;01    62.0353    32.8999    74.0903
+;02    84.7513    25.9459    64.6683
+; => For  30 Hz < f < 100 Hz
+;00    84.9401    10.9541    80.3094
+;01    72.5386    35.7416    59.9235
+;02    54.8700    55.9835    53.3746
+;03    68.5527    85.0699    22.0626
+;04    31.3464    59.7061    82.6948
+;05    72.3832    19.2012    82.6060
+;06    88.5175    52.9662    37.0732
+; => For 100 Hz < f < 300 Hz
+;00    62.2117    29.9100    79.8110
+;01    68.6920    25.3593    76.8988
+;02    52.4230    37.5972    88.9474
+;03    56.0742    34.7331    83.4252
+;04    53.6304    37.0436    83.9086
+;05    45.0139    45.4642    84.7600
+;06    86.4192    77.9533    12.5826
+;07    63.8409    27.7671    81.3390
+;08    68.4815    22.0841    85.2666
+;09    70.2947    31.7092    66.2217
+;10    47.4549    43.0644    84.5475
+;11    59.6294    37.6190    70.0012
+;12    54.0221    45.6462    65.9458
+;13    29.3732    87.6576    60.7396
+;14    18.8942    73.9439    80.3032
+;15    30.3763    62.8789    77.3609
+
+thkn0924_2345x52_184_f03_30   = [89.31,72.83,74.48]
+thkn0924_2345x52_184_f10_100  = [89.28,74.09,64.67]
+thkn0924_2345x52_184_f30_100  = [80.31,59.92,53.37,22.06,82.70,82.61,37.07]
+thkn0924_2345x52_184_f100_300 = [79.81,76.90,88.96,83.42,83.91,84.76,12.58,81.34,85.27,66.22,84.55,70.00,65.94,60.74,80.30,77.36]
+
+tags                          = ['f03_30','f10_100','f30_100','f100_300']
+thkn0924_2345x52_184          = CREATE_STRUCT(tags,thkn0924_2345x52_184_f03_30,$
+                                                   thkn0924_2345x52_184_f10_100,$
+                                                   thkn0924_2345x52_184_f30_100,$
+                                                   thkn0924_2345x52_184_f100_300)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2345x52_184_f03_30,thkn0924_2345x52_184_f10_100
+DELVAR,thkn0924_2345x52_184_f30_100,thkn0924_2345x52_184_f100_300
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:45:53.379 UT
+;-----------------------------------------------------------------------------------------
+jj      = 7L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2345x53_379
+
+struct0 = stats_092498_2345x53_379
+prefd   = '1998-09-24/'
+tr0         = time_double([prefd[0]+'23:45:50.8025',prefd[0]+'23:45:57.3345'])
+min_vec0    = [ 0.32830,-0.90288,-0.27753]
+mid_vec0    = [-0.89613,-0.20483,-0.39370]
+max_vec0    = [-0.29862,-0.37795, 0.87634]
+eig_val0    = [75.21597407064156,5.854476848482107,1.313798231134293]
+deig_val0   = ABS([2.365895551262758,0.6246630374706791,0.2220724329795893])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.84150, 0.42724,-0.33067]
+kvec1       = [-0.61395,-0.78848, 0.03698]
+kvec2       = [-0.81915,-0.56581, 0.09404]
+tags        = ['t0','t1','t2']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2)
+
+kvec0       = [ 0.83506, 0.48611,-0.25763]
+kvec1       = [ 0.83370, 0.52747,-0.16346]
+kvec2       = [ 0.13241,-0.71833, 0.68298]
+kvec3       = [-0.66941,-0.73580,-0.10243]
+kvec4       = [ 0.23506, 0.96530, 0.11377]
+kvec5       = [ 0.96623, 0.23769,-0.09950]
+kvec6       = [ 0.98563,-0.16033,-0.05316]
+tags        = ['t0','t1','t2','t3','t4','t5','t6']
+kv_f10_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6)
+
+kvec0       = [ 0.94764, 0.28012, 0.15335]
+kvec1       = [-0.83295,-0.26101,-0.48793]
+kvec2       = [ 0.86884, 0.46138, 0.17959]
+kvec3       = [ 0.55075, 0.80295, 0.22792]
+kvec4       = [ 0.78905, 0.61418,-0.01347]
+kvec5       = [ 0.63555, 0.49466,-0.59278]
+kvec6       = [ 0.85932, 0.30861, 0.40783]
+tags        = ['t0','t1','t2','t3','t4','t5','t6']
+kv_f30_100  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6)
+
+kv_str      = kv_f03_30
+kv_str      = kv_f10_30
+kv_str      = kv_f30_100
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  30 Hz
+;00    88.9852    44.6494    45.3686
+;01    59.9947    45.8033    59.0860
+;02    77.5356    35.6162    57.2569
+; => For  10 Hz < f <  30 Hz
+;00    84.6495    41.7151    48.7868
+;01    80.9571    37.7405    53.7320
+;02    59.8352    76.0892    33.8524
+;03    61.7708    37.7285    67.1555
+;04    34.3146    63.0535    70.4075
+;05    82.5176    28.9099    62.2531
+;06    61.1123    33.9543    73.7208
+; => For  30 Hz < f < 100 Hz
+;00    89.1041    14.7694    75.2579
+;01    84.3980     7.2558    85.3995
+;02    79.5620    19.2997    73.9516
+;03    52.5975    41.6047    74.4425
+;04    73.0374    34.1480    61.3433
+;05    85.7876    64.0568    26.3342
+;06    83.7015     6.3640    89.0917
+
+thkn0924_2345x53_379_f03_30   = [45.37,59.09,57.26]
+thkn0924_2345x53_379_f10_30   = [48.79,53.73,33.85,67.16,70.41,62.25,73.72]
+thkn0924_2345x53_379_f30_100  = [75.26,85.40,73.95,74.44,61.34,26.33,89.07]
+
+tags                          = ['f03_30','f10_30','f30_100']
+thkn0924_2345x53_379          = CREATE_STRUCT(tags,thkn0924_2345x53_379_f03_30,$
+                                                   thkn0924_2345x53_379_f10_30,$
+                                                   thkn0924_2345x53_379_f30_100)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2345x53_379_f03_30,thkn0924_2345x53_379_f10_30
+DELVAR,thkn0924_2345x53_379_f30_100
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:48:39.020 UT
+;-----------------------------------------------------------------------------------------
+jj      = 8L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2348x39_020
+
+struct0 = stats_092498_2348x39_020
+prefd   = '1998-09-24/'
+tr0         = time_double([prefd[0]+'23:48:29.3185',prefd[0]+'23:48:49.7425'])
+min_vec0    = [-0.57144, 0.39734, 0.71804]
+mid_vec0    = [-0.81648,-0.36334,-0.44872]
+max_vec0    = [ 0.08260,-0.84268, 0.53204]
+eig_val0    = [151.5788875325052,4.353147814018345,2.000188136601992]
+deig_val0   = ABS([2.334808086761739,0.3484091401405003,0.1902784951529661])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.69954,-0.70333, 0.12641]
+kvec1       = [-0.99818, 0.02093,-0.05653]
+kvec2       = [ 0.19072, 0.85902, 0.47508]
+kvec3       = [-0.94753, 0.06257,-0.31350]
+tags        = ['t0','t1','t2','t3']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3)
+
+kvec0       = [ 0.47453,-0.38843, 0.78990]
+kvec1       = [ 0.93018, 0.16024,-0.33029]
+tags        = ['t0','t1']
+kv_f10_40   = CREATE_STRUCT(tags,kvec0,kvec1)
+
+kv_str      = kv_f03_30
+kv_str      = kv_f10_40
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  30 Hz
+;00    77.8160    39.6474    52.9756
+;01    57.4439    33.6172    82.5210
+;02    55.0078    47.0771    62.9117
+;03    70.0492    26.9277    72.6753
+; => For  10 Hz < f <  40 Hz
+;00    81.8552    53.0759    38.1147
+;01    45.1677    47.9725    76.4717
+
+thkn0924_2348x39_020_f03_30   = [52.98,82.52,62.91,72.68]
+thkn0924_2348x39_020_f10_40   = [38.11,76.47]
+
+tags                          = ['f03_30','f10_40']
+thkn0924_2348x39_020          = CREATE_STRUCT(tags,thkn0924_2348x39_020_f03_30,$
+                                                   thkn0924_2348x39_020_f10_40)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2348x39_020_f03_30,thkn0924_2348x39_020_f10_40
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:48:42.131 UT
+;-----------------------------------------------------------------------------------------
+jj      = 9L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2348x42_131
+
+struct0 = stats_092498_2348x42_131
+prefd   = '1998-09-24/'
+tr0         = time_double([prefd[0]+'23:48:22.1425',prefd[0]+'23:48:55.9985'])
+min_vec0    = [-0.29717, 0.49649, 0.81559]
+mid_vec0    = [-0.95034,-0.23649,-0.20231]
+max_vec0    = [ 0.09244,-0.83520, 0.54212]
+eig_val0    = [211.6175342663577,3.407363295695681,2.259496215645216]
+deig_val0   = ABS([2.276754600834780,0.2368333988914279,0.1667990542990829])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.87410, 0.03281,-0.48464]
+tags        = ['t0']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0)
+
+kvec0       = [ 0.50505,-0.35900,-0.78488]
+kvec1       = [-0.37503, 0.18313, 0.90874]
+tags        = ['t0','t1']
+kv_f65_300  = CREATE_STRUCT(tags,kvec0,kvec1)
+
+kv_str      = kv_f03_30
+kv_str      = kv_f65_300
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  30 Hz
+;00    83.1528    22.9302    68.2265
+; => For  65 Hz < f < 300 Hz
+;00    14.4270    76.3329    85.4703
+;01    19.3471    82.5737    72.2401
+
+thkn0924_2348x42_131_f03_30   = [68.23]
+thkn0924_2348x42_131_f65_300  = [85.47,72.24]
+
+tags                          = ['f03_30','f65_300']
+thkn0924_2348x42_131          = CREATE_STRUCT(tags,thkn0924_2348x42_131_f03_30,$
+                                                   thkn0924_2348x42_131_f65_300)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2348x42_131_f03_30,thkn0924_2348x42_131_f65_300
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-24/23:48:51.622 UT
+;-----------------------------------------------------------------------------------------
+jj      = 10L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092498'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092498_2348x51_622
+
+struct0 = stats_092498_2348x51_622
+prefd   = '1998-09-24/'
+tr0         = time_double([prefd[0]+'23:48:49.4665',prefd[0]+'23:48:54.4345'])
+min_vec0    = [ 0.38962,-0.15597,-0.90767]
+mid_vec0    = [ 0.90772, 0.23163, 0.34984]
+max_vec0    = [ 0.15568,-0.96022, 0.23183]
+eig_val0    = [4.563142507996163,1.328192210209810,0.07074466367399616]
+deig_val0   = ABS([0.1554823482805443,0.08308218594636128,0.01374265833275440])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.97104,-0.07546,-0.22668]
+kvec1       = [ 0.33812, 0.93928, 0.05848]
+kvec2       = [ 0.80539,-0.09212, 0.58554]
+kvec3       = [ 0.78323,-0.53048, 0.32427]
+kvec4       = [ 0.11369,-0.25738, 0.95960]
+kvec5       = [ 0.21867,-0.55855,-0.80013]
+kvec6       = [-0.12104, 0.79854,-0.58965]
+kvec7       = [ 0.87821,-0.35410, 0.32150]
+kvec8       = [-0.19853, 0.39234, 0.89814]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8)
+
+kvec0       = [ 0.97591,-0.10233, 0.19267]
+kvec1       = [-0.26654, 0.19362, 0.94417]
+kvec2       = [-0.87608,-0.10477, 0.47065]
+kvec3       = [-0.94313, 0.31190, 0.11497]
+kvec4       = [ 0.78947, 0.03079, 0.61301]
+kvec5       = [-0.91682, 0.39446, 0.06195]
+kvec6       = [-0.08897, 0.05393, 0.99457]
+kvec7       = [-0.53149, 0.42313,-0.73381]
+kvec8       = [ 0.52519, 0.56150,-0.63945]
+kvec9       = [-0.85805, 0.40195, 0.31967]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9']
+kv_f06_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9)
+
+kv_str      = kv_f03_30
+kv_str      = kv_f06_30
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  30 Hz
+;00    53.4263    38.3115    80.1495
+;01    86.1100    56.9793    33.3092
+;02    78.2692    23.8544    69.5381
+;03    84.6309    45.4508    45.0503
+;04    38.1347    67.7104    60.8364
+;05    26.0294    77.8306    67.3638
+;06    68.6847    82.4618    22.7329
+;07    83.9393    34.1448    56.5460
+;08    17.4919    77.0046    78.4967
+; => For   6 Hz < f <  30 Hz
+;00    77.2138    21.6346    72.8511
+;01     7.6744    82.3447    89.5115
+;02    41.2194    49.0917    85.7950
+;03    58.6366    41.9583    65.1865
+;04    75.3082    20.2477    76.3816
+;05    61.6429    44.0136    59.5267
+;06    18.9473    73.7593    80.5065
+;07    66.8598    50.1223    48.7642
+;08    45.7767    67.4754    52.7247
+;09    46.5942    54.9751    63.5490
+
+thkn0924_2348x51_622_f03_30   = [53.43,86.11,78.27,84.63,38.13,26.03,68.68,83.94,17.49]
+thkn0924_2348x51_622_f06_30   = [77.21, 7.67,41.22,58.64,75.31,61.64,18.95,66.86,45.78,46.59]
+
+tags                          = ['f03_30','f06_30']
+thkn0924_2348x51_622          = CREATE_STRUCT(tags,thkn0924_2348x51_622_f03_30,$
+                                                   thkn0924_2348x51_622_f06_30)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0924_2348x51_622_f03_30,thkn0924_2348x51_622_f06_30
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-25/00:04:04.545 UT
+;-----------------------------------------------------------------------------------------
+jj      = 11L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092598'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092598_0004x04_545
+
+struct0 = stats_092598_0004x04_545
+prefd   = '1998-09-25/'
+tr0         = time_double([prefd[0]+'00:04:01.0025',prefd[0]+'00:04:07.9945'])
+min_vec0    = [ 0.71991,-0.66910, 0.18449]
+mid_vec0    = [-0.60872,-0.73637,-0.29532]
+max_vec0    = [-0.33346,-0.10030, 0.93742]
+eig_val0    = [61.18054026309549,3.837600911095578,1.236887117020463]
+deig_val0   = ABS([1.998779323402480,0.4608244355254043,0.2019828204081521])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.07775,-0.78702,-0.61201]
+kvec1       = [-0.97773,-0.06902, 0.19821]
+kvec2       = [-0.89497,-0.19178,-0.40280]
+kvec3       = [ 0.84838, 0.24190, 0.47090]
+kvec4       = [ 0.99316, 0.10809,-0.04425]
+kvec5       = [ 0.93980, 0.28381, 0.19032]
+tags        = ['t0','t1','t2','t3','t4','t5']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5)
+
+kvec0       = [ 0.95221, 0.05256, 0.30090]
+kvec1       = [ 0.85275, 0.24633, 0.46058]
+kvec2       = [-0.94919, 0.23615,-0.20804]
+kvec3       = [-0.89935,-0.36793, 0.23623]
+kvec4       = [-0.81977, 0.14215,-0.55476]
+kvec5       = [-0.99147,-0.07696, 0.10516]
+tags        = ['t0','t1','t2','t3','t4','t5']
+kv_f07_50   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5)
+
+kv_str      = kv_f03_30
+kv_str      = kv_f07_50
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  30 Hz
+;00    69.0402    36.1374    62.0406
+;01    51.6014    54.0235    58.7507
+;02    53.8224    36.3934    86.5647
+;03    57.6033    33.5276    82.2837
+;04    50.6172    47.8493    67.4493
+;05    58.5478    33.1471    80.5933
+; => For   7 Hz < f <  50 Hz
+;00    45.1017    44.9929    87.6659
+;01    57.7201    33.2282    82.9525
+;02    28.3913    62.2681    84.3869
+;03    69.0418    41.5289    56.0653
+;04    38.0363    56.0709    74.8741
+;05    49.9935    51.0131    64.0929
+
+thkn0925_0004x04_545_f03_30   = [62.04,58.75,86.57,82.29,67.45,80.59]
+thkn0925_0004x04_545_f07_50   = [87.68,82.95,84.39,56.07,74.87,64.09]
+
+tags                          = ['f03_30','f07_50']
+thkn0925_0004x04_545          = CREATE_STRUCT(tags,thkn0925_0004x04_545_f03_30,$
+                                                   thkn0925_0004x04_545_f07_50)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0925_0004x04_545_f03_30,thkn0925_0004x04_545_f07_50
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-25/00:05:23.432 UT
+;-----------------------------------------------------------------------------------------
+jj      = 12L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092598'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092598_0005x23_432
+
+struct0 = stats_092598_0005x23_432
+prefd   = '1998-09-25/'
+tr0         = time_double([prefd[0]+'00:05:17.4545',prefd[0]+'00:05:28.8625'])
+min_vec0    = [-0.92151,-0.38624,-0.04044]
+mid_vec0    = [-0.35563, 0.88111,-0.31173]
+max_vec0    = [-0.15604, 0.27288, 0.94931]
+eig_val0    = [64.07864624960747,3.888228836096189,1.355307733885591]
+deig_val0   = ABS([1.671646433541571,0.3761731605210034,0.1728225300320193])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [-0.11640, 0.21932, 0.96869]
+kvec1       = [ 0.52467, 0.55136,-0.64863]
+kvec2       = [-0.75587,-0.64998, 0.07862]
+kvec3       = [ 0.33095, 0.94358,-0.01133]
+kvec4       = [-0.90514,-0.19579, 0.37735]
+kvec5       = [-0.67826, 0.66451, 0.31368]
+tags        = ['t0','t1','t2','t3','t4','t5']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5)
+
+kvec0       = [ 0.74360, 0.52564,-0.41324]
+kvec1       = [ 0.86050, 0.31942,-0.39688]
+kvec2       = [-0.89009,-0.41376, 0.19116]
+kvec3       = [-0.99850, 0.04916, 0.02395]
+kvec4       = [ 0.83505, 0.46736,-0.29028]
+kvec5       = [-0.77294,-0.61234, 0.16615]
+kvec6       = [ 0.80826, 0.54728, 0.21726]
+kvec7       = [-0.82616,-0.56179,-0.04289]
+kvec8       = [-0.81419,-0.54185,-0.20858]
+kvec9       = [-0.85966,-0.45820, 0.22593]
+kvec10      = [-0.61446,-0.53876, 0.57634]
+kvec11      = [ 0.73035, 0.06084, 0.68036]
+kvec12      = [ 0.92761, 0.31431,-0.20189]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12']
+kv_f40_200  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10,kvec11,kvec12)
+
+kv_str      = kv_f03_30
+kv_str      = kv_f40_200
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  30 Hz
+;00    89.0477    86.1394     3.9719
+;01    47.9163    59.9061    56.8272
+;02    19.1940    70.8282    89.1283
+;03    48.0129    44.1734    78.7502
+;04    26.5612    88.1805    63.5105
+;05    69.1650    43.2030    54.2008
+; => For  40 Hz < f < 400 Hz
+;00    29.3611    70.8817    68.5993
+;01    25.8048    84.3101    64.9208
+;02    13.5154    83.8221    78.0269
+;03    25.8194    66.9866    78.9330
+;04    20.2351    78.1520    73.8392
+;05    19.5991    71.5515    83.6131
+;06    15.2064    82.7011    76.7342
+;07    11.4683    79.1743    86.2672
+;08    14.5330    82.9429    77.3602
+;09    16.2553    80.3033    77.0803
+;10    41.3217    64.1607    60.2650
+;11    43.6112    65.2780    56.7351
+;12    14.5254    89.4276    75.4851
+
+thkn0925_0005x23_432_f03_30   = [ 3.98,56.83,89.12,78.75,63.51,54.20]
+thkn0925_0005x23_432_f40_200  = [68.60,64.92,78.03,78.93,73.84,83.61,76.73,86.26,77.36,77.08,60.26,56.74,75.49]
+
+tags                          = ['f03_30','f40_200']
+thkn0925_0005x23_432          = CREATE_STRUCT(tags,thkn0925_0005x23_432_f03_30,$
+                                                   thkn0925_0005x23_432_f40_200)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0925_0005x23_432_f03_30,thkn0925_0005x23_432_f40_200
+
+;-----------------------------------------------------------------------------------------
+; => For 1998-09-25/00:14:50.603 UT
+;-----------------------------------------------------------------------------------------
+;evns   = [2011249L,2011723L,2011820L,2013066L,2013165L,2014864L,2015299L,2015304L,2015635L,2015650L,2015691L,2017428L,2017555L,2018091L]
+jj      = 13L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '092598'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_092598_0014x50_603
+
+struct0 = stats_092598_0014x50_603
+prefd   = '1998-09-25/'
+tr0         = time_double([prefd[0]+'00:14:45.9225',prefd[0]+'00:14:59.9985'])
+min_vec0    = [-0.75095,-0.00587, 0.66034]
+mid_vec0    = [-0.64092, 0.24734,-0.72667]
+max_vec0    = [ 0.15906, 0.96891, 0.18950]
+eig_val0    = [7.704633315720073,2.127041868247394,0.07791696675321502]
+deig_val0   = ABS([0.1253716717617391,0.06543319688549329,0.008937689054328493])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.74314,-0.33136,-0.58133]
+kvec1       = [-0.97299,-0.20495, 0.10626]
+kvec2       = [ 0.76670, 0.56290,-0.30871]
+kvec3       = [-0.82809,-0.00588,-0.56056]
+kvec4       = [ 0.76815, 0.62058, 0.15759]
+tags        = ['t0','t1','t2','t3','t4']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4)
+
+kv_str      = kv_f03_30
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  30 Hz
+;00    19.9499    82.1941    71.7589
+;01    36.6749    60.2840    70.5365
+;02    38.4721    82.6555    52.4936
+;03    75.4202    20.5074    75.8986
+;04    61.5480    63.0415    41.1202
+
+thkn0925_0014x50_603_f03_30   = [19.95,36.67,38.47,75.42,61.55]
+
+tags                          = ['f03_30']
+thkn0925_0014x50_603          = CREATE_STRUCT(tags,thkn0925_0014x50_603_f03_30)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0925_0014x50_603_f03_30
+
+'-----------------------------------------------------------------------------------------'
+' => MVA For 2000-02-11'
+'-----------------------------------------------------------------------------------------'
+
+
+dumbmag = magf_htr
+vecname = ['B-Vector','SHN-Vector','MinVar','MidVar','MaxVar']
+limit3d = {TITLE:'MVA in GSE',XTITLE:'X-GSE',YTITLE:'Y-GSE',ZTITLE:'Z-GSE'}
+;-----------------------------------------------------------------------------------------
+; => For 2000-02-11/23:33:56.491 UT
+;-----------------------------------------------------------------------------------------
+jj      = 0L
+; => RH08 shock normal as local gradient normal for events within 15 c/wpi of ramp
+n00vec  = gnorm
+dn00vec = dgnorm
+
+thkn0211_2333x56_491_f07_20   = [57.06]
+thkn0211_2333x56_491_f05_30   = [49.31,89.62]
+thkn0211_2333x56_491_f60_200  = [ 8.71,79.43,65.73,88.42,71.82]
+thkn0211_2333x56_491_f120_200 = [80.33,88.78,88.25,87.67,72.86]
+
+tags = ['f07_20','f05_30','f60_200','f120_200']
+thkn1210_0433x15_605 = CREATE_STRUCT(tags,thkn1210_0433x15_605_f025_20, $
+
+
+tags = ['f025_20','f05_20','f20_100','f30_100','f40_200','f100_200','f100_400']
+thkn0211_2333x56_491 = CREATE_STRUCT(tags,thkn0211_2333x56_491_f07_20, $
+                                     thkn0211_2333x56_491_f05_30,       $
+                                     thkn0211_2333x56_491_f60_200,      $
+                                     thkn0211_2333x56_491_f120_200)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0211_2333x56_491_f07_20,thkn0211_2333x56_491_f05_30
+DELVAR,thkn0211_2333x56_491_f60_200,thkn0211_2333x56_491_f120_200
+;-----------------------------------------------------------------------------------------
+; => For 2000-02-11/23:33:58.351 UT
+;-----------------------------------------------------------------------------------------
+jj      = 1L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+avgbfx      = MEAN(dummy0.Y[*,0],/NAN,/DOUBLE)
+avgbfy      = MEAN(dummy0.Y[*,1],/NAN,/DOUBLE)
+avgbfz      = MEAN(dummy0.Y[*,2],/NAN,/DOUBLE)
+avgbf       = [avgbfx[0],avgbfy[0],avgbfz[0]]
+PRINT, avgbf
+;       6.6432736      -12.352359      0.89726312
+
+date    = '021100'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_021100_2333x58_351
+
+struct0 = stats_021100_2333x58_351
+prefd   = '2000-02-11/'
+tr0         = time_double([prefd[0]+'23:33:56.1955',prefd[0]+'23:33:59.7835'])
+min_vec0    = [ 0.87184, 0.40856,-0.27014]
+mid_vec0    = [-0.13847,-0.32345,-0.93606]
+max_vec0    = [ 0.46981,-0.85350, 0.22543]
+eig_val0    = [1.082304473168837,0.08998663503541232,0.05744281620197660]
+deig_val0   = ABS([0.07981609016008555,0.01924700159933737,0.01317828583456826])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+str_element,limit3d,'TITLE','MVA in GSE For 2000-02-11/23:33:58.351 UT',/ADD_REPLACE
+vectors     = TRANSPOSE([[avgbf],[gnorm],[min_vec0],[mid_vec0],[max_vec0]])
+vector_3d_plot,vectors[*,0],vectors[*,1],vectors[*,2],LIMIT=limit3d,VECNAME=vecname,$
+               CHANGECOL=45;,/NO_PROJ
+
+kvec0       = [-0.72774,-0.46936, 0.50010]
+kvec1       = [-0.67979, 0.59794, 0.42468]
+tags        = ['t0','t1']
+kv_f07_20   = CREATE_STRUCT(tags,kvec0,kvec1)
+
+kvec0       = [ 0.76785, 0.46050,-0.44536]
+tags        = ['t0']
+kv_f05_30   = CREATE_STRUCT(tags,kvec0)
+
+kvec0       = [ 0.63228,-0.75146, 0.18851]
+kvec1       = [ 0.57048,-0.82100,-0.02238]
+kvec2       = [ 0.63156,-0.77411, 0.04344]
+kvec3       = [ 0.61795,-0.78239, 0.07747]
+kvec4       = [ 0.42935,-0.89678, 0.10700]
+kvec5       = [ 0.77918,-0.62678, 0.00592]
+tags        = ['t0','t1','t2','t3','t4','t5']
+kv_f60_200  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5)
+
+kvec0       = [-0.29655, 0.80886,-0.50775]
+kvec1       = [ 0.86545,-0.49705, 0.06280]
+kvec2       = [ 0.76346,-0.64276, 0.06318]
+kvec3       = [ 0.74219,-0.66109, 0.11006]
+kvec4       = [ 0.76159,-0.61944, 0.19046]
+kvec5       = [ 0.37032,-0.92083, 0.12220]
+tags        = ['t0','t1','t2','t3','t4','t5']
+kv_f120_200 = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5)
+
+kv_str      = kv_f07_20
+kv_str      = kv_f05_30
+kv_str      = kv_f60_200
+kv_str      = kv_f120_200
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   7 Hz < f <  20 Hz
+;0    15.9855    77.5528    80.1286
+;1    62.4129    60.2115    42.7790
+; => For   5 Hz < f <  30 Hz
+;0    12.0698    80.6996    82.3749
+; => For  60 Hz < f < 200 Hz
+;0    78.8542    88.7996    11.2109
+;1    80.3293    78.0237    15.4860
+;2    77.1374    82.9768    14.7133
+;3    78.5699    84.5498    12.6952
+;4    88.7985    82.5042     7.5913
+;5    65.0616    84.8768    25.5303
+; => For 120 Hz < f < 200 Hz
+;0    77.9311    75.2429    19.2401
+;1    57.6904    88.9771    32.3295
+;2    67.2978    87.5330    22.8508
+;3    69.6811    89.5396    20.3247
+;4    68.9333    85.2170    21.6539
+;5    85.0454    82.4045     9.0847
+
+thkn0211_2333x58_351_f07_20   = 
+thkn0211_2333x58_351_f05_30   = 
+thkn0211_2333x58_351_f60_200  = 
+thkn0211_2333x58_351_f120_200 = 
+
+tags                          = ['f07_20','f05_30','f60_200','f120_200']
+thkn0211_2333x58_351          = CREATE_STRUCT(tags,thkn0211_2333x58_351_f07_20,$
+                                                   thkn0211_2333x58_351_f05_30,$
+                                                   thkn0211_2333x58_351_f60_200,$
+                                                   thkn0211_2333x58_351_f120_200)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0211_2333x58_351_f07_20,thkn0211_2333x58_351_f05_30
+DELVAR,thkn0211_2333x58_351_f60_200,thkn0211_2333x58_351_f120_200
+
+;-----------------------------------------------------------------------------------------
+; => For 2000-02-11/23:34:00.731 UT
+;-----------------------------------------------------------------------------------------
+jj      = 2L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '021100'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_021100_2334x00_731
+
+struct0 = stats_021100_2334x00_731
+prefd   = '2000-02-11/'
+tr0         = time_double([prefd[0]+'23:33:59.6915',prefd[0]+'23:34:02.0835'])
+min_vec0    = [ 0.70039, 0.60771, 0.37434]
+mid_vec0    = [ 0.35535, 0.15796,-0.92129]
+max_vec0    = [ 0.61901,-0.77829, 0.10532]
+eig_val0    = [0.6252388916553706,0.06894769690834346,0.02525032977760784]
+deig_val0   = ABS([0.04974928924460353,0.01508462797633803,0.007141871765177246])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.54918,-0.06113, 0.83347]
+tags        = ['t0']
+kv_f03_20   = CREATE_STRUCT(tags,kvec0)
+
+kvec0       = [ 0.33514,-0.90311,-0.26847]
+tags        = ['t0']
+kv_f03_30   = CREATE_STRUCT(tags,kvec0)
+
+kvec0       = [-0.70834, 0.61539,-0.34575]
+kvec1       = [ 0.11876,-0.97744, 0.17468]
+kvec2       = [ 0.46183,-0.87804, 0.12556]
+kvec3       = [ 0.90899,-0.40131, 0.11263]
+kvec4       = [-0.77296, 0.58990,-0.23357]
+kvec5       = [ 0.76557,-0.64197, 0.04222]
+kvec6       = [ 0.72589,-0.68247, 0.08560]
+kvec7       = [ 0.62306,-0.77973, 0.06172]
+kvec8       = [ 0.32217,-0.94657,-0.01432]
+kvec9       = [ 0.39724,-0.91761, 0.01399]
+kvec10      = [ 0.80866,-0.58632,-0.04783]
+kvec11      = [ 0.75081,-0.65524, 0.08334]
+kvec12      = [ 0.65239,-0.75258, 0.08950]
+kvec13      = [ 0.63026,-0.77478, 0.04997]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']
+kv_f30_200  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10,kvec11,kvec12,kvec13)
+
+kv_str      = kv_f03_20
+kv_str      = kv_f03_30
+kv_str      = kv_f30_200
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For   3 Hz < f <  20 Hz
+;00    48.7389    54.3824    61.6207
+; => For   3 Hz < f <  30 Hz
+;00    65.5059    77.0691    28.1080
+; => For  30 Hz < f < 200 Hz
+;00    75.4299    80.5589    17.4773
+;01    63.5490    74.1496    31.4997
+;02    80.6113    84.8214    10.7436
+;03    64.2192    81.0337    27.5173
+;04    74.3167    88.0691    15.8074
+;05    80.6845    82.4297    12.0459
+;06    82.7785    85.9125     8.3070
+;07    89.1772    87.6286     2.5150
+;08    69.2093    88.7483    20.8325
+;09    74.0868    89.0445    15.9430
+;10    78.9211    76.1838    17.8508
+;11    80.8592    85.0367    10.4217
+;12    88.1043    88.2526     2.5785
+;13    89.3865    86.8161     3.2380
+
+thkn0211_2334x00_731_f03_20   = 
+thkn0211_2334x00_731_f03_30   = 
+thkn0211_2334x00_731_f30_200  = 
+
+tags                          = ['f03_20','f03_30','f30_200']
+thkn0211_2334x00_731          = CREATE_STRUCT(tags,thkn0211_2334x00_731_f03_20,$
+                                                   thkn0211_2334x00_731_f03_30,$
+                                                   thkn0211_2334x00_731_f30_200)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0211_2334x00_731_f03_20,thkn0211_2334x00_731_f03_30
+DELVAR,thkn0211_2334x00_731_f30_200
+
+;-----------------------------------------------------------------------------------------
+; => For 2000-02-11/23:34:27.503 UT
+;-----------------------------------------------------------------------------------------
+jj      = 3L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '021100'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_021100_2334x27_503
+
+struct0 = stats_021100_2334x27_503
+prefd   = '2000-02-11/'
+tr0         = time_double([prefd[0]+'23:34:25.5435',prefd[0]+'23:34:29.9595'])
+min_vec0    = [-0.69372, 0.70081, 0.16616]
+mid_vec0    = [-0.71197,-0.70212,-0.01117]
+max_vec0    = [ 0.10884,-0.12605, 0.98604]
+eig_val0    = [1.020811228948971,0.04423925753165766,0.005365397430325181]
+deig_val0   = ABS([0.02156171587506919,0.004356139750089887,0.001106796980851945])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.33220,-0.94269, 0.03140]
+kvec1       = [ 0.45654,-0.87262,-0.17348]
+kvec2       = [ 0.43569,-0.89740, 0.06960]
+kvec3       = [ 0.32246,-0.92819,-0.18569]
+kvec4       = [ 0.22994,-0.96522,-0.12438]
+kvec5       = [ 0.29927,-0.95417,-0.00134]
+kvec6       = [ 0.27569,-0.94758,-0.16149]
+kvec7       = [ 0.42468,-0.90183,-0.07963]
+kvec8       = [ 0.22803,-0.97241, 0.04921]
+kvec9       = [ 0.48400,-0.87106,-0.08366]
+kvec10      = [ 0.44546,-0.89509,-0.01945]
+kvec11      = [ 0.17214,-0.97554,-0.13674]
+kvec12      = [ 0.43512,-0.89979,-0.03244]
+kvec13      = [ 0.41351,-0.91049,-0.00353]
+kvec14      = [ 0.40647,-0.90804, 0.10123]
+kvec15      = [ 0.45496,-0.88716, 0.07725]
+kvec16      = [ 0.05041,-0.98574,-0.16055]
+kvec17      = [ 0.36917,-0.92936, 0.00026]
+kvec18      = [ 0.04421,-0.95154,-0.30433]
+kvec19      = [ 0.29852,-0.94742,-0.11524]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13',$
+               't14','t15','t16','t17','t18','t19']
+kv_f50_250  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15,kvec16,kvec17,$
+                            kvec18,kvec19)
+
+kv_str      = kv_f50_250
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For  50 Hz < f < 250 Hz
+;00    27.6396    64.8484    79.2838
+;01    16.8480    73.1672    89.3483
+;02    23.1339    71.3911    76.7520
+;03    25.1719    64.9004    88.2234
+;04    31.0612    58.9772    88.6220
+;05    28.7741    62.8137    81.2847
+;06    28.0962    61.9114    89.4392
+;07    19.9733    70.6266    85.3321
+;08    33.7482    58.6779    78.7019
+;09    16.2379    74.4589    85.4124
+;10    20.0248    71.8489    81.8288
+;11    34.3297    55.6730    89.6063
+;12    20.3108    71.1961    82.6003
+;13    22.2520    69.8240    81.0082
+;14    25.6415    69.6944    75.0180
+;15    22.4055    72.6558    76.2600
+;16    41.1957    48.8517    88.3629
+;17    24.8567    67.0653    80.9334
+;18    41.5752    50.2068    79.9022
+;19    27.1017    63.0024    87.8061
+
+thkn0211_2334x27_503_f50_250  = 
+
+tags                          = ['f50_250']
+thkn0211_2334x27_503          = CREATE_STRUCT(tags,thkn0211_2334x27_503_f50_250)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0211_2334x27_503_f50_250
+
+;-----------------------------------------------------------------------------------------
+; => For 2000-02-11/23:34:29.065 UT
+;-----------------------------------------------------------------------------------------
+jj      = 4L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '021100'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_021100_2334x29_065
+
+struct0 = stats_021100_2334x29_065
+prefd   = '2000-02-11/'
+tr0         = time_double([prefd[0]+'23:34:28.3035',prefd[0]+'23:34:30.2355'])
+min_vec0    = [-0.50344, 0.84455, 0.18246]
+mid_vec0    = [ 0.83662, 0.52924,-0.14130]
+max_vec0    = [ 0.21590,-0.08151, 0.97301]
+eig_val0    = [0.6048432919217929,0.06191218995686035,0.002403882232297209]
+deig_val0   = ABS([0.01703574311781893,0.005402597310674362,0.0007601743080869159])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.25646,-0.96585,-0.03706]
+kvec1       = [ 0.32790,-0.93987, 0.09558]
+kvec2       = [ 0.20398,-0.97896,-0.00621]
+kvec3       = [ 0.24202,-0.96944,-0.04009]
+kvec4       = [ 0.28675,-0.95617,-0.05921]
+kvec5       = [ 0.18981,-0.98114,-0.03655]
+kvec6       = [ 0.32919,-0.94306, 0.04765]
+kvec7       = [ 0.32692,-0.94460, 0.02923]
+kvec8       = [ 0.33162,-0.93816,-0.09946]
+kvec9       = [ 0.40251,-0.91086,-0.09127]
+kvec10      = [ 0.32735,-0.94211, 0.07266]
+kvec11      = [ 0.17978,-0.98198, 0.05825]
+kvec12      = [ 0.35121,-0.93619, 0.01420]
+kvec13      = [ 0.27969,-0.95770, 0.06774]
+kvec14      = [ 0.30919,-0.95065, 0.02569]
+kvec15      = [ 0.24364,-0.96776, 0.06385]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13',$
+               't14','t15']
+kv_f40_250  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15)
+
+kv_str      = kv_f40_250
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For  40 Hz < f < 250 Hz
+;00    17.9022    73.0600    84.3739
+;01    19.7110    76.3144    76.0897
+;02    21.4706    69.7221    83.2353
+;03    18.5767    72.2465    84.7062
+;04    15.6986    75.0618    85.2830
+;05    21.4325    69.1885    85.1016
+;06    17.5423    76.6775    78.7959
+;07    16.8606    76.6710    79.8621
+;08    12.1985    78.1694    87.0600
+;09     8.6751    82.3906    85.8516
+;10    18.7014    76.4083    77.3987
+;11    24.6034    67.8195    79.8903
+;12    15.2295    78.2497    80.4475
+;13    20.4015    73.5947    78.2080
+;14    17.4760    75.6362    80.2565
+;15    21.8241    71.4963    78.8364
+
+thkn0211_2334x29_065_f40_250  = 
+
+tags                          = ['f40_250']
+thkn0211_2334x29_065          = CREATE_STRUCT(tags,thkn0211_2334x29_065_f40_250)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0211_2334x29_065_f40_250
+
+;-----------------------------------------------------------------------------------------
+; => For 2000-02-12/00:14:21.709 UT
+;-----------------------------------------------------------------------------------------
+jj      = 5L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '021200'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_021200_0014x21_709
+
+struct0 = stats_021200_0014x21_709
+prefd   = '2000-02-12/'
+tr0         = time_double([prefd[0]+'00:14:20.6715',prefd[0]+'00:14:22.6035'])
+min_vec0    = [-0.68474,-0.45170,-0.57193]
+mid_vec0    = [ 0.72877,-0.41805,-0.54234]
+max_vec0    = [ 0.00587,-0.78816, 0.61544]
+eig_val0    = [0.07186219492663415,0.003841808320046027,0.001203798433278537]
+deig_val0   = ABS([0.004142053411791236,0.0008831984491206860,0.0003806744892902414])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.10187, 0.43505, 0.89462]
+kvec1       = [-0.25856,-0.57156,-0.77876]
+kvec2       = [-0.05983,-0.56854,-0.82048]
+kvec3       = [ 0.21329, 0.46489, 0.85930]
+kvec4       = [-0.08805,-0.60891,-0.78833]
+kvec5       = [-0.25167,-0.40920,-0.87705]
+kvec6       = [-0.13029,-0.69964,-0.70252]
+kvec7       = [-0.30807,-0.59580,-0.74170]
+kvec8       = [-0.20963,-0.58495,-0.78351]
+kvec9       = [-0.29483,-0.57041,-0.76662]
+kvec10      = [-0.35694,-0.65196,-0.66899]
+kvec11      = [-0.26743,-0.68807,-0.67457]
+kvec12      = [-0.34462,-0.66908,-0.65846]
+kvec13      = [-0.27741,-0.63913,-0.71733]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13']
+kv_f60_150  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10,kvec11,kvec12,kvec13)
+
+kv_str      = kv_f60_150
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For  60 Hz < f < 150 Hz
+;00    38.9289    53.6426    77.9776
+;01    28.2832    61.7797    88.2627
+;02    39.9117    50.2786    86.7205
+;03    32.0594    59.6726    80.5787
+;04    38.1677    51.8349    89.6695
+;05    30.8206    62.3987    77.3653
+;06    36.1928    54.6522    83.2057
+;07    25.2747    64.7344    89.3522
+;08    31.1433    58.8892    88.7165
+;09    26.1050    63.9366    88.6268
+;10    22.8511    67.9606    84.2591
+;11    28.3904    62.7033    82.7856
+;12    23.8239    67.3147    83.1035
+;13    27.2632    62.9957    86.5238
+
+thkn0212_0014x21_709_f60_150  = 
+
+tags                          = ['f60_150']
+thkn0212_0014x21_709          = CREATE_STRUCT(tags,thkn0212_0014x21_709_f60_150)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0212_0014x21_709_f60_150
+
+;-----------------------------------------------------------------------------------------
+; => For 2000-02-12/00:26:17.217 UT
+;-----------------------------------------------------------------------------------------
+jj      = 6L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '021200'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_021200_0026x17_217
+
+struct0 = stats_021200_0026x17_217
+prefd   = '2000-02-12/'
+tr0         = time_double([prefd[0]+'00:26:16.8915',prefd[0]+'00:26:22.4115'])
+min_vec0    = [-0.18439, 0.98267,-0.01899]
+mid_vec0    = [ 0.81996, 0.14315,-0.55423]
+max_vec0    = [ 0.54191, 0.11777, 0.83214]
+eig_val0    = [0.1448348034486478,0.005518328051528210,0.002710811921914819]
+deig_val0   = ABS([0.005135094680088871,0.0008746873081229168,0.0004991009298421908])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.19279,-0.97200,-0.13433]
+kvec1       = [ 0.34941,-0.92664,-0.13873]
+kvec2       = [-0.25181, 0.95126, 0.17801]
+tags        = ['t0','t1','t2']
+kv_f36_100  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2)
+
+kv_str      = kv_f36_100
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For  36 Hz < f < 100 Hz
+;00     8.8282    84.6415    83.0052
+;01    13.4989    76.6592    87.9814
+;02    12.0885    80.2727    82.8943
+
+thkn0212_0026x17_217_f36_100  = 
+
+tags                          = ['f36_100']
+thkn0212_0026x17_217          = CREATE_STRUCT(tags,thkn0212_0026x17_217_f36_100)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0212_0026x17_217_f36_100
+
+;-----------------------------------------------------------------------------------------
+; => For 2000-02-12/00:27:19.142 UT
+;-----------------------------------------------------------------------------------------
+jj      = 7L
+dstunx  = unixst[jj]
+denunx  = unixen[jj]
+htr_tr  = [dstunx[0],denunx[0]] + [-2d1,2d1]
+good    = WHERE(dumbmag.X GE htr_tr[0] AND dumbmag.X LE htr_tr[1],gd)
+IF (gd GT 0) THEN dummy0 = {X:dumbmag.X[good],Y:dumbmag.Y[good,*]} ELSE $
+                  dummy0 = dumbmag
+
+date    = '021200'
+vector_mv_plot,DATE=date,MYMAG=dummy0,SAT='W',COORD='GSE',FIELD='B',$
+               STATS=stats_021200_0027x19_142
+
+struct0 = stats_021200_0027x19_142
+prefd   = '2000-02-12/'
+tr0         = time_double([prefd[0]+'00:27:17.7955',prefd[0]+'00:27:29.5715'])
+min_vec0    = [-0.29462, 0.89634, 0.33132]
+mid_vec0    = [ 0.61687, 0.44318,-0.65043]
+max_vec0    = [ 0.72984,-0.01275, 0.68350]
+eig_val0    = [0.3007729795062241,0.04939166465975909,0.02120553412987657]
+deig_val0   = ABS([0.01392127963097114,0.005089867321282564,0.002661107098169281])
+eig_rat     = eig_val0[1]/eig_val0[2] GE 1d1
+
+kvec0       = [ 0.45898,-0.88673,-0.05524]
+kvec1       = [ 0.36747,-0.92973,-0.02390]
+kvec2       = [ 0.50717,-0.86183, 0.00551]
+kvec3       = [ 0.52313,-0.84176,-0.13336]
+kvec4       = [ 0.40270,-0.90921,-0.10570]
+kvec5       = [ 0.46709,-0.88280,-0.04984]
+kvec6       = [ 0.38243,-0.92297,-0.04322]
+kvec7       = [ 0.37606,-0.92293,-0.08233]
+kvec8       = [ 0.46029,-0.88747,-0.02275]
+kvec9       = [ 0.43724,-0.89920,-0.01594]
+kvec10      = [ 0.36780,-0.92975,-0.01704]
+tags        = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10']
+kv_f30_100  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,$
+                            kvec9,kvec10)
+
+kv_str      = kv_f30_100
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For  30 Hz < f < 100 Hz
+;00    18.4973    85.7608    72.0293
+;01    18.2797    80.2232    74.7095
+;02    23.0608    85.8325    67.3620
+;03    17.6715    87.9144    72.4594
+;04    14.3903    85.0791    76.5113
+;05    19.0180    85.9465    71.4525
+;06    17.3912    81.6615    74.8504
+;07    15.1310    82.9062    76.7054
+;08    20.1784    84.5733    70.6278
+;09    19.9333    83.1991    71.3561
+;10    18.6698    79.9750    74.4165
+
+thkn0212_0027x19_142_f30_100  = 
+
+tags                          = ['f30_100']
+thkn0212_0027x19_142          = CREATE_STRUCT(tags,thkn0212_0027x19_142_f30_100)
+
+DELVAR,min_vec0,mid_vec0,max_vec0,eig_val0,deig_val0,struct0,dummy0,good,htr_tr
+DELVAR,tags,thkn0212_0027x19_142_f30_100
+
+
+
+
+
+
+
+
+'-----------------------------------------------------------------------------------------'
+' => MVA Print Out'
+'-----------------------------------------------------------------------------------------'
+;-----------------------------------------------------------------------------------------
+; => Print out results
+;-----------------------------------------------------------------------------------------
+nplots  = N_TAGS(struct0)
+tr_ss   = STRARR(nplots)
+mnv_ss  = STRARR(nplots)  ; => Minimum Variance Vector [GSE]
+mdv_ss  = STRARR(nplots)  ; => Intermediate Variance Vector [GSE]
+mxv_ss  = STRARR(nplots)  ; => Maximum Variance Vector [GSE]
+
+eig_ss  = STRARR(nplots)  ; => Eigenvalues
+deig_ss = STRARR(nplots)  ; => Uncertainty in Eigenvalues
+pr_str  = ',prefd[0]+'
+tr_pre  = '         = time_double([prefd[0]+'
+dv_0s   = '])'
+kv_0s   = ']'
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  tr_0p = 'tr'+STRTRIM(j,2L)                                            & $
+  tr_00 = time_string(struct0.(j).TRANGE,PREC=4)                        & $
+  tr_01 = STRMID(tr_00[*],11L)                                          & $
+  test  = tr_0p[0]+tr_pre[0]+"'"+tr_01[0]+"'"+pr_str[0]+"'"+tr_01[1]+"'"+dv_0s[0]  & $
+  tr_ss[j] = test[0]
+
+kvform = '(f8.5,",",f8.5,",",f8.5)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  kv_0p = 'min_vec'+STRTRIM(j,2L)+'    = ['                             & $
+  kv_1p = 'mid_vec'+STRTRIM(j,2L)+'    = ['                             & $
+  kv_2p = 'max_vec'+STRTRIM(j,2L)+'    = ['                             & $
+  kv_00 = struct0.(j).MVA.EIGENVECTORS[*,0]                             & $
+  kv_10 = struct0.(j).MVA.EIGENVECTORS[*,1]                             & $
+  kv_20 = struct0.(j).MVA.EIGENVECTORS[*,2]                             & $
+  ks_00 = STRING(FORMAT=kvform,kv_00)                                   & $
+  ks_10 = STRING(FORMAT=kvform,kv_10)                                   & $
+  ks_20 = STRING(FORMAT=kvform,kv_20)                                   & $
+  test0 = kv_0p[0]+ks_00+kv_0s[0]                                       & $
+  test1 = kv_1p[0]+ks_10+kv_0s[0]                                       & $
+  test2 = kv_2p[0]+ks_20+kv_0s[0]                                       & $
+  mnv_ss[j] = test0[0]                                                  & $
+  mdv_ss[j] = test1[0]                                                  & $
+  mxv_ss[j] = test2[0]
+
+
+eform = '(g,",",g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  eg_0p = 'eig_val'+STRTRIM(j,2L)+'    = ['                             & $
+  eg_mx = struct0.(j).MVA.EIGENVALUES[*]                                & $
+  er_01 = STRCOMPRESS(STRING(FORMAT=eform,eg_mx),/REMOVE_ALL)           & $
+  test  = eg_0p[0]+er_01+kv_0s[0]                                       & $
+  eig_ss[j] = test[0]
+
+eform = '(g,",",g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  dv_0p = 'deig_val'+STRTRIM(j,2L)+'   = ABS(['                         & $
+  de_00 = struct0.(j).MVA.DEIG_VALS[*]                                  & $
+  dv_01 = STRCOMPRESS(STRING(FORMAT=eform,de_00),/REMOVE_ALL)           & $
+  test  = dv_0p[0]+dv_01+dv_0s[0]                                       & $
+  deig_ss[j] = test[0]
+
+
+
+PRINT, TRANSPOSE(tr_ss)
+PRINT, TRANSPOSE(mnv_ss)
+PRINT, TRANSPOSE(mdv_ss)
+PRINT, TRANSPOSE(mxv_ss)
+PRINT, TRANSPOSE(eig_ss)
+PRINT, TRANSPOSE(deig_ss)
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Print out results
+;-----------------------------------------------------------------------------------------
+nn          = N_TAGS(kv_str)
+thkn_str    = DBLARR(nn,3)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkn0  = ACOS(my_dot_prod(kvc00,min_vec0,/NOM))*18d1/!DPI         & $
+  thkn1  = ACOS(my_dot_prod(kvc00,mid_vec0,/NOM))*18d1/!DPI         & $
+  thkn2  = ACOS(my_dot_prod(kvc00,max_vec0,/NOM))*18d1/!DPI         & $
+  thkn0  = thkn0 < (18d1 - thkn0)                                   & $
+  thkn1  = thkn1 < (18d1 - thkn1)                                   & $
+  thkn2  = thkn2 < (18d1 - thkn2)                                   & $
+  thkn_str[j,*] = [thkn0,thkn1,thkn2]
+
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr = STRTRIM(STRING(j,FORMAT='(I2.2)'),2L)                      & $
+  PRINT,FORMAT='(";",a,3f11.4)',jstr[0],REFORM(thkn_str[j,*])
+
+;-----------------------------------
+;     k . Min    k . Mid    k . Max
+;      (deg)      (deg)      (deg)
+;===================================
+; => For  30 Hz < f < 100 Hz
+
+tkbf = '("[",'
+FOR k=0L, nn - 1L DO BEGIN                                                      $
+  tkbf += 'f5.2,",",' & $
+  IF (k EQ nn - 1L) THEN tkbf = STRMID(tkbf,0L,STRLEN(tkbf)-4L)+'"]")'
+
+PRINT,FORMAT=tkbf,REFORM(thkn_str[*,0])
+
+
+
+;  er_00 = FLOAT([eg_md/eg_mn,eg_mx/eg_md])                              & $
+;  eg_md = struct0.(j).MVA.EIGENVALUES[1]                                & $
+;  eg_mn = struct0.(j).MVA.EIGENVALUES[2]                                & $
+
+;  dd_00 = struct0.(j).MVA.DEIG_VALS[1]                                  & $
+;  dn_00 = struct0.(j).MVA.DEIG_VALS[2]                                  & $

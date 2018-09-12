@@ -1,0 +1,1560 @@
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables and constants
+;-----------------------------------------------------------------------------------------
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+kB         = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo        = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV       = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo        = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo        = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me         = 9.1093897d-31     ; -Electron mass (kg)
+mp         = 1.6726231d-27     ; -Proton mass (kg)
+qq         = 1.60217733d-19    ; -Fundamental charge (C)
+c          = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2         = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev      = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp     = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev      = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp     = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+
+fcefac     = qq/me/(2d0*!DPI)
+fcpfac     = qq/mp/(2d0*!DPI)
+;-----------------------------------------------------------------------------------------
+; => ALL TDS whistlers [Suffix Def:  '' = ALL, 'an' = Anisotropy, 'bm' = Beam/Flattop]
+;                      [Suffix Def:  '' = ALL, 'pl' = radiation-belts, 'mg' = magnetosphere]
+;-----------------------------------------------------------------------------------------
+magnet_beam_test = whistler_insta_loc_read(LOC_ESOURCE='magneto',FREE_ESOURCE='beams')
+magnet_anis_test = whistler_insta_loc_read(LOC_ESOURCE='magneto',FREE_ESOURCE='aniso')
+plasma_anis_test = whistler_insta_loc_read(LOC_ESOURCE='radbelt',FREE_ESOURCE='aniso')
+;-----------------------------------------------------------------------------------------
+; => Define parameters
+;-----------------------------------------------------------------------------------------
+; => Phase Velocities
+Vph_flnmgbm = magnet_beam_test.VPH_FLOW_MN
+Vph_flxmgbm = magnet_beam_test.VPH_FLOW_MX
+Vph_fhnmgbm = magnet_beam_test.VPH_FHIGH_MN
+Vph_fhxmgbm = magnet_beam_test.VPH_FHIGH_MX
+
+Vph_flnmgan = magnet_anis_test.VPH_FLOW_MN
+Vph_flxmgan = magnet_anis_test.VPH_FLOW_MX
+Vph_fhnmgan = magnet_anis_test.VPH_FHIGH_MN
+Vph_fhxmgan = magnet_anis_test.VPH_FHIGH_MX
+
+Vph_flnplan = plasma_anis_test.VPH_FLOW_MN
+Vph_flxplan = plasma_anis_test.VPH_FLOW_MX
+Vph_fhnplan = plasma_anis_test.VPH_FHIGH_MN
+Vph_fhxplan = plasma_anis_test.VPH_FHIGH_MX
+; => Define L-Shell, Radial Distance, and MLT
+w_lshmgbm   = magnet_beam_test.WIND_L_SHELL
+w_radmgbm   = magnet_beam_test.WIND_RAD_DIST
+w_mltmgbm   = magnet_beam_test.WIND_MLT
+
+w_lshmgan   = magnet_anis_test.WIND_L_SHELL
+w_radmgan   = magnet_anis_test.WIND_RAD_DIST
+w_mltmgan   = magnet_anis_test.WIND_MLT
+
+w_lshplan   = plasma_anis_test.WIND_L_SHELL
+w_radplan   = plasma_anis_test.WIND_RAD_DIST
+w_mltplan   = plasma_anis_test.WIND_MLT
+;-----------------------------------------------------------------------------------------
+; => Define separation tests (by finite Vph and Radial Distance)
+;-----------------------------------------------------------------------------------------
+;lshell     = 20.
+lshell     = 15.
+;lshell     = 10.
+l_string   = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+
+; => Make sure we only look at cases with finite phase velocity estimates from 
+;      cold plasma dispersion estimates
+test_fmgbm = FINITE(Vph_flnmgbm) AND FINITE(Vph_flxmgbm) AND FINITE(Vph_fhnmgbm) $
+               AND FINITE(Vph_fhxmgbm)
+test_fmgan = FINITE(Vph_flnmgan) AND FINITE(Vph_flxmgan) AND FINITE(Vph_fhnmgan) $
+               AND FINITE(Vph_fhxmgan)
+test_fplan = FINITE(Vph_flnplan) AND FINITE(Vph_flxplan) AND FINITE(Vph_fhnplan) $
+               AND FINITE(Vph_fhxplan)
+; => Make sure we only look at cases within a specific L-shell
+test_lmgbm = (w_lshmgbm LE lshell)
+test_lmgan = (w_lshmgan LE lshell)
+test_lplan = (w_lshplan LE lshell)
+; => Combine two tests
+testmgbm   = test_fmgbm AND test_lmgbm
+testmgan   = test_fmgan AND test_lmgan
+testplan   = test_fplan AND test_lplan
+
+good0      = WHERE(testmgbm,gd0)
+good1      = WHERE(testmgan,gd1)
+good2      = WHERE(testplan,gd2)
+PRINT, gd0, gd1, gd2
+; => For L < 10
+;          16          64         154
+; => For L < 15
+;          26          41         172
+; => For L < 20
+;          67          68         154
+;-----------------------------------------------------------------------------------------
+; => Define parameters
+;-----------------------------------------------------------------------------------------
+; => Define L-Shell, Radial Distance, MLT, and Invariant Latitude
+w_lshmgbm   = w_lshmgbm[good0]
+w_radmgbm   = w_radmgbm[good0]
+w_mltmgbm   = w_mltmgbm[good0]
+w_invmgbm   = magnet_beam_test.WIND_INV_LAT[good0]
+
+w_lshmgan   = w_lshmgan[good1]
+w_radmgan   = w_radmgan[good1]
+w_mltmgan   = w_mltmgan[good1]
+w_invmgan   = magnet_anis_test.WIND_INV_LAT[good1]
+
+w_lshplan   = w_lshplan[good2]
+w_radplan   = w_radplan[good2]
+w_mltplan   = w_mltplan[good2]
+w_invplan   = plasma_anis_test.WIND_INV_LAT[good2]
+; => Wave GSM and GSE Positions
+gsm_posmgbm = [[magnet_beam_test.X_GSM_POS[good0]],[magnet_beam_test.Y_GSM_POS[good0]],$
+               [magnet_beam_test.Z_GSM_POS[good0]]]
+gsm_posmgan = [[magnet_anis_test.X_GSM_POS[good1]],[magnet_anis_test.Y_GSM_POS[good1]],$
+               [magnet_anis_test.Z_GSM_POS[good1]]]
+gsm_posplan = [[plasma_anis_test.X_GSM_POS[good2]],[plasma_anis_test.Y_GSM_POS[good2]],$
+               [plasma_anis_test.Z_GSM_POS[good2]]]
+
+gse_posmgbm = [[magnet_beam_test.X_GSE_POS[good0]],[magnet_beam_test.Y_GSE_POS[good0]],$
+               [magnet_beam_test.Z_GSE_POS[good0]]]
+gse_posmgan = [[magnet_anis_test.X_GSE_POS[good1]],[magnet_anis_test.Y_GSE_POS[good1]],$
+               [magnet_anis_test.Z_GSE_POS[good1]]]
+gse_posplan = [[plasma_anis_test.X_GSE_POS[good2]],[plasma_anis_test.Y_GSE_POS[good2]],$
+               [plasma_anis_test.Z_GSE_POS[good2]]]
+; => Wave RMS Amplitudes
+rms_magmgbm = magnet_beam_test.RMS[good0,3L]
+rms_magmgan = magnet_anis_test.RMS[good1,3L]
+rms_magplan = plasma_anis_test.RMS[good2,3L]
+; => Define temperatures and anisotropies [EL]
+tavgelmgbm = magnet_beam_test.T_AVG_EL[good0]
+tparelmgbm = magnet_beam_test.TPARA_EL[good0]
+tperelmgbm = magnet_beam_test.TPERP_EL[good0]
+tanielmgbm = magnet_beam_test.TANISOTROPY_EL[good0]
+
+tavgelmgan = magnet_anis_test.T_AVG_EL[good1]
+tparelmgan = magnet_anis_test.TPARA_EL[good1]
+tperelmgan = magnet_anis_test.TPERP_EL[good1]
+tanielmgan = magnet_anis_test.TANISOTROPY_EL[good1]
+
+tavgelplan = plasma_anis_test.T_AVG_EL[good2]
+tparelplan = plasma_anis_test.TPARA_EL[good2]
+tperelplan = plasma_anis_test.TPERP_EL[good2]
+tanielplan = plasma_anis_test.TANISOTROPY_EL[good2]
+; => Define temperatures and anisotropies [EH]
+tavgehmgbm = magnet_beam_test.T_AVG_EH[good0]
+tparehmgbm = magnet_beam_test.TPARA_EH[good0]
+tperehmgbm = magnet_beam_test.TPERP_EH[good0]
+taniehmgbm = magnet_beam_test.TANISOTROPY_EH[good0]
+
+tavgehmgan = magnet_anis_test.T_AVG_EH[good1]
+tparehmgan = magnet_anis_test.TPARA_EH[good1]
+tperehmgan = magnet_anis_test.TPERP_EH[good1]
+taniehmgan = magnet_anis_test.TANISOTROPY_EH[good1]
+
+tavgehplan = plasma_anis_test.T_AVG_EH[good2]
+tparehplan = plasma_anis_test.TPARA_EH[good2]
+tperehplan = plasma_anis_test.TPERP_EH[good2]
+taniehplan = plasma_anis_test.TANISOTROPY_EH[good2]
+; => Define local and equitorial cyclotron frequencies
+bmag_eqmgbm = magnfactor[0]/(w_lshmgbm)^3
+fce_eqmgbm  = fcefac[0]*bmag_eqmgbm
+fce_lcmgbm  = fcefac[0]*(magnet_beam_test.WI_B3_MAG[good0]*1d-9)
+
+bmag_eqmgan = magnfactor[0]/(w_lshmgan)^3
+fce_eqmgan  = fcefac[0]*bmag_eqmgan
+fce_lcmgan  = fcefac[0]*(magnet_anis_test.WI_B3_MAG[good1]*1d-9)
+
+bmag_eqplan = magnfactor[0]/(w_lshplan)^3
+fce_eqplan  = fcefac[0]*bmag_eqplan
+fce_lcplan  = fcefac[0]*(plasma_anis_test.WI_B3_MAG[good2]*1d-9)
+; => Define observed wave frequencies
+fw_lowmgbm  = magnet_beam_test.FLOW_PEAK[good0]
+fw_highmgbm = magnet_beam_test.FHIGH_PEAK[good0]
+fw_peakmgbm = (fw_highmgbm   + fw_lowmgbm)/2d0
+del_fmgbm   = (fw_highmgbm   - fw_lowmgbm)
+delf_fmgbm  = del_fmgbm/fw_peakmgbm
+
+fw_lowmgan  = magnet_anis_test.FLOW_PEAK[good1]
+fw_highmgan = magnet_anis_test.FHIGH_PEAK[good1]
+fw_peakmgan = (fw_highmgan   + fw_lowmgan)/2d0
+del_fmgan   = (fw_highmgan   - fw_lowmgan)
+delf_fmgan  = del_fmgan/fw_peakmgan
+
+fw_lowplan  = plasma_anis_test.FLOW_PEAK[good2]
+fw_highplan = plasma_anis_test.FHIGH_PEAK[good2]
+fw_peakplan = (fw_highplan   + fw_lowplan)/2d0
+del_fplan   = (fw_highplan   - fw_lowplan)
+delf_fplan  = del_fplan/fw_peakplan
+; => Define local plasma frequencies
+fpemgbm     = magnet_beam_test.FPE[good0]
+fpemgan     = magnet_anis_test.FPE[good1]
+fpeplan     = plasma_anis_test.FPE[good2]
+; => Wave GSM and GSE Latitude out of XY-Plane
+gsm_latmgbm   = ATAN(gsm_posmgbm[*,2],SQRT(gsm_posmgbm[*,0]^2+gsm_posmgbm[*,1]^1))*18d1/!DPI
+gsm_latmgan   = ATAN(gsm_posmgan[*,2],SQRT(gsm_posmgan[*,0]^2+gsm_posmgan[*,1]^1))*18d1/!DPI
+gsm_latplan   = ATAN(gsm_posplan[*,2],SQRT(gsm_posplan[*,0]^2+gsm_posplan[*,1]^1))*18d1/!DPI
+
+gse_latmgbm   = ATAN(gse_posmgbm[*,2],SQRT(gse_posmgbm[*,0]^2+gse_posmgbm[*,1]^1))*18d1/!DPI
+gse_latmgan   = ATAN(gse_posmgan[*,2],SQRT(gse_posmgan[*,0]^2+gse_posmgan[*,1]^1))*18d1/!DPI
+gse_latplan   = ATAN(gse_posplan[*,2],SQRT(gse_posplan[*,0]^2+gse_posplan[*,1]^1))*18d1/!DPI
+; => Define frequency ratios
+fw_fcemgbm    = fw_peakmgbm/fce_eqmgbm
+fw_fcelmgbm   = fw_peakmgbm/fce_lcmgbm
+fw_fpemgbm    = fw_peakmgbm/fpemgbm
+fpe_fceeqmgbm = fpemgbm/fce_eqmgbm
+
+fw_fcemgan    = fw_peakmgan/fce_eqmgan
+fw_fcelmgan   = fw_peakmgan/fce_lcmgan
+fw_fpemgan    = fw_peakmgan/fpemgan
+fpe_fceeqmgan = fpemgan/fce_eqmgan
+
+fw_fceplan    = fw_peakplan/fce_eqplan
+fw_fcelplan   = fw_peakplan/fce_lcplan
+fw_fpeplan    = fw_peakplan/fpeplan
+fpe_fceeqplan = fpeplan/fce_eqplan
+;--------------------------------------------------
+; => Calculate Gendrin Angles
+;--------------------------------------------------
+; =>  f < f_lh             :  Undefined
+; =>  f = f_lh             :  90 degrees
+; =>  f_lh < f < 0.5 f_ce  :  ACOS(2d0*(f_w^2 - f_lh^2)/(f_ce*f_w))
+; =>  0.5 f_ce < f < f_ce  :  0 degrees
+
+fcp_lcmgbm  = fcpfac[0]*(magnet_beam_test.WI_B3_MAG[good0]*1d-9)
+fcp_lcmgan  = fcpfac[0]*(magnet_anis_test.WI_B3_MAG[good1]*1d-9)
+fcp_lcplan  = fcpfac[0]*(plasma_anis_test.WI_B3_MAG[good2]*1d-9)
+
+flh_lcmgbm  = SQRT(fcp_lcmgbm*fce_lcmgbm)
+flh_lcmgan  = SQRT(fcp_lcmgan*fce_lcmgan)
+flh_lcplan  = SQRT(fcp_lcplan*fce_lcplan)
+; => Determine logic tests
+test_unmgbm = WHERE(fw_peakmgbm LT flh_lcmgbm,gdun0)
+test_unmgan = WHERE(fw_peakmgan LT flh_lcmgan,gdun1)
+test_unplan = WHERE(fw_peakplan LT flh_lcplan,gdun2)
+
+test_90mgbm = WHERE(fw_peakmgbm EQ flh_lcmgbm,gd900)
+test_90mgan = WHERE(fw_peakmgan EQ flh_lcmgan,gd901)
+test_90plan = WHERE(fw_peakplan EQ flh_lcplan,gd902)
+
+test_comgbm = WHERE(flh_lcmgbm LT fw_peakmgbm AND fw_peakmgbm LT 5d-1*fce_lcmgbm,gdco0)
+test_comgan = WHERE(flh_lcmgan LT fw_peakmgan AND fw_peakmgan LT 5d-1*fce_lcmgan,gdco1)
+test_coplan = WHERE(flh_lcplan LT fw_peakplan AND fw_peakplan LT 5d-1*fce_lcplan,gdco2)
+
+test_00mgbm = WHERE(5d-1*fce_lcmgbm LE fw_peakmgbm AND fw_peakmgbm LE fce_lcmgbm,gd000)
+test_00mgan = WHERE(5d-1*fce_lcmgan LE fw_peakmgan AND fw_peakmgan LE fce_lcmgan,gd001)
+test_00plan = WHERE(5d-1*fce_lcplan LE fw_peakplan AND fw_peakplan LE fce_lcplan,gd002)
+
+; => Create Dummy arrays for possible values
+dumb_comgbm = ACOS(2d0*(fw_peakmgbm^2 - flh_lcmgbm^2)/(fce_lcmgbm*fw_peakmgbm))*18d1/!DPI
+dumb_comgan = ACOS(2d0*(fw_peakmgan^2 - flh_lcmgan^2)/(fce_lcmgan*fw_peakmgan))*18d1/!DPI
+dumb_coplan = ACOS(2d0*(fw_peakplan^2 - flh_lcplan^2)/(fce_lcplan*fw_peakplan))*18d1/!DPI
+
+phi_genmgbm = DBLARR(gd0)
+phi_genmgan = DBLARR(gd1)
+phi_genplan = DBLARR(gd2)
+
+IF (gdun0 GT 0) THEN phi_genmgbm[test_unmgbm] = d
+IF (gdun1 GT 0) THEN phi_genmgan[test_unmgan] = d
+IF (gdun2 GT 0) THEN phi_genplan[test_unplan] = d
+
+IF (gd900 GT 0) THEN phi_genmgbm[test_90mgbm] = 90d0
+IF (gd901 GT 0) THEN phi_genmgan[test_90mgan] = 90d0
+IF (gd902 GT 0) THEN phi_genplan[test_90plan] = 90d0
+
+IF (gdco0 GT 0) THEN phi_genmgbm[test_comgbm] = dumb_comgbm[test_comgbm]
+IF (gdco1 GT 0) THEN phi_genmgan[test_comgan] = dumb_comgan[test_comgan]
+IF (gdco2 GT 0) THEN phi_genplan[test_coplan] = dumb_coplan[test_coplan]
+
+IF (gd000 GT 0) THEN phi_genmgbm[test_00mgbm] = 0d0
+IF (gd001 GT 0) THEN phi_genmgan[test_00mgan] = 0d0
+IF (gd002 GT 0) THEN phi_genplan[test_00plan] = 0d0
+
+
+;phi_genmgbm = magnet_beam_test.GENDRIN_ANG[good0]
+;phi_genmgan = magnet_anis_test.GENDRIN_ANG[good1]
+;phi_genplan = plasma_anis_test.GENDRIN_ANG[good2]
+
+
+unitsmgbm = STRTRIM(magnet_beam_test.UNITS[good0],2)
+unitsmgan = STRTRIM(magnet_anis_test.UNITS[good1],2)
+unitsplan = STRTRIM(plasma_anis_test.UNITS[good2],2)
+;-----------------------------------------------------------------------------------------
+; => Plot histograms of relevant data
+;      and define file name prefixes/suffixes and plot titles
+;-----------------------------------------------------------------------------------------
+pref       = 'Whistler_TDS-ALL_L'+l_string[0]+'_'
+suffxmg    = '_Magnetosphere_histogram'
+suffxpl    = '_Radiation-Belts_histogram'
+suffxan    = 'anisotropic-edists'
+suffxbm    = 'beam-flattop-edists'
+
+ttl_mg     = 'Magnetosphere'
+ttl_pl     = 'Radiation Belts'
+ttl_an     = 'Anisotropic'
+ttl_bm     = 'Beam/Flattop'
+
+; => Magnetospheric whistler plot titles
+ttlmgbm    = 'TDS ['+ttl_mg[0]+', '+ttl_bm[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+ttlmgan    = 'TDS ['+ttl_mg[0]+', '+ttl_an[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+; => Plasmaspheric whistler plot titles
+ttlplan    = 'TDS ['+ttl_pl[0]+', '+ttl_an[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+
+
+; => Open windows if not done already
+wi,0
+wi,1
+wi,2
+
+;-----------------------------------------------
+; => Z-GSM position histograms
+;-----------------------------------------------
+xttl       = 'Z-GSM position (R!DE!N'+')'
+zgsm_mgbm  = gsm_posmgbm[*,2]/(R_E*1d-3)
+zgsm_mgan  = gsm_posmgan[*,2]/(R_E*1d-3)
+zgsm_plan  = gsm_posplan[*,2]/(R_E*1d-3)
+
+wset,0
+  my_histogram_plot,zgsm_mgbm,drange=[-3.,3.],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,zgsm_mgan,drange=[-3.,3.],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,zgsm_plan,drange=[-3.,3.],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'position-Z-GSM_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,zgsm_mgbm,drange=[-3.,3.],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'position-Z-GSM_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,zgsm_mgan,drange=[-3.,3.],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'position-Z-GSM_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,zgsm_plan,drange=[-3.,3.],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => GSM latitude histograms
+;-----------------------------------------------
+xttl       = 'Latitude !7k!3'+'!DkGSM!N (deg)'
+wset,0
+  my_histogram_plot,gsm_latmgbm,drange=[-90.,90.],xttl=xttl,ttle=ttlmgbm,nbins=10
+wset,1
+  my_histogram_plot,gsm_latmgan,drange=[-90.,90.],xttl=xttl,ttle=ttlmgan,nbins=10
+wset,2
+  my_histogram_plot,gsm_latplan,drange=[-90.,90.],xttl=xttl,ttle=ttlplan,nbins=10
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'latitude-GSM_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,gsm_latmgbm,drange=[-90.,90.],xttl=xttl,ttle=ttlmgbm,nbins=10
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'latitude-GSM_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,gsm_latmgan,drange=[-90.,90.],xttl=xttl,ttle=ttlmgan,nbins=10
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'latitude-GSM_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,gsm_latplan,drange=[-90.,90.],xttl=xttl,ttle=ttlplan,nbins=10
+pclose
+
+;-----------------------------------------------
+; => GSE latitude histograms
+;-----------------------------------------------
+xttl       = 'Latitude !7k!3'+'!DkGSE!N (deg)'
+wset,0
+  my_histogram_plot,gse_latmgbm,drange=[-50.,50.],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,gse_latmgan,drange=[-50.,50.],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,gse_latplan,drange=[-50.,50.],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'latitude-GSE_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,gse_latmgbm,drange=[-50.,50.],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'latitude-GSE_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,gse_latmgan,drange=[-50.,50.],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'latitude-GSE_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,gse_latplan,drange=[-50.,50.],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => <Te> [EL, eV] histograms
+;-----------------------------------------------
+xttl  = 'T!De!N'+' [EL, eV]'
+wset,0
+  my_histogram_plot,tavgelmgbm,drange=[2e1,18e1],xttl=xttl,ttle=ttlmgbm,nbins=9
+wset,1
+  my_histogram_plot,tavgelmgan,drange=[2e1,18e1],xttl=xttl,ttle=ttlmgan,nbins=9
+wset,2
+  my_histogram_plot,tavgelplan,drange=[2e1,18e1],xttl=xttl,ttle=ttlplan,nbins=9
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Te-EL_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,tavgelmgbm,drange=[2e1,18e1],xttl=xttl,ttle=ttlmgbm,nbins=9
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Te-EL_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,tavgelmgan,drange=[2e1,18e1],xttl=xttl,ttle=ttlmgan,nbins=9
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Te-EL_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,tavgelplan,drange=[2e1,18e1],xttl=xttl,ttle=ttlplan,nbins=9
+pclose
+
+;-----------------------------------------------
+; => Te_perp/Te_para [EL, eV] histograms
+;-----------------------------------------------
+xttl  = 'T!D!9x!3'+'!N/T!D!9#!3'+'!N [EL]'
+wset,0
+  my_histogram_plot,tanielmgbm,drange=[1e-1,2e0],xttl=xttl,ttle=ttlmgbm,nbins=10
+wset,1
+  my_histogram_plot,tanielmgan,drange=[1e-1,2e0],xttl=xttl,ttle=ttlmgan,nbins=10
+wset,2
+  my_histogram_plot,tanielplan,drange=[1e-1,2e0],xttl=xttl,ttle=ttlplan,nbins=10
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Tani-EL_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,tanielmgbm,drange=[1e-1,2e0],xttl=xttl,ttle=ttlmgbm,nbins=10
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Tani-EL_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,tanielmgan,drange=[1e-1,2e0],xttl=xttl,ttle=ttlmgan,nbins=10
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Tani-EL_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,tanielplan,drange=[1e-1,2e0],xttl=xttl,ttle=ttlplan,nbins=10
+pclose
+
+;-----------------------------------------------
+; => <Te> [EH, eV] histograms
+;-----------------------------------------------
+xttl  = 'T!De!N'+' [EH, eV]'
+wset,0
+  my_histogram_plot,tavgehmgbm,drange=[1e2,25e2],xttl=xttl,ttle=ttlmgbm,nbins=9
+wset,1
+  my_histogram_plot,tavgehmgan,drange=[1e2,25e2],xttl=xttl,ttle=ttlmgan,nbins=9
+wset,2
+  my_histogram_plot,tavgehplan,drange=[1e2,25e2],xttl=xttl,ttle=ttlplan,nbins=9
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Te-EH_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,tavgehmgbm,drange=[1e2,25e2],xttl=xttl,ttle=ttlmgbm,nbins=9
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Te-EH_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,tavgehmgan,drange=[1e2,25e2],xttl=xttl,ttle=ttlmgan,nbins=9
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Te-EH_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,tavgehplan,drange=[1e2,25e2],xttl=xttl,ttle=ttlplan,nbins=9
+pclose
+
+;-----------------------------------------------
+; => Te_perp/Te_para [EH, eV] histograms
+;-----------------------------------------------
+xttl  = 'T!D!9x!3'+'!N/T!D!9#!3'+'!N [EH]'
+wset,0
+  my_histogram_plot,taniehmgbm,drange=[1e-1,2e0],xttl=xttl,ttle=ttlmgbm,nbins=10
+wset,1
+  my_histogram_plot,taniehmgan,drange=[1e-1,2e0],xttl=xttl,ttle=ttlmgan,nbins=10
+wset,2
+  my_histogram_plot,taniehplan,drange=[1e-1,2e0],xttl=xttl,ttle=ttlplan,nbins=10
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Tani-EH_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,taniehmgbm,drange=[1e-1,2e0],xttl=xttl,ttle=ttlmgbm,nbins=10
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Tani-EH_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,taniehmgan,drange=[1e-1,2e0],xttl=xttl,ttle=ttlmgan,nbins=10
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Tani-EH_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,taniehplan,drange=[1e-1,2e0],xttl=xttl,ttle=ttlplan,nbins=10
+pclose
+
+;-----------------------------------------------
+; => <Teh>/<Tec> [EH/EL] histograms
+;-----------------------------------------------
+xttl  = 'T!Deh!N'+'/T!Dec!N [EH/EL]'
+wset,0
+  my_histogram_plot,tavgehplan/tavgelplan,drange=[1e0,22e0],xttl=xttl,ttle=ttlmgbm,nbins=8
+wset,1
+  my_histogram_plot,tavgehmgan/tavgelmgan,drange=[1e0,22e0],xttl=xttl,ttle=ttlmgan,nbins=8
+wset,2
+  my_histogram_plot,tavgehplan/tavgelplan,drange=[1e0,22e0],xttl=xttl,ttle=ttlplan,nbins=8
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Te-EH_Te-EL_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,tavgehplan/tavgelplan,drange=[1e0,22e0],xttl=xttl,ttle=ttlmgbm,nbins=8
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Te-EH_Te-EL_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,tavgehmgan/tavgelmgan,drange=[1e0,22e0],xttl=xttl,ttle=ttlmgan,nbins=8
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Te-EH_Te-EL_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,tavgehplan/tavgelplan,drange=[1e0,22e0],xttl=xttl,ttle=ttlplan,nbins=8
+pclose
+
+;-----------------------------------------------
+; => ∆f histograms
+;-----------------------------------------------
+xttl  = '!7D!3'+'f (Hz)'
+wset,0
+  my_histogram_plot,del_fmgbm,drange=[0e0,2e3],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,del_fmgan,drange=[0e0,2e3],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,del_fplan,drange=[0e0,2e3],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'delta-f_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fmgbm,drange=[0e0,2e3],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'delta-f_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fmgan,drange=[0e0,2e3],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'delta-f_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fplan,drange=[0e0,2e3],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => ∆f/f histograms
+;-----------------------------------------------
+xttl  = '!7D!3'+'f/f'
+wset,0
+  my_histogram_plot,delf_fmgbm,drange=[0e0,2e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,delf_fmgan,drange=[0e0,2e0],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,delf_fplan,drange=[0e0,2e0],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'deltaf-f_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,delf_fmgbm,drange=[0e0,2e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'deltaf-f_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,delf_fmgan,drange=[0e0,2e0],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'deltaf-f_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,delf_fplan,drange=[0e0,2e0],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => ∆f/fpe histograms
+;-----------------------------------------------
+xttl  = '!7D!3'+'f/f!Dpe!N'
+wset,0
+  my_histogram_plot,del_fmgbm/fpemgbm,drange=[0e0,6e-1],xttl=xttl,ttle=ttlmgbm,nbins=8
+wset,1
+  my_histogram_plot,del_fmgan/fpemgan,drange=[0e0,6e-1],xttl=xttl,ttle=ttlmgan,nbins=8
+wset,2
+  my_histogram_plot,del_fplan/fpeplan,drange=[0e0,6e-1],xttl=xttl,ttle=ttlplan,nbins=8
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'delta-f-fpe_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fmgbm/fpemgbm,drange=[0e0,6e-1],xttl=xttl,ttle=ttlmgbm,nbins=8
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'delta-f-fpe_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fmgan/fpemgan,drange=[0e0,6e-1],xttl=xttl,ttle=ttlmgan,nbins=8
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'delta-f-fpe_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fplan/fpeplan,drange=[0e0,6e-1],xttl=xttl,ttle=ttlplan,nbins=8
+pclose
+
+;-----------------------------------------------
+; => ∆f/fce [fce = equitorial cyclotron frequency] histograms
+;-----------------------------------------------
+xttl  = '!7D!3'+'f/f!Dce!N [f!Dce!N = equitorial]'
+wset,0
+  my_histogram_plot,del_fmgbm/fce_eqmgbm,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,del_fmgan/fce_eqmgan,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,del_fplan/fce_eqplan,drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'delta-f-fce-equitorial_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fmgbm/fce_eqmgbm,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'delta-f-fce-equitorial_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fmgan/fce_eqmgan,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'delta-f-fce-equitorial_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fplan/fce_eqplan,drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => ∆f/fce [fce = local cyclotron frequency] histograms
+;-----------------------------------------------
+xttl  = '!7D!3'+'f/f!Dce!N [f!Dce!N = local]'
+wset,0
+  my_histogram_plot,del_fmgbm/fce_lcmgbm,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,del_fmgan/fce_lcmgan,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,del_fplan/fce_lcplan,drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'delta-f-fce-local_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fmgbm/fce_eqmgbm,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'delta-f-fce-local_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fmgan/fce_eqmgan,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'delta-f-fce-local_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,del_fplan/fce_eqplan,drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => f/fce [fce = equitorial cyclotron frequency] histograms
+;-----------------------------------------------
+xttl  = 'f/f!Dce!N [f!Dce!N = equitorial]'
+wset,0
+  my_histogram_plot,fw_fcemgbm,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,fw_fcemgan,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,fw_fceplan,drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'f-fce-equitorial_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fw_fcemgbm,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'f-fce-equitorial_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fw_fcemgan,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'f-fce-equitorial_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,fw_fceplan,drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => f/fce [fce = local cyclotron frequency] histograms
+;-----------------------------------------------
+xttl  = 'f/f!Dce!N [f!Dce!N = local]'
+wset,0
+  my_histogram_plot,fw_fcelmgbm,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,fw_fcelmgan,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,fw_fcelplan,drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'f-fce-local_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fw_fcelmgbm,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'f-fce-local_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fw_fcelmgan,drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'f-fce-local_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,fw_fcelplan,drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => f/fpe [fpe = local plasma frequency] histograms
+;-----------------------------------------------
+xttl  = 'f/f!Dpe!N [Local Plasma Frequency]'
+wset,0
+  my_histogram_plot,fw_fpemgbm,drange=[0e0,6e-1],xttl=xttl,ttle=ttlmgbm,nbins=8
+wset,1
+  my_histogram_plot,fw_fpemgan,drange=[0e0,6e-1],xttl=xttl,ttle=ttlmgan,nbins=8
+wset,2
+  my_histogram_plot,fw_fpeplan,drange=[0e0,6e-1],xttl=xttl,ttle=ttlplan,nbins=8
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'f-fpe_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fw_fpemgbm,drange=[0e0,6e-1],xttl=xttl,ttle=ttlmgbm,nbins=8
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'f-fpe_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fw_fpemgan,drange=[0e0,6e-1],xttl=xttl,ttle=ttlmgan,nbins=8
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'f-fpe_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,fw_fpeplan,drange=[0e0,6e-1],xttl=xttl,ttle=ttlplan,nbins=8
+pclose
+
+;-----------------------------------------------
+; => fpe/fce [fpe = local plasma frequency, fce = equitorial cyclotron frequency] histograms
+;-----------------------------------------------
+xttl  = 'f!Dpe!N'+'/f!Dce!N [Local Plasma Freq., Equitorial Cyclo. Freq.]'
+wset,0
+  my_histogram_plot,fpe_fceeqmgbm,drange=[0e0,15e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,fpe_fceeqmgan,drange=[0e0,15e0],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,fpe_fceeqplan,drange=[0e0,15e0],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'fpe-fce-equitorial_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fpe_fceeqmgbm,drange=[0e0,15e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'fpe-fce-equitorial_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fpe_fceeqmgan,drange=[0e0,15e0],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'fpe-fce-equitorial_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,fpe_fceeqplan,drange=[0e0,15e0],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => fpe/fce [fpe = local plasma frequency, fce = local cyclotron frequency] histograms
+;-----------------------------------------------
+xttl  = 'f!Dpe!N'+'/f!Dce!N [Local Plasma Freq., Local Cyclo. Freq.]'
+wset,0
+  my_histogram_plot,fpemgbm/fce_lcmgbm,drange=[0e0,15e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,fpemgan/fce_lcmgan,drange=[0e0,15e0],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,fpeplan/fce_lcplan,drange=[0e0,15e0],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'fpe-fce-local_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fpemgbm/fce_lcmgbm,drange=[0e0,15e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'fpe-fce-local_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,fpemgan/fce_lcmgan,drange=[0e0,15e0],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'fpe-fce-local_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,fpeplan/fce_lcplan,drange=[0e0,15e0],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => L-Shell histograms
+;-----------------------------------------------
+xttl       = 'L-Shell (R!DE!N)'
+wset,0
+  my_histogram_plot,w_lshmgbm,drange=[0e0,lshell],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,w_lshmgan,drange=[0e0,lshell],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,w_lshplan,drange=[0e0,lshell],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'LShell_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,w_lshmgbm,drange=[0e0,lshell],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'LShell_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,w_lshmgan,drange=[0e0,lshell],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'LShell_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,w_lshplan,drange=[0e0,lshell],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => L-Shell histograms
+;-----------------------------------------------
+xttl       = 'Radial Distance (R!DE!N)'
+wset,0
+  my_histogram_plot,w_radmgbm,drange=[0e0,lshell],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,w_radmgan,drange=[0e0,lshell],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,w_radplan,drange=[0e0,lshell],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Radial-Dist_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,w_radmgbm,drange=[0e0,lshell],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Radial-Dist_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,w_radmgan,drange=[0e0,lshell],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Radial-Dist_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,w_radplan,drange=[0e0,lshell],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => MLT histograms
+;-----------------------------------------------
+xttl       = 'MLT (hours)'
+wset,0
+  my_histogram_plot,w_mltmgbm,drange=[0e0,24e0],xttl=xttl,ttle=ttlmgbm,nbins=9
+wset,1
+  my_histogram_plot,w_mltmgan,drange=[0e0,24e0],xttl=xttl,ttle=ttlmgan,nbins=9
+wset,2
+  my_histogram_plot,w_mltplan,drange=[0e0,24e0],xttl=xttl,ttle=ttlplan,nbins=9
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'MLT_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,w_mltmgbm,drange=[0e0,24e0],xttl=xttl,ttle=ttlmgbm,nbins=9
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'MLT_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,w_mltmgan,drange=[0e0,24e0],xttl=xttl,ttle=ttlmgan,nbins=9
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'MLT_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,w_mltplan,drange=[0e0,24e0],xttl=xttl,ttle=ttlplan,nbins=9
+pclose
+;-----------------------------------------------
+; => Invariant Latitude histograms
+;-----------------------------------------------
+xttl       = 'Invariant Latitude (deg)'
+wset,0
+  my_histogram_plot,w_invmgbm,drange=[55e0,85e0],xttl=xttl,ttle=ttlmgbm,nbins=7
+wset,1
+  my_histogram_plot,w_invmgan,drange=[55e0,85e0],xttl=xttl,ttle=ttlmgan,nbins=7
+wset,2
+  my_histogram_plot,w_invplan,drange=[55e0,85e0],xttl=xttl,ttle=ttlplan,nbins=7
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Inv-Lat_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,w_invmgbm,drange=[55e0,85e0],xttl=xttl,ttle=ttlmgbm,nbins=7
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Inv-Lat_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,w_invmgan,drange=[55e0,85e0],xttl=xttl,ttle=ttlmgan,nbins=7
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Inv-Lat_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,w_invplan,drange=[55e0,85e0],xttl=xttl,ttle=ttlplan,nbins=7
+pclose
+;-----------------------------------------------
+; => Gendrin Angle
+;-----------------------------------------------
+xttl       = '!7f!3'+'!DG!N (deg) [Gendrin Angle]'
+wset,0
+  my_histogram_plot,phi_genmgbm,drange=[0e0,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+wset,1
+  my_histogram_plot,phi_genmgan,drange=[0e0,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+wset,2
+  my_histogram_plot,phi_genplan,drange=[0e0,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Gendrin-Angle_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,phi_genmgbm,drange=[0e0,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Gendrin-Angle_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,phi_genmgan,drange=[0e0,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Gendrin-Angle_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,phi_genplan,drange=[0e0,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+pclose
+
+
+
+; => Define separation tests (by units)
+unitsmgbm   = STRTRIM(magnet_beam_test.UNITS[good0],2)
+unitsmgan   = STRTRIM(magnet_anis_test.UNITS[good1],2)
+unitsplan   = STRTRIM(plasma_anis_test.UNITS[good2],2)
+
+good_ntmgbm = WHERE(STRLOWCASE(unitsmgbm) EQ 'nt',gdntmgbm,COMPLEMENT=good_mvmgbm,NCOMPLEMENT=gdmvmgbm)
+good_ntmgan = WHERE(STRLOWCASE(unitsmgan) EQ 'nt',gdntmgan,COMPLEMENT=good_mvmgan,NCOMPLEMENT=gdmvmgan)
+good_ntplan = WHERE(STRLOWCASE(unitsplan) EQ 'nt',gdntplan,COMPLEMENT=good_mvplan,NCOMPLEMENT=gdmvplan)
+
+PRINT,  gdntmgbm,  gdmvmgbm,   gdntmgan,   gdmvmgan,   gdntplan,   gdmvplan
+; => For L < 10
+;           1          15          25          39          18         136
+; => For L < 15
+;          12          14          21          20          22         150
+; => For L < 20
+;          44          23          28          40          18         136
+
+;-----------------------------------------------
+; => RMS Amplitudes (nT)
+;-----------------------------------------------
+xttl       = 'Whistler RMS Mag. (nT)'
+wset,0
+  my_histogram_plot,rms_magmgbm[good_ntmgbm],drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,rms_magmgan[good_ntmgan],drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,rms_magplan[good_ntplan],drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'RMS-Mag-nT_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,rms_magmgbm[good_ntmgbm],drange=[0e0,1e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'RMS-Mag-nT_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,rms_magmgan[good_ntmgan],drange=[0e0,1e0],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'RMS-Mag-nT_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,rms_magplan[good_ntplan],drange=[0e0,1e0],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+;-----------------------------------------------
+; => RMS Amplitudes (mV/m)
+;-----------------------------------------------
+xttl       = 'Whistler RMS Mag. (mV/m)'
+wset,0
+  my_histogram_plot,rms_magmgbm[good_mvmgbm],drange=[0e0,45e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+wset,1
+  my_histogram_plot,rms_magmgan[good_mvmgan],drange=[0e0,45e0],xttl=xttl,ttle=ttlmgan,nbins=11
+wset,2
+  my_histogram_plot,rms_magplan[good_mvplan],drange=[0e0,45e0],xttl=xttl,ttle=ttlplan,nbins=11
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'RMS-Mag-mVm_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,rms_magmgbm[good_mvmgbm],drange=[0e0,45e0],xttl=xttl,ttle=ttlmgbm,nbins=11
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'RMS-Mag-mVm_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,rms_magmgan[good_mvmgan],drange=[0e0,45e0],xttl=xttl,ttle=ttlmgan,nbins=11
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'RMS-Mag-mVm_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,rms_magplan[good_mvplan],drange=[0e0,45e0],xttl=xttl,ttle=ttlplan,nbins=11
+pclose
+
+
+; => Wave RMS Amplitudes
+rms_magmgbm = magnet_beam_test.RMS[good0,3L]
+rms_magmgan = magnet_anis_test.RMS[good1,3L]
+rms_magplan = plasma_anis_test.RMS[good2,3L]
+
+
+print, minmax(rms_magmgbm[good_ntmgbm]), minmax(rms_magmgan[good_ntmgan]), minmax(rms_magplan[good_ntplan])
+
+print, minmax(rms_magmgbm[good_mvmgbm]), minmax(rms_magmgan[good_mvmgan]), minmax(rms_magplan[good_mvplan])
+
+
+;-----------------------------------------------------------------------------------------
+; => ALL TDS whistlers [Suffix Def:  '' = ALL, 'an' = Anisotropy, 'bm' = Beam/Flattop]
+;                      [Suffix Def:  '' = ALL, 'pl' = radiation-belts, 'mg' = magnetosphere]
+;-----------------------------------------------------------------------------------------
+magnet_test = whistler_insta_loc_read(LOC_ESOURCE='magneto')
+plasma_test = whistler_insta_loc_read(LOC_ESOURCE='radbelt')
+
+scets_mg    = magnet_test.SCETS
+scets_pl    = plasma_test.SCETS
+;-----------------------------------------------------------------------------------------
+; => ONLY TDSS
+;-----------------------------------------------------------------------------------------
+aniso_test = whistler_mv_stats_read(FREE_ESOURCE='aniso')
+beam_test  = whistler_mv_stats_read(FREE_ESOURCE='beams')
+
+scets_an   = aniso_test.SCETS
+scets_bm   = beam_test.SCETS
+
+test_mani  = my_array_where(scets_an,scets_mg)
+test_mbeam = my_array_where(scets_bm,scets_mg)
+test_pani  = my_array_where(scets_an,scets_pl)
+
+; => SCETs
+scets_mgbm  = beam_test.SCETS[test_mbeam[*,0]]
+scets_mgan  = aniso_test.SCETS[test_mani[*,0]]
+scets_plan  = aniso_test.SCETS[test_pani[*,0]]
+mts0        = my_time_string(scets_mgbm,STR=1,FORM=1,PREC=3)
+mts1        = my_time_string(scets_mgan,STR=1,FORM=1,PREC=3)
+mts2        = my_time_string(scets_plan,STR=1,FORM=1,PREC=3)
+unix_mgbm   = mts0.UNIX
+unix_mgan   = mts1.UNIX
+unix_plan   = mts2.UNIX
+
+unitsmgbm   = STRTRIM(beam_test.UNITS[test_mbeam[*,0]],2)
+unitsmgan   = STRTRIM(aniso_test.UNITS[test_mani[*,0]],2)
+unitsplan   = STRTRIM(aniso_test.UNITS[test_pani[*,0]],2)
+
+; => Eigenvalues and ratios
+emin_mgbm   = beam_test.MIN_EVAL[test_mbeam[*,0]]
+emin_mgan   = aniso_test.MIN_EVAL[test_mani[*,0]]
+emin_plan   = aniso_test.MIN_EVAL[test_pani[*,0]]
+
+emid_mgbm   = beam_test.MID_EVAL[test_mbeam[*,0]]
+emid_mgan   = aniso_test.MID_EVAL[test_mani[*,0]]
+emid_plan   = aniso_test.MID_EVAL[test_pani[*,0]]
+
+emax_mgbm   = beam_test.MAX_EVAL[test_mbeam[*,0]]
+emax_mgan   = aniso_test.MAX_EVAL[test_mani[*,0]]
+emax_plan   = aniso_test.MAX_EVAL[test_pani[*,0]]
+
+e23r_mgbm   = emid_mgbm/emin_mgbm
+e23r_mgan   = emid_mgan/emin_mgan
+e23r_plan   = emid_plan/emin_plan
+
+; => Phase Velocities
+Vph_flnmgbm = beam_test.VPH_FLOW_MN[test_mbeam[*,0]]
+Vph_flxmgbm = beam_test.VPH_FLOW_MX[test_mbeam[*,0]]
+Vph_fhnmgbm = beam_test.VPH_FHIGH_MN[test_mbeam[*,0]]
+Vph_fhxmgbm = beam_test.VPH_FHIGH_MX[test_mbeam[*,0]]
+
+Vph_flnmgan = aniso_test.VPH_FLOW_MN[test_mani[*,0]]
+Vph_flxmgan = aniso_test.VPH_FLOW_MX[test_mani[*,0]]
+Vph_fhnmgan = aniso_test.VPH_FHIGH_MN[test_mani[*,0]]
+Vph_fhxmgan = aniso_test.VPH_FHIGH_MX[test_mani[*,0]]
+
+Vph_flnplan = aniso_test.VPH_FLOW_MN[test_pani[*,0]]
+Vph_flxplan = aniso_test.VPH_FLOW_MX[test_pani[*,0]]
+Vph_fhnplan = aniso_test.VPH_FHIGH_MN[test_pani[*,0]]
+Vph_fhxplan = aniso_test.VPH_FHIGH_MX[test_pani[*,0]]
+; => Define L-Shell, Radial Distance, and MLT
+w_lshmgbm   = beam_test.WIND_LSHELL[test_mbeam[*,0]]
+w_radmgbm   = beam_test.WIND_RADIAL_DISTANCE[test_mbeam[*,0]]
+w_mltmgbm   = beam_test.WIND_MLT[test_mbeam[*,0]]
+
+w_lshmgan   = aniso_test.WIND_LSHELL[test_mani[*,0]]
+w_radmgan   = aniso_test.WIND_RADIAL_DISTANCE[test_mani[*,0]]
+w_mltmgan   = aniso_test.WIND_MLT[test_mani[*,0]]
+
+w_lshplan   = aniso_test.WIND_LSHELL[test_pani[*,0]]
+w_radplan   = aniso_test.WIND_RADIAL_DISTANCE[test_pani[*,0]]
+w_mltplan   = aniso_test.WIND_MLT[test_pani[*,0]]
+; => Define theta_kb
+thetakbmgbm = beam_test.THETA_KB[test_mbeam[*,0]]
+thetakbmgan = aniso_test.THETA_KB[test_mani[*,0]]
+thetakbplan = aniso_test.THETA_KB[test_pani[*,0]]
+; => Define GSM Positions
+xgsm_mgbm   = beam_test.X_GSM_POS[test_mbeam[*,0]]
+ygsm_mgbm   = beam_test.Y_GSM_POS[test_mbeam[*,0]]
+zgsm_mgbm   = beam_test.Z_GSM_POS[test_mbeam[*,0]]
+wgsm_mgbm   = [[xgsm_mgbm],[ygsm_mgbm],[zgsm_mgbm]]
+
+xgsm_mgan   = aniso_test.X_GSM_POS[test_mani[*,0]]
+ygsm_mgan   = aniso_test.Y_GSM_POS[test_mani[*,0]]
+zgsm_mgan   = aniso_test.Z_GSM_POS[test_mani[*,0]]
+wgsm_mgan   = [[xgsm_mgan],[ygsm_mgan],[zgsm_mgan]]
+
+xgsm_plan   = aniso_test.X_GSM_POS[test_pani[*,0]]
+ygsm_plan   = aniso_test.Y_GSM_POS[test_pani[*,0]]
+zgsm_plan   = aniso_test.Z_GSM_POS[test_pani[*,0]]
+wgsm_plan   = [[xgsm_plan],[ygsm_plan],[zgsm_plan]]
+; => Define temp anisotropies
+tani_elmgbm = beam_test.TANISOTROPY_EL[test_mbeam[*,0]]
+tani_ehmgbm = beam_test.TANISOTROPY_EH[test_mbeam[*,0]]
+
+tani_elmgan = aniso_test.TANISOTROPY_EL[test_mani[*,0]]
+tani_ehmgan = aniso_test.TANISOTROPY_EH[test_mani[*,0]]
+
+tani_elplan = aniso_test.TANISOTROPY_EL[test_pani[*,0]]
+tani_ehplan = aniso_test.TANISOTROPY_EH[test_pani[*,0]]
+; => Define k-Vector GSE 
+kxgse_mgbm  = beam_test.X_MIN_VECT[test_mbeam[*,0]]
+kygse_mgbm  = beam_test.Y_MIN_VECT[test_mbeam[*,0]]
+kzgse_mgbm  = beam_test.Z_MIN_VECT[test_mbeam[*,0]]
+kgse_mgbm   = [[kxgse_mgbm],[kygse_mgbm],[kzgse_mgbm]]
+
+kxgse_mgan  = aniso_test.X_MIN_VECT[test_mani[*,0]]
+kygse_mgan  = aniso_test.Y_MIN_VECT[test_mani[*,0]]
+kzgse_mgan  = aniso_test.Z_MIN_VECT[test_mani[*,0]]
+kgse_mgan   = [[kxgse_mgan],[kygse_mgan],[kzgse_mgan]]
+
+kxgse_plan  = aniso_test.X_MIN_VECT[test_pani[*,0]]
+kygse_plan  = aniso_test.Y_MIN_VECT[test_pani[*,0]]
+kzgse_plan  = aniso_test.Z_MIN_VECT[test_pani[*,0]]
+kgse_plan   = [[kxgse_plan],[kygse_plan],[kzgse_plan]]
+
+; => rotate into GSM
+coord_trans_wrapper,unix_mgbm,kgse_mgbm,data_out0,/TO_GSM,/GSE
+coord_trans_wrapper,unix_mgan,kgse_mgan,data_out1,/TO_GSM,/GSE
+coord_trans_wrapper,unix_plan,kgse_plan,data_out2,/TO_GSM,/GSE
+
+kxygsm_mgbm = SQRT(data_out0[*,0]^2 + data_out0[*,1]^2)
+kxygsm_mgan = SQRT(data_out1[*,0]^2 + data_out1[*,1]^2)
+kxygsm_plan = SQRT(data_out2[*,0]^2 + data_out2[*,1]^2)
+
+theta_kgsm_mgbm = ATAN(data_out0[*,2]/kxygsm_mgbm)*18d1/!DPI
+theta_kgsm_mgan = ATAN(data_out1[*,2]/kxygsm_mgan)*18d1/!DPI
+theta_kgsm_plan = ATAN(data_out2[*,2]/kxygsm_plan)*18d1/!DPI
+
+ugsm_mgbm   = wgsm_mgbm/(SQRT(TOTAL(wgsm_mgbm^2,2,/NAN)) # REPLICATE(1d0,N_ELEMENTS(wgsm_mgbm[*,0])))
+ugsm_mgan   = wgsm_mgan/(SQRT(TOTAL(wgsm_mgan^2,2,/NAN)) # REPLICATE(1d0,N_ELEMENTS(wgsm_mgan[*,0])))
+ugsm_plan   = wgsm_plan/(SQRT(TOTAL(wgsm_plan^2,2,/NAN)) # REPLICATE(1d0,N_ELEMENTS(wgsm_plan[*,0])))
+
+k_dot_gsm_mgbm = my_dot_prod(data_out0,ugsm_mgbm)
+k_dot_gsm_mgan = my_dot_prod(data_out0,ugsm_mgan)
+k_dot_gsm_plan = my_dot_prod(data_out0,ugsm_plan)
+
+theta_kdotpos_mgbm  = ACOS(k_dot_gsm_mgbm)*18d1/!DPI
+theta_kdotpos_mgan  = ACOS(k_dot_gsm_mgan)*18d1/!DPI
+theta_kdotpos_plan  = ACOS(k_dot_gsm_plan)*18d1/!DPI
+
+gsm_lat_mgbm = ATAN(ugsm_mgbm[*,2]/SQRT(ugsm_mgbm[*,0]^2 + ugsm_mgbm[*,1]^2))*18d1/!DPI
+gsm_lat_mgan = ATAN(ugsm_mgan[*,2]/SQRT(ugsm_mgan[*,0]^2 + ugsm_mgan[*,1]^2))*18d1/!DPI
+gsm_lat_plan = ATAN(ugsm_plan[*,2]/SQRT(ugsm_plan[*,0]^2 + ugsm_plan[*,1]^2))*18d1/!DPI
+
+; => Define separation tests (by finite Vph and Radial Distance)
+;lshell     = 20.
+lshell     = 15.
+;lshell     = 10.
+l_string   = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+
+; => Make sure we only look at cases with finite phase velocity estimates from 
+;      cold plasma dispersion estimates
+test_fmgbm = FINITE(Vph_flnmgbm) AND FINITE(Vph_flxmgbm) AND FINITE(Vph_fhnmgbm) $
+               AND FINITE(Vph_fhxmgbm)
+test_fmgan = FINITE(Vph_flnmgan) AND FINITE(Vph_flxmgan) AND FINITE(Vph_fhnmgan) $
+               AND FINITE(Vph_fhxmgan)
+test_fplan = FINITE(Vph_flnplan) AND FINITE(Vph_flxplan) AND FINITE(Vph_fhnplan) $
+               AND FINITE(Vph_fhxplan)
+; => Make sure we only look at cases within a specific L-shell
+test_lmgbm = (w_lshmgbm LE lshell)
+test_lmgan = (w_lshmgan LE lshell)
+test_lplan = (w_lshplan LE lshell)
+; => Combine two tests
+testmgbm   = test_fmgbm AND test_lmgbm
+testmgan   = test_fmgan AND test_lmgan
+testplan   = test_fplan AND test_lplan
+
+good0      = WHERE(testmgbm,gd0)
+good1      = WHERE(testmgan,gd1)
+good2      = WHERE(testplan,gd2)
+PRINT, gd0, gd1, gd2
+; => For L < 15
+;          14          19          32
+
+pref       = 'Whistler_TDSS-ALL_L'+l_string[0]+'_'
+suffxmg    = '_Magnetosphere_histogram'
+suffxpl    = '_Radiation-Belts_histogram'
+suffxan    = 'anisotropic-edists'
+suffxbm    = 'beam-flattop-edists'
+
+ttl_mg     = 'Magnetosphere'
+ttl_pl     = 'Radiation Belts'
+ttl_an     = 'Anisotropic'
+ttl_bm     = 'Beam/Flattop'
+
+; => Magnetospheric whistler plot titles
+ttlmgbm    = 'TDSS ['+ttl_mg[0]+', '+ttl_bm[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+ttlmgan    = 'TDSS ['+ttl_mg[0]+', '+ttl_an[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+; => Plasmaspheric whistler plot titles
+ttlplan    = 'TDSS ['+ttl_pl[0]+', '+ttl_an[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+
+; => Define L-Shell, Radial Distance, and MLT
+w_lshmgbm   = w_lshmgbm[good0]
+w_radmgbm   = w_radmgbm[good0]
+w_mltmgbm   = w_mltmgbm[good0]
+
+w_lshmgan   = w_lshmgan[good1]
+w_radmgan   = w_radmgan[good1]
+w_mltmgan   = w_mltmgan[good1]
+
+w_lshplan   = w_lshplan[good2]
+w_radplan   = w_radplan[good2]
+w_mltplan   = w_mltplan[good2]
+; => Define theta_kb
+thetakbmgbm = thetakbmgbm[good0]
+thetakbmgan = thetakbmgan[good1]
+thetakbplan = thetakbplan[good2]
+
+theta_kgsm_mgbm = theta_kgsm_mgbm[good0]
+theta_kgsm_mgan = theta_kgsm_mgan[good1]
+theta_kgsm_plan = theta_kgsm_plan[good2]
+
+theta_kdotpos_mgbm  = theta_kdotpos_mgbm[good0]
+theta_kdotpos_mgan  = theta_kdotpos_mgan[good1]
+theta_kdotpos_plan  = theta_kdotpos_plan[good2]
+
+tani_elmgbm = tani_elmgbm[good0]
+tani_ehmgbm = tani_ehmgbm[good0]
+tani_elmgan = tani_elmgan[good1]
+tani_ehmgan = tani_ehmgan[good1]
+tani_elplan = tani_elplan[good2]
+tani_ehplan = tani_ehplan[good2]
+
+gsm_lat_mgbm = gsm_lat_mgbm[good0]
+gsm_lat_mgan = gsm_lat_mgan[good1]
+gsm_lat_plan = gsm_lat_plan[good2]
+
+
+xttl       = '!7h!3'+'!DkGSM-Z!N (deg)'
+wset,0
+  my_histogram_plot,theta_kgsm_mgbm,drange=[-9e1,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+wset,1
+  my_histogram_plot,theta_kgsm_mgan,drange=[-9e1,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+wset,2
+  my_histogram_plot,theta_kgsm_plan,drange=[-9e1,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Theta-kGSM-Z_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,theta_kgsm_mgbm,drange=[-9e1,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Theta-kGSM-Z_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,theta_kgsm_mgan,drange=[-9e1,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Theta-kGSM-Z_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,theta_kgsm_plan,drange=[-9e1,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+pclose
+
+
+xttl       = '!7h!3'+'!DkB!N (deg)'
+wset,0
+  my_histogram_plot,thetakbmgbm,drange=[0e0,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+wset,1
+  my_histogram_plot,thetakbmgan,drange=[0e0,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+wset,2
+  my_histogram_plot,thetakbplan,drange=[0e0,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Theta-kB_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,thetakbmgbm,drange=[0e0,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Theta-kB_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,thetakbmgan,drange=[0e0,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Theta-kB_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,thetakbplan,drange=[0e0,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+pclose
+
+; => Check eigenvalue ratio
+good_emgbm  = WHERE(e23r_mgbm[good0] GE 1e1,gde_mgbm)
+good_emgan  = WHERE(e23r_mgan[good1] GE 1e1,gde_mgan)
+good_eplan  = WHERE(e23r_plan[good2] GE 1e1,gde_plan)
+print, gde_mgbm, gde_mgan, gde_plan
+; => For L < 15
+;          14          16          19
+
+xttl       = '!7h!3'+'!DkB!N (deg) [Good !7k!3'+'!Dmid!N/!7k!3'+'!Dmin!N values]'
+wset,0
+  my_histogram_plot,thetakbmgbm[good_emgbm],drange=[0e0,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+wset,1
+  my_histogram_plot,thetakbmgan[good_emgan],drange=[0e0,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+wset,2
+  my_histogram_plot,thetakbplan[good_eplan],drange=[0e0,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Theta-kB_and_Eigratio_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,thetakbmgbm[good_emgbm],drange=[0e0,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Theta-kB_and_Eigratio_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,thetakbmgan[good_emgan],drange=[0e0,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Theta-kB_and_Eigratio_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,thetakbplan[good_eplan],drange=[0e0,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+pclose
+
+
+unitsmgbm   = unitsmgbm[good0]
+unitsmgan   = unitsmgan[good1]
+unitsplan   = unitsplan[good2]
+
+e23r_mgbm   = e23r_mgbm[good0]
+e23r_mgan   = e23r_mgan[good1]
+e23r_plan   = e23r_plan[good2]
+
+test_00     = (STRLOWCASE(unitsmgbm) EQ 'nt') AND (e23r_mgbm GE 1e1)
+test_01     = (STRLOWCASE(unitsmgan) EQ 'nt') AND (e23r_mgan GE 1e1)
+test_02     = (STRLOWCASE(unitsplan) EQ 'nt') AND (e23r_plan GE 1e1)
+
+good_ntmgbm = WHERE(test_00,gdntmgbm,COMPLEMENT=good_mvmgbm,NCOMPLEMENT=gdmvmgbm)
+good_ntmgan = WHERE(test_01,gdntmgan,COMPLEMENT=good_mvmgan,NCOMPLEMENT=gdmvmgan)
+good_ntplan = WHERE(test_02,gdntplan,COMPLEMENT=good_mvplan,NCOMPLEMENT=gdmvplan)
+
+PRINT,  gdntmgbm,  gdntmgan,   gdntplan
+; => For L < 15
+;          14          16          15
+
+pref       = 'Whistler_TDSS-nT_L'+l_string[0]+'_'
+suffxmg    = '_Magnetosphere_histogram'
+suffxpl    = '_Radiation-Belts_histogram'
+suffxan    = 'anisotropic-edists'
+suffxbm    = 'beam-flattop-edists'
+
+ttl_mg     = 'Magnetosphere'
+ttl_pl     = 'Radiation Belts'
+ttl_an     = 'Anisotropic'
+ttl_bm     = 'Beam/Flattop'
+
+; => Magnetospheric whistler plot titles
+ttlmgbm    = 'TDSS ['+ttl_mg[0]+', '+ttl_bm[0]+'] (nT) Whistler Statistics (L < '+l_string[0]+')'
+ttlmgan    = 'TDSS ['+ttl_mg[0]+', '+ttl_an[0]+'] (nT) Whistler Statistics (L < '+l_string[0]+')'
+; => Plasmaspheric whistler plot titles
+ttlplan    = 'TDSS ['+ttl_pl[0]+', '+ttl_an[0]+'] (nT) Whistler Statistics (L < '+l_string[0]+')'
+
+
+xttl       = '!7h!3'+'!DkB!N (deg) [Good !7k!3'+'!Dmid!N/!7k!3'+'!Dmin!N values]'
+wset,0
+  my_histogram_plot,thetakbmgbm[good_ntmgbm],drange=[0e0,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+wset,1
+  my_histogram_plot,thetakbmgan[good_ntmgan],drange=[0e0,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+wset,2
+  my_histogram_plot,thetakbplan[good_ntplan],drange=[0e0,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Theta-kB_and_Eigratio_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,thetakbmgbm[good_ntmgbm],drange=[0e0,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Theta-kB_and_Eigratio_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,thetakbmgan[good_ntmgan],drange=[0e0,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Theta-kB_and_Eigratio_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,thetakbplan[good_ntplan],drange=[0e0,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+pclose
+
+xttl       = '!7h!3'+'!DkGSM-Z!N (deg)'
+wset,0
+  my_histogram_plot,theta_kgsm_mgbm[good_ntmgbm],drange=[-9e1,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+wset,1
+  my_histogram_plot,theta_kgsm_mgan[good_ntmgan],drange=[-9e1,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+wset,2
+  my_histogram_plot,theta_kgsm_plan[good_ntplan],drange=[-9e1,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+
+; => Beam/Flattop Magnetospheric Whistlers
+fname = pref[0]+'Theta-kGSM-Z_and_Eigratio_'+suffxbm[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,theta_kgsm_mgbm[good_ntmgbm],drange=[-9e1,9e1],xttl=xttl,ttle=ttlmgbm,nbins=10
+pclose
+; => Anisotropic Magnetospheric Whistlers
+fname = pref[0]+'Theta-kGSM-Z_and_Eigratio_'+suffxan[0]+suffxmg[0]
+popen,fname,/LAND
+  my_histogram_plot,theta_kgsm_mgan[good_ntmgan],drange=[-9e1,9e1],xttl=xttl,ttle=ttlmgan,nbins=10
+pclose
+; => Anisotropic Plasmaspheric Whistlers
+fname = pref[0]+'Theta-kGSM-Z_and_Eigratio_'+suffxan[0]+suffxpl[0]
+popen,fname,/LAND
+  my_histogram_plot,theta_kgsm_plan[good_ntplan],drange=[-9e1,9e1],xttl=xttl,ttle=ttlplan,nbins=10
+pclose
+;-----------------------------------------------------------------------------------------
+; => Correlation between theta_kB and lambda_GSM? [TDSS]
+;-----------------------------------------------------------------------------------------
+all_theta_kb  = [thetakbmgbm,thetakbmgan,thetakbplan]
+all_theta_gsm = [gsm_lat_mgbm,gsm_lat_mgan,gsm_lat_plan]
+all_tani_el   = [tani_elmgbm,tani_elmgan,tani_elplan]
+all_tani_eh   = [tani_ehmgbm,tani_ehmgan,tani_ehplan]
+
+xttl       = '!7h!3'+'!DkB!N (deg)'
+yttl       = '!7k!3'+'!DGSM!N (deg)'
+ttle       = 'TDSS GSM-Latitude versus !7h!3'+'!DkB!N'
+xra        = [0e0,9e1]
+yra        = [-7e1,7e1]
+pstr       = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttle}
+
+!P.MULTI   = 0
+PLOT,all_theta_kb,all_theta_gsm,_EXTRA=pstr
+  OPLOT,all_theta_kb,all_theta_gsm,PSYM=2,COLOR=250L
+popen,'Wind-GSM-Latitude_Theta-kB_TDSS',/LAND
+  PLOT,all_theta_kb,all_theta_gsm,_EXTRA=pstr
+    OPLOT,all_theta_kb,all_theta_gsm,PSYM=2,COLOR=250L
+pclose
+
+
+xttl      = 'T!D!9x!3!N/T!D!9#!3!N!C[EL]'
+yttl       = '!7k!3'+'!DGSM!N (deg)'
+ttle       = 'TDSS GSM-Latitude versus T!D!9x!3!N/T!D!9#!3!N [EL]'
+xra        = [0.5,1.5]
+yra        = [-7e1,7e1]
+pstr       = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttle}
+!P.MULTI   = 0
+  PLOT,all_tani_el,all_theta_gsm,_EXTRA=pstr
+    OPLOT,all_tani_el,all_theta_gsm,PSYM=2,COLOR=250L
+popen,'Wind-GSM-Latitude-vs-Tani-EL_TDSS',/LAND
+  PLOT,all_tani_el,all_theta_gsm,_EXTRA=pstr
+    OPLOT,all_tani_el,all_theta_gsm,PSYM=2,COLOR=250L
+pclose
+
+
+xttl      = 'T!D!9x!3!N/T!D!9#!3!N!C[EH]'
+yttl       = '!7k!3'+'!DGSM!N (deg)'
+ttle       = 'TDSS GSM-Latitude versus T!D!9x!3!N/T!D!9#!3!N [EH]'
+xra        = [0.5,1.5]
+yra        = [-7e1,7e1]
+pstr       = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttle}
+!P.MULTI   = 0
+  PLOT,all_tani_eh,all_theta_gsm,_EXTRA=pstr
+    OPLOT,all_tani_eh,all_theta_gsm,PSYM=2,COLOR=250L
+popen,'Wind-GSM-Latitude-vs-Tani-EH_TDSS',/LAND
+  PLOT,all_tani_eh,all_theta_gsm,_EXTRA=pstr
+    OPLOT,all_tani_eh,all_theta_gsm,PSYM=2,COLOR=250L
+pclose
+
+
+xttl      = 'T!D!9x!3!N/T!D!9#!3!N!C[EL]'
+yttl       = '!7h!3'+'!DkB!N (deg)'
+ttle       = 'TDSS !7h!3'+'!DkB!N versus T!D!9x!3!N/T!D!9#!3!N [EL]'
+xra        = [0.5,1.5]
+yra        = [0e0,9e1]
+pstr       = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttle}
+!P.MULTI   = 0
+  PLOT,all_tani_el,all_theta_kb,_EXTRA=pstr
+    OPLOT,all_tani_el,all_theta_kb,PSYM=2,COLOR=250L
+popen,'Wind_Theta-kB-vs-Tani-EL_TDSS',/LAND
+  PLOT,all_tani_el,all_theta_kb,_EXTRA=pstr
+    OPLOT,all_tani_el,all_theta_kb,PSYM=2,COLOR=250L
+pclose
+
+
+
+xttl      = 'T!D!9x!3!N/T!D!9#!3!N!C[EH]'
+yttl       = '!7h!3'+'!DkB!N (deg)'
+ttle       = 'TDSS !7h!3'+'!DkB!N versus T!D!9x!3!N/T!D!9#!3!N [EH]'
+xra        = [0.5,1.5]
+yra        = [0e0,9e1]
+pstr       = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttle}
+!P.MULTI   = 0
+  PLOT,all_tani_eh,all_theta_kb,_EXTRA=pstr
+    OPLOT,all_tani_eh,all_theta_kb,PSYM=2,COLOR=250L
+popen,'Wind_Theta-kB-vs-Tani-EH_TDSS',/LAND
+  PLOT,all_tani_eh,all_theta_kb,_EXTRA=pstr
+    OPLOT,all_tani_eh,all_theta_kb,PSYM=2,COLOR=250L
+pclose
+;-----------------------------------------------------------------------------------------
+; => Correlation between Tani and lambda_GSM? [TDS ALL]
+;-----------------------------------------------------------------------------------------
+all_theta_gsm = [gsm_latmgbm,gsm_latmgan,gsm_latplan]
+all_tani_el   = [tanielmgbm,tanielmgan,tanielplan]
+all_tani_eh   = [taniehmgbm,taniehmgan,taniehplan]
+
+
+xttl      = 'T!D!9x!3!N/T!D!9#!3!N!C[EL]'
+yttl       = '!7k!3'+'!DGSM!N (deg)'
+ttle       = 'TDS-ALL GSM-Latitude versus T!D!9x!3!N/T!D!9#!3!N [EL]'
+xra        = [0.5,2.0]
+yra        = [-7e1,7e1]
+pstr       = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttle}
+!P.MULTI   = 0
+  PLOT,all_tani_el,all_theta_gsm,_EXTRA=pstr
+    OPLOT,all_tani_el,all_theta_gsm,PSYM=2,COLOR=250L
+popen,'Wind-GSM-Latitude-vs-Tani-EL_TDS-ALL',/LAND
+  PLOT,all_tani_el,all_theta_gsm,_EXTRA=pstr
+    OPLOT,all_tani_el,all_theta_gsm,PSYM=2,COLOR=250L
+pclose
+
+
+xttl      = 'T!D!9x!3!N/T!D!9#!3!N!C[EH]'
+yttl       = '!7k!3'+'!DGSM!N (deg)'
+ttle       = 'TDS-ALL GSM-Latitude versus T!D!9x!3!N/T!D!9#!3!N [EH]'
+xra        = [0.5,2.0]
+yra        = [-7e1,7e1]
+pstr       = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttle}
+!P.MULTI   = 0
+  PLOT,all_tani_eh,all_theta_gsm,_EXTRA=pstr
+    OPLOT,all_tani_eh,all_theta_gsm,PSYM=2,COLOR=250L
+popen,'Wind-GSM-Latitude-vs-Tani-EH_TDS-ALL',/LAND
+  PLOT,all_tani_eh,all_theta_gsm,_EXTRA=pstr
+    OPLOT,all_tani_eh,all_theta_gsm,PSYM=2,COLOR=250L
+pclose
+
+
+
+
+
+
+
+
+

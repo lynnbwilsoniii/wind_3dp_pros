@@ -1,0 +1,455 @@
+;-----------------------------------------------------------------------------------------
+; => Example Date
+;-----------------------------------------------------------------------------------------
+item3a          = 'EVENT_START_SCET_R8'   ;     The true SCET for the start of the event (UR8)
+scetA           = 6081.2780605740740612d0
+item3b          = 'EVENT_CENTER_SCET_R8'  ;     The true SCET for the center of the event (UR8)
+scetB           = 6081.2780668950617837d0
+item3c          = 'EVENT_END_SCET_R8'     ;     The true SCET for the end of the event (UR8)
+scetC           = 6081.2780732160493926d0
+item3d          = 'EVENT_TRUE_SCET_R8'    ;     The true SCET for the start of the event (UR8)
+scetD           = 6081.2780605740740612d0
+date_stringA    = ' 26-AUG-1998, 06:40:24.434'
+item4a          = 'WIND_SPIN_SCET_R8'     ;     (N) Times to match WIND SPIN phase values (UR8)
+spinur8a        = 6081.2786034722222439d0
+item4b          = 'WIND_MFI_SCET_R8'      ;     (N) Time values to match various MFI values (UR8)
+spinur8b        = 6081.2780672685184982d0
+item4c          = 'WIND_ATT_SCET_R8'      ;     (N) Time values to match WIND ATTitude values (UR8)
+spinur8c        = 6081.2777777777778283d0
+item5a          = 'DPU_CLOCK_R4'          ;     Datation DPU clock (seconds)
+DPUclka         = 2867.883056640625d0
+item5b          = 'DPU_CLOCK_START_R4'    ;     DPU clock at start of event - (may be negative)
+DPUclkb         = 2866.234619140625d0
+item5c          = 'DPU_CLOCK_CENTER_R4'   ;     DPU clock at center of event - (may be negative)
+DPUclkc         = 2866.780761718750d0
+item5d          = 'DPU_CLOCK_END_R4'      ;     DPU clock at end of event - (may be negative)
+DPUclkd         = 2867.326904296875d0
+item6a          = 'DPU_MAJOR_FRAME'       ;     DPU major frame at start of measurement
+MAJdpu          = 615L
+item6b          = 'EVENT_NUMBER'          ;     ON BOARD EVENT COUNTER 
+evnum           = 10488L
+item6c          = 'SOURCE'                ;     Source antenna translations
+source          = 4L
+item6d          = 'RX_FILTER'             ;     Event's low pass filter selection (3dB point)
+rxfili4         = 3L
+item6e          = 'RX_SPEED'              ;     Event's speed selection
+rxspdi4         = 3L
+item7a          = 'WIND_SPIN_RATE_R4'     ;     (N) WIND average spin rate (from KP) (rad/sec)
+spinrate        = 2.025717496872d0
+item7b          = 'WIND_SPIN_PHASE_R4'    ;     (N) WIND body spin phase angle (from KP) (rads)
+spinphase       = 0.142939686775d0
+item7c          = 'WIND_ATT_SPIN_RATE_R4' ;     (N) WIND body spin rate from FDF/O&A (rpm)
+spinatt         = 19.344999313354d0
+item8a          = 'SUN_ANGLE_START_R4'    ;     Sun angle at event start - (may be negative)
+sunangst        = -32.327507019043d0
+item8b          = 'SUN_ANGLE_CENTER_R4'   ;     Sun angle at event center - (may be negative)
+sunangcn        = 31.059488296509d0
+item8c          = 'SUN_ANGLE_END_R4'      ;     Sun angle at event end - (may be negative)
+sunangen        = 94.446487426758d0
+item8d          = 'SUN_ANGLE_R4'          ;     Datation sun angle - best accuracy 0.1 degree
+sunangr4        = 158.994140625000d0
+item8e          = 'SUN_ANGLE'             ;     Dummy value of the 4096 sun counter @ event start
+sunang          = 1809.000000000000d0
+item9a          = 'RX_FILTER_R4'          ;     Event's low pass (3dB) filter selection (Hertz)
+rxfilr4         = 781.000d0
+item9b          = 'RX_SPEED_R4'           ;     Event's sampling speed (samples/second)
+rxspdr4         = 1875.000d0
+item10          = 'DPU_CLOCK_FREQUENCY_R4';     Frequency of the DPU clock (Hertz)
+dpufreq         = 3126.175048828125d0
+item11          = 'DATATION_LATENCY_R4'   ;     Minimum TDS to DPU message passing latency (s)
+dpulaten        = 0.009999999776d0
+; => HK UR8 and DPU times for Major Frame 615 on 1998-08-26 near 06:40 UT
+ur8hk1          = 6081.2775387268520717d0
+dpuhk1          = 2821.108398437500d0
+
+; => Calculate some relevant parameters
+dspnrate        = spinrate*18d1/!DPI                        ; => Spin Rate [Degrees per second]
+delta_ang       = dspnrate/rxspdr4                          ; => Spin Rate [Degrees per sample]
+delta_tick      = delta_ang*4096d0/36d1                     ; => Ticks per sample
+tick_spin_rate  = dspnrate*4096d0/36d1                      ; => Spin Rate [spin ticks/s]
+dpu_roll_over   = (2d0^24)/dpufreq                          ; => Seconds at which 24 bit counter rolls over
+
+; => Convert spin phase to degrees
+spinphasedeg    = spinphase[0]*18d1/!DPI
+; => Calculate associated SCET
+spinphasescet   = ''
+spinphaseunix   = 0d0
+yy              = 0L           ; -[LONG] YYYY (year)
+mon             = 0L           ; -[LONG] MM (month) 
+day             = 0L           ; -[LONG] DD (day)
+hh              = 0L           ; -[LONG] HH
+mm              = 0L           ; -[LONG] MM (minute)
+ss              = 0L           ; -[LONG] SS
+ms              = 0L           ; -[LONG] MS (milliseconds => xxx)
+ok              = tm_ur8_to_ymd(spinur8a[0],yy,mon,day,hh,mm,ss,ms)
+spinphasescet   = STRING(yy[0],FORMAT='(I4.4)')+'-'+STRING(mon[0],FORMAT='(I2.2)')+'-'+$
+                  STRING(day[0],FORMAT='(I2.2)')+'/'+STRING(hh[0],FORMAT='(I2.2)')+':'+$
+                  STRING(mm[0],FORMAT='(I2.2)')+':'+STRING(ss[0],FORMAT='(I2.2)')+'.'+$
+                  STRING(ms[0],FORMAT='(I3.3)')
+spinphaseunix   = time_double(spinphasescet[0])
+PRINT,';  ',spinphasescet[0]
+;  1998-08-26/06:41:11.339
+PRINT,';', spinphasedeg[0], spinphaseunix[0], FORMAT='(a1,d25.16,d25.8)'
+;       8.1898407771294490       904113671.33899999
+
+
+;-----------------------------------------------------------------------------------------
+; => Check everything
+;-----------------------------------------------------------------------------------------
+cor_sun_clock_0 = 0d0                                       ; => 1st correction to sun angle at start of event
+cor_dpu_clock_0 = 0d0                                       ; => " " DPU Clock at start of event
+cor_dpu_clock_1 = 0d0                                       ; => 2nd correction to DPU Clock at start of event
+cor_ur8_times_1 = 0d0                                       ; => Corresponding corrected UR8 time
+cor_sun_clock_1 = 0d0                                       ; => " " sun angle at start of event
+cor_dpu_clock_2 = 0d0                                       ; => DPU Clock does not need to account for minor frame uncertainty
+cor_ur8_times_2 = 0d0                                       ; => Corresponding corrected UR8 time
+cor_sun_clock_2 = 0d0                                       ; => Sun angle does not need to account for minor frame uncertainty
+;-----------------------------------------------------------------------------------------
+; => Correct for 3072 sample delay buffer
+;-----------------------------------------------------------------------------------------
+cor_sun_clock_0 = sunang[0] - 3072d0*delta_tick[0]
+cor_dpu_clock_0 = DPUclka[0] - 3072d0/rxspdr4[0]                ; => Okay if < 0.0
+cor_ur8_times_0 = scetA[0]
+
+PRINT,';', cor_sun_clock_0[0], cor_dpu_clock_0[0], cor_ur8_times_0[0], FORMAT='(a1,2d20.12,d25.16)'
+;   -354.609592170794   2866.244656640625    6081.2780605740745159
+
+yy              = 0L           ; -[LONG] YYYY (year)
+mon             = 0L           ; -[LONG] MM (month) 
+day             = 0L           ; -[LONG] DD (day)
+hh              = 0L           ; -[LONG] HH
+mm              = 0L           ; -[LONG] MM (minute)
+ss              = 0L           ; -[LONG] SS
+ms              = 0L           ; -[LONG] MS (milliseconds => xxx)
+ok              = tm_ur8_to_ymd(cor_ur8_times_0[0],yy,mon,day,hh,mm,ss,ms)
+scet_0          = STRING(yy[0],FORMAT='(I4.4)')+'-'+STRING(mon[0],FORMAT='(I2.2)')+'-'+$
+                  STRING(day[0],FORMAT='(I2.2)')+'/'+STRING(hh[0],FORMAT='(I2.2)')+':'+$
+                  STRING(mm[0],FORMAT='(I2.2)')+':'+STRING(ss[0],FORMAT='(I2.2)')+'.'+$
+                  STRING(ms[0],FORMAT='(I3.3)')
+PRINT,';  ',scet_0[0]
+;  1998-08-26/06:40:24.433
+
+
+;-----------------------------------------------------------------------------------------
+; => Correct for DPU Clock Latency
+;-----------------------------------------------------------------------------------------
+cor_dpu_clock_1 = cor_dpu_clock_0[0] - dpulaten[0]                ; => may be < 0.0
+cor_ur8_times_1 = cor_ur8_times_0[0] - dpulaten[0]/864d2
+cor_sun_clock_1 = cor_sun_clock_0[0] - dpulaten[0]*tick_spin_rate[0]
+bad             = WHERE(cor_dpu_clock_1 LT 0,bd)
+IF (bd  GT 0) THEN cor_dpu_clock_1[bad]  += dpu_roll_over[bad]
+
+PRINT,';', cor_sun_clock_1[0], cor_dpu_clock_1[0], cor_ur8_times_1[0], FORMAT='(a1,2d20.12,d25.16)'
+;   -367.815216827202   2866.234656640849    6081.2780604583340391
+
+yy              = 0L           ; -[LONG] YYYY (year)
+mon             = 0L           ; -[LONG] MM (month) 
+day             = 0L           ; -[LONG] DD (day)
+hh              = 0L           ; -[LONG] HH
+mm              = 0L           ; -[LONG] MM (minute)
+ss              = 0L           ; -[LONG] SS
+ms              = 0L           ; -[LONG] MS (milliseconds => xxx)
+ok              = tm_ur8_to_ymd(cor_ur8_times_1[0],yy,mon,day,hh,mm,ss,ms)
+scet_1          = STRING(yy[0],FORMAT='(I4.4)')+'-'+STRING(mon[0],FORMAT='(I2.2)')+'-'+$
+                  STRING(day[0],FORMAT='(I2.2)')+'/'+STRING(hh[0],FORMAT='(I2.2)')+':'+$
+                  STRING(mm[0],FORMAT='(I2.2)')+':'+STRING(ss[0],FORMAT='(I2.2)')+'.'+$
+                  STRING(ms[0],FORMAT='(I3.3)')
+PRINT,';  ',scet_1[0]
+;  1998-08-26/06:40:24.423
+;-----------------------------------------------------------------------------------------
+; => Correct for Minor Frame Uncertainty
+;-----------------------------------------------------------------------------------------
+; => Calculate difference between datation DPU Clock and HK DPU Clock (seconds)
+diff_dpu        = (cor_dpu_clock_1[0] - dpuhk1)
+; => Convert to UR8
+diffdpu_ur8     = diff_dpu/864d2
+; => Shift HK UR8 by difference
+cor_ur8_times_2 = ur8hk1 + diffdpu_ur8
+; => Find difference between this UR8 time and SCET UR8 time
+diff_ur8        = (cor_ur8_times_2 - cor_ur8_times_1)
+; => Calculate new DPU Clock Time
+cor_dpu_clock_2 = (cor_dpu_clock_1 + diff_ur8*864d2)   ; => may be > dpu roll over
+dpu_diff        = cor_dpu_clock_2 - cor_dpu_clock_1
+; => Note:  DPU Clock does not care about this issue
+yy              = 0L           ; -[LONG] YYYY (year)
+mon             = 0L           ; -[LONG] MM (month) 
+day             = 0L           ; -[LONG] DD (day)
+hh              = 0L           ; -[LONG] HH
+mm              = 0L           ; -[LONG] MM (minute)
+ss              = 0L           ; -[LONG] SS
+ms              = 0L           ; -[LONG] MS (milliseconds => xxx)
+ok              = tm_ur8_to_ymd(cor_ur8_times_2[0],yy,mon,day,hh,mm,ss,ms)
+scet_2          = STRING(yy[0],FORMAT='(I4.4)')+'-'+STRING(mon[0],FORMAT='(I2.2)')+'-'+$
+                  STRING(day[0],FORMAT='(I2.2)')+'/'+STRING(hh[0],FORMAT='(I2.2)')+':'+$
+                  STRING(mm[0],FORMAT='(I2.2)')+':'+STRING(ss[0],FORMAT='(I2.2)')+'.'+$
+                  STRING(ms[0],FORMAT='(I3.3)')
+PRINT,';  ',scet_2[0]
+;  1998-08-26/06:40:24.472
+
+;-----------------------------------------------------------------------------------------
+; => Convert sun angle to degrees
+;-----------------------------------------------------------------------------------------
+cor_sun_angle_2 = cor_sun_clock_1[0]*36d1/4096d0
+; => Convert to sun angle of +Ex antenna
+cor_Ex_angle_2  = cor_sun_angle_2 + 45d0
+PRINT,';', cor_sun_angle_2[0], cor_Ex_angle_2[0], FORMAT='(a1,2d20.12)'
+;    -32.327509291453     12.672490708547
+
+; => Change angle so that the angle of the +Ex antenna from the sun direction is in
+;      quasi-GSE coordinates [i.e. no angle correction for SC translation away from
+;      {0,0,0}-GSE]
+;    => Requires only a -1 factor since SC and GSE share X-Axes and their Z-axes
+;         anti-parallel
+Ex_ang_gse_sta  = -1d0*cor_Ex_angle_2
+; => can vary from -360 -> +360 currently
+badlow          = WHERE(Ex_ang_gse_sta LT -18d1,bdlw)
+badhigh         = WHERE(Ex_ang_gse_sta GT  18d1,bdhg)
+IF (bdlw GT 0) THEN Ex_ang_gse_sta[badlow]   += 36d1
+IF (bdhg GT 0) THEN Ex_ang_gse_sta[badhigh]  -= 36d1
+; => Currently the angles go from:  0 -> -90 -> -180 = +180 -> +90 -> 0
+;    => Shift so they go from:  360 -> 270 -> 180 -> 90 -> 0
+Ex_ang_gse_sta2 = (Ex_ang_gse_sta + 36d1) MOD 36d1
+Ex_ang_gse_end2 = Ex_ang_gse_sta2 - dspnrate*2048d0/rxspdr4
+PRINT,';', Ex_ang_gse_sta2[0], Ex_ang_gse_end2[0], FORMAT='(a1,2d20.12)'
+;    347.327509291453    220.553509750196
+
+badlow          = WHERE(Ex_ang_gse_end2 LT  0d0,bdlw)
+badhigh         = WHERE(Ex_ang_gse_end2 GT 36d1,bdhg)
+IF (bdlw GT 0) THEN Ex_ang_gse_sta2[badlow]   = (Ex_ang_gse_sta2[badlow] + 36d1) MOD 36d1
+IF (bdlw GT 0) THEN Ex_ang_gse_end2[badlow]   = (Ex_ang_gse_end2[badlow] + 36d1) MOD 36d1
+PRINT,';', Ex_ang_gse_sta2[0], Ex_ang_gse_end2[0], FORMAT='(a1,2d20.12)'
+;    347.327509291453    220.553509750196
+
+IF (bdhg GT 0) THEN Ex_ang_gse_sta2[badhigh]  = (Ex_ang_gse_sta2[badhigh] - 36d1) MOD 36d1
+IF (bdhg GT 0) THEN Ex_ang_gse_end2[badhigh]  = (Ex_ang_gse_end2[badhigh] - 36d1) MOD 36d1
+PRINT,';', Ex_ang_gse_sta2[0], Ex_ang_gse_end2[0], FORMAT='(a1,2d20.12)'
+;    347.327509291453    220.553509750196
+
+;-----------------------------------------------------------------------------------------
+; => Integrate Spin Phase to corrected SCET
+;-----------------------------------------------------------------------------------------
+unix_2          = time_double(scet_2[0])
+spinur8a        = 6081.2786034722222439d0
+spinphase       = 0.142939686775d0
+yy              = 0L           ; -[LONG] YYYY (year)
+mon             = 0L           ; -[LONG] MM (month) 
+day             = 0L           ; -[LONG] DD (day)
+hh              = 0L           ; -[LONG] HH
+mm              = 0L           ; -[LONG] MM (minute)
+ss              = 0L           ; -[LONG] SS
+ms              = 0L           ; -[LONG] MS (milliseconds => xxx)
+ok              = tm_ur8_to_ymd(spinur8a[0],yy,mon,day,hh,mm,ss,ms)
+spinscet_0      = STRING(yy[0],FORMAT='(I4.4)')+'-'+STRING(mon[0],FORMAT='(I2.2)')+'-'+$
+                  STRING(day[0],FORMAT='(I2.2)')+'/'+STRING(hh[0],FORMAT='(I2.2)')+':'+$
+                  STRING(mm[0],FORMAT='(I2.2)')+':'+STRING(ss[0],FORMAT='(I2.2)')+'.'+$
+                  STRING(ms[0],FORMAT='(I3.3)')
+PRINT,';  ', spinscet_0[0]
+;  1998-08-26/06:41:11.339
+
+spinunix_0      = time_double(spinscet_0[0])
+diff_spin       = spinunix_0[0] - unix_2[0]
+PRINT,';', diff_spin[0], spinphase[0]*18d1/!DPI, FORMAT='(a1,2d25.12)'
+;          46.866999983788           8.189840777129
+
+; => calculate # of radians spacecraft can rotate in that time
+diff_rad_spin   = diff_spin[0]*spinrate[0]
+PRINT,';', diff_rad_spin[0], (diff_rad_spin[0] MOD 2d0*!DPI), FORMAT='(a1,2d25.12)'
+;          94.939301893058           2.950903926734
+
+test_spin       = ((spinphase[0] + diff_rad_spin[0])) MOD (2d0*!DPI)
+PRINT,';', test_spin[0], test_spin[0]*18d1/!DPI, FORMAT='(a1,2d25.12)'
+;           0.834461972139          47.811149167749
+
+test_spin_ex_0  = ((test_spin[0]*18d1/!DPI + 45d0)) MOD 36d1
+test_spin_ex_1  = -1d0*test_spin_ex_0[0]
+PRINT,';', test_spin_ex_0[0], test_spin_ex_1[0], FORMAT='(a1,2d25.12)'
+;          92.811149167749         -92.811149167749
+badlow          = WHERE(test_spin_ex_1 LT -18d1,bdlw)
+badhigh         = WHERE(test_spin_ex_1 GT  18d1,bdhg)
+IF (bdlw GT 0) THEN test_spin_ex_1[badlow]   += 36d1
+IF (bdhg GT 0) THEN test_spin_ex_1[badhigh]  -= 36d1
+PRINT,';', test_spin_ex_1[0], FORMAT='(a1,2d25.12)'
+;         -92.811149167749
+
+; => Currently the angles go from:  0 -> -90 -> -180 = +180 -> +90 -> 0
+;    => Shift so they go from:  360 -> 270 -> 180 -> 90 -> 0
+test_spin_ex_2  = (test_spin_ex_1 + 36d1) MOD 36d1
+test_spin_ex_2e = test_spin_ex_2 - dspnrate*2048d0/rxspdr4
+PRINT,';', test_spin_ex_2[0], test_spin_ex_2e[0], FORMAT='(a1,2d20.12)'
+;    267.188850832251    140.414851290994
+
+
+PRINT,';', ((cor_sun_clock_1[0] + tick_spin_rate*diff_spin[0]) MOD 4096d0)*36d1/4096d0
+;       7.2937991
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Determine Spin Phase direction
+;-----------------------------------------------------------------------------------------
+spur8_0         = 5723.0429768518519040d0
+spur8_1         = 5723.0435092592592810d0
+spur8_2         = 5723.0451064814815254d0
+spur8_3         = 5723.9917267361111044d0
+yy              = 0L           ; -[LONG] YYYY (year)
+mon             = 0L           ; -[LONG] MM (month) 
+day             = 0L           ; -[LONG] DD (day)
+hh              = 0L           ; -[LONG] HH
+mm              = 0L           ; -[LONG] MM (minute)
+ss              = 0L           ; -[LONG] SS
+ms              = 0L           ; -[LONG] MS (milliseconds => xxx)
+ok              = tm_ur8_to_ymd(spur8_0[0],yy,mon,day,hh,mm,ss,ms)
+spscet_0        = STRING(yy[0],FORMAT='(I4.4)')+'-'+STRING(mon[0],FORMAT='(I2.2)')+'-'+$
+                  STRING(day[0],FORMAT='(I2.2)')+'/'+STRING(hh[0],FORMAT='(I2.2)')+':'+$
+                  STRING(mm[0],FORMAT='(I2.2)')+':'+STRING(ss[0],FORMAT='(I2.2)')+'.'+$
+                  STRING(ms[0],FORMAT='(I3.3)')
+ok              = tm_ur8_to_ymd(spur8_1[0],yy,mon,day,hh,mm,ss,ms)
+spscet_1        = STRING(yy[0],FORMAT='(I4.4)')+'-'+STRING(mon[0],FORMAT='(I2.2)')+'-'+$
+                  STRING(day[0],FORMAT='(I2.2)')+'/'+STRING(hh[0],FORMAT='(I2.2)')+':'+$
+                  STRING(mm[0],FORMAT='(I2.2)')+':'+STRING(ss[0],FORMAT='(I2.2)')+'.'+$
+                  STRING(ms[0],FORMAT='(I3.3)')
+ok              = tm_ur8_to_ymd(spur8_2[0],yy,mon,day,hh,mm,ss,ms)
+spscet_2        = STRING(yy[0],FORMAT='(I4.4)')+'-'+STRING(mon[0],FORMAT='(I2.2)')+'-'+$
+                  STRING(day[0],FORMAT='(I2.2)')+'/'+STRING(hh[0],FORMAT='(I2.2)')+':'+$
+                  STRING(mm[0],FORMAT='(I2.2)')+':'+STRING(ss[0],FORMAT='(I2.2)')+'.'+$
+                  STRING(ms[0],FORMAT='(I3.3)')
+ok              = tm_ur8_to_ymd(spur8_3[0],yy,mon,day,hh,mm,ss,ms)
+spscet_3        = STRING(yy[0],FORMAT='(I4.4)')+'-'+STRING(mon[0],FORMAT='(I2.2)')+'-'+$
+                  STRING(day[0],FORMAT='(I2.2)')+'/'+STRING(hh[0],FORMAT='(I2.2)')+':'+$
+                  STRING(mm[0],FORMAT='(I2.2)')+':'+STRING(ss[0],FORMAT='(I2.2)')+'.'+$
+                  STRING(ms[0],FORMAT='(I3.3)')
+PRINT,';  ', spscet_0[0],'   ', spscet_1[0],'   ', spscet_2[0],'   ', spscet_3[0]
+;  1997-09-02/01:01:53.199   1997-09-02/01:02:39.200   1997-09-02/01:04:57.199   1997-09-02/23:48:05.189
+spunix_0        = time_double(spscet_0[0])
+spunix_1        = time_double(spscet_1[0])
+spunix_2        = time_double(spscet_2[0])
+spunix_3        = time_double(spscet_3[0])
+
+diff_10         = spunix_1[0] - spunix_0[0]
+diff_21         = spunix_2[0] - spunix_1[0]
+diff_32         = spunix_3[0] - spunix_2[0]
+PRINT,';', diff_10[0], diff_21[0], diff_32[0], FORMAT='(a1,3d25.12)'
+;          46.001000046730         137.998999953270       81787.990000009537
+
+; => calculate # of radians spacecraft can rotate in that time
+sprate2         = 1.969056010246d0
+diff_rad_10     = diff_10[0]*sprate2[0]
+diff_rad_21     = diff_21[0]*sprate2[0]
+diff_rad_32     = diff_32[0]*sprate2[0]
+PRINT,';', diff_rad_10[0], diff_rad_21[0], diff_rad_32[0], FORMAT='(a1,3d25.12)'
+;          90.578545619340         271.727760265924      161045.133275458531
+
+PRINT,';', (diff_rad_10[0] MOD 2d0*!DPI), (diff_rad_21[0] MOD 2d0*!DPI), $
+           (diff_rad_32[0] MOD 2d0*!DPI), FORMAT='(a1,3d25.12)'
+;           1.817554667486           5.427918958590           3.560289855015
+
+PRINT,';', diff_rad_10[0]/(2d0*!DPI), diff_rad_21[0]/(2d0*!DPI), $
+           diff_rad_32[0]/(2d0*!DPI), FORMAT='(a1,3d25.12)'
+;          14.416023273393          43.246816221611       25631.129021682304
+
+
+spphase_0       = 1.183833479881d0         ; => radians
+spphase_1       = 3.799939870834d0
+spphase_2       = 5.365493297577d0
+spphase_3       = 1.394614696503d0
+
+test_00         = ((spphase_0[0] + diff_rad_10[0])) MOD (2d0*!DPI)
+test_01         = ((spphase_0[0] - diff_rad_10[0])) MOD (2d0*!DPI)
+PRINT,';', test_00[0], test_01[0], FORMAT='(a1,2d25.12)'
+;           3.797784798707          -1.430117838945
+test_10         = ((spphase_1[0] + diff_rad_21[0])) MOD (2d0*!DPI)
+test_11         = ((spphase_1[0] - diff_rad_21[0])) MOD (2d0*!DPI)
+PRINT,';', test_10[0], test_11[0], FORMAT='(a1,2d25.12)'
+;           5.350731928035          -4.034037493547
+
+test_20         = ((spphase_2[0] + diff_rad_32[0])) MOD (2d0*!DPI)
+test_21         = ((spphase_2[0] - diff_rad_32[0])) MOD (2d0*!DPI)
+PRINT,';', test_20[0], test_21[0], FORMAT='(a1,2d25.12)'
+;           6.176160436133          -1.728359148159
+
+
+test_00         = (test_00[0] + (2d0*!DPI)) MOD (2d0*!DPI)
+test_01         = (test_01[0] + (2d0*!DPI)) MOD (2d0*!DPI)
+PRINT,';', test_00[0], test_01[0], FORMAT='(a1,2d25.12)'
+;           3.797784798707           4.853067468234
+test_10         = (test_10[0] + (2d0*!DPI)) MOD (2d0*!DPI)
+test_11         = (test_11[0] + (2d0*!DPI)) MOD (2d0*!DPI)
+PRINT,';', test_10[0], test_11[0], FORMAT='(a1,2d25.12)'
+;           5.350731928035           2.249147813633
+
+test_20         = (test_20[0] + (2d0*!DPI)) MOD (2d0*!DPI)
+test_21         = (test_21[0] + (2d0*!DPI)) MOD (2d0*!DPI)
+PRINT,';', test_20[0], test_21[0], FORMAT='(a1,2d25.12)'
+;           6.176160436133           4.554826159021
+
+
+PRINT,';', (spphase_1[0] - test_00[0]), (spphase_1[0] - test_00[0])*18d1/!DPI
+;    0.0021550721      0.12347654
+PRINT,';', (spphase_2[0] - test_10[0]), (spphase_2[0] - test_10[0])*18d1/!DPI
+;     0.014761370      0.84576417
+PRINT,';', ((spphase_3[0] + (2d0*!DPI)) - test_20[0]), ((spphase_3[0] + (2d0*!DPI)) - test_20[0])*18d1/!DPI
+;       1.5016396       86.037610
+
+
+PRINT,';', (spphase_1[0] - test_00[0])/diff_rad_10[0], ((spphase_1[0] - test_00[0])*18d1/!DPI)/diff_rad_10[0]
+;---------------------------------
+;            Drift Rates
+;      rad/s             deg/s
+;=================================
+;   2.3792302e-05    0.0013631985
+;---------------------------------
+
+PRINT,';', (spphase_2[0] - test_10[0])/diff_rad_21[0], ((spphase_2[0] - test_10[0])*18d1/!DPI)/diff_rad_21[0]
+;---------------------------------
+;            Drift Rates
+;      rad/s             deg/s
+;=================================
+;   5.4324113e-05    0.0031125424
+;---------------------------------
+
+PRINT,';', ((spphase_3[0] + (2d0*!DPI)) - test_20[0])/diff_rad_32[0], (((spphase_3[0] + (2d0*!DPI)) - test_20[0])*18d1/!DPI)/diff_rad_32[0]
+;---------------------------------
+;            Drift Rates
+;      rad/s             deg/s
+;=================================
+;   9.3243399e-06   0.00053424533
+;---------------------------------
+
+
+PRINT,';', (spphase_1[0] - test_00[0])/diff_rad_10[0]^2, ((spphase_1[0] - test_00[0])*18d1/!DPI)/diff_rad_10[0]^2
+;---------------------------------
+;            Drift Rates
+;      rad/s^2         deg/s^2
+;=================================
+;   2.6267039e-07   1.5049905e-05
+;---------------------------------
+
+PRINT,';', (spphase_2[0] - test_10[0])/diff_rad_21[0]^2, ((spphase_2[0] - test_10[0])*18d1/!DPI)/diff_rad_21[0]^2
+;---------------------------------
+;            Drift Rates
+;      rad/s^2         deg/s^2
+;=================================
+;   1.9992110e-07   1.1454635e-05
+;---------------------------------
+
+PRINT,';', ((spphase_3[0] + (2d0*!DPI)) - test_20[0])/diff_rad_32[0]^2, (((spphase_3[0] + (2d0*!DPI)) - test_20[0])*18d1/!DPI)/diff_rad_32[0]^2
+;---------------------------------
+;            Drift Rates
+;      rad/s^2         deg/s^2
+;=================================
+;   5.7898924e-11   3.3173640e-09
+;---------------------------------
+
+
+
+
+
+
+

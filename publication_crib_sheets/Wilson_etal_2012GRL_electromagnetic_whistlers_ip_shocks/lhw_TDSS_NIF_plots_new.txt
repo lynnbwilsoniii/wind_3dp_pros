@@ -1,0 +1,1061 @@
+;-----------------------------------------------------------------------------------------
+; => Define MVA directions for HTR MFI
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+;  1997-12-10
+date        = '121097'
+t           = ['1997-12-10/03:33:00','1997-12-10/05:33:00']
+tramp       = '1997-12-10/04:33:14.664'
+;  1998-08-26
+date        = '082698'
+t           = ['1998-08-26/05:40:00','1998-08-26/07:40:00']  ; -For moment writing
+tramp       = '1998-08-26/06:40:24.972'
+;  1998-09-24
+date        = '092498'
+t           = ['1998-09-24/22:20:00','1998-09-25/00:30:00']
+tramp       = '1998-09-24/23:20:37.374'
+;  2000-02-11 [B]
+date        = '021100'
+t           = ['2000-02-11/22:33:00','2000-02-12/00:33:00']
+tramp       = '2000-02-11/23:33:55.319'
+;  2000-04-06
+date        = '040600'
+t           = ['2000-04-06/15:00:00','2000-04-06/19:00:00']
+tramp       = '2000-04-06/16:32:09.237'
+;-----------------------------------------------------------------------------------------
+; => B-fields
+;-----------------------------------------------------------------------------------------
+tr3         = time_double(t)
+tura        = time_double(tramp)
+mydate      = my_str_date(DATE=date)
+date        = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate       = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate       = mydate.TDATE[0]
+
+mfihtr   = read_wind_htr_mfi(TRANGE=tr3)
+bgse_htr = mfihtr.BGSE
+bgsm_htr = mfihtr.BGSM
+bmag_htr = mfihtr.BMAG
+t3x_htr  = bgse_htr.X
+;-----------------------------------------
+; => Special 1998-08-26 case
+;-----------------------------------------
+mdir   = FILE_EXPAND_PATH('IDL_stuff/cribs/wind_htr_mfi_files/')
+mfiles = FILE_SEARCH(mdir,'wi_h2_mfi_*_sine_and_spline.cdf')
+; => Read CDF file with splined and sine-wave fits
+bnm_epoch = STRLOWCASE('Epoch')   ; => " " HTR Epoch times
+bnm_gse   = STRLOWCASE('BGSE')    ; => CDF tag for HTR GSE B-field data
+bnm_gsm   = STRLOWCASE('BGSM')    ; => CDF tag for HTR GSM B-field data
+tyfile    = mfiles[0]
+; => Read CDF file with GSE/GSM data ("fixed" saturated)
+windmm    = read_cdf(tyfile[0],data_gse,var_gse,/NOTIME)
+!QUIET    = 0
+
+var_lw    = STRLOWCASE(REFORM(var_gse[*,0]))
+g_bgse    = WHERE(var_lw EQ bnm_gse  ,ggse)   ; => Elements of Pointer for HTR GSE data
+g_bgsm    = WHERE(var_lw EQ bnm_gsm  ,ggsm)   ; => Elements of Pointer for HTR GSM data
+g_epo3    = WHERE(var_lw EQ bnm_epoch,gep3)   ; => Element for Epoch times
+; => Define dummy variables
+IF (ggse GT 0) THEN tgsemag = *data_gse[g_bgse[0]]
+IF (ggsm GT 0) THEN tgsmmag = *data_gse[g_bgsm[0]]
+IF (gep3 GT 0) THEN tempepo = *data_gse[g_epo3[0]]
+; => Convert Epoch times to Unix
+unx_gse = epoch2unix(tempepo)
+mag_gse = tgsemag
+mag_gsm = tgsmmag
+; => Release pointer and increment index markers
+PTR_FREE,data_gse
+DELVAR,tgsemag,tgsmmag,tempepo,var_cnts,var_lw
+
+; => keep only between time range
+good     = WHERE(unx_gse GE tr3[0] AND unx_gse LE tr3[1],gd)
+t3x_htr  = unx_gse[good]
+nhtr     = N_ELEMENTS(t3x_htr)
+mag_gse  = mag_gse[good,*]
+mag_gsm  = mag_gsm[good,*]
+bmag     = SQRT(TOTAL(mag_gse^2,2L,/NAN))
+; => Send to TPLOT
+bgse_htr = {X:t3x_htr,Y:mag_gse}
+bgsm_htr = {X:t3x_htr,Y:mag_gsm}
+bmag_htr = {X:t3x_htr,Y:bmag}
+;-----------------------------------------
+; => Special 1998-08-26 case
+;-----------------------------------------
+
+
+; => Define time range of interest
+trr      = tura[0] + [-1d0,1d0]*3d1
+good     = WHERE(t3x_htr GE trr[0] AND t3x_htr LE trr[1],gd)
+PRINT,'; => For '+tdate[0]+'  ',gd
+; => For 1997-12-10           651
+; => For 1998-08-26           650
+; => For 1998-09-24           652
+; => For 2000-02-11           648
+; => For 2000-04-06           565
+
+tempb    = bgse_htr.Y[good,*]
+mvarot   = my_min_var_rot(tempb)
+eigval   = mvarot.EIGENVALUES
+maxmva   = mvarot.EIGENVECTORS[*,2]
+PRINT,';',maxmva[0],maxmva[1],maxmva[1],'   => Max. Var. For '+tdate[0]+'  '
+;    -0.010459210      0.85407828      0.85407828   => Max. Var. For 1997-12-10  
+;     -0.11739567     -0.98044670     -0.98044670   => Max. Var. For 1998-08-26  
+;     -0.26021006      0.92974724      0.92974724   => Max. Var. For 1998-09-24  
+;     -0.39073633      0.91322584      0.91322584   => Max. Var. For 2000-02-11  
+;     -0.31136666      0.92680756      0.92680756   => Max. Var. For 2000-04-06  
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+; => Multiplication factors for plasma frequency calculations [to angular frequency]
+wpefac = SQRT(1d6*qq^2/me/epo)
+wppfac = SQRT(1d6*qq^2/mp/epo)
+
+
+;---------------------------------------------------
+;  1997-12-10
+;---------------------------------------------------
+date        = '121097'
+t           = ['1997-12-10/03:33:00','1997-12-10/05:33:00']
+tramp       = '1997-12-10/04:33:14.664'
+gnorm8      = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+dgnorm8     = [ 0.015, 0.032, 0.374]
+gnorm9      = [-0.971, 0.094,-0.218]   ; => Using RH08 from JCK's site
+dgnorm9     = [ 0.016, 0.071, 0.214]
+ushn        = [ 132.3,  54.3]          ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2       = [ 124.0,  50.4]          ; => Up/Downstream normal flow speed [shock frame] RHO9
+v_shn89     = [ 391.2, 403.9]          ; => Shock normal speed [SC-Frame, km/s] {RHO8, RHO9}
+dv_shn89    = [  12.4,  11.7]
+thetaBn89   = [  70.9,  71.9]          ; => Theta_Bn [degrees, (RH08, RH09)]
+sound_updn  = [ 34.04, 43.73]          ; => Sound Speed [km/s, (up,down)stream]
+valf_updn   = [ 48.44, 68.60]          ; => Alfven Speed [km/s, (up,down)stream]
+machf_89    = [  2.26,  2.12]          ; => Fast Mode Mach # [RH08, RH09]
+compr       = [  2.49,  0.35]          ; => Compression Ratio [value, uncertainty]
+ni_up       = 11.18                    ; => Avg. upstream density [cm^(-3)]
+magf_u      = [  1.917, -6.693, -1.578]
+magf_d      = [  2.361,-14.138, -6.626]
+bmag_ud     = [  7.218, 15.985]
+vsw_up      = [-293.129,6.851,-1.439]
+vsw_dn      = [-365.250,11.601,-36.620]
+; => Max. Eigenvector from MVA on HTR
+emax_b      = [-0.010459210d0, 0.85407828d0, 0.85407828d0]
+
+;---------------------------------------------------
+;  1998-08-26
+;---------------------------------------------------
+date        = '082698'
+t           = ['1998-08-26/05:40:00','1998-08-26/07:40:00']  ; -For moment writing
+tramp       = '1998-08-26/06:40:24.972'
+gnorm8      = [-0.655, 0.040,-0.754]   ; => Using RH08 from JCK's site
+dgnorm8     = [ 0.010, 0.009, 0.561]
+gnorm9      = [-0.822, 0.138,-0.553]   ; => Using RH09 from JCK's site
+dgnorm9     = [ 0.040, 0.070, 0.488]
+ushn        = [ 401.3, 142.3]          ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2       = [ 379.6, 135.6]          ; => Up/Downstream normal flow speed [shock frame] RHO9
+v_shn89     = [ 687.4, 747.2]          ; => Shock normal speed [SC-Frame, km/s] {RHO8, RHO9}
+dv_shn89    = [  26.8,  25.5]
+thetaBn89   = [  82.2,  78.7]          ; => Theta_Bn [degrees, (RH08, RH09)]
+sound_updn  = [ 54.98,163.47]          ; => Sound Speed [km/s, (up,down)stream]
+valf_updn   = [ 64.75,111.14]          ; => Alfven Speed [km/s, (up,down)stream]
+machf_89    = [  4.74,  4.49]          ; => Fast Mode Mach # [RH08, RH09]
+compr       = [  2.88,  0.31]          ; => Compression Ratio [value, uncertainty]
+ni_up       =  6.68                    ; => Avg. upstream density [cm^(-3)]
+magf_u      = [  0.244,  6.492, -1.289]
+magf_d      = [-12.256,  6.196, 12.414]
+bmag_ud     = [  6.972, 19.726]
+vsw_up      = [-484.565,6.580,10.997]
+vsw_dn      = [-648.070,10.635,-182.219]
+; => Max. Eigenvector from MVA on HTR
+emax_b      = [-0.11739567d0,-0.98044670d0,-0.98044670d0]
+
+;---------------------------------------------------
+;  1998-09-24
+;---------------------------------------------------
+date        = '092498'
+t           = ['1998-09-24/22:20:00','1998-09-25/00:30:00']
+tramp       = '1998-09-24/23:20:37.374'
+gnorm8      = [-0.914,-0.220,-0.341]   ; => Using RH08 from JCK's site
+dgnorm8     = [ 0.004, 0.009, 0.327]
+gnorm9      = [-0.939,-0.175,-0.296]   ; => Using RH09 from JCK's site
+dgnorm9     = [ 0.024, 0.070, 0.287]
+ushn        = [ 386.3, 174.6]          ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2       = [ 381.2, 171.3]          ; => Up/Downstream normal flow speed [shock frame] RHO9
+v_shn89     = [ 772.4, 780.0]          ; => Shock normal speed [SC-Frame, km/s] {RHO8, RHO9}
+dv_shn89    = [  95.6,  95.5]
+thetaBn89   = [  82.1,  78.6]          ; => Theta_Bn [degrees, (RH08, RH09)]
+sound_updn  = [ 68.20,133.24]          ; => Sound Speed [km/s, (up,down)stream]
+valf_updn   = [114.45,213.44]          ; => Alfven Speed [km/s, (up,down)stream]
+machf_89    = [  2.91,  2.87]          ; => Fast Mode Mach # [RH08, RH09]
+compr       = [  2.17,  0.38]          ; => Compression Ratio [value, uncertainty]
+ni_up       =  8.40                    ; => Avg. upstream density [cm^(-3)]
+magf_u      = [ -7.054, 12.116,  2.493]
+magf_d      = [-15.425, 33.756, 15.545]
+bmag_ud     = [ 14.415, 40.594]
+vsw_up      = [-449.733,41.122,34.701]
+vsw_dn      = [-650.533,-32.149,-60.749]
+; => Max. Eigenvector from MVA on HTR
+emax_b      = [-0.26021006d0, 0.92974724d0, 0.92974724]
+
+;---------------------------------------------------
+;  2000-02-11 [B]
+;---------------------------------------------------
+date        = '021100'
+t           = ['2000-02-11/22:33:00','2000-02-12/00:33:00']
+tramp       = '2000-02-11/23:33:55.319'
+gnorm8      = [-0.865,-0.452, 0.218]   ; => Using RH08 from JCK's site
+dgnorm8     = [ 0.017, 0.030, 0.214]
+gnorm9      = [-0.930,-0.367,-0.028]   ; => Using RH09 from JCK's site
+dgnorm9     = [ 0.025, 0.063, 0.028]
+ushn        = [ 263.6,  81.7]          ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2       = [ 255.3,  79.3]          ; => Up/Downstream normal flow speed [shock frame] RHO9
+v_shn89     = [ 641.4, 661.1]          ; => Shock normal speed [SC-Frame, km/s] {RHO8, RHO9}
+dv_shn89    = [  13.2,  12.3]
+thetaBn89   = [  86.5,  89.9]          ; => Theta_Bn [degrees, (RH08, RH09)]
+sound_updn  = [ 46.87, 77.54]          ; => Sound Speed [km/s, (up,down)stream]
+valf_updn   = [ 66.20,123.23]          ; => Alfven Speed [km/s, (up,down)stream]
+machf_89    = [  3.25,  3.15]          ; => Fast Mode Mach # [RH08, RH09]
+compr       = [  3.27,  0.50]          ; => Compression Ratio [value, uncertainty]
+ni_up       =  5.31                    ; => Avg. upstream density [cm^(-3)]
+magf_u      = [  2.492, -6.318, -1.760]
+magf_d      = [ 10.254,-20.441,  0.143]
+bmag_ud     = [  7.071, 23.128]
+vsw_up      = [-446.427,-9.395,-3.779]
+vsw_dn      = [-601.957,-98.637,41.182]
+; => Max. Eigenvector from MVA on HTR
+emax_b      = [-0.39073633d0, 0.91322584d0, 0.91322584d0]
+
+;---------------------------------------------------
+;  2000-04-06
+;---------------------------------------------------
+date        = '040600'
+t           = ['2000-04-06/15:00:00','2000-04-06/19:00:00']
+tramp       = '2000-04-06/16:32:09.237'
+gnorm8      = [-0.984,-0.078,-0.162]   ; => Using RH08 from JCK's site
+dgnorm8     = [ 0.002, 0.009, 0.161]
+gnorm9      = [-0.988,-0.061,-0.140]   ; => Using RH09 from JCK's site
+dgnorm9     = [ 0.011, 0.070, 0.139]
+ushn        = [ 278.1, 79.8]           ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2       = [ 277.4, 79.7]           ; => Up/Downstream normal flow speed [shock frame] RHO9
+v_shn89     = [ 646.9, 647.1]          ; => Shock normal speed [SC-Frame, km/s] {RHO8, RHO9}
+dv_shn89    = [  97.9,  97.6]
+thetaBn89   = [  69.6,  68.5]          ; => Theta_Bn [degrees, (RH08, RH09)]
+sound_updn  = [ 29.87, 92.08]          ; => Sound Speed [km/s, (up,down)stream]
+valf_updn   = [ 64.81,136.41]          ; => Alfven Speed [km/s, (up,down)stream]
+machf_89    = [  3.97,  3.97]          ; => Fast Mode Mach # [RH08, RH09]
+compr       = [  3.84,  1.25]          ; => Compression Ratio [value, uncertainty]
+ni_up       =  8.62                    ; => Avg. upstream density [cm^(-3)]
+magf_u      = [  3.223, -6.627, -0.586]
+magf_d      = [  6.324,-25.725, -6.278]
+bmag_ud     = [  7.564, 27.720]
+vsw_up      = [-387.161,3.690,-23.599]
+vsw_dn      = [-578.251,-21.021,-67.893]
+; => Max. Eigenvector from MVA on HTR
+emax_b      = [-0.31136666d0, 0.92680756d0, 0.92680756]
+;-----------------------------------------------------------------------------------------
+; => NIF Velocity
+;-----------------------------------------------------------------------------------------
+v_nif08     = my_crossp_2(gnorm8,my_crossp_2(vsw_up,gnorm8,/NOM),/NOM)
+v_tran08    = v_shn89[0]*gnorm8 + v_nif08
+e_tran08    = -1d0*my_crossp_2(v_tran08*1d3,magf_u*1d-9,/NOM)*1d3
+u_e_tr08    = e_tran08/NORM(REFORM(e_tran08))
+e_conv      = -1d0*my_crossp_2(vsw_up,magf_u,/NOM)
+; => normalize
+e_cnmag     = NORM(REFORM(e_conv))
+u_e_conv    = e_conv/e_cnmag
+
+; => re-normalize norm and bmax
+u_norm      = gnorm8/NORM(REFORM(gnorm8))
+u_bmax      = emax_b/NORM(REFORM(emax_b))
+
+; => X' = n
+; => Y' = Esw/|Esw|
+; => Z' = bmax
+rotgse      = DBLARR(3L,3L)
+rotnif      = DBLARR(3L,3L)
+; => Rotation Matrix from NIF to GSE
+rotgse      = TRANSPOSE([[u_norm],[u_e_conv],[u_bmax]])
+; => Define rotation from GSE to NIF
+rotnif      = LA_INVERT(rotgse)
+
+
+tr3         = time_double(t)
+tura        = time_double(tramp)
+mydate      = my_str_date(DATE=date)
+date        = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate       = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate       = mydate.TDATE[0]
+
+PRINT,'; => For '+tdate[0]
+PRINT,rotnif
+; => For 1997-12-10
+;      -1.1031466   -0.0015641877    -0.011945162
+;      0.51699110      0.83071931     -0.82438814
+;     0.092141668       1.1417978      0.27359721
+;
+; => For 1998-08-26
+;      -1.5188975      0.17861604    0.0032520695
+;      -1.5331882      -1.0904527       1.2740319
+;     -0.50795585      -1.7090480      0.35059568
+;
+; => For 1998-09-24
+;      -1.0266119     -0.29967582     0.012356085
+;     -0.10789738     -0.90012855      0.86993113
+;     -0.35159254       1.1296632      0.21357675
+;
+; => For 2000-02-11
+;      -1.0056516     -0.33423769    -0.096044301
+;     -0.54674616      0.62975829     -0.86369121
+;     -0.45407962       1.0037678      0.27946866
+;
+; => For 2000-04-06
+;     -0.98274094     -0.24060420    -0.089553616
+;     0.074433200      0.92015832     -0.89515201
+;     -0.12410968       1.2690453      0.14282957
+;
+
+; => NIF [Scudder et al., 1986a]
+row1        = gnorm8/NORM(REFORM(gnorm8))
+row2        = my_crossp_2(magf_d,magf_u,/NOM)
+row2        = row2/NORM(REFORM(row2))  ; => normalize
+row3        = my_crossp_2(row1,row2,/NOM)
+row3        = row3/NORM(REFORM(row3))  ; => normalize
+; => Rotation Matrix from NIF to GSE
+rotmat2     = TRANSPOSE([[row1],[row2],[row3]])
+; => Rotation Matrix from GSE to NIF
+rotnif2     = LA_INVERT(rotmat2)
+PRINT,'; => For '+tdate[0]
+PRINT,rotnif2
+; => For 1997-12-10
+;    -0.638914     0.481739    -0.863348
+;    -0.499518    -0.594897     0.884439
+;   -0.0743619     0.846408     0.527318
+;
+; => For 1998-08-26
+;      1.93450      4.24017     -2.78125
+;     -2.63489     -4.27332      2.06223
+;    -0.578719     0.615194     0.535370
+;
+; => For 1998-09-24
+;    -0.735086     0.261778     -1.13127
+;    -0.260778    -0.702346      1.15210
+;    -0.358693     0.830913     0.425351
+;
+; => For 2000-02-11
+;     -1.92792     -2.78505     -8.83700
+;     -1.06893     -2.34620     -9.10598
+;     0.488935    -0.856883     0.163385
+;
+; => For 2000-04-06
+;    -0.926707    0.0608708    -0.575061
+;    -0.141671    -0.345068      1.02667
+;    -0.124451     0.945582     0.300642
+;
+
+
+;-----------------------------------------------------------------------------------------
+; => B-fields
+;-----------------------------------------------------------------------------------------
+mfi3s       = read_wind_mfi(TRANGE=tr3)
+bgse        = mfi3s.BGSE
+bgsm        = mfi3s.BGSM
+bmags       = mfi3s.MAG
+t3x         = bgse.X
+nt          = N_ELEMENTS(t3x)
+
+store_data,'wi_B3_MAG',DATA=bmags
+store_data,'wi_B3_GSE',DATA=bgse
+store_data,'wi_B3_GSM',DATA=bgsm
+nn0    = ['wi_B3_MAG','wi_B3_GSE']
+options,'wi_B3_MAG','YTITLE','|B| [3s, nT]'
+options,'wi_B3_GSE','YTITLE','B (nT)!C[GSE, 3s]'
+options,'wi_B3_GSM','YTITLE','B (nT)!C[GSM, 3s]'
+options,['wi_B3_GSE','wi_B3_GSM'],'COLORS',[250,150,50]
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+tplot,nn0,TRANGE=tr3
+
+
+mfihtr   = read_wind_htr_mfi(TRANGE=tr3)
+bgse_htr = mfihtr.BGSE
+bgsm_htr = mfihtr.BGSM
+bmag_htr = mfihtr.BMAG
+t3x_htr  = bgse_htr.X
+store_data,'wi_BHTR_MAG',DATA=bmag_htr
+store_data,'wi_BHTR_GSE',DATA=bgse_htr
+store_data,'wi_BHTR_GSM',DATA=bgsm_htr
+
+options,'wi_BHTR_MAG','YTITLE','|B| [HTR, nT]'
+options,'wi_BHTR_GSE','YTITLE','B (nT)!C[GSE, HTR]'
+options,'wi_BHTR_GSM','YTITLE','B (nT)!C[GSM, HTR]'
+options,['wi_BHTR_GSE','wi_BHTR_GSM'],'COLORS',[250,150,50]
+nnh      = ['wi_BHTR_MAG','wi_BHTR_GSE']
+;----------------------------------------------
+; => Special 1998-08-26 and 2000-04-06 cases
+;----------------------------------------------
+mdir   = FILE_EXPAND_PATH('IDL_stuff/cribs/wind_htr_mfi_files/')
+mfiles = FILE_SEARCH(mdir,'wi_h2_mfi_*_sine_and_spline.cdf')
+; => Read CDF file with splined and sine-wave fits
+bnm_epoch = STRLOWCASE('Epoch')   ; => " " HTR Epoch times
+bnm_gse   = STRLOWCASE('BGSE')    ; => CDF tag for HTR GSE B-field data
+bnm_gsm   = STRLOWCASE('BGSM')    ; => CDF tag for HTR GSM B-field data
+IF (date EQ '082698') THEN tyfile = mfiles[0]
+IF (date EQ '040600') THEN tyfile = mfiles[1]
+; => Read CDF file with GSE/GSM data ("fixed" saturated)
+windmm    = read_cdf(tyfile[0],data_gse,var_gse,/NOTIME)
+!QUIET    = 0
+
+var_lw    = STRLOWCASE(REFORM(var_gse[*,0]))
+g_bgse    = WHERE(var_lw EQ bnm_gse  ,ggse)   ; => Elements of Pointer for HTR GSE data
+g_bgsm    = WHERE(var_lw EQ bnm_gsm  ,ggsm)   ; => Elements of Pointer for HTR GSM data
+g_epo3    = WHERE(var_lw EQ bnm_epoch,gep3)   ; => Element for Epoch times
+; => Define dummy variables
+IF (ggse GT 0) THEN tgsemag = *data_gse[g_bgse[0]]
+IF (ggsm GT 0) THEN tgsmmag = *data_gse[g_bgsm[0]]
+IF (gep3 GT 0) THEN tempepo = *data_gse[g_epo3[0]]
+; => Convert Epoch times to Unix
+unx_gse = epoch2unix(tempepo)
+mag_gse = tgsemag
+mag_gsm = tgsmmag
+; => Release pointer and increment index markers
+PTR_FREE,data_gse
+DELVAR,tgsemag,tgsmmag,tempepo,var_cnts,var_lw
+
+; => keep only between time range
+good     = WHERE(unx_gse GE tr3[0] AND unx_gse LE tr3[1],gd)
+t3x_htr  = unx_gse[good]
+nhtr     = N_ELEMENTS(t3x_htr)
+mag_gse  = mag_gse[good,*]
+mag_gsm  = mag_gsm[good,*]
+bmag     = SQRT(TOTAL(mag_gse^2,2L,/NAN))
+; => Send to TPLOT
+bgse_htr = {X:t3x_htr,Y:mag_gse}
+bgsm_htr = {X:t3x_htr,Y:mag_gsm}
+bmag_htr = {X:t3x_htr,Y:bmag}
+
+store_data,'wi_BHTR_MAG',DATA=bmag_htr
+store_data,'wi_BHTR_GSE',DATA=bgse_htr
+store_data,'wi_BHTR_GSM',DATA=bgsm_htr
+nnh      = ['wi_BHTR_MAG','wi_BHTR_GSE']
+
+options,'wi_BHTR_MAG','YTITLE','|B| [HTR, nT]'
+options,'wi_BHTR_GSE','YTITLE','B (nT)!C[GSE, HTR]'
+options,'wi_BHTR_GSM','YTITLE','B (nT)!C[GSM, HTR]'
+options,['wi_BHTR_GSE','wi_BHTR_GSM'],'COLORS',[250,150,50]
+;-----------------------------------------------------------------------------------------
+; => Rotate HTR MFI into NIF coordinates
+;-----------------------------------------------------------------------------------------
+nhtr     = N_ELEMENTS(t3x_htr)
+htr_b    = bgse_htr.Y
+htr_nif  = DBLARR(nhtr,3L)        ; => HTR B-fields (nT) [NIF-Coordinates]
+FOR j=0L, nhtr - 1L DO BEGIN                $
+  tmagf        = REFORM(htr_b[j,*])       & $
+  temp         = REFORM(rotnif ## tmagf)  & $
+  htr_nif[j,*] = temp
+
+store_data,'wi_BHTR_NIF',DATA={X:t3x_htr,Y:htr_nif}
+options,'wi_BHTR_NIF','YTITLE','B (nT)!C[NIF, HTR]'
+options,'wi_BHTR_NIF','COLORS',[250,150,50]
+
+store_data,'wi_BHTR_NIF_x',DATA={X:t3x_htr,Y:htr_nif[*,0]}
+store_data,'wi_BHTR_NIF_y',DATA={X:t3x_htr,Y:htr_nif[*,1]}
+store_data,'wi_BHTR_NIF_z',DATA={X:t3x_htr,Y:htr_nif[*,2]}
+options,'wi_BHTR_NIF_x','YTITLE','Bx (nT)!C[NIF, HTR]'
+options,'wi_BHTR_NIF_y','YTITLE','By (nT)!C[NIF, HTR]'
+options,'wi_BHTR_NIF_z','YTITLE','Bz (nT)!C[NIF, HTR]'
+options,'wi_BHTR_NIF'+['_x','_y','_z'],'COLORS',50
+
+
+nhtr     = N_ELEMENTS(t3x_htr)
+htr_b    = bgse_htr.Y
+htr_nif2 = DBLARR(nhtr,3L)        ; => HTR B-fields (nT) [NIF-Coordinates, Scudder's]
+FOR j=0L, nhtr - 1L DO BEGIN                  $
+  tmagf         = REFORM(htr_b[j,*])        & $
+  temp          = REFORM(rotnif2 ## tmagf)  & $
+  htr_nif2[j,*] = temp
+
+store_data,'wi_BHTR_NIF_2',DATA={X:t3x_htr,Y:htr_nif2}
+options,'wi_BHTR_NIF_2','YTITLE','B (nT)!C[NIF-2, HTR]'
+options,'wi_BHTR_NIF_2','COLORS',[250,150,50]
+;-----------------------------------------------------------------------------------------
+; => Load orbit data
+;-----------------------------------------------------------------------------------------
+wind_orbit_to_tplot,BNAME='wi_B3_GSE',TRANGE=tr3
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+options,'Wind_GSE_Latitude','YTITLE','GSE Lat. [deg]'
+options,'Wind_GSE_Longitude','YTITLE','GSE Lon. [deg]'
+gnames = ['Wind_Radial_Distance','Wind_GSE_Latitude','Wind_GSE_Longitude','Wind_MLT']
+tplot_options, var_label=gnames
+
+htr_t  = t3x_htr
+nhtr_t = htr_t - tura[0]   ; => normalize to zero
+ndist  = v_shn89[0]*nhtr_t   ; => km
+; => Compute estimates of upstream inertial lengths
+IF (FINITE(ni_up[0])) THEN einert = c/(wpefac[0]*SQRT(ni_up[0])) ELSE einert = f
+IF (FINITE(ni_up[0])) THEN iinert = c/(wppfac[0]*SQRT(ni_up[0])) ELSE iinert = f
+einert *= 1d-3  ; => Convert to km
+iinert *= 1d-3  ; => Convert to km
+
+store_data,'normal_distance',DATA={X:htr_t,Y:ndist}
+options,'normal_distance','YTITLE','Dist. [Normal, km]'
+store_data,'normal_distance_c-wpe',DATA={X:htr_t,Y:ndist/einert[0]}
+options,'normal_distance_c-wpe','YTITLE','Dist. [Normal, c/'+'!7x!3'+'!Dpe!N'+']'
+store_data,'normal_distance_c-wpi',DATA={X:htr_t,Y:ndist/iinert[0]}
+options,'normal_distance_c-wpi','YTITLE','Dist. [Normal, c/'+'!7x!3'+'!Dpi!N'+']'
+
+gnames = ['Wind_Radial_Distance','normal_distance','normal_distance_c-wpe','normal_distance_c-wpi']
+tplot_options, VAR_LABEL=gnames
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+
+nnh      = ['wi_BHTR_MAG','wi_BHTR_GSE','wi_BHTR_NIF']
+tplot,nnh,TRANGE=tr3
+
+;trr      = tura[0] + [-1d0,1d0]*1d1
+trr      = tura[0] + [-1d0,1d0]*6d0
+tplot,nnh,TRANGE=trr
+
+
+trr      = tura[0] + [-1d0,1d0]*25d0
+nnh      = ['wi_BHTR_MAG','wi_BHTR_NIF','wi_BHTR_NIF_2']
+tplot,nnh,TRANGE=trr
+;-----------------------------------------------------------------------------------------
+; => Get TDSS times
+;-----------------------------------------------------------------------------------------
+mdir0    = FILE_EXPAND_PATH('../TDS_WAVES_PLOTS/TDS_DAILY_FILES/'+date[0]+'/TDSS/')
+mdir1    = FILE_EXPAND_PATH('IDL_stuff/WI_TDS/'+date[0]+'/TDSS/')
+IF (date NE '040600') THEN mdir = mdir1 ELSE mdir = mdir0
+waves0   = tdss_sort_relevant(DATE=date,/FIXFILE,DIRECT=mdir[0])
+
+sceta0   = waves0.SCETS
+event0   = waves0.EVENT_N
+gtd0     = N_ELEMENTS(event0)
+bf0      = REFORM(waves0.BFIELD)     ; => [ x , y , z ]-WAVES B-field (nT)
+ef0      = REFORM(waves0.EFIELD)     ;    [ x , y , z ]-WAVES E-field (mV/m)
+tt0      = REFORM(waves0.TIMES)      ; => Times (ms)
+evlen    = waves0.EVENT_LEN          ; => Event length [s]
+sang0    = waves0.SANGS              ; => start angle [deg] of +Ex antenna from sun direction
+eang0    = waves0.EANGS              ; => end   angle [deg] of +Ex antenna from sun direction
+ntds     = N_ELEMENTS(sceta0)        ; => # of TDS samples
+npts     = N_ELEMENTS(tt0[0,*])      ; => # of data points in each TDS sample
+
+unixs0   = time_double(sceta0)
+unixa0   = (unixs0 # REPLICATE(1d0,npts)) + tt0*1d-3
+unixe0   = unixs0 + evlen
+scete0   = time_string(unixe0,PREC=3)
+
+; => Calc. Poynting Flux WAVES coordinates
+sf0      = DBLARR(gtd0,2048L,3L)     ; => Poynting flux [micro Watts m^(-2)]
+FOR j=0L, ntds - 1L DO BEGIN                                $
+  tmagf         = REFORM(bf0[j,*,*])*1d-9                 & $
+  telcf         = REFORM(ef0[j,*,*])*1d-3                 & $
+  cr_eb         = my_crossp_2(telcf,tmagf,/NOM)           & $
+  sf0[j,*,*]    = cr_eb*1d6/muo[0]
+
+
+; => interpolate HTR B-fields to TDS times
+htr_t     = t3x_htr
+htr_gse   = bgse_htr.Y
+htr_tds_b = DBLARR(ntds,npts,3L)        ; => HTR B-fields (nT)   [GSE-Coordinates]
+FOR j=0L, ntds - 1L DO BEGIN                                     $
+  time0         = REFORM(unixa0[j,*])                          & $
+  tempx         = interp(htr_gse[*,0],htr_t,time0,/NO_EXTRAP)  & $
+  tempy         = interp(htr_gse[*,1],htr_t,time0,/NO_EXTRAP)  & $
+  tempz         = interp(htr_gse[*,2],htr_t,time0,/NO_EXTRAP)  & $
+  temp_b        = [[tempx],[tempy],[tempz]]                    & $
+  htr_tds_b[j,*,*] = temp_b
+
+;FOR j=0L, ntds - 1L DO BEGIN                                     $
+;  time0         = REFORM(unixa0[j,*])                          & $
+;  tempx         = interp(htr_nif[*,0],htr_t,time0,/NO_EXTRAP)  & $
+;  tempy         = interp(htr_nif[*,1],htr_t,time0,/NO_EXTRAP)  & $
+;  tempz         = interp(htr_nif[*,2],htr_t,time0,/NO_EXTRAP)  & $
+;  temp_b        = [[tempx],[tempy],[tempz]]                    & $
+;  htr_tds_b[j,*,*] = temp_b
+
+
+nnh      = ['wi_BHTR_MAG','wi_BHTR_GSE','wi_BHTR_NIF']
+trr      = tura[0] + [-1d0,1d0]*6d0
+ftimes   = file_name_times(trr,PREC=3,FORMFN=2)
+sfname   = ftimes.F_TIME[0]+'-'+STRMID(ftimes.F_TIME[1],11L)
+pref     = 'HTR-MFI_GSE-NIF_'
+suffx    = '_shock-ramp_TDSS_start-red_end-blue'
+fname    = pref[0]+sfname[0]+suffx[0]
+
+  tplot,nnh,TRANGE=trr
+  time_bar,unixs0,VARNAME=nna,COLOR=250
+  time_bar,unixe0,VARNAME=nna,COLOR= 30
+popen,fname[0],/LAND
+  tplot,nnh,TRANGE=trr
+  time_bar,unixs0,VARNAME=nna,COLOR=250
+  time_bar,unixe0,VARNAME=nna,COLOR= 30
+pclose
+
+
+IF (date EQ '121097') THEN yran = [-21e0, 1e0]
+IF (date EQ '082698') THEN yran = [-44e0,20e0]
+IF (date EQ '092498') THEN yran = [-35e0,40e0]
+IF (date EQ '021100') THEN yran = [-20e0, 0e0]
+IF (date EQ '040600') THEN yran = [-33e0,10e0]
+
+options,'wi_BHTR_NIF'+['_x','_y','_z'],'YRANGE',yran
+
+nnh      = ['wi_BHTR_MAG','wi_BHTR_NIF'+['_x','_y','_z']]
+trr      = tura[0] + [-1d0,1d0]*3d0
+;trr      = tura[0] + [-1d0,1d0]*6d0
+ftimes   = file_name_times(trr,PREC=3,FORMFN=2)
+sfname   = ftimes.F_TIME[0]+'-'+STRMID(ftimes.F_TIME[1],11L)
+pref     = 'HTR-MFI_NIF-XYZ_'
+suffx    = '_shock-ramp_TDSS_start-red_end-blue'
+fname    = pref[0]+sfname[0]+suffx[0]
+  tplot,nnh,TRANGE=trr
+  time_bar,unixs0,VARNAME=nna,COLOR=250
+  time_bar,unixe0,VARNAME=nna,COLOR= 30
+popen,fname[0],/LAND
+  tplot,nnh,TRANGE=trr
+  time_bar,unixs0,VARNAME=nna,COLOR=250
+  time_bar,unixe0,VARNAME=nna,COLOR= 30
+pclose
+
+
+
+
+IF (date EQ '121097') THEN yran = [-21e0, 1e0]
+IF (date EQ '082698') THEN yran = [-44e0,20e0]
+IF (date EQ '092498') THEN yran = [-35e0,40e0]
+IF (date EQ '021100') THEN yran = [-20e0, 0e0]
+IF (date EQ '040600') THEN yran = [-41e0,26e0]
+
+IF (date EQ '121097') THEN trr = tura[0] + [-30d0,13d1]
+IF (date EQ '082698') THEN trr = tura[0] + [2d-2,1d0]*13d1
+IF (date EQ '092498') THEN trr = tura[0] + [1d-2,1d0]*36d2
+;IF (date EQ '021100') THEN trr = tura[0] + [-6d1,336d1]
+;IF (date EQ '021100') THEN trr = tura[0] + [-5d0,4d1]
+IF (date EQ '021100') THEN trr = tura[0] + [16d2,336d1]
+IF (date EQ '040600') THEN trr = tura[0] + [ 1d1,18d2]
+IF (date EQ '040600') THEN trr = tura[0] + [60d2,72d2]
+
+nna      = ['wi_BHTR_MAG','wi_BHTR_GSE','wi_BHTR_NIF']
+ftimes   = file_name_times(trr,PREC=3,FORMFN=2)
+sfname   = ftimes.F_TIME[0]+'-'+STRMID(ftimes.F_TIME[1],11L)
+pref     = 'HTR-MFI_GSE-NIF_'
+suffx    = '_shock-ramp_TDSS_start-red_end-blue'
+fname    = pref[0]+sfname[0]+suffx[0]
+
+  tplot,nna,TRANGE=trr
+  time_bar,unixs0,VARNAME=nna,COLOR=250
+  time_bar,unixe0,VARNAME=nna,COLOR= 30
+popen,fname[0],/LAND
+  tplot,nna,TRANGE=trr
+  time_bar,unixs0,VARNAME=nna,COLOR=250
+  time_bar,unixe0,VARNAME=nna,COLOR= 30
+pclose
+
+;-----------------------------------------------------------------------------------------
+; => Rotate into GSE coordinates
+;-----------------------------------------------------------------------------------------
+bfgse    = DBLARR(ntds,npts,3L)        ; => XYZ B-fields (nT)   [GSE-Coordinates]
+efgse    = DBLARR(ntds,npts,3L)        ; => XYZ E-fields (mV/m) [GSE-Coordinates]
+sfgse    = DBLARR(ntds,npts,3L)        ; => Poynting flux [micro Watts m^(-2)]
+FOR j=0L, ntds - 1L DO BEGIN                              $
+  tmagf         = REFORM(bf0[j,*,*])                    & $
+  telcf         = REFORM(ef0[j,*,*])                    & $
+  tpoyn         = REFORM(sf0[j,*,*])                    & $
+  time0         = REFORM(tt0[j,*])                      & $
+  tste0         = [MIN(time0,/NAN),MAX(time0,/NAN)]     & $
+  ang0          = [sang0[j],eang0[j]]                   & $
+  angs          = interp(ang0,tste0,time0,/NO_EXTRAP)   & $
+  FOR k=0L, 2047L DO BEGIN                                $
+    rotm0 = TRANSPOSE(eulermat(0d0,angs[k],18d1,/DEG))  & $
+    temp  = REFORM(rotm0 ## REFORM(tmagf[k,*]))         & $
+    bfgse[j,k,*] = temp                                 & $
+    temp  = REFORM(rotm0 ## REFORM(telcf[k,*]))         & $
+    efgse[j,k,*] = temp                                 & $
+    temp  = REFORM(rotm0 ## REFORM(tpoyn[k,*]))         & $
+    sfgse[j,k,*] = temp
+
+; => Calculate rotation matrix from GSE to WAVES
+;    rotm0 = eulermat(0d0,angs[k],18d1,/DEG)
+; => Calculate rotation matrix from WAVES to GSE
+;    trot0 = TRANSPOSE(rotm0)
+
+;-----------------------------------------------------------------------------------------
+; => Rotate into NIF coordinates
+;-----------------------------------------------------------------------------------------
+bfnif    = DBLARR(ntds,npts,3L)        ; => XYZ B-fields (nT)   [NIF-Coordinates]
+efnif    = DBLARR(ntds,npts,3L)        ; => XYZ E-fields (mV/m) [NIF-Coordinates]
+sfnif    = DBLARR(ntds,npts,3L)        ; => Poynting flux [micro Watts m^(-2)]
+FOR j=0L, ntds - 1L DO BEGIN                                $
+  tmagf         = REFORM(bfgse[j,*,*])                    & $
+  telcf         = REFORM(efgse[j,*,*])                    & $
+  tpoyn         = REFORM(sfgse[j,*,*])                    & $
+  FOR k=0L, 2047L DO BEGIN                                  $
+    temp  = REFORM(rotnif ## REFORM(tmagf[k,*]))          & $
+    bfnif[j,k,*] = temp                                   & $
+    temp  = REFORM(rotnif ## REFORM(telcf[k,*]))          & $
+    efnif[j,k,*] = temp - e_tran08                        & $
+    temp  = REFORM(rotnif ## REFORM(tpoyn[k,*]))          & $
+    sfnif[j,k,*] = temp
+;-----------------------------------------------------------------------------------------
+; => Rotate into FACs
+;-----------------------------------------------------------------------------------------
+norm_gse = u_norm
+bffac    = DBLARR(ntds,npts,3L)        ; => XYZ B-fields (nT)   [FA-Coordinates]
+effac    = DBLARR(ntds,npts,3L)        ; => XYZ E-fields (mV/m) [FA-Coordinates]
+sffac    = DBLARR(ntds,npts,3L)        ; => Poynting flux [micro Watts m^(-2)]
+FOR j=0L, ntds - 1L DO BEGIN                                $
+  tmagf         = REFORM(bfnif[j,*,*])                    & $
+  telcf         = REFORM(efnif[j,*,*])                    & $
+  tpoyn         = REFORM(sfnif[j,*,*])                    & $
+  bo_htr        = REFORM(htr_tds_b[j,*,*])                & $
+  FOR k=0L, 2047L DO BEGIN                                  $
+    b_htr = REFORM(bo_htr[k,*])                           & $
+    rmat0 = rot_mat(b_htr,norm_gse)                       & $
+    temp  = REFORM(rmat0 ## REFORM(tmagf[k,*]))           & $
+    bffac[j,k,*] = temp                                   & $
+    temp  = REFORM(rmat0 ## REFORM(telcf[k,*]))           & $
+    effac[j,k,*] = temp                                   & $
+    temp  = REFORM(rmat0 ## REFORM(tpoyn[k,*]))           & $
+    sffac[j,k,*] = temp
+
+;FOR j=0L, ntds - 1L DO BEGIN                                $
+;  tmagf         = REFORM(bfnif[j,*,*])                    & $
+;  telcf         = REFORM(efnif[j,*,*])                    & $
+;  tpoyn         = REFORM(sfnif[j,*,*])                    & $
+;  bo_htr        = REFORM(htr_tds_b[j,*,*])                & $
+;  FOR k=0L, 2047L DO BEGIN                                  $
+;    b_htr = REFORM(bo_htr[k,*])                           & $
+;    rmat0 = rot_mat(b_htr,norm_nif)                       & $
+;    temp  = REFORM(rmat0 ## REFORM(tmagf[k,*]))           & $
+;    bffac[j,k,*] = temp                                   & $
+;    temp  = REFORM(rmat0 ## REFORM(telcf[k,*]))           & $
+;    effac[j,k,*] = temp                                   & $
+;    temp  = REFORM(rmat0 ## REFORM(tpoyn[k,*]))           & $
+;    sffac[j,k,*] = temp
+
+;-------------------------------------------------------
+; => Define Fields
+;-------------------------------------------------------
+epara0      = effac[*,*,2]
+eperp1      = effac[*,*,0]
+eperp2      = effac[*,*,1]
+bpara0      = bffac[*,*,2]
+bperp1      = bffac[*,*,0]
+bperp2      = bffac[*,*,1]
+spara0      = sffac[*,*,2]
+sperp1      = sffac[*,*,0]
+sperp2      = sffac[*,*,1]
+
+WINDOW,1,XSIZE=800,YSIZE=800,RETAIN=2
+!P.MULTI    = 0
+
+test_t      = REFORM(tt0[4L,*])
+test_x      = REFORM(bperp1[4L,*])
+test_y      = REFORM(bperp2[4L,*])
+
+;g0          = 900L
+;gn          = 512L
+g0          = 900L
+gn          = 512L
+gels        = LINDGEN(gn) + g0
+gel0        = 0L
+gel1        = (gn - 1L)
+xdat        = test_x[gels]
+ydat        = test_y[gels]
+
+xyra        = 19d0*[-1d0,1d0]
+pstr        = {XSTYLE:1,YSTYLE:1,XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5,YRANGE:xyra,XRANGE:xyra}
+WSET,1
+PLOT,xdat,ydat,_EXTRA=pstr
+  OPLOT,xdat,ydat,COLOR= 50L
+  OPLOT,[xdat[gel0]],[ydat[gel0]],PSYM=5,COLOR=250,SYMSIZE=2.0,THICK=2.5
+  OPLOT,[xdat[gel1]],[ydat[gel1]],PSYM=4,COLOR=250,SYMSIZE=2.0,THICK=2.5
+  OPLOT,[0],[0],COLOR=250,PSYM=7,SYMSIZE=2.0,THICK=2.5
+
+
+!P.MULTI    = 0
+test_t      = REFORM(tt0[4L,*])
+test_x      = REFORM(bpara0[4L,*])
+test_y      = REFORM(bperp1[4L,*])
+test_z      = REFORM(bperp2[4L,*])
+vec         = ['para','per1','per2']
+xtv         = [0e0,2e2,4e2,6e2,8e2,1e3]
+xtn         = ['0','200','400','600','800','1000']
+xts         = N_ELEMENTS(xtv) - 1L
+xyra        = 19d0*[-1d0,1d0]
+pstr        = {XSTYLE:1,YSTYLE:1,XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5,YRANGE:xyra,$
+               XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts}
+WSET,1
+PLOT,test_t,test_x,_EXTRA=pstr
+  OPLOT,test_t,test_x,COLOR=250L
+  OPLOT,test_t,test_y,COLOR=150L
+  OPLOT,test_t,test_z,COLOR= 50L
+
+
+;-----------------------------------------------------------------------------------------
+; => Set up dummy plot structure variables
+;-----------------------------------------------------------------------------------------
+; => Define Fields
+ewavex      = REFORM(efnif[*,*,0])
+ewavey      = REFORM(efnif[*,*,1])
+ewavez      = REFORM(efnif[*,*,2])
+bwavex      = REFORM(bfnif[*,*,0])
+bwavey      = REFORM(bfnif[*,*,1])
+bwavez      = REFORM(bfnif[*,*,2])
+swavex      = REFORM(sfnif[*,*,0])
+swavey      = REFORM(sfnif[*,*,1])
+swavez      = REFORM(sfnif[*,*,2])
+vec         = ['x','y','z']
+coords      = 'NIF'
+; => Define Fields
+ewavex      = REFORM(effac[*,*,2])
+ewavey      = REFORM(effac[*,*,0])
+ewavez      = REFORM(effac[*,*,1])
+bwavex      = REFORM(bffac[*,*,2])
+bwavey      = REFORM(bffac[*,*,0])
+bwavez      = REFORM(bffac[*,*,1])
+swavex      = REFORM(sffac[*,*,2])
+swavey      = REFORM(sffac[*,*,0])
+swavez      = REFORM(sffac[*,*,1])
+vec         = ['para','per1','per2']
+coords      = 'FAC'
+
+
+xtv         = [0e0,2e2,4e2,6e2,8e2,1e3]
+xtn         = ['0','200','400','600','800','1000']
+xts         = N_ELEMENTS(xtv) - 1L
+yttles      = 'E'+vec+' [mV/m, '+coords[0]+']'
+yttlbs      = 'B'+vec+' [nT, '+coords[0]+']'
+yttlss      = 'S'+vec+' [!7l!3'+'W/m!U2!N'+', '+coords[0]+']'
+xttls       = 'Time (ms)'
+suffx       = '_unfiltered'
+
+ttle0       = 'TDSS: '+sceta0+' UT, Event #: '+STRTRIM(STRING(event0,FORMAT='(I8.8)'),2)
+ftimes      = file_name_times(sceta0,PREC=3,FORMFN=2)
+fnames0     = 'E-Fields_'+coords[0]+'_'+ftimes.F_TIME+suffx[0]
+fnambs0     = 'B-Fields_'+coords[0]+'_'+ftimes.F_TIME+suffx[0]
+fnamss0     = 'S-Fields_'+coords[0]+'_'+ftimes.F_TIME+suffx[0]
+pstr        = {XSTYLE:1,YSTYLE:1,XTITLE:xttls[0],XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,$
+               XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5}
+
+titles      = ttle0
+yttle       = yttles
+yttlb       = yttlbs
+yttls       = yttlss
+enames      = fnames0
+bnames      = fnambs0
+snames      = fnamss0
+
+pcharsold   = !P.CHARSIZE
+pthickold   = !P.THICK
+!P.MULTI    = [0,1,3]
+!P.CHARSIZE = 1.2
+!P.THICK    = 2.0
+ntd         = ntds
+t_time      = tt0
+;-----------------------------------------------------------------------------------------
+; => Plot data
+;-----------------------------------------------------------------------------------------
+FOR j=0L, ntd - 1L DO BEGIN                                                          $
+  t_ef   = TRANSPOSE([ewavex[j,*],ewavey[j,*],ewavez[j,*]])                        & $
+  t_bf   = TRANSPOSE([bwavex[j,*],bwavey[j,*],bwavez[j,*]])                        & $
+  t_sf   = TRANSPOSE([swavex[j,*],swavey[j,*],swavez[j,*]])                        & $
+  time   = REFORM(t_time[j,*])                                                     & $
+  yraef0 = [-1d0,1d0]*MAX(ABS(t_ef),/NAN)*1.1                                      & $
+  yrabf0 = [-1d0,1d0]*MAX(ABS(t_bf),/NAN)*1.1                                      & $
+  yrasf0 = [-1d0,1d0]*MAX(ABS(t_sf),/NAN)*1.1                                      & $
+  ptitle = titles[j]                                                               & $
+  IF (yraef0[0] EQ yraef0[1]) THEN GOTO,JUMP_SKIPE                                 & $
+  !P.MULTI    = [0,1,3]                                                            & $
+  popen,enames[j],/LAND                                                            & $
+    PLOT,time,t_ef[*,0],YRANGE=yraef0,TITLE=ptitle,YTITLE=yttle[0],_EXTRA=pstr     & $
+      OPLOT,time,t_ef[*,0],COLOR=250L                                              & $
+    PLOT,time,t_ef[*,1],YRANGE=yraef0,TITLE=ptitle,YTITLE=yttle[1],_EXTRA=pstr     & $
+      OPLOT,time,t_ef[*,1],COLOR=150L                                              & $
+    PLOT,time,t_ef[*,2],YRANGE=yraef0,TITLE=ptitle,YTITLE=yttle[2],_EXTRA=pstr     & $
+      OPLOT,time,t_ef[*,2],COLOR= 50L                                              & $
+  pclose                                                                           & $
+  JUMP_SKIPE:                                                                      & $
+  IF (yrabf0[0] EQ yrabf0[1]) THEN GOTO,JUMP_SKIPB                                 & $
+  !P.MULTI    = [0,1,3]                                                            & $
+  popen,bnames[j],/LAND                                                            & $
+    PLOT,time,t_bf[*,0],YRANGE=yrabf0,TITLE=ptitle,YTITLE=yttlb[0],_EXTRA=pstr     & $
+      OPLOT,time,t_bf[*,0],COLOR=250L                                              & $
+    PLOT,time,t_bf[*,1],YRANGE=yrabf0,TITLE=ptitle,YTITLE=yttlb[1],_EXTRA=pstr     & $
+      OPLOT,time,t_bf[*,1],COLOR=150L                                              & $
+    PLOT,time,t_bf[*,2],YRANGE=yrabf0,TITLE=ptitle,YTITLE=yttlb[2],_EXTRA=pstr     & $
+      OPLOT,time,t_bf[*,2],COLOR= 50L                                              & $
+  pclose                                                                           & $
+  JUMP_SKIPB:                                                                      & $
+  IF (yrasf0[0] EQ yrasf0[1]) THEN GOTO,JUMP_SKIPS                                 & $
+  !P.MULTI    = [0,1,3]                                                            & $
+  popen,snames[j],/LAND                                                            & $
+    PLOT,time,t_sf[*,0],YRANGE=yrasf0,TITLE=ptitle,YTITLE=yttls[0],_EXTRA=pstr     & $
+      OPLOT,time,t_sf[*,0],COLOR=250L                                              & $
+    PLOT,time,t_sf[*,1],YRANGE=yrasf0,TITLE=ptitle,YTITLE=yttls[1],_EXTRA=pstr     & $
+      OPLOT,time,t_sf[*,1],COLOR=150L                                              & $
+    PLOT,time,t_sf[*,2],YRANGE=yrasf0,TITLE=ptitle,YTITLE=yttls[2],_EXTRA=pstr     & $
+      OPLOT,time,t_sf[*,2],COLOR= 50L                                              & $
+  pclose                                                                           & $
+  JUMP_SKIPS:
+
+!P.MULTI    = 0
+!P.CHARSIZE = pcharsold
+!P.THICK    = pthickold
+
+;-----------------------------------------------------------------------------------------
+; => Plot hodograms
+;-----------------------------------------------------------------------------------------
+nplts       = 9L
+nepts       = (2048L - 1L)/9
+dumbtl      = REPLICATE('',nplts)
+dumbpre     = REPLICATE('',nplts)
+FOR jj=0L, 8L DO BEGIN                                                             $
+  nump0 = jj*nepts                                                               & $
+  nump1 = nump0 + nepts                                                          & $
+  tttl  = 'Points : '+STRTRIM(nump0,2)+'-'+STRTRIM(nump1,2)+' Event : '          & $
+  IF (dumbpre[jj] EQ '') THEN dumbpre[jj] = tttl[0]
+
+
+tttlbs      = 'B'+vec
+yttlbs      = tttlbs+' [nT, '+coords[0]+']'
+pcharsold   = !P.CHARSIZE
+pthickold   = !P.THICK
+!P.CHARSIZE = 1.2
+!P.THICK    = 2.0
+
+ntd         = gtd0
+scet_0      = sceta0
+evn_0       = event0
+bprefs      = fnambs0+'_'
+suffh       = '_hodogram'+suffx[0]
+
+FOR j=0L, ntd - 1L DO BEGIN                                                                                     $
+  t_bf      = TRANSPOSE([bwavex[j,*],bwavey[j,*],bwavez[j,*]])                                                & $
+  yrabf0    = [-1d0,1d0]*MAX(ABS(t_bf),/NAN)*1.1                                                              & $
+  IF (yrabf0[0] EQ yrabf0[1]) THEN GOTO,JUMP_SKIPB                                                            & $
+  dumbtl    = dumbpre+STRING(evn_0[j],FORMAT='(I8.8)')                                                        & $
+  dumbtl[4] = tttlbs[1]+' vs. '+tttlbs[0]+' at '+scet_0[j]+' UT'                                              & $
+  dumbtl[8] = '!7D!3 = Start,  !9V!3 = End'                                                                   & $
+  fname     = bprefs[j]+tttlbs[1]+'-vs-'+tttlbs[0]+suffh[0]                                                   & $
+  xdat      = REFORM(bwavex[j,*])                                                                             & $
+  ydat      = REFORM(bwavey[j,*])                                                                             & $
+  pstr      = {XSTYLE:1,YSTYLE:1,XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5,YRANGE:yrabf0,XRANGE:yrabf0}        & $
+  !P.MULTI  = [0,3,3]                                                                                         & $
+  popen,fname[0],ENCAPSULATED=1,XSIZE=10.25,YSIZE=11.0,/LAND                                                  & $
+  FOR jj=0L, 8L DO BEGIN                                                                                        $
+    nump0 = jj*nepts                                                                                          & $
+    nump1 = nump0 + nepts                                                                                     & $
+    PLOT,xdat[nump0:nump1],ydat[nump0:nump1],_EXTRA=pstr,XTITLE=yttlbs[0],YTITLE=yttlbs[1],TITLE=dumbtl[jj]   & $
+      OPLOT,xdat[nump0:nump1],ydat[nump0:nump1],COLOR= 50L,THICK=2.5                                          & $
+      OPLOT,[xdat[nump0]],[ydat[nump0]],PSYM=5,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[xdat[nump1]],[ydat[nump1]],PSYM=4,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[0],[0],COLOR=250,PSYM=7,SYMSIZE=2.0,THICK=2.5                                                    & $
+  ENDFOR                                                                                                      & $
+  pclose                                                                                                      & $
+  JUMP_SKIPB:
+
+FOR j=0L, ntd - 1L DO BEGIN                                                                                     $
+  t_bf      = TRANSPOSE([bwavex[j,*],bwavey[j,*],bwavez[j,*]])                                                & $
+  yrabf0    = [-1d0,1d0]*MAX(ABS(t_bf),/NAN)*1.1                                                              & $
+  IF (yrabf0[0] EQ yrabf0[1]) THEN GOTO,JUMP_SKIPB                                                            & $
+  dumbtl    = dumbpre+STRING(evn_0[j],FORMAT='(I8.8)')                                                        & $
+  dumbtl[4] = tttlbs[0]+' vs. '+tttlbs[2]+' at '+scet_0[j]+' UT'                                              & $
+  dumbtl[8] = '!7D!3 = Start,  !9V!3 = End'                                                                   & $
+  fname     = bprefs[j]+tttlbs[0]+'-vs-'+tttlbs[2]+suffh[0]                                                   & $
+  xdat      = REFORM(bwavez[j,*])                                                                             & $
+  ydat      = REFORM(bwavex[j,*])                                                                             & $
+  pstr      = {XSTYLE:1,YSTYLE:1,XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5,YRANGE:yrabf0,XRANGE:yrabf0}        & $
+  !P.MULTI  = [0,3,3]                                                                                         & $
+  popen,fname[0],ENCAPSULATED=1,XSIZE=10.25,YSIZE=11.0,/LAND                                                  & $
+  FOR jj=0L, 8L DO BEGIN                                                                                        $
+    nump0 = jj*nepts                                                                                          & $
+    nump1 = nump0 + nepts                                                                                     & $
+    PLOT,xdat[nump0:nump1],ydat[nump0:nump1],_EXTRA=pstr,XTITLE=yttlbs[2],YTITLE=yttlbs[0],TITLE=dumbtl[jj]   & $
+      OPLOT,xdat[nump0:nump1],ydat[nump0:nump1],COLOR= 50L,THICK=2.5                                          & $
+      OPLOT,[xdat[nump0]],[ydat[nump0]],PSYM=5,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[xdat[nump1]],[ydat[nump1]],PSYM=4,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[0],[0],COLOR=250,PSYM=7,SYMSIZE=2.0,THICK=2.5                                                    & $
+  ENDFOR                                                                                                      & $
+  pclose                                                                                                      & $
+  JUMP_SKIPB:
+
+FOR j=0L, ntd - 1L DO BEGIN                                                                                     $
+  t_bf      = TRANSPOSE([bwavex[j,*],bwavey[j,*],bwavez[j,*]])                                                & $
+  yrabf0    = [-1d0,1d0]*MAX(ABS(t_bf),/NAN)*1.1                                                              & $
+  IF (yrabf0[0] EQ yrabf0[1]) THEN GOTO,JUMP_SKIPB                                                            & $
+  dumbtl    = dumbpre+STRING(evn_0[j],FORMAT='(I8.8)')                                                        & $
+  dumbtl[4] = tttlbs[2]+' vs. '+tttlbs[1]+' at '+scet_0[j]+' UT'                                              & $
+  dumbtl[8] = '!7D!3 = Start,  !9V!3 = End'                                                                   & $
+  fname     = bprefs[j]+tttlbs[2]+'-vs-'+tttlbs[1]+suffh[0]                                                   & $
+  xdat      = REFORM(bwavey[j,*])                                                                             & $
+  ydat      = REFORM(bwavez[j,*])                                                                             & $
+  pstr      = {XSTYLE:1,YSTYLE:1,XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5,YRANGE:yrabf0,XRANGE:yrabf0}        & $
+  !P.MULTI  = [0,3,3]                                                                                         & $
+  popen,fname[0],ENCAPSULATED=1,XSIZE=10.25,YSIZE=11.0,/LAND                                                  & $
+  FOR jj=0L, 8L DO BEGIN                                                                                        $
+    nump0 = jj*nepts                                                                                          & $
+    nump1 = nump0 + nepts                                                                                     & $
+    PLOT,xdat[nump0:nump1],ydat[nump0:nump1],_EXTRA=pstr,XTITLE=yttlbs[1],YTITLE=yttlbs[2],TITLE=dumbtl[jj]   & $
+      OPLOT,xdat[nump0:nump1],ydat[nump0:nump1],COLOR= 50L,THICK=2.5                                          & $
+      OPLOT,[xdat[nump0]],[ydat[nump0]],PSYM=5,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[xdat[nump1]],[ydat[nump1]],PSYM=4,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[0],[0],COLOR=250,PSYM=7,SYMSIZE=2.0,THICK=2.5                                                    & $
+  ENDFOR                                                                                                      & $
+  pclose                                                                                                      & $
+  JUMP_SKIPB:
+
+!P.MULTI    = 0
+!P.CHARSIZE = pcharsold
+!P.THICK    = pthickold
+
+
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Calculate the Poynting flux in frequency space
+;      S = Re[(E x B*)/(2 µ_o)]
+;-----------------------------------------------------------------------------------------
+tdss_bx   = bf0[*,*,0]       ; => Bx [WAVES, nT]
+tdss_by   = bf0[*,*,1]       ; => By [WAVES, nT]
+tdss_bz   = bf0[*,*,2]       ; => Bz [WAVES, nT]
+tdss_ex   = ef0[*,*,0]       ; => Ex [WAVES, mV/m]
+
+f_tdss_bx = CONJ(FFT(tdss_bx,-1,/DOUBLE))*1d-9
+f_tdss_by = CONJ(FFT(tdss_by,-1,/DOUBLE))*1d-9
+f_tdss_bz = CONJ(FFT(tdss_bz,-1,/DOUBLE))*1d-9
+f_tdss_ex =     (FFT(tdss_ex,-1,/DOUBLE))*1d-3
+; => Sy = - Ex Bz*,  Sz = +Ex By*
+f_tdss_sy = -1d0*f_tdss_ex*f_tdss_bz
+f_tdss_sz =  1d0*f_tdss_ex*f_tdss_by
+; => return to time space [W m^(-2)]
+tdss_syf  = REAL_PART(FFT(f_tdss_sy,1,/DOUBLE))/(2d0*muo[0])
+tdss_szf  = REAL_PART(FFT(f_tdss_sz,1,/DOUBLE))/(2d0*muo[0])
+; => convert to µW m^(-2)
+tdss_syf *= 1d6
+tdss_szf *= 1d6
+PRINT, ';  ', MIN(tdss_syf,/NAN), MAX(tdss_syf,/NAN), MEAN(tdss_syf,/NAN), STDDEV(tdss_syf,/NAN)
+PRINT, ';  ', MIN(tdss_szf,/NAN), MAX(tdss_szf,/NAN), MEAN(tdss_szf,/NAN), STDDEV(tdss_szf,/NAN)
+;      -0.020403488     0.011552361   3.4746671e-17    0.0024452248
+;      -0.025054998     0.026693940  -1.7321794e-16    0.0056323894

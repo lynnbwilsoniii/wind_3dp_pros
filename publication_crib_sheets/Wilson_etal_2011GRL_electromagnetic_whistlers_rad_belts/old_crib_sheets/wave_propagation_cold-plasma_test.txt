@@ -1,0 +1,507 @@
+
+; => [1998-11-13 Event, 2000-04-10 Event]
+no = [168.,72. ]     ; => [cm^(-3)]
+bo = [452.,168.]     ; => (nT)
+fl = [900.,800.]     ; => Low end frequency (Hz)
+fh = [22e2,21e2]     ; => High " "
+
+
+
+ndat      = 1000L
+test_low0 = cold_plasma_params(bo[0],no[0],FREQF=fl[0],NDAT=ndat)
+test_hig0 = cold_plasma_params(bo[0],no[0],FREQF=fh[0],NDAT=ndat)
+
+test_low1 = cold_plasma_params(bo[1],no[1],FREQF=fl[1],NDAT=ndat)
+test_hig1 = cold_plasma_params(bo[1],no[1],FREQF=fh[1],NDAT=ndat)
+
+
+; => 1998-11-13 Event
+; => [low freq., high freq.]
+rterm0    = [test_low0.R_TERM[0],test_hig0.R_TERM[0]]
+lterm0    = [test_low0.L_TERM[0],test_hig0.L_TERM[0]]
+sterm0    = [test_low0.S_TERM[0],test_hig0.S_TERM[0]]
+dterm0    = [test_low0.D_TERM[0],test_hig0.D_TERM[0]]
+
+angles0l  = test_low0.ANGLES       ; => Angles used to calculate n^2
+angles0h  = test_hig0.ANGLES
+nsquare0l = test_low0.INDEX_REF_1  ; => n^2
+nsquare0h = test_hig0.INDEX_REF_1
+; => Remove values of n^2 < 0 [due to angles > res. cone angles]
+badl0     = WHERE(nsquare0l LE 0.,bdl0)
+badh0     = WHERE(nsquare0h LE 0.,bdh0)
+IF (bdl0 GT 0) THEN nsquare0l[badl0] = !VALUES.D_NAN
+IF (bdh0 GT 0) THEN nsquare0h[badh0] = !VALUES.D_NAN
+
+; => 2000-04-10 Event
+rterm1    = [test_low1.R_TERM[0],test_hig1.R_TERM[0]]
+lterm1    = [test_low1.L_TERM[0],test_hig1.L_TERM[0]]
+sterm1    = [test_low1.S_TERM[0],test_hig1.S_TERM[0]]
+dterm1    = [test_low1.D_TERM[0],test_hig1.D_TERM[0]]
+
+angles1l  = test_low1.ANGLES       ; => Angles used to calculate n^2
+angles1h  = test_hig1.ANGLES
+nsquare1l = test_low1.INDEX_REF_1  ; => n^2
+nsquare1h = test_hig1.INDEX_REF_1
+; => Remove values of n^2 < 0 [due to angles > res. cone angles]
+badl1     = WHERE(nsquare1l LE 0.,bdl1)
+badh1     = WHERE(nsquare1h LE 0.,bdh1)
+IF (bdl1 GT 0) THEN nsquare1l[badl1] = !VALUES.D_NAN
+IF (bdh1 GT 0) THEN nsquare1h[badh1] = !VALUES.D_NAN
+
+
+; => Solve for theta_kb
+; => Polarization Ratio (semi-major / semi-minor axis)
+;       (mV/m widths of hodograms for two perp. components)
+por = [400./70.,65./20.]
+; => Minimize:  (i Ex)/Ey D_term + S_term - n^2 = 0
+checkl0 = ABS(por[0]*dterm0[0] + sterm0[0] - nsquare0l)
+checkh0 = ABS(por[0]*dterm0[1] + sterm0[1] - nsquare0h)
+
+checkl1 = ABS(por[1]*dterm1[0] + sterm1[0] - nsquare1l)
+checkh1 = ABS(por[1]*dterm1[1] + sterm1[1] - nsquare1h)
+
+mnvall0 = MIN(checkl0,/NAN,lnl0)
+mnvalh0 = MIN(checkh0,/NAN,lnh0)
+
+mnvall1 = MIN(checkl1,/NAN,lnl1)
+mnvalh1 = MIN(checkh1,/NAN,lnh1)
+
+; => theta_kB ranges for the two example events (deg)
+print, angles0l[lnl0], angles0h[lnh0]
+;       76.126126       70.270270
+print, angles1l[lnl1], angles1h[lnh1]
+;       63.063063       48.468468
+
+; => Print out resonance cone angles (deg)
+print, minmax([test_low0.CONE_ANG[0],test_hig0.CONE_ANG[0]])
+;       80.017098       86.120641
+print, minmax([test_low1.CONE_ANG[0],test_hig1.CONE_ANG[0]])
+;       63.465201       80.277909
+
+
+freq = [9d2,22d2]
+no   = 168d0
+bo   = 452d0
+thkb = [70.270270d0,76.126126d0]
+
+landres = dblarr(2,2)
+cyclres = dblarr(2,2)
+for i=0L, 1L do begin $
+  for j=0L, 1L do begin $
+    test0 = cold_plasma_whistler_params(bo,no,freq[i],thkb[j]) & $
+    landres[i,j] = test0.ERES_LAND[0] & $
+    cyclres[i,j] = test0.ERES_NCYC[0]
+
+print, minmax(landres), minmax(cyclres)
+;       502.26851       754.33240
+;       13588.044       107451.76
+
+
+freq = [8d2,21d2]
+no   = 71d0
+bo   = 168d0
+thkb = [48.468468d0,63.063063d0]
+landres = dblarr(2,2)
+cyclres = dblarr(2,2)
+for i=0L, 1L do begin $
+  for j=0L, 1L do begin $
+    test0 = cold_plasma_whistler_params(bo,no,freq[i],thkb[j]) & $
+    landres[i,j] = test0.ERES_LAND[0] & $
+    cyclres[i,j] = test0.ERES_NCYC[0]
+
+print, minmax(landres), minmax(cyclres)
+;       13.879357       231.50529
+;       21.320206       5509.5937
+
+
+;-----------------------------------------------------------------------------------------
+; => Omura et al., [2007] Eq. for d(KE)_max  [Eq 44 in paper]
+;-----------------------------------------------------------------------------------------
+
+; => Define dummy variables and constants
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+kB         = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo        = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV       = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo        = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo        = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me         = 9.1093897d-31     ; -Electron mass (kg)
+mp         = 1.6726231d-27     ; -Proton mass (kg)
+qq         = 1.60217733d-19    ; -Fundamental charge (C)
+c          = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2         = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev      = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp     = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev      = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp     = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+
+fcefac     = qq/me/(2d0*!DPI)
+fcifac     = qq/mp/(2d0*!DPI)
+fpefac     = SQRT(qq^2/(me*epo))/(2d0*!DPI)
+fpifac     = SQRT(qq^2/(me*epo))/(2d0*!DPI)
+
+
+lshell     = [4.028d0,4.907d0]      ; => L-shell of observations
+bmag       = [452d0,168d0]*1d-9     ; => Background B-field (Tesla)
+dens       = [168d0,71d0]*1d6       ; => Background electron density [m^(-3)]
+
+fpe        = fpefac[0]*SQRT(dens)
+wpe        = fpe*(2d0*!DPI)
+fce        = fcefac[0]*bmag
+wce        = fce*(2d0*!DPI)
+
+dbwave     = [8d0,2d0]*1d-9         ; => peak-to-peak wave amplitude (Tesla)
+f0         = [9d2,22d2]*(2d0*!DPI)  ; => Wave frequency (rad/s) for 1998-11-13 event
+f1         = [8d2,21d2]*(2d0*!DPI)  ; => " " 2000-04-10 event
+
+freq0      = [9d2,8d2]*(2d0*!DPI)   ; => Low end frequency (rad/s) of waves
+freq1      = [22d2,21d2]*(2d0*!DPI) ; => High " "
+bratio     = dbwave/bmag            ; => dB/Bo
+
+bmag_eq    = magnfactor[0]/(lshell)^3
+fce_eq     = fcefac[0]*bmag_eq
+wce_eq     = fce_eq*(2d0*!DPI)
+print, bmag_eq*1d9, bmag_eq/bmag
+;       462.34433       255.73239
+;       1.0228857       1.5222166
+print, fce_eq, wce_eq/wce
+;       12942.166       7158.5849
+;       1.0228857       1.5222166
+
+; => [low/high f]
+xi_0       = DBLARR(2)  ; => Factor for 1998-11-13 event
+xi_1       = DBLARR(2)  ; => " " 2000-04-10 event
+xi_0       = SQRT(1d0 + (f0[*]*(wce_eq[0] - f0[*])/wpe[0]^2))  & $
+xi_1       = SQRT(1d0 + (f1[*]*(wce_eq[1] - f1[*])/wpe[1]^2))
+
+; => [low/high f]
+dkemax0    = DBLARR(2)
+dkemax1    = DBLARR(2)
+lfact      = 5.6d4/lshell^2
+
+dkemax0    = lfact[0]*bratio[0]/xi_0
+dkemax1    = lfact[1]*bratio[1]/xi_1
+
+print, minmax(dkemax0), minmax(dkemax1)
+;       61.035439       61.064240
+;       27.661389       27.674751
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Test possible range of angles and densities
+;-----------------------------------------------------------------------------------------
+
+
+;------------------------------------------------
+; => 1998-11-13 Event
+;------------------------------------------------
+fl         = 900.     ; => Low end frequency (Hz)
+fh         = 22e2     ; => High " "
+bo         = 452.     ; => (nT)
+no         = [127.540d0,168.418d0]
+ndat       = 1000L
+test_lowf0 = cold_plasma_params(bo[0],no[0],FREQF=fl[0],NDAT=ndat)
+test_higf0 = cold_plasma_params(bo[0],no[0],FREQF=fh[0],NDAT=ndat)
+test_lowf1 = cold_plasma_params(bo[0],no[1],FREQF=fl[0],NDAT=ndat)
+test_higf1 = cold_plasma_params(bo[0],no[1],FREQF=fh[0],NDAT=ndat)
+angles0l   = test_lowf0.ANGLES       ; => Angles used to calculate n^2
+angles0h   = test_higf0.ANGLES
+angles1l   = test_lowf1.ANGLES       ; => Angles used to calculate n^2
+angles1h   = test_higf1.ANGLES
+nsquare0l  = test_lowf0.INDEX_REF_1  ; => n^2
+nsquare0h  = test_higf0.INDEX_REF_1
+nsquare1l  = test_lowf1.INDEX_REF_1  ; => n^2
+nsquare1h  = test_higf1.INDEX_REF_1
+; => Remove values of n^2 < 0 [due to angles > res. cone angles]
+badl0      = WHERE(nsquare0l LE 0.,bdl0)
+badh0      = WHERE(nsquare0h LE 0.,bdh0)
+badl1      = WHERE(nsquare1l LE 0.,bdl1)
+badh1      = WHERE(nsquare1h LE 0.,bdh1)
+IF (bdl0 GT 0) THEN nsquare0l[badl0] = !VALUES.D_NAN
+IF (bdh0 GT 0) THEN nsquare0h[badh0] = !VALUES.D_NAN
+IF (bdl1 GT 0) THEN nsquare1l[badl1] = !VALUES.D_NAN
+IF (bdh1 GT 0) THEN nsquare1h[badh1] = !VALUES.D_NAN
+; => [low freq., high freq.]
+rterm0     = [test_lowf0.R_TERM[0],test_higf0.R_TERM[0],$
+              test_lowf1.R_TERM[0],test_higf1.R_TERM[0]]
+lterm0     = [test_lowf0.L_TERM[0],test_higf0.L_TERM[0],$
+              test_lowf1.L_TERM[0],test_higf1.L_TERM[0]]
+sterm0     = [test_lowf0.S_TERM[0],test_higf0.S_TERM[0],$
+              test_lowf1.S_TERM[0],test_higf1.S_TERM[0]]
+dterm0     = [test_lowf0.D_TERM[0],test_higf0.D_TERM[0],$
+              test_lowf1.D_TERM[0],test_higf1.D_TERM[0]]
+; => Solve for theta_kb
+; => Polarization Ratio (semi-major / semi-minor axis)
+;       (mV/m widths of hodograms for two perp. components)
+por = 400./70.
+; => Minimize:  (i Ex)/Ey D_term + S_term - n^2 = 0
+check0ln0 = ABS(por[0]*dterm0[0] + sterm0[0] - nsquare0l)
+check1hn0 = ABS(por[0]*dterm0[1] + sterm0[1] - nsquare0h)
+check2ln0 = ABS(por[0]*dterm0[2] + sterm0[2] - nsquare0l)
+check3hn0 = ABS(por[0]*dterm0[3] + sterm0[3] - nsquare0h)
+check0ln1 = ABS(por[0]*dterm0[0] + sterm0[0] - nsquare1l)
+check1hn1 = ABS(por[0]*dterm0[1] + sterm0[1] - nsquare1h)
+check2ln1 = ABS(por[0]*dterm0[2] + sterm0[2] - nsquare1l)
+check3hn1 = ABS(por[0]*dterm0[3] + sterm0[3] - nsquare1h)
+; => Find minimum
+mnval0ln0 = MIN(check0ln0,/NAN,ln0ln0)
+mnval1hn0 = MIN(check1hn0,/NAN,ln1hn0)
+mnval2ln0 = MIN(check2ln0,/NAN,ln2ln0)
+mnval3hn0 = MIN(check3hn0,/NAN,ln3hn0)
+mnval0ln1 = MIN(check0ln1,/NAN,ln0ln1)
+mnval1hn1 = MIN(check1hn1,/NAN,ln1hn1)
+mnval2ln1 = MIN(check2ln1,/NAN,ln2ln1)
+mnval3hn1 = MIN(check3hn1,/NAN,ln3hn1)
+
+
+; => theta_kB ranges for the two example events (deg)
+PRINT, angles0l[[ln0ln0,ln2ln0]], angles0h[[ln1hn0,ln3hn0]]
+;       76.126126       78.558559
+;       70.180180       72.612613
+PRINT, angles1l[[ln0ln1,ln2ln1]], angles1h[[ln1hn1,ln3hn1]]
+;       72.882883       76.126126
+;       67.027027       70.270270
+
+; => Print out resonance cone angles (deg)
+PRINT, minmax([test_lowf0.CONE_ANG[0],test_higf0.CONE_ANG[0]])
+;       79.998666       86.112637
+PRINT, minmax([test_lowf1.CONE_ANG[0],test_higf1.CONE_ANG[0]])
+;       80.017242       86.120703
+
+thkb    = [67.027027d0,78.558559d0]
+freq    = [9d2,22d2]
+bo      = 452.     ; => (nT)
+no      = [127.540d0,168.418d0]
+landres = DBLARR(2,2,2)
+cyclres = DBLARR(2,2,2)
+FOR i=0L, 1L DO BEGIN $
+  FOR j=0L, 1L DO BEGIN $
+    FOR k=0L, 1L DO BEGIN $
+    test0 = cold_plasma_whistler_params(bo,no[k],freq[i],thkb[j]) & $
+    landres[i,j,k] = test0.ERES_LAND[0] & $
+    cyclres[i,j,k] = test0.ERES_NCYC[0]
+
+PRINT, minmax(landres[*,*,0]), minmax(cyclres[*,*,0])
+;       430.48561       982.71884
+;       9717.6701       156025.47
+PRINT, minmax(landres[*,*,1]), minmax(cyclres[*,*,1])
+;       325.99921       744.19575
+;       7359.0212       118155.35
+
+
+;------------------------------------------------
+; => 2000-04-10 Event
+;------------------------------------------------
+fl         = 800.     ; => Low end frequency (Hz)
+fh         = 21e2     ; => High " "
+bo         = 168.     ; => (nT)
+no         = [ 10.651d0, 70.920d0] ; => 2000-04-10 Event
+test_lowf0 = cold_plasma_params(bo[0],no[0],FREQF=fl[0],NDAT=ndat)
+test_higf0 = cold_plasma_params(bo[0],no[0],FREQF=fh[0],NDAT=ndat)
+test_lowf1 = cold_plasma_params(bo[0],no[1],FREQF=fl[0],NDAT=ndat)
+test_higf1 = cold_plasma_params(bo[0],no[1],FREQF=fh[0],NDAT=ndat)
+angles0l   = test_lowf0.ANGLES       ; => Angles used to calculate n^2
+angles0h   = test_higf0.ANGLES
+angles1l   = test_lowf1.ANGLES       ; => Angles used to calculate n^2
+angles1h   = test_higf1.ANGLES
+nsquare0l  = test_lowf0.INDEX_REF_1  ; => n^2
+nsquare0h  = test_higf0.INDEX_REF_1
+nsquare1l  = test_lowf1.INDEX_REF_1  ; => n^2
+nsquare1h  = test_higf1.INDEX_REF_1
+; => Remove values of n^2 < 0 [due to angles > res. cone angles]
+badl0      = WHERE(nsquare0l LE 0.,bdl0)
+badh0      = WHERE(nsquare0h LE 0.,bdh0)
+badl1      = WHERE(nsquare1l LE 0.,bdl1)
+badh1      = WHERE(nsquare1h LE 0.,bdh1)
+IF (bdl0 GT 0) THEN nsquare0l[badl0] = !VALUES.D_NAN
+IF (bdh0 GT 0) THEN nsquare0h[badh0] = !VALUES.D_NAN
+IF (bdl1 GT 0) THEN nsquare1l[badl1] = !VALUES.D_NAN
+IF (bdh1 GT 0) THEN nsquare1h[badh1] = !VALUES.D_NAN
+
+rterm1     = [test_lowf0.R_TERM[0],test_higf0.R_TERM[0],$
+              test_lowf1.R_TERM[0],test_higf1.R_TERM[0]]
+lterm1     = [test_lowf0.L_TERM[0],test_higf0.L_TERM[0],$
+              test_lowf1.L_TERM[0],test_higf1.L_TERM[0]]
+sterm1     = [test_lowf0.S_TERM[0],test_higf0.S_TERM[0],$
+              test_lowf1.S_TERM[0],test_higf1.S_TERM[0]]
+dterm1     = [test_lowf0.D_TERM[0],test_higf0.D_TERM[0],$
+              test_lowf1.D_TERM[0],test_higf1.D_TERM[0]]
+; => Solve for theta_kb
+; => Polarization Ratio (semi-major / semi-minor axis)
+;       (mV/m widths of hodograms for two perp. components)
+por = 65./20.
+; => Minimize:  (i Ex)/Ey D_term + S_term - n^2 = 0
+check0ln0 = ABS(por[0]*dterm0[0] + sterm0[0] - nsquare0l)
+check1hn0 = ABS(por[0]*dterm0[1] + sterm0[1] - nsquare0h)
+check2ln0 = ABS(por[0]*dterm0[2] + sterm0[2] - nsquare0l)
+check3hn0 = ABS(por[0]*dterm0[3] + sterm0[3] - nsquare0h)
+check0ln1 = ABS(por[0]*dterm0[0] + sterm0[0] - nsquare1l)
+check1hn1 = ABS(por[0]*dterm0[1] + sterm0[1] - nsquare1h)
+check2ln1 = ABS(por[0]*dterm0[2] + sterm0[2] - nsquare1l)
+check3hn1 = ABS(por[0]*dterm0[3] + sterm0[3] - nsquare1h)
+; => Find minimum
+mnval0ln0 = MIN(check0ln0,/NAN,ln0ln0)
+mnval1hn0 = MIN(check1hn0,/NAN,ln1hn0)
+mnval2ln0 = MIN(check2ln0,/NAN,ln2ln0)
+mnval3hn0 = MIN(check3hn0,/NAN,ln3hn0)
+mnval0ln1 = MIN(check0ln1,/NAN,ln0ln1)
+mnval1hn1 = MIN(check1hn1,/NAN,ln1hn1)
+mnval2ln1 = MIN(check2ln1,/NAN,ln2ln1)
+mnval3hn1 = MIN(check3hn1,/NAN,ln3hn1)
+
+; => theta_kB ranges for the two example events (deg)
+PRINT, angles0l[[ln0ln0,ln2ln0]], angles0h[[ln1hn0,ln3hn0]]
+;       75.765766       76.846847
+;       58.828829       59.909910
+PRINT, angles1l[[ln0ln1,ln2ln1]], angles1h[[ln1hn1,ln3hn1]]
+;       47.657658       56.576577
+;       27.027027       38.468468
+; => Print out resonance cone angles (deg)
+PRINT, minmax([test_lowf0.CONE_ANG[0],test_higf0.CONE_ANG[0]])
+;       63.214895       80.172312
+PRINT, minmax([test_lowf1.CONE_ANG[0],test_higf1.CONE_ANG[0]])
+;       63.464537       80.277629
+
+thkb    = [27.027027d0,76.846847d0]
+freq    = [8d2,21d2]
+bo      = 168.     ; => (nT)
+no      = [ 10.651d0, 70.920d0] ; => 2000-04-10 Event
+landres = DBLARR(2,2,2)
+cyclres = DBLARR(2,2,2)
+FOR i=0L, 1L DO BEGIN $
+  FOR j=0L, 1L DO BEGIN $
+    FOR k=0L, 1L DO BEGIN $
+    test0 = cold_plasma_whistler_params(bo,no[k],freq[i],thkb[j]) & $
+    landres[i,j,k] = test0.ERES_LAND[0] & $
+    cyclres[i,j,k] = test0.ERES_NCYC[0]
+
+PRINT, minmax(landres[*,*,0],/POS), minmax(cyclres[*,*,0],/POS)
+;       1016.7302       1645.1854
+;       2527.1842       29554.684
+PRINT, minmax(landres[*,*,1],/POS), minmax(cyclres[*,*,1],/POS)
+;       152.69591       247.07938
+;       379.54088       4438.6201
+
+
+;-----------------------------------------------------------------------------------------
+; => Plot specplot of values
+;-----------------------------------------------------------------------------------------
+
+; => Define dummy variables and constants
+f          = !VALUES.F_NAN
+d          = !VALUES.D_NAN
+kB         = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo        = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV       = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo        = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo        = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me         = 9.1093897d-31     ; -Electron mass (kg)
+mp         = 1.6726231d-27     ; -Proton mass (kg)
+qq         = 1.60217733d-19    ; -Fundamental charge (C)
+c          = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+omst       = '!7x!3'
+omms       = '!7X!3'
+thes       = '!7h!3'
+
+fcefac     = qq/me/(2d0*!DPI)
+fcifac     = qq/mp/(2d0*!DPI)
+fpefac     = SQRT(qq^2/(me*epo))/(2d0*!DPI)
+fpifac     = SQRT(qq^2/(me*epo))/(2d0*!DPI)
+
+
+fl         = 800.     ; => Low end frequency (Hz)
+fh         = 21e2     ; => High " "
+bo         = [ 1d2,168d0]  ; => (nT)
+no         = [ 3d0, 71d0]  ; => 2000-04-10 Event
+thkb       = [27.027027d0,78.558559d0]
+nb         = 25L
+nd         = 25L
+nf         = 25L
+na         = 25L
+; => Create arrays of possible data
+bmag       = DINDGEN(nb)*(bo[1] - bo[0])/(nb - 1L) + bo[0]
+dens       = DINDGEN(nd)*(no[1] - no[0])/(nd - 1L) + no[0]
+freq       = DINDGEN(nf)*(fh[0] - fl[0])/(nf - 1L) + fl[0]
+angles     = DINDGEN(na)*(thkb[1] - thkb[0])/(na - 1L) + thkb[0]
+
+test1      = cold_plasma_whistler_params(bmag[*],dens[*],freq[*],angles[*])
+
+
+fce   = fcefac[0]*1d-9*bmag     ; => Electron cyclotron frequency (Hz)
+fr    = DBLARR(nb,nf)
+FOR i=0L, nb - 1L DO BEGIN $
+  fr[i,*] = fce[i]/freq[*]
+
+; => Create arrays of data
+i     = 0L
+j     = 0L
+k     = 0L
+m     = 0L
+x     = angles
+y     = REFORM(fr[*,k])
+z     = TRANSPOSE(REFORM(test1.ERES_LAND[*,j,k,*]))
+badz  = WHERE(z LT 0.,bdz)
+IF (bdz GT 0) THEN bind = ARRAY_INDICES(z,badz)
+IF (bdz GT 0) THEN z[bind[0,*],bind[1,*]] = d
+
+tttl  = 'E!Dres!N (keV)'
+yttl  = omms[0]+'!Dce!N'+'/'+omst[0]
+xttl  = thes[0]+' (!Uo!N)'
+
+xra   = [10.,80.]
+xtv   = [10.,20.,30.,40.,50.,60.,70.,80.]
+xtn   = ['10','20','30','40','50','60','70','80']
+xts   = N_ELEMENTS(xtv) - 1L
+
+yra   = [1e0,1e1]
+ytv   = [1e0,1e1]
+ytn   = ['1.0','10.0']
+yts   = N_ELEMENTS(ytv) - 1L
+
+zra   = [5d1,6d3]
+lims  = {YSTYLE:1,XSTYLE:1,YTITLE:yttl,XTITLE:xttl,ZTITLE:tttl,XRANGE:xra,ZLOG:1,$
+         ZTICKS:3,ZRANGE:zra,XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,XLOG:1,XMINOR:9,$
+         YTICKNAME:ytn,YTICKV:ytv,YTICKS:yts,YLOG:1,YMINOR:9,YRANGE:yra}
+
+specplot_wrapper,x,y,z,LIMITS=lims
+
+
+
+
+
+
+lims  = {YSTYLE:1,XSTYLE:1,YTITLE:yttl,XTITLE:xttl,ZTITLE:tttl,XRANGE:xra,ZLOG:1,$
+         ZTICKS:3,XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,XLOG:1,XMINOR:9,$
+         YTICKNAME:ytn,YTICKV:ytv,YTICKS:yts,YLOG:1,YMINOR:9,YRANGE:yra}
+
+
+;yra   = [1e0,1e2]
+;ytv   = 1e0/REVERSE([1e-2,1e-1,2e-1,5e-1,1e0])
+;ytn   = ['1.0','2.0','5.0','10.0','100.0']
+
+
+;landres = DBLARR(nb,nd,nf,na)
+;cyclres = DBLARR(nb,nd,nf,na)
+;vphase  = DBLARR(nb,nd,nf,na)
+;FOR i=0L, nb - 1L DO BEGIN $
+;  test0 = cold_plasma_whistler_params(bmag[i],dens[*],freq[*],angles[*]) & $
+;  landres[i,*,*,*] = REFORM(test0.ERES_LAND[*]) & $
+;  cyclres[i,*,*,*] = REFORM(test0.ERES_NCYC[*])
+
+
+;FOR i=0L, nb - 1L DO BEGIN $
+;  FOR j=0L, nd - 1L DO BEGIN $
+;    FOR k=0L, nf - 1L DO BEGIN $
+;      test0 = cold_plasma_whistler_params(bmag[i],dens[j],freq[k],angles[*]) & $
+;      landres[i,j,k,*] = test0.ERES_LAND   & $
+;      cyclres[i,j,k,*] = test0.ERES_NCYC   & $
+;      vphase[i,j,k,*]  = test0.V_PHASE
+

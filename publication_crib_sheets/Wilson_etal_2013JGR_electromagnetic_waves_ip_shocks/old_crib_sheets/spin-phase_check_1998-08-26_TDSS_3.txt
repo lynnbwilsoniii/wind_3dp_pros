@@ -1,0 +1,266 @@
+;-----------------------------------------------------------------------------------------
+; => Example Date
+;-----------------------------------------------------------------------------------------
+ldate           = '19980826'
+tdate           = '1998-08-26'
+item1           = 'wi_lz_wav_'+ldate[0]+'_v*.dat'
+channel         = 0                        ; => Stream Channel [item = TDSS]
+event_n         = 10488L                   ; => Event # [item = EVENT_NUMBER]
+majframe        = 615                      ; => Maj. Frame [item = DPU_MAJOR_FRAME]
+
+sam_rate        = 1875d0                   ; => Sample Rate (samples/s) [item = RX_SPEED_R4]
+sunclock        = 1809d0                   ; => Sun Tick [item = SUN_ANGLE]
+sun_ang_r4      = 158.994140625000d0       ; => Sun Angle (deg) [item = SUN_ANGLE_R4]
+sun_ang_sta     = -32.327507019043d0       ; => Sun Angle (deg) [item = SUN_ANGLE_START_R4]
+sun_ang_cen     = 31.059488296509d0        ; => Sun Angle (deg) [item = SUN_ANGLE_CENTER_R4]
+sun_ang_end     = 94.446487426758d0        ; => Sun Angle (deg) [item = SUN_ANGLE_END_R4]
+spinrate        = 2.025717496872d0         ; => Spin Rate (rad/s) [item = WIND_SPIN_RATE_R4]
+dspnrate        = spinrate[0]*18d1/!DPI    ; => Spin Rate [Degrees per second]
+delta_ang       = dspnrate[0]/sam_rate[0]  ; => Spin Rate [Degrees per sample]
+delta_tick      = delta_ang[0]*4096d0/36d1 ; => Ticks per sample
+tick_spin_rate  = dspnrate[0]*4096d0/36d1  ; => Spin Rate [spin ticks/s]
+; => Need item DPU_CLOCK_FREQUENCY_R4 or DPU_CLOCK_PERIOD_R4
+dpufreq         = 3126.175048828125d0      ; => DPU Clock freq. (Hz) [item = DPU_CLOCK_FREQUENCY_R4]
+dpulaten        = 0.009999999776d0         ; => DPU Clock latency (s) [item = DATATION_LATENCY_R4]
+dpu_roll_over   = (2d0^24)/dpufreq[0]      ; => Seconds at which 24 bit counter rolls over
+
+dpuc_sta        = 2866.234619140625d0      ; => DPU Clock [item = DPU_CLOCK_START_R4]
+dpuc_cen        = 2866.780761718750d0      ; => DPU Clock [item = DPU_CLOCK_CENTER_R4]
+dpuc_end        = 2867.326904296875d0      ; => DPU Clock [item = DPU_CLOCK_END_R4]
+dpuc_dat        = 2867.883056640625d0      ; => DPU Clock [item = DPU_CLOCK_R4]
+
+scet_sta        = 6081.2780605740740612d0  ; => UR8 at beginning [item = EVENT_START_SCET_R8]
+scet_cen        = 6081.2780668950617837d0  ; => UR8 [item = EVENT_CENTER_SCET_R8]
+scet_end        = 6081.2780732160493926d0  ; => UR8 [item = EVENT_END_SCET_R8]
+scet_dat        = 6081.2780605740740612d0  ; => UR8 [item = EVENT_TRUE_SCET_R8]
+
+
+; => HK UR8 and DPU times for Major Frame 613 on 1998-08-26 near 06:40 UT
+ur8hk0          = 6081.6523535185187939d0
+dpuhk0          = 3004.976074218750d0
+; => HK UR8 and DPU times for Major Frame 615 on 1998-08-26 near 06:40 UT
+ur8hk1          = 6081.2775387268520717d0
+dpuhk1          = 2821.108398437500d0
+; => HK UR8 and DPU times for Major Frame 616 on 1998-08-26 near 06:40 UT
+ur8hk2          = 6081.6555479629632828d0
+dpuhk2          = 3280.975097656250d0
+
+ur8hk_21        = ur8hk2[0] - ur8hk1[0]
+ur8hk_10        = ur8hk1[0] - ur8hk0[0]
+; => Convert to seconds
+ur8hks_21       = ur8hk_21[0]*864d2
+ur8hks_10       = ur8hk_10[0]*864d2
+
+dpuhk_21        = dpuhk2[0] - dpuhk1[0]
+dpuhk_10        = dpuhk1[0] - dpuhk0[0]
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Be consistent (i.e. use *_START_* values only or datation values only)
+;-----------------------------------------------------------------------------------------
+;    DPU_CLOCK_R4 => has NOT corrected for 3072 samples, nor 10.6 ms issue, nor +300 ms issue
+;    SUN_ANGLE    => Same timing issues as DPU_CLOCK_R4
+
+
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; => Note:  There are 3 time issues with any TDS event:
+;           1)  The datation time-stamps and sun angles occur 1024 samples AFTER the end
+;                 of the event => 3072 samples AFTER the start of the event
+;           2)  Uncertainty in minor frame time period results in a positive definite
+;                 time-stamp uncertainty of roughly +300 ms
+;           3)  DPU Clock latency results in values being time stamped roughly 10.6 ms
+;                 after end of event [item = DATATION_LATENCY_R4]
+;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+;-----------------------------------------------------------------------------------------
+; => Steps to correct times and angles
+;           1)  correct 3072 data sample issue for both SUN_ANGLE and DPU_CLOCK_R4
+;           2)  correct new DPU Clock for the +300 ms Minor Frame issue using method 
+;                 in dpu_ur8_shift_correct.pro
+;           3)  correct 2nd new DPU Clock for the ~10.6 ms latency issue
+;           4)  interpolate 1st new sun angle to new DPU Clock time
+;           5)  convert from sun ticks to angle
+;-----------------------------------------------------------------------------------------
+
+
+;-----------------------------------------------------------------------------------------
+; => Step 1
+;-----------------------------------------------------------------------------------------
+cor_sun_clock_0 = 0d0       ; => 1st correction to sun angle at start of event
+cor_dpu_clock_0 = 0d0       ; => " " DPU Clock at start of event
+
+cor_sun_clock_0 = sunclock[0] - 3072d0*delta_tick[0]
+cor_dpu_clock_0 = dpuc_dat[0] - 3072d0/sam_rate[0]     ; => Okay if < 0.0
+PRINT,';', cor_sun_clock_0[0], cor_dpu_clock_0[0], FORMAT='(a1,2d20.12)'
+; => 1st correction to SUN_ANGLE and DPU_CLOCK_R4
+;   -354.609592170794   2866.244656640625
+
+; => Calculate difference between datation DPU Clock and HK DPU Clock (seconds)
+diff_dpu    = (cor_dpu_clock_0[0] - dpuhk1[0])
+; => Convert to UR8
+diffdpu_ur8 = diff_dpu[0]/864d2
+; => Shift HK UR8 by difference
+shft_hkur8  = ur8hk1[0] + diffdpu_ur8[0]
+; => Find difference between this UR8 time and SCET UR8 time
+diff_ur8    = (shft_hkur8[0] - scet_dat[0])
+PRINT,';', diffdpu_ur8[0], shft_hkur8[0], diff_ur8[0], FORMAT='(a1,3d25.16)'
+;       0.0005224103958695    6081.2780611372481872       0.0000005631736713
+
+; => added UR8 difference to original DPU clock time
+cor_dpu_clock_1 = 0d0       ; => 2nd correction to DPU Clock at start of event
+cor_sun_clock_1 = 0d0       ; => " " sun angle at start of event
+cor_dpu_clock_1 = (cor_dpu_clock_0[0] + diff_ur8[0]*864d2)   ; => may be > dpu roll over
+dpu_diff        = cor_dpu_clock_1[0] - cor_dpu_clock_0[0]
+cor_dpu_clock_1 = (cor_dpu_clock_1[0] MOD dpu_roll_over[0])  ; => fixed
+cor_sun_clock_1 = (cor_sun_clock_0[0] + dpu_diff[0]*tick_spin_rate[0]) MOD 4096d0
+
+PRINT,';', cor_dpu_clock_1[0], cor_sun_clock_1[0], dpu_diff[0], FORMAT='(a1,3d20.12)'
+; => 2nd correction to DPU_CLOCK_R4 and SUN_ANGLE
+;   2866.293314845821   -290.353391303822      0.048658205196
+
+
+cor_dpu_clock_2 = 0d0       ; => 3rd correction to DPU Clock at start of event
+cor_ur8_times_2 = 0d0       ; => Corresponding corrected UR8 time
+cor_dpu_clock_2 = cor_dpu_clock_1[0] - dpulaten[0]   ; => may be < 0.0
+IF (cor_dpu_clock_2[0]  LT 0) THEN cor_dpu_clock_2  += dpu_roll_over[0]
+cor_ur8_times_2 = shft_hkur8[0] - dpulaten[0]/864d2
+
+PRINT,';', shft_hkur8[0], cor_ur8_times_2[0], FORMAT='(a1,2d25.16)'
+;    6081.2780611372481872    6081.2780610215077104
+
+PRINT,';', cor_dpu_clock_0[0], cor_dpu_clock_1[0], cor_dpu_clock_2[0], FORMAT='(a1,3d20.12)'
+;-------------------------------------------------------------
+;      3072 sample         Min. Frame         DPU Latency
+;       correction         correction          correction
+;=============================================================
+;   2866.244656640625   2866.293314845821   2866.283314846045
+;-------------------------------------------------------------
+
+; => Find difference between this value and value associated with cor_sun_clock_0
+diff_dpu_sun    = cor_dpu_clock_2[0] - cor_dpu_clock_0[0]
+delta_tick_sun  = diff_dpu_sun[0]*tick_spin_rate[0]  ; => Spin Ticks elapsed
+; => convert to degs
+delta_tick_ang  = delta_tick_sun[0]*36d1/4096d0      ; => Spin degrees elapsed
+PRINT,';', diff_dpu_sun[0], tick_spin_rate[0], FORMAT='(a1,2d20.12)'
+;      0.038658205420   1320.562495221432
+PRINT,';', delta_tick_ang[0], delta_tick_sun[0], FORMAT='(a1,2d20.12)'
+;      4.486867049753     51.050576210526
+
+cor_sun_clock_2 = 0d0       ; => 3rd correction to sun angle at start of event
+cor_sun_clock_2 = (cor_sun_clock_0[0] + delta_tick_sun[0]) MOD 4096d0
+; => Convert to degrees
+cor_sun_angle_2 = cor_sun_clock_2[0]*36d1/4096d0
+; => Convert to sun angle of +Ex antenna
+cor_Ex_angle_2  = cor_sun_angle_2[0] + 45d0
+
+PRINT,';', cor_sun_clock_2[0], cor_sun_angle_2[0], cor_Ex_angle_2[0], FORMAT='(a1,3d20.12)'
+;   -303.559015960267    -26.679991637133     18.320008362867
+
+; => Change angle so that the angle of the +Ex antenna from the sun direction is in
+;      quasi-GSE coordinates [i.e. no angle correction for SC translation away from
+;      {0,0,0}-GSE]
+;    => Requires only a -1 factor since SC and GSE share X-Axes and their Z-axes
+;         anti-parallel
+Ex_ang_gse_sta  = -1d0*cor_Ex_angle_2[0]
+; => can vary from -360 -> +360 currently
+IF (Ex_ang_gse_sta[0]  LT -18d1) THEN Ex_ang_gse_sta  += 36d1
+IF (Ex_ang_gse_sta[0]  GT  18d1) THEN Ex_ang_gse_sta  -= 36d1
+; => now varies from 0 -> -90 -> -180 = +180 -> +90 -> 0
+Ex_ang_gse_end  = Ex_ang_gse_sta[0] - dspnrate[0]*2048d0/sam_rate[0]
+IF (Ex_ang_gse_end[0]  LT -18d1) THEN Ex_ang_gse_end  += 36d1
+; => shouldn't need the next line, but just in case
+IF (Ex_ang_gse_end[0]  GT  18d1) THEN Ex_ang_gse_end  -= 36d1
+PRINT,';', Ex_ang_gse_sta[0], Ex_ang_gse_end[0], FORMAT='(a1,2d20.12)'
+;    -18.320008362867   -145.094007904125
+
+; => Currently the angles go from:  0 -> -90 -> -180 = +180 -> +90 -> 0
+;    => Shift so they go from:  360 -> 270 -> 180 -> 90 -> 0
+Ex_ang_gse_sta2 = (Ex_ang_gse_sta[0] + 36d1) MOD 36d1
+Ex_ang_gse_end2 = (Ex_ang_gse_end[0] + 36d1) MOD 36d1
+PRINT,';', Ex_ang_gse_sta2[0], Ex_ang_gse_end2[0], FORMAT='(a1,2d20.12)'
+;    341.679991637133    214.905992095875
+
+; Note:  Paul's values = 347.4 - 220.6 deg
+;   *** roughly 5.72 degrees difference ***
+
+
+yy       = 0L           ; -[LONG] YYYY (year)
+mon      = 0L           ; -[LONG] MM (month) 
+day      = 0L           ; -[LONG] DD (day)
+hh       = 0L           ; -[LONG] HH
+mm       = 0L           ; -[LONG] MM (minute)
+ss       = 0L           ; -[LONG] SS
+ms       = 0L           ; -[LONG] MS (milliseconds => xxx)
+
+ok       = tm_ur8_to_ymd(shft_hkur8[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => After 2nd correction to SCET at Start
+;  1998-08-26/06:40:24.482
+
+ok       = tm_ur8_to_ymd(cor_ur8_times_2[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => After 3rd correction to SCET at Start
+;  1998-08-26/06:40:24.472
+
+ok       = tm_ur8_to_ymd(ur8hk[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => SCET HK
+;  1998-08-26/06:39:39.346
+
+ok       = tm_ur8_to_ymd(scet_sta[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => SCET Start [item = EVENT_START_SCET_R8]
+;  1998-08-26/06:40:24.433
+
+ok       = tm_ur8_to_ymd(scet_cen[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => SCET Center [item = EVENT_CENTER_SCET_R8]
+;  1998-08-26/06:40:24.979
+
+ok       = tm_ur8_to_ymd(scet_end[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => SCET End [item = EVENT_END_SCET_R8]
+;  1998-08-26/06:40:25.525
+
+
+
+
+
+
+
+; => Raw SCET associated with DPU_CLOCK_R4
+yy      = 1998L
+mon     = 08L
+day     = 26L
+hh      = 06L
+mm      = 40L
+ss      = 26L
+ms      = 081L
+raw_ur8 = 0d0
+
+ok      = tm_ur8_from_ymd(raw_ur8,yy,mon,day,hh,mm,ss,ms)
+PRINT,';', raw_ur8[0], FORMAT='(a1,d25.16)'
+;    6081.2780796412034761
+
+; 1st corrected UR8
+cor_ur8_times_0 = 0d0       ; => Corresponding corrected UR8 time
+cor_ur8_times_0 = (cor_dpu_clock_0[0] - dpuc_dat[0])/864d2 + raw_ur8[0]
+PRINT,';', cor_ur8_times_0[0], FORMAT='(a1,d25.16)'
+;    6081.2780606782407631
+
+ok       = tm_ur8_to_ymd(cor_ur8_times_0[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => After 1st correction to SCET at Start
+;  1998-08-26/06:40:24.442
+
+
+
+

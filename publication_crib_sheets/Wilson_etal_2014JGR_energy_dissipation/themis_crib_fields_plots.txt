@@ -1,0 +1,395 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/kill_data_tr.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/kill_data_tr.pro
+
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/array_where.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/array_where.pro
+
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/difference.pro
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/findpath.pro
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/findsource.pro
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/read_wholefile.pro
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/man.pro
+
+.compile /Users/lbwilson/Desktop/swidl-0.1/IDL_stuff/themis_pros/wave_polarization.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/IDL_stuff/themis_pros/wavpol_to_tplot.pro
+
+;-----------------------------------------------------------------------------------------
+; => Date/Times/Probes
+;-----------------------------------------------------------------------------------------
+themis
+
+; => Dates with burst data for bow shock crossings [Multiple Probes]
+tdate     = '2009-08-10'
+probe     = 'a b'
+probef    = 'a-b'
+
+tdate     = '2009-08-02'
+probe     = 'c d e'
+probef    = 'c-d-e'
+
+tdate     = '2009-08-04'
+probe     = 'c d'
+probef    = 'c-d'
+
+tdate     = '2009-09-26'
+probe     = 'a d e'
+probef    = 'a-d-e'
+
+tdate     = '2011-10-24'
+tdate     = '2011-10-25'
+probe     = 'a d e'
+probef    = 'a-d-e'
+
+; => Dates with burst data for bow shock crossings [Single Probe]
+tdate     = '2009-07-13'
+tdate     = '2011-10-23'
+probe     = 'b'
+probef    = 'b'
+
+
+tdate     = '2009-07-21'
+tdate     = '2009-07-23'
+tdate     = '2009-07-25'
+tdate     = '2009-07-27'
+probe     = 'c'
+probef    = 'c'
+
+
+
+
+
+; Data parameters, load data, and set color table:
+;
+dur       = 1.0   ; # of days
+
+timespan,tdate[0],dur[0],/DAY
+tr        = timerange()
+probes    = ['a','b','c','d','e']
+gprobes   = STRSPLIT(probef,'-',/FOLD_CASE,/REGEX,/EXTRACT)
+
+tplot_options,'XMARGIN',[ 15, 10]
+tplot_options,'YMARGIN',[ 5, 5]
+;-----------------------------------------------------------------------------------------
+; => Load TPLOT data
+;-----------------------------------------------------------------------------------------
+mdir   = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_tplot_save/')
+mfiles = FILE_SEARCH(mdir,'tplot_state_fgm_scm_efi_basic_thm-*.tplot')
+
+test   = STRMATCH(mfiles,'*'+tdate[0]+'*')
+good   = WHERE(test,gd)
+
+gfile  = mfiles[good[0]]
+
+tplot_restore,FILENAME=gfile[0]
+
+sc     = probe[0]
+mode   = 'fgs'
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_dsl',OUT_SUFFIX='_gse',OUT_COORD='gse'
+loadct2, 39
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+;-----------------------------------------------------------------------------------------
+; => Load Plasma velocities
+;-----------------------------------------------------------------------------------------
+
+; decide if you want magnetosheath (sheath=1) or plasmasheet (sheath=0) limits, default is sheath=1
+;	sheath=0
+;	if sheath then nmax=100. else nmax=10.
+sheath  = 1
+nmax    = 100.
+emin    = 15
+sc      = probe[0]
+typ     = 'f'
+
+thm_esa_specmom_calc,date=tdate[0],DUR=1,PROBE=sc[0],MTYPES='spectrogram velocity density temperature', $
+                     DISTRIBUTION_TYPE='full',SPECIES='ion'
+
+thm_esa_specmom_calc,date=tdate[0],DUR=1,PROBE=sc[0],MTYPES='spectrogram velocity density temperature', $
+                     DISTRIBUTION_TYPE='full',SPECIES='electron'
+
+vel_nms = tnames('th*_pe*_velocity_dsl')
+vel_out = STRMID(vel_nms,0L,17L)+'_gse'
+options,[vel_nms,vel_out],'COLORS',[250,150, 50]
+options,[vel_nms,vel_out],'LABELS',['x','y','z']
+FOR j=0L, N_ELEMENTS(vel_nms) - 1L DO BEGIN             $
+  thm_cotrans,vel_nms[j],vel_out[j],IN_COORD='dsl',OUT_COORD='gse'
+
+
+vel_nms = tnames('th*_pe*_velocity_dsl_interp')
+vel_out = STRMID(vel_nms,0L,17L)+'_gse_interp'
+options,[vel_nms,vel_out],'COLORS',[250,150, 50]
+FOR j=0L, N_ELEMENTS(vel_nms) - 1L DO BEGIN             $
+  thm_cotrans,vel_nms[j],vel_out[j],IN_COORD='dsl',OUT_COORD='gse'
+
+FOR j=0L, N_ELEMENTS(vel_nms) - 1L DO BEGIN            $
+  get_data,vel_nms[j],DATA=temp,DLIM=dlim,LIM=lim    & $
+  vmag  = SQRT(TOTAL(temp.Y^2,2L,/NAN))              & $
+  nvec  = [[temp.Y],[vmag]]                          & $
+  nstrc = {X:temp.X,Y:nvec,V:[1,2,3,4]}              & $
+  store_data,vel_nms[j],DATA=nstrc,DLIM=dlim,LIM=lim & $
+  options,vel_nms[j],'COLORS',[250,200,75,30]        & $
+  options,vel_nms[j],'LABELS',['x','y','z','mag']
+
+FOR j=0L, N_ELEMENTS(vel_out) - 1L DO BEGIN            $
+  get_data,vel_out[j],DATA=temp,DLIM=dlim,LIM=lim    & $
+  vmag  = SQRT(TOTAL(temp.Y^2,2L,/NAN))              & $
+  nvec  = [[temp.Y],[vmag]]                          & $
+  nstrc = {X:temp.X,Y:nvec,V:[1,2,3,4]}              & $
+  store_data,vel_out[j],DATA=nstrc,DLIM=dlim,LIM=lim & $
+  options,vel_out[j],'COLORS',[250,200,75,30]        & $
+  options,vel_out[j],'LABELS',['x','y','z','mag']
+
+options,[vel_nms,vel_out],'COLORS',[250,200,75,30]
+options,[tem_nms,tem_out],'LABELS',['x','y','z','Avg']
+
+
+tem_nms = tnames('th*_pe*_T_dsl')
+tem_out = STRMID(tem_nms,0L,17L)+'_gse'
+FOR j=0L, N_ELEMENTS(tem_nms) - 1L DO BEGIN             $
+  thm_cotrans,tem_nms[j],tem_out[j],IN_COORD='dsl',OUT_COORD='gse'
+
+options,[tem_nms,tem_out],'COLORS',[250,200,75,30]
+options,[tem_nms,tem_out],'LABELS',['x','y','z','Avg']
+
+;IF (typ EQ 'f') THEN gap_time = 1000. ELSE gap_time = 10.
+;name1   = 'th'+sc+'_pei'+typ+'_en_eflux'
+;get_dat = 'th'+sc+'_pei'+typ
+;get_en_spec,get_dat,UNITS='eflux',RETRACE=1,NAME=name1,GAP_TIME=gap_time[0],T1=t1,T2=t2
+
+
+;fgs_nm     = tnames('th*_fgs_dsl')
+;ras_nm     = tnames('th*_state_spinras')
+;dec_nm     = tnames('th*_state_spindec')
+;fgs_gse_nm = STRMID(fgs_nm,0,8)+'gse'
+;FOR j=0L, N_ELEMENTS(fgs_nm) - 1L DO BEGIN             $
+;  dsl2gse,fgs_nm[j],ras_nm[j],dec_nm[j],fgs_gse_nm[j]
+
+; => Load level 2 densities and SC potentials
+thm_load_esa,PROBE=sc[0],DATAT=' peer_avgtemp pe?r_density peer_sc_pot ',LEVEL=2
+
+FOR j=0L, N_ELEMENTS(gprobes) - 1L DO BEGIN                   $
+  get_data,'th'+gprobes[j]+'_peer_density',DATA=temp        & $
+  dens_e      = temp.Y                                      & $
+  dens_e_time = temp.X                                      & $
+  get_data,'th'+gprobes[j]+'_peir_density',DATA=temp        & $
+  dens_i      = temp.Y                                      & $
+  dens_i_time = temp.X                                      & $
+  get_data,'th'+gprobes[j]+'_peer_sc_pot',DATA=temp         & $
+  sc_pot      = temp.Y                                      & $
+  sc_pot_time = temp.X                                      & $
+  get_data,'th'+gprobes[j]+'_peer_avgtemp',DATA=temp        & $
+  Te          = temp.Y                                      & $
+  Te_time     = temp.X                                      & $
+  Npot = thm_scpot2dens(sc_pot,sc_pot_time,Te,Te_time,dens_e,dens_e_time,dens_i,dens_i_time,gprobes[j])  & $
+  store_data,'th'+gprobes[j]+'_Npot',DATA={X:sc_pot_time,Y:Npot}  & $
+  store_data,'density_pseudovar_'+gprobes[j],DATA=['th'+gprobes[j]+'_Npot','th'+gprobes[j]+'_peer_density','th'+gprobes[j]+'_peir_density']
+
+edens_nm = tnames('th'+gprobes+'_peer_density')
+idens_nm = tnames('th'+gprobes+'_peir_density')
+
+options,edens_nm,'COLOR',0
+options,edens_nm,'COLORS',2
+options,edens_nm,'LABELS','Ne'
+options,idens_nm,'COLOR',0
+options,idens_nm,'COLORS',4
+options,idens_nm,'LABELS','Ni'
+
+scpot_nm = tnames('th'+gprobes+'_Npot')
+options,scpot_nm,'COLOR',0
+options,scpot_nm,'COLORS',0
+options,scpot_nm,'YLOG',1
+FOR j=0L, N_ELEMENTS(scpot_nm) - 1L DO BEGIN                   $
+  options,scpot_nm[j],'LABELS','th'+gprobes[j]+'_Npot'
+
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+; Calculate density as a function of spacecraft potential, plasma region, and probe, and store as a TPLOT variable:
+;
+;Npot = thm_scpot2dens(sc_pot, sc_pot_time, Te, Te_time, dens_e, dens_e_time, dens_i, dens_i_time, probe)
+;store_data,'th'+probe+'_Npot', data= {X:sc_pot_time,Y:Npot}
+; Store pseudovariable to compare densities:
+;
+;store_data, 'density_pseudovar', data = [ 'th'+probe+'_Npot', 'th'+probe+'_peer_density', 'th'+probe+'_peir_density' ]
+; Pick colors and labels:
+;
+;
+
+
+;-----------------------------------------------------------------------------------------
+; => FGM TPLOT names
+;-----------------------------------------------------------------------------------------
+fgm_nm = tnames('th*_fg*_*')
+options,fgm_nm,'COLORS',[250,150,50]
+; => Add |B| to each
+FOR j=0L, N_ELEMENTS(fgm_nm) - 1L DO BEGIN             $
+  get_data,fgm_nm[j],DATA=temp,DLIM=dlim,LIM=lim     & $
+  bmag  = SQRT(TOTAL(temp.Y^2,2L,/NAN))              & $
+  nvec  = [[temp.Y],[bmag]]                          & $
+  nstrc = {X:temp.X,Y:nvec,V:[1,2,3,4]}              & $
+  store_data,fgm_nm[j],DATA=nstrc,DLIM=dlim,LIM=lim  & $
+  options,fgm_nm[j],'COLORS',[250,200,75,30]         & $
+  options,fgm_nm[j],'LABELS',['x','y','z','mag']
+
+
+fgs_nm       = tnames('th*_fgs_dsl')
+state_nm_gse = tnames('th*_state_pos_gse')
+options,state_nm_gse,'LABELS',['Rx','Ry','Rz']
+FOR j=0L, N_ELEMENTS(state_nm_gse) - 1L DO BEGIN                   $
+  get_data,state_nm_gse[j],DATA=temp,DLIM=dlim,LIM=lim           & $
+  dist_re = temp.Y/R_E[0]                                        & $
+  rmag    = SQRT(TOTAL(dist_re^2,2L,/NAN))                       & $
+  nvec    = [[dist_re],[rmag]]                                   & $
+  nstrc = {X:temp.X,Y:nvec,V:[1,2,3,4]}                          & $
+  store_data,state_nm_gse[j]+'_Re',DATA=nstrc,DLIM=dlim,LIM=lim  & $
+  options,state_nm_gse[j],'COLORS',[250,200,75,30]               & $
+  options,state_nm_gse[j]+'_Re','LABELS',['Rx','Ry','Rz','|R|']
+
+
+fgs_gse_nm   = STRMID(fgs_nm,0,8)+'gse'
+state_nm_gse = tnames('th*_state_pos_gse_Re')
+jj           = 0L
+tplot,[fgs_gse_nm[jj],state_nm_gse[jj]]
+
+
+
+;-----------------------------------------------------------------------------------------
+; => EFI TPLOT names
+;-----------------------------------------------------------------------------------------
+efi_nm_raw = tnames('th*_ef*_raw')
+efi_nm_dsl = tnames('th*_ef*_dsl')
+efi_nm_gse = tnames('th*_ef*_gse')
+options,[efi_nm_raw,efi_nm_dsl,efi_nm_gse],'COLORS',[250,150,50]
+
+efinm_cal0 = tnames('th*_ef*_no_edc_offset')
+efinm_cal1 = tnames('th*_ef*_calfile_edc_offset')
+options,[efinm_cal0,efinm_cal1],'COLORS',[250,150,50]
+
+efwnm_cal0 = tnames('th*_efw_no_edc_offset')
+tplot,efwnm_cal0
+efwnm_cal1 = tnames('th*_efw_calfile_edc_offset')
+tplot,efwnm_cal1
+
+
+thm_efi_clean_efw,PROBE=sc[0],SPIKENFIT=32
+
+efi_nms = tnames('th*_vaw')
+efi_out = efi_nms+'_gse'
+FOR j=0L, N_ELEMENTS(efi_nms) - 1L DO BEGIN             $
+  thm_cotrans,efi_nms[j],efi_out[j],IN_COORD='dsl',OUT_COORD='gse'
+
+efi_nms = tnames('th*_efw')
+efi_out = efi_nms+'_gse'
+FOR j=0L, N_ELEMENTS(efi_nms) - 1L DO BEGIN             $
+  thm_cotrans,efi_nms[j],efi_out[j],IN_COORD='dsl',OUT_COORD='gse'
+
+
+;-----------------------------------------------------------------------------------------
+; => SCM calibration
+;-----------------------------------------------------------------------------------------
+sc        = probe[0]
+; => Need to re-call this to create appropriate common block variables
+thm_load_state,PROBE=sc[0],/GET_SUPPORT_DATA
+
+mode      = 'scf scp scw'
+
+thm_load_scm,PROBE=sc[0],LEVEL=1,TYPE='raw',TRANGE=tr,/GET_SUPPORT
+;; get the raw data in volts (step 1 output) 
+;thm_load_scm,PROBE=sc[0],DATATYPE=mode[0],LEVEL=1,trange=tr
+;thm_cal_scm,PROBE=sc[0],DATATYPE=mode[0],OUT_SUFFIX='_volt',TRANGE=tr,STEP=1
+
+thm_cal_scm,PROBE=sc[0],DATATYPE=mode[0]+'*',OUT_SUFFIX='_cal',TRANGE=tr, $
+            CLEANUP='full',Fmin=0.1,/EDGE_ZERO
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+; FMIN     :  Min frequency for filtering in DSL system.  [Default is 0 Hz.]
+; FMAX     :  Max frequency for filtering in DSL system.  [Default is Nyquist.]
+; CLEANUP  :  type of cleanup [Default is 'none']:
+;               'spin' for only spin tones (power ripples) cleanup,
+;               'full' for spin tones and 8/32 Hz tones
+;               'none' for no cleanup processes.
+
+
+; => Extra keyword options
+;             nk  = 512, $
+;             mk = 4, $
+;             Despin=1, $
+;             N_spinfit = 2, $
+;             cleanup = 'full',$
+;             clnup_author = 'ole', $
+;             wind_dur_1s = 1.,$
+;             wind_dur_spin = 1.,$
+;             Fdet = 0., $
+;             Fcut = 0.1, $
+;             Fmin = 0.45, $
+;             Fmax = 0., $
+;             step = 4, $
+;             /edge_zero
+
+
+;sc     = probe[0]
+;mode   = 'fgs'
+;thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_dsl',OUT_SUFFIX='_gse',OUT_COORD='gse'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+jj           = 0L
+tplot,fgs_gse_nm[jj],var_label=state_nm_gse[jj]
+
+
+
+tha_pos_nm = tnames('tha_state_pos_gse')
+tha_nm     = tnames('tha_*')
+options,tha_nm,'SUBTITLE'
+
+tplot_options,VAR_LABEL=''
+
+
+
+
+

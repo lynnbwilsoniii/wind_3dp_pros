@@ -1,0 +1,228 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+epo      = 8.854187817d-12        ; => Permittivity of free space (F/m)
+muo      = 4d0*!DPI*1d-7          ; => Permeability of free space (N/A^2 or H/m)
+me       = 9.1093897d-31          ; => Electron mass (kg)
+mp       = 1.6726231d-27          ; => Proton mass (kg)
+qq       = 1.60217733d-19         ; => Fundamental charge (C)
+wcefac   = qq*1d-9/me             ; => factor for electron cyclotron frequency [rad s^(-1) nT^(-1)]
+wcpfac   = qq*1d-9/mp             ; => factor for proton cyclotron frequency [rad s^(-1) nT^(-1)]
+wpefac   = SQRT(1d6*qq^2/(me*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+wppfac   = SQRT(1d6*qq^2/(mp*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+evn_gd   = [05881617L,27520153L]
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+;-----------------------------------------------------------------------------------------
+; => Correlation between theta_kB and lambda_GSM? [TDSS]
+;-----------------------------------------------------------------------------------------
+test_wh  = all_stats_all_waves_read(/NO_INCOMP,WAVET='Whistlers')
+
+wscets   = STRTRIM(test_wh.SCETS,2)
+nall     = N_ELEMENTS(wscets)
+wunix    = time_double(wscets)
+wavetype = STRLOWCASE(STRTRIM(test_wh.WAVE_TYPE,2))
+rectype  = STRLOWCASE(STRTRIM(test_wh.REC_TYPE,2))
+w_rad    = test_wh.WIND_RAD_DIST
+w_lsh    = test_wh.WIND_L_SHELL
+w_mlt    = test_wh.WIND_MLT
+
+alle_rms = test_wh.E_RMS
+allb_rms = test_wh.B_RMS
+whe_rms  = test_wh.EMAG_RMS
+whb_rms  = test_wh.BMAG_RMS
+whe_pk   = test_wh.EMAG_PK
+whb_pk   = test_wh.BMAG_PK
+; => AE-Index and GSE DC B-field
+w_aeind  = test_wh.AE_INDEX
+w_bgse   = test_wh.WI_B3_GSE
+bmag_all = test_wh.B_MAG
+; => Estimate the dipole B-field at the equator dependent upon the L-shell
+bmag_eq  = magnfactor[0]/(w_lsh)^3
+;   => estimate the equitorial cyclotron frequency
+wce_eq   = wcefac[0]*bmag_eq*1d9
+; => Define the relevant frequencies
+wce_all  = wcefac[0]*bmag_all
+wcp_all  = wcpfac[0]*bmag_all
+wlh_all  = SQRT(wce_all*wcp_all)
+frq_low  = test_wh.FREQ_LOW*(2d0*!DPI)    ; => Convert to rad/s
+frq_high = test_wh.FREQ_HIGH*(2d0*!DPI)   ; => Convert to rad/s
+
+evalmin  = test_wh.EIG_VALS[*,0]
+evalmid  = test_wh.EIG_VALS[*,1]
+evalmax  = test_wh.EIG_VALS[*,2]
+emidmin  = evalmid/evalmin
+
+pos_xgsm = test_wh.GSM_POS[*,0]
+pos_ygsm = test_wh.GSM_POS[*,1]
+pos_zgsm = test_wh.GSM_POS[*,2]
+pos_wgsm = [[pos_xgsm],[pos_ygsm],[pos_zgsm]]
+
+coord_trans_wrapper,wunix,pos_wgsm,data_out,/GSM,/TO_SM
+
+pos_wsm  = data_out
+pos_ugsm = pos_wgsm/(SQRT(TOTAL(pos_wgsm^2,2,/NAN)) # REPLICATE(1d0,nall))
+pos_usm  = pos_wsm/(SQRT(TOTAL(pos_wsm^2,2,/NAN)) # REPLICATE(1d0,nall))
+
+;----------------------------------------------
+; => Find Only Whistler Waves in Magnetosphere
+;----------------------------------------------
+wgood  = STRLOWCASE('Whistlers')
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','101002']
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN                                                   $
+  date       = gdates[j]                                                                   & $
+  temp       = orbit_region_time_range(DATE=date[0])                                       & $
+  tr_m       = time_double(temp.MAGNETOSPHERE)                                             & $
+  testm      = (wunix LE tr_m[1] AND wunix GT tr_m[0]) AND (wavetype EQ wgood[0])          & $
+  good_m0    = WHERE(testm,gdm0)                                                           & $
+  IF (gdm0 GT 0 AND j EQ 0) THEN good_m = good_m0                                          & $
+  IF (gdm0 GT 0 AND j GT 0) THEN good_m = [good_m,good_m0]
+
+; => Limit to L < 15
+lshell   = 15.
+l_string = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+test_l   = (w_lsh[good_m] LE lshell[0])
+good0    = WHERE(test_l,gd0)
+PRINT,';  ', gd0
+; => For L < 15
+;           253
+good_m   = good_m[good0]
+n_m      = N_ELEMENTS(good_m)
+
+wscets   = wscets[good_m]
+wunix    = wunix[good_m]
+wavetype = wavetype[good_m]
+rectype  = rectype[good_m]
+
+w_rad    = w_rad[good_m]
+w_lsh    = w_lsh[good_m]
+w_mlt    = w_mlt[good_m]
+w_aeind  = w_aeind[good_m]
+
+w_bgse   = w_bgse[good_m,*]
+bmag_all = bmag_all[good_m]
+bmag_eq  = bmag_eq[good_m]
+
+; => Define the relevant frequencies
+wce_eq   = wce_eq[good_m]
+wce_all  = wce_all[good_m]
+wcp_all  = wcp_all[good_m]
+wlh_all  = wlh_all[good_m]
+frq_low  = frq_low[good_m]
+frq_high = frq_high[good_m]
+
+alle_rms = alle_rms[good_m,*]
+allb_rms = allb_rms[good_m,*]
+whe_rms  = whe_rms[good_m]
+whb_rms  = whb_rms[good_m]
+whe_pk   = whe_pk[good_m]
+whb_pk   = whb_pk[good_m]
+
+pos_wgsm = pos_wgsm[good_m,*]
+
+
+freq_avg = (frq_low + frq_high)/2d0
+favg_fce = freq_avg/wce_all
+;----------------------------------------------
+; => Plot Amp. vs. f/fce
+;----------------------------------------------
+WINDOW,0,RETAIN=2
+
+ttle     = 'Amplitude vs. f/f!Dce!N'
+xttl     = 'f/f!Dce!N [local cyclotron frequency]'
+yttle    = 'Peak Amplitude (mV/m)'
+yttlb    = 'Peak Amplitude (nT)'
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:1,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+
+xdat     = favg_fce
+ydat0    = whe_pk
+ydat1    = whb_pk
+yran0    = [1e-1,330e0]
+yran1    = [1e-2,6e0]
+
+!P.MULTI = [0,1,2]
+WSET,0
+WSHOW,0
+PLOT,xdat,ydat0,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+  OPLOT,xdat,ydat0,PSYM=2,COLOR=50
+PLOT,xdat,ydat1,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+  OPLOT,xdat,ydat1,PSYM=2,COLOR=50
+!P.MULTI = 0
+
+fname    = 'Peak-Amplitude_vs_f-fce-local_log-scale'
+popen,fname[0],/LAND
+  !P.MULTI = [0,1,2]
+  PLOT,xdat,ydat0,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat,ydat0,PSYM=2,COLOR=50
+  PLOT,xdat,ydat1,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat,ydat1,PSYM=2,COLOR=50
+pclose
+!P.MULTI = 0
+
+fname    = 'Peak-Amplitude_vs_f-fce-local_lin-scale'
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:0,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+popen,fname[0],/LAND
+  !P.MULTI = [0,1,2]
+  PLOT,xdat,ydat0,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat,ydat0,PSYM=2,COLOR=50
+  PLOT,xdat,ydat1,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat,ydat1,PSYM=2,COLOR=50
+pclose
+!P.MULTI = 0
+
+;----------------------------------------------
+; => Plot Amp. vs. MLT
+;----------------------------------------------
+ttle     = 'Amplitude vs. MLT'
+xttl     = 'MLT [hours]'
+yttle    = 'Peak Amplitude (mV/m)'
+yttlb    = 'Peak Amplitude (nT)'
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:1,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+
+xdat     = w_mlt
+ydat0    = whe_pk
+ydat1    = whb_pk
+yran0    = [1e-1,330e0]
+yran1    = [1e-2,6e0]
+
+
+!P.MULTI = [0,1,2]
+WSET,0
+WSHOW,0
+  PLOT,xdat,ydat0,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat,ydat0,PSYM=2,COLOR=50
+  PLOT,xdat,ydat1,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat,ydat1,PSYM=2,COLOR=50
+!P.MULTI = 0
+
+fname    = 'Peak-Amplitude_vs_MLT_log-scale'
+popen,fname[0],/LAND
+  !P.MULTI = [0,1,2]
+  PLOT,xdat,ydat0,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat,ydat0,PSYM=2,COLOR=50
+  PLOT,xdat,ydat1,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat,ydat1,PSYM=2,COLOR=50
+pclose
+!P.MULTI = 0
+
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:0,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+fname    = 'Peak-Amplitude_vs_MLT_lin-scale'
+popen,fname[0],/LAND
+  !P.MULTI = [0,1,2]
+  PLOT,xdat,ydat0,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat,ydat0,PSYM=2,COLOR=50
+  PLOT,xdat,ydat1,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat,ydat1,PSYM=2,COLOR=50
+pclose
+!P.MULTI = 0
+
+
+
+

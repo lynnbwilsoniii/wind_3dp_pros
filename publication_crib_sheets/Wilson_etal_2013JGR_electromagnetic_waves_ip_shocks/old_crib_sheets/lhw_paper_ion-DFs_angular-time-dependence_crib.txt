@@ -1,0 +1,699 @@
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+beta_fac = 1d6*(kB*K_eV)*(2d0*muo)
+wcefac = qq/me*1d-9
+wpefac = SQRT(1d6*qq^2/me/epo)
+wppfac = SQRT(1d6*qq^2/mp/epo)
+fpeden = (2d0*!DPI)^2*epo*me/qq^2*1d-6  ; => Conversion from fpe to density 1/cm^3
+
+;-----------------------------------------------------------------------------------------
+; => Define date-specific parameters
+;-----------------------------------------------------------------------------------------
+date    = '082698'
+t       = ['1998-08-26/05:40:00','1998-08-26/07:40:00']  ; -For moment writing
+tramp   = '1998-08-26/06:40:24.972'
+gnorm   = [-0.655,0.040,-0.754]   ; => Using RH08 from JCK's site
+dgnorm  = [0.010,0.009,0.561]
+gnorm2  = [-0.822,0.138,-0.553]   ; => Using RH09 from JCK's site
+dgnorm2 = [0.040,0.070,0.488]
+ushn    = [401.3,142.3]           ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2   = [379.6,135.6]           ; => Up/Downstream normal flow speed [shock frame] RHO9
+vshn    = 687.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+vshn2   = 747.2                   ; => Up/Downstream normal flow speed [SC frame] RHO9
+ni_up   = 6.68     ; => Avg. upstream density [cm^(-3)]
+;-----------------------------------------------------------------------------------------
+; => Load MFI data
+;-----------------------------------------------------------------------------------------
+tr3    = time_double(t)
+tura   = time_double(tramp)
+mydate = my_str_date(DATE=date)
+sdate  = mydate.S_DATE[0]  ; -('MMDDYY')
+ldate  = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate  = mydate.TDATE[0]   ; => 'YYYY-MM-DD'
+
+
+mag3   = read_wind_mfi(TRANGE=tr3)
+t3x    = mag3.MAG.X
+bmag4  = mag3.MAG.Y
+magf4  = mag3.BGSE.Y
+nt     = N_ELEMENTS(t3x) 
+nn0    = ['wi_B3_MAG','wi_B3_GSE']
+store_data,nn0[0],DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,nn0[1],DATA={X:mag3.MAG.X,Y:magf4}
+options,nn0[0],'YTITLE','|B| (nT)!C[GSE,3s]'
+options,nn0[1],'YTITLE','B (nT)!C[GSE,3s]'
+options,nn0[1],'COLORS',[250,150,50]
+tplot_options,'xmargin',[18,12]
+tplot_options,'ymargin',[5,5]
+tplot,nn0,TRANGE=tr3
+
+htr_mfi2tplot,DATE=date
+nn0     = ['WIND_MAG_HTR(GSE,nT)','WIND_B3_HTR(GSE,nT)']
+tplot,nn0,TRANGE=tr3
+get_data,'WIND_B3_HTR(GSE,nT)',DATA=htr_mfi
+magfhtr = htr_mfi.Y
+htr_t   = htr_mfi.X
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+sh_mit     = read_shocks_jck_database()
+mit_dates  = sh_mit.SDATES                 ; => 'MMDDYY'
+shocks     = sh_mit.SHOCK
+header     = sh_mit.HEADER
+ymdb_ra    = header.DATE_TIME              ; => ['YYYY-MM-DD/HH:MM:SS.sss']
+mts        = my_time_string(ymdb_ra,STR=1,FORM=1)
+unix_ra    = mts.UNIX
+
+a_compr    = shocks.COMPRESSION            ; => Shock compression ratio
+gshock     = WHERE(mit_dates EQ date,gsh)
+IF (sdate[0] EQ '021100') THEN kk = 1 ELSE kk = 0
+gcomp      = (REFORM(a_compr[gshock[kk]]))[0]
+gnorm      = gnorm                         ; => Use RH08
+;-----------------------------------------------------------------------------------------
+; => Restore distributions to IDL
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+
+mfiles = FILE_SEARCH(mdir,'*.sav')
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;-----------------------------------------------------------------------------------------
+; => Calculate Ion Moments
+;-----------------------------------------------------------------------------------------
+pesa_low_moment_calibrate,DATE=date,/NOLOAD,PLM=apl,PLBM=aplb,BNAME=nn0[1],$
+                          TRANGE=tr3,COMPRESS=gcomp,MIDRA=tura[0]
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Load WAVES Denstiy estimates
+;-----------------------------------------------------------------------------------------
+test  = waves_fpe_ascii_read(DATE=date)
+wunix = test.UNIX          ; => Unix times
+wdens = test.DENSITY       ; => cm^(-3)
+weine = test.E_INERT_L     ; => m
+wfpe  = test.F_PE          ; => Hz  [technically, this is the upper hybrid frequency]
+
+testx  = interp(magf4[*,0],t3x,wunix,/NO_EXTRAP)
+testy  = interp(magf4[*,1],t3x,wunix,/NO_EXTRAP)
+testz  = interp(magf4[*,2],t3x,wunix,/NO_EXTRAP)
+tbmag  = SQRT(testx^2 + testy^2 + testz^2)
+
+; => Calculate the cyclotron frequency at times of associated WAVES f_uh
+fce_wv = (wcefac[0]/(2d0*!DPI))*tbmag
+f_uhwv = wfpe
+fpe_2  = f_uhwv^2 - fce_wv^2   ; => plasma frequency squared [Hz^2]
+edens  = fpeden[0]*fpe_2       ; => electron density [cm^(-3)]
+
+store_data,'waves_density',DATA={X:wunix,Y:edens}
+options,'waves_density','YTITLE','N!De!N (cm!U-3!N)'
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Look at PHB and PLB distributions (phi,theta) vs. time
+;-----------------------------------------------------------------------------------------
+pl_mcp_eff,aplb.time,DEADT=dt,MCPEFF=mcpeff
+
+aplb_c               = aplb
+aplb_c.DEADTIME      = dt[0]
+aplb_c.GEOMFACTOR[0] = aplb_c.GEOMFACTOR[0] * mcpeff[0]
+
+str_format           = moments_3d()
+nplb                 = N_ELEMENTS(aplb_c)
+dfplb                = REPLICATE(str_format,nplb)
+  FOR n=0L, nplb - 1L DO BEGIN                                                 $
+    dat      = aplb_c[n]                                                     & $
+    temp     = moments_3d(dat,FORMAT=str_format,TRUE_DENS=dens_n,COMP=comp)  & $
+    dfplb[n] = temp
+
+tip2    = aplb_c.TIME
+idens2  = dfplb.DENSITY
+itemp2  = dfplb.AVGTEMP
+ivther2 = dfplb.VTHERMAL
+vsw2    = TRANSPOSE(dfplb.VELOCITY)
+vmag2   = SQRT(TOTAL(vsw2^2,2L,/NAN))
+magt3   = TRANSPOSE(dfplb.MAGT3)
+tperpi  = 5d-1*(magt3[*,0] + magt3[*,1])
+tparai  = magt3[*,2]
+tanis   = tperpi/tparai
+
+
+; => Determine if downstream density and SC potential needs to be adjusted
+plbu    = WHERE(tip2 LE tura,plu)
+plbd    = WHERE(tip2 GE tura,pld)
+PRINT,';', plu, pld
+;          59         120
+avgrad  = WHERE(tip2 LE tura + 6d2 AND tip2 GT tura + 6d1,avru)
+avgrau  = WHERE(tip2 GE tura - 6d2 AND tip2 LT tura - 6d1,avr)
+PRINT,';', avru, avr
+;          21          39
+nip1u   = idens2[plbu]
+nip1d   = idens2[plbd]
+avdiu   = MEAN(idens2[avgrau],/NAN)        ; -Avg. Upstream ion density (cc)
+avdid   = MEAN(idens2[avgrad],/NAN)        ; -Avg. Downstream " "
+mycomp  = avdiu/avdid
+newavd  = mycomp*(gcomp[0] < 4.)*avdid     ; -Renormalized downstream average
+newnidn = (nip1d - avdid[0]) + newavd[0]   ; -Redefine downstream ion density
+tip1u   = tip2[plbu]
+tip1d   = tip2[plbd]
+nipar_t = [nip1u,newnidn]            ; -New ion density estimate
+tipar   = [tip1u,tip1d]              ; -Unix times associated with nipar_t
+idens3  = interp(nipar_t,tipar,tip2,/NO_EXTRAP)
+
+store_data,'Ni_c',DATA={X:tip2,Y:idens3}
+store_data,'Ti_c',DATA={X:tip2,Y:itemp2}
+store_data,'VTi_c',DATA={X:tip2,Y:ivther2}
+store_data,'Vmag_c',DATA={X:tip2,Y:vmag2}
+store_data,'Vsw_c',DATA={X:tip2,Y:vsw2}
+store_data,'Ti_perp_c',DATA={X:tip2,Y:tperpi}
+store_data,'Ti_para_c',DATA={X:tip2,Y:tparai}
+store_data,'Ti_anisotropy_c',DATA={X:tip2,Y:tanis}
+
+options,'Ni_c','YTITLE','N!Di!N [cm!U-3!N]'+'!C'+'[Corrected]'
+options,'Ti_c','YTITLE','T!Di!N (eV)'+'!C'+'[Corrected]'
+options,'VTi_c','YTITLE','V!DTi!N (km/s)'+'!C'+'[Corrected]'
+options,'Vsw_c','YTITLE','V!Dsw!N (km/s)'+'!C'+'[Corrected]'
+options,'Vmag_c','YTITLE','|V!Dsw!N| (km/s)'+'!C'+'[Corrected]'
+options,'Ti_perp_c','YTITLE','T!Di'+'!9x!3'+'!N (eV) [FA]'+'!C'+'[Corrected]'
+options,'Ti_para_c','YTITLE','T!Di'+'!9#!3'+'!N (eV) [FA]'+'!C'+'[Corrected]'
+options,'Ti_anisotropy_c','YTITLE','T!Di'+'!9x!3'+'!N/T!Di'+'!9#!3'+'!N'+'!C'+'[Corrected]'
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+;-----------------------------------------------------------------------------------------
+; => Look at PHB and PLB distributions (phi,theta) vs. time
+;-----------------------------------------------------------------------------------------
+
+; => PESA High:
+;                FOV                =  360 x 14 deg
+;                Dyn. Range         = 10-10^9 eV cm^(-2) s^(-1) sr^(-1) eV^(-1)
+;                dE/E               = 0.20 FWHM
+;                Angular Acceptance = 7.5 deg (FWHM)
+;                Anti-Coinc. Scint. = used to reject penetration radiation
+;                Detector Eff.      = ~50%
+;                Grid Trans. Eff.   = ~75%
+;                Bias Volt. (Vo)    = -2500 Volts [at start of mission]
+;                MCP Gain Factor    = 2 x 10^6
+;                MCP Thickness      = 1 mm
+;                MCP Bias Angle     = 8 deg
+;                # of Anodes        = 24
+;                Energy Change      = logarithmically swept
+;                Samples per spin   = 1024 => 64 E x 16 sweeps or 32 E x 32 sweeps
+;                Clock Speed        = 5 MHz
+;                Duty Cycle         = +/- 100 ns
+;                Integration Time   = ~3 ms
+;                
+;              **[Plates can handle high strip currents => fast count rates]**
+j0   = 56L
+j1   = 57L
+j2   = 58L
+elb0 = aelb[j0]
+elb1 = aelb[j1]
+elb2 = aelb[j2]
+
+j0   = 58L
+j1   = 59L
+j2   = 60L
+phb0 = aphb[j0]
+phb1 = aphb[j1]
+phb2 = aphb[j2]
+
+j0   = 57L
+j1   = 58L
+j2   = 59L
+plb0 = aplb[j0]
+plb1 = aplb[j1]
+plb2 = aplb[j2]
+
+IF (date EQ '082698') THEN sprate = 116.06690e0
+
+
+tsh  = time_double('1998-08-26/06:40:24.972')
+tts  = time_double('1998-08-26/06:40:26.120')
+tte  = time_double('1998-08-26/06:40:27.212')
+ttsf = time_double('1998-08-26/06:40:28.487')
+t0   = [tsh,tts,tte,ttsf]
+
+; => EESA Low
+dat  = elb0
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,VTIME=t0
+dat  = elb1
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,VTIME=t0
+dat  = elb2
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,VTIME=t0
+
+
+; => PESA High
+dat  = phb0
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,VTIME=t0
+dat  = phb1
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,VTIME=t0
+dat  = phb2
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,VTIME=t0
+
+dat  = phb0
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,/KILLN,VTIME=t0
+dat  = phb1
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,/KILLN,VTIME=t0
+dat  = phb2
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,/KILLN,VTIME=t0
+
+dat  = phb0
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,/KILLN,/VBPLANE,VTIME=t0
+dat  = phb1
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,/KILLN,/VBPLANE,VTIME=t0
+dat  = phb2
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,/KILLN,/VBPLANE,VTIME=t0
+
+; => PESA Low
+dat  = plb0
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,VTIME=t0
+dat  = plb1
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,VTIME=t0
+dat  = plb2
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,VTIME=t0
+
+dat  = plb0
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,/KILLN,VTIME=t0
+dat  = plb1
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,/KILLN,VTIME=t0
+dat  = plb2
+angle_vs_time_3dp_strs,dat,SPRATE=sprate,/FSAVE,/KILLN,VTIME=t0
+
+
+
+; => INTEG_T = total time (s) duration of entire distribution
+; => DELTA_T = ??  [for these it = INTEG_T but not always]
+PRINT,';', phb0.INTEG_T, phb0.DELTA_T
+;       3.1016352       3.1016352
+
+PRINT,';', TOTAL(phb0.DT[0,*],/NAN), TOTAL(phb0.DT[10,*],/NAN)
+PRINT,';', TOTAL(phb1.DT[0,*],/NAN), TOTAL(phb1.DT[10,*],/NAN)
+PRINT,';', TOTAL(phb2.DT[0,*],/NAN), TOTAL(phb2.DT[10,*],/NAN)
+;      1.59928      1.59928
+;      1.59928      1.59928
+;      1.59928      1.59928
+PRINT,';', MIN(phb0.DT,/NAN), MAX(phb0.DT,/NAN)
+;   0.00605788    0.0484631
+
+
+PRINT,';', TOTAL(phb0.DEADTIME[0,*],/NAN), TOTAL(phb0.DEADTIME[10,*],/NAN)
+PRINT,';', TOTAL(phb1.DEADTIME[0,*],/NAN), TOTAL(phb1.DEADTIME[10,*],/NAN)
+PRINT,';', TOTAL(phb2.DEADTIME[0,*],/NAN), TOTAL(phb2.DEADTIME[10,*],/NAN)
+;      0.00000      0.00000
+;      0.00000      0.00000
+;      0.00000      0.00000
+
+PRINT,';', MIN(phb0.DEADTIME,/NAN), MAX(phb0.DEADTIME,/NAN)
+;      0.00000      0.00000
+
+dt_0     = phb0.DT         ; => Accumulation time (s) [i.e. data integration/sampling time]
+phi_0    = phb0.PHI        ; => Azimuthal angle (deg)
+dphi_0   = phb0.DPHI       ; => Uncertainty in azimuthal angle (deg)
+theta_0  = phb0.THETA      ; => Polar angle (deg) associated with annode sector
+dtheta_0 = phb0.DTHETA     ; => Uncertainty in polar angle (deg)
+philw0   = phi_0 - dphi_0
+phihg0   = phi_0 + dphi_0
+thetalw0 = theta_0 - dtheta_0
+thetahg0 = theta_0 + dtheta_0
+magf0    = phb0.MAGF
+vsw0     = phb0.VSW
+sz       = SIZE(dt_0,/DIMENSIONS)
+neb      = sz[0]           ; => # of center energy bins used for energy sweep analyzer
+ned      = sz[1]           ; => # of data points per energy bin
+; => Note:  DT is the same for each set of energy bins, therefore only 1D
+dt_0     = REFORM(dt_0[0,*])
+
+
+; => Define variables to plot
+pref     = 'PHB_Angular_Response_'
+dname    = phb0.DATA_NAME
+scet     = time_string(phb0.TIME,PREC=0)
+fname    = file_name_times(scet,PREC=0)
+sfname   = pref[0]+fname.F_TIME[0]
+magf     = magf0
+vsw      = vsw0
+xdata    = dt_0
+ydata0   = phi_0
+dydatl0  = philw0
+dydath0  = phihg0
+ydata1   = theta_0
+dydatl1  = thetalw0
+dydath1  = thetahg0
+
+xyz_to_polar,magf,THETA=bthe,PHI=bphi,/PH_0_360
+xyz_to_polar,vsw, THETA=vthe,PHI=vphi,/PH_0_360
+PRINT,';', bthe, bphi, vthe, vphi
+;      7.36112      105.864     -1.81966      179.370
+
+tdata = DBLARR(ned)                    
+FOR j=0L, ned - 1L DO tdata[j] = tdata[j-1L] + xdata[j]
+
+; => Set up plot structure
+!P.MULTI = [0,1,2]
+xttl     = 'Time from Start of Dist. (s)'
+yttlph   = 'Azimuthal Angle (deg)'
+yttlth   = 'Polar Angle (deg)'
+xra      = [0.,1.6]
+yra_ph   = [0.,370.]
+yra_th   = [-100.,100.]
+ttle     = 'Angle versus Sample Time from Start'
+ttl1     = dname[0]+' for '+scet[0]
+cols     = LINDGEN(neb)*(250L - 30L)/(neb - 1L) + 30L
+
+pstrph   = {YRANGE:yra_ph,XTITLE:xttl,YTITLE:yttlph,NODATA:1,XSTYLE:1,YSTYLE:1,$
+            XRANGE:xra,XMINOR:11L,YMINOR:11L,TITLE:ttle}
+pstrth   = {YRANGE:yra_th,XTITLE:xttl,YTITLE:yttlth,NODATA:1,XSTYLE:1,YSTYLE:1,$
+            XRANGE:xra,XMINOR:11L,YMINOR:11L,TITLE:ttl1}
+
+
+WSET,1
+PLOT,tdata,REFORM(ydata0[0,*]),_EXTRA=pstrph
+  OPLOT,xra,[bphi,bphi],COLOR=30
+  OPLOT,xra,[vphi,vphi],COLOR=70
+  FOR j=0L, neb - 1L DO BEGIN                                 $
+    ydat = [REFORM(ydata0[j,*])]                            & $
+    OPLOT,tdata,ydat,PSYM=4,COLOR=cols[j]                   & $
+    ERRPLOT,tdata,[REFORM(dydatl0[j,*])],[REFORM(dydath0[j,*])],/DATA,COLOR=cols[j]
+XYOUTS,0.25,330.,/DATA,'B-Phi',COLOR=30
+XYOUTS,0.25,300.,/DATA,'Vsw-Phi',COLOR=70
+
+PLOT,tdata,REFORM(ydata1[0,*]),_EXTRA=pstrth
+  OPLOT,xra,[bthe,bthe],COLOR=30
+  OPLOT,xra,[vthe,vthe],COLOR=70
+  FOR j=0L, neb - 1L DO BEGIN                                    $
+    ydat = [REFORM(ydata1[j,*])]                            & $
+    OPLOT,tdata,ydat,PSYM=4,COLOR=cols[j]                   & $
+    ERRPLOT,tdata,[REFORM(dydatl1[j,*])],[REFORM(dydath1[j,*])],/DATA,COLOR=cols[j]
+XYOUTS,0.25,90.,/DATA,'B-Theta',COLOR=30
+XYOUTS,0.25,60.,/DATA,'Vsw-Theta',COLOR=70
+
+
+
+
+!P.MULTI = [0,1,2]
+popen,sfname[0],/LAND
+  PLOT,tdata,REFORM(ydata0[0,*]),_EXTRA=pstrph
+    OPLOT,xra,[bphi,bphi],COLOR=30
+    OPLOT,xra,[vphi,vphi],COLOR=70
+    FOR j=0L, neb - 1L DO BEGIN                                 $
+      ydat = [REFORM(ydata0[j,*])]                            & $
+      OPLOT,tdata,ydat,PSYM=4,COLOR=cols[j]                   & $
+      ERRPLOT,tdata,[REFORM(dydatl0[j,*])],[REFORM(dydath0[j,*])],/DATA,COLOR=cols[j]
+  PLOT,tdata,REFORM(ydata1[0,*]),_EXTRA=pstrth
+    OPLOT,xra,[bthe,bthe],COLOR=30
+    OPLOT,xra,[vthe,vthe],COLOR=70
+    FOR j=0L, neb - 1L DO BEGIN                                    $
+      ydat = [REFORM(ydata1[j,*])]                            & $
+      OPLOT,tdata,ydat,PSYM=4,COLOR=cols[j]                   & $
+      ERRPLOT,tdata,[REFORM(dydatl1[j,*])],[REFORM(dydath1[j,*])],/DATA,COLOR=cols[j]
+pclose
+
+;-----------------------------------------------------------------------------------------
+; => Use spin rate (deg/s) to determine times from start associated with PHI
+;-----------------------------------------------------------------------------------------
+IF (date EQ '082698') THEN sprate = 116.06690e0
+
+del_t_phi = phb0.PHI/sprate[0]
+; => Define Unix times associated with these values
+unx_t_phi = phb0[0].TIME[0] + del_t_phi
+; => Normalize to start time
+delt_phin = unx_t_phi - MIN(unx_t_phi,/NAN)
+PRINT,';  ',MIN(delt_phin,/NAN), MAX(delt_phin,/NAN), $
+            MEAN(delt_phin,/NAN), STDDEV(delt_phin,/NAN), '   => For  '+tdate[0]
+;         0.0000000       2.9982708       1.5576119      0.61716070   => For  1998-08-26
+
+; => Define Plot stuff
+pref      = 'PHB_Angular_Response_'
+dname     = phb0.DATA_NAME
+scet      = time_string(phb0.TIME,PREC=0)
+fname     = file_name_times(scet,PREC=0)
+sfname    = pref[0]+fname.F_TIME[0]
+magf      = magf0
+vsw       = vsw0
+; => Shift [phi,theta] to positive values
+phi_0s    = phi_0   - MIN(phi_0,/NAN)
+theta_0s  = theta_0
+philw0s   = phi_0s - dphi_0
+phihg0s   = phi_0s + dphi_0
+thetalw0s = theta_0s - dtheta_0
+thetahg0s = theta_0s + dtheta_0
+
+; => Set up plot structure
+!P.MULTI = [0,1,2]
+xttl     = 'Time from Start of Dist. (s)'
+yttlph   = 'Azimuthal Angle (deg)'
+yttlth   = 'Polar Angle (deg)'
+xra      = [0.,3.0]
+yra_ph   = [0.,370.]
+yra_th   = [-100.,100.]
+ttle     = 'Angle versus Sample Time from Start'
+ttl1     = dname[0]+' for '+scet[0]
+cols     = LINDGEN(neb)*(250L - 30L)/(neb - 1L) + 30L
+pstrph    = {YRANGE:yra_ph,XTITLE:xttl,YTITLE:yttlph,NODATA:1,XSTYLE:1,YSTYLE:1,$
+             XRANGE:xra,XMINOR:11L,YMINOR:11L,TITLE:ttle}
+pstrth    = {YRANGE:yra_th,XTITLE:xttl,YTITLE:yttlth,NODATA:1,XSTYLE:1,YSTYLE:1,$
+             XRANGE:xra,XMINOR:11L,YMINOR:11L,TITLE:ttl1}
+
+!P.MULTI = [0,1,2]
+WSET,2
+  PLOT,delt_phin,phi_0s,_EXTRA=pstrph
+    OPLOT,xra,[bphi,bphi],COLOR=30
+    OPLOT,xra,[vphi,vphi],COLOR=70
+    OPLOT,delt_phin,phi_0s,PSYM=4
+    FOR j=0L, neb - 1L DO BEGIN  $
+      ERRPLOT,delt_phin[j,*],philw0s[j,*],phihg0s[j,*],/DATA,COLOR=cols[j]
+    XYOUTS,0.25,330.,/DATA,'B-Phi',COLOR=30
+    XYOUTS,0.25,300.,/DATA,'Vsw-Phi',COLOR=70
+  PLOT,delt_phin,theta_0s,_EXTRA=pstrth
+    OPLOT,xra,[bthe,bthe],COLOR=30
+    OPLOT,xra,[vthe,vthe],COLOR=70
+    OPLOT,delt_phin,theta_0s,PSYM=4
+    FOR j=0L, neb - 1L DO BEGIN  $
+      ERRPLOT,delt_phin[j,*],thetalw0s[j,*],thetahg0s[j,*],/DATA,COLOR=cols[j]
+    XYOUTS,0.25,90.,/DATA,'B-Theta',COLOR=30
+    XYOUTS,0.25,60.,/DATA,'Vsw-Theta',COLOR=70
+
+
+!P.MULTI = [0,1,2]
+popen,sfname[0],/LAND
+  PLOT,delt_phin,phi_0s,_EXTRA=pstrph
+    OPLOT,xra,[bphi,bphi],COLOR=30
+    OPLOT,xra,[vphi,vphi],COLOR=70
+    OPLOT,delt_phin,phi_0s,PSYM=4
+    FOR j=0L, neb - 1L DO BEGIN  $
+      ERRPLOT,delt_phin[j,*],philw0s[j,*],phihg0s[j,*],/DATA,COLOR=cols[j]
+    XYOUTS,0.25,330.,/DATA,'B-Phi',COLOR=30
+    XYOUTS,0.25,300.,/DATA,'Vsw-Phi',COLOR=70
+  PLOT,delt_phin,theta_0s,_EXTRA=pstrth
+    OPLOT,xra,[bthe,bthe],COLOR=30
+    OPLOT,xra,[vthe,vthe],COLOR=70
+    OPLOT,delt_phin,theta_0s,PSYM=4
+    FOR j=0L, neb - 1L DO BEGIN  $
+      ERRPLOT,delt_phin[j,*],thetalw0s[j,*],thetahg0s[j,*],/DATA,COLOR=cols[j]
+    XYOUTS,0.25,90.,/DATA,'B-Theta',COLOR=30
+    XYOUTS,0.25,60.,/DATA,'Vsw-Theta',COLOR=70
+pclose
+;-----------------------------------------------------------------------------------------
+; => Start in 32 bit mode and load HK data
+;-----------------------------------------------------------------------------------------
+
+tdate    = '1998-08-26'
+t        = tdate[0]+'/'+['00:00:00','23:59:59']
+trg      = time_double(t)
+; => Plot   [phi, theta] vs. [bin #]
+; => Use phi(t[i]) to determine t[i]
+load_3dp_data,'98-08-26/00:00:00',60,qu=2,memsize=200.
+
+
+dat = { el_struct, $
+   PROJECT_NAME:   'Wind 3D Plasma', $
+   DATA_NAME :     'Eesa Low', $
+   UNITS_NAME:     'Counts', $
+   UNITS_PROCEDURE:'convert_esa_units', $
+   TIME      :     0.d, $
+   END_TIME  :     0.d, $
+   TRANGE    :     [0.d,0.d], $
+   INTEG_T   :     0.d, $
+   DELTA_T   :     0.d, $
+   MASS      :     0.d, $
+   GEOMFACTOR:     0.d, $
+   INDEX     :     0l, $
+   N_samples :     0l,  $
+   SHIFT     :     0b, $
+   VALID     :     0, $
+   SPIN      :     0l, $
+   NBINS     :     88, $
+   NENERGY   :     15, $
+   DACCODES  :     intarr(8,15),  $
+   VOLTS     :     fltarr(8,15),  $
+   DATA      :     fltarr(15, 88), $
+   energy    :     fltarr(15, 88), $
+   denergy   :     fltarr(15, 88), $
+   phi       :     fltarr(15, 88), $
+   dphi      :     fltarr(15, 88), $
+   theta     :     fltarr(15, 88), $
+   dtheta    :     fltarr(15, 88), $
+   bins      :     replicate(1b,15,88), $
+   dt        :     fltarr(15,88), $
+   gf        :     fltarr(15,88), $
+   bkgrate   :     fltarr(15,88), $
+   deadtime  :     fltarr(15,88), $
+   dvolume   :     fltarr(15,88), $
+   ddata     :     replicate(!values.f_nan,15,88), $
+   magf      :     replicate(!values.f_nan,3), $
+   vsw	     :     replicate(!values.f_nan,3), $
+   domega    :     fltarr(88), $
+   sc_pot    :     0., $
+   e_shift   :     0. $
+
+}
+
+options  = long([71196,0,-1])
+wind_lib = '/Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/WIND_PRO/wind3dp_lib_darwin_i386.so'
+time     = [trg[0],trg[0]]
+retdat   = dat
+q        = 0
+oldtime  = dat.time
+
+ok       = call_external(wind_lib,'e3d88_to_idl',options,time,dat)
+
+
+
+
+
+
+get_hkp,DATA=hkdat,/NO_TPLOT
+HELP, hkdat,/str
+;** Structure HKP_STR, 40 tags, length=188, data length=182:
+;   TIME            DOUBLE       9.0408957e+08
+;   ERRORS          LONG              2052
+;   INST_MODE       BYTE         5
+;   MODE            BYTE         1
+;   BURST_STAT      BYTE         1
+;   RATE            BYTE         0
+;   F_SEQ           BYTE        49
+;   OFFSET          INT              7
+;   SPIN            INT         -31122
+;   PHASE           BYTE        12
+;   MAGEL           BYTE        97
+;   MAGAZ           INT           2478
+;   NCOMM           BYTE       108
+;   LCOMM           BYTE      Array[12]
+;   M_VERS          BYTE       119
+;   M_STAT          BYTE       127
+;   M_LERR          BYTE       198
+;   M_NERR          BYTE        76
+;   M_NRES          BYTE         4
+;   M_BSTAT         BYTE        88
+;   FSPIN           FLOAT           34414.8
+;   M_VOLT          FLOAT     Array[9]
+;   E_VERS          BYTE       119
+;   E_STAT          BYTE        99
+;   E_LERR          BYTE         0
+;   E_NERR          BYTE         0
+;   E_NRES          BYTE        20
+;   E_BSTAT         BYTE         0
+;   E_SWP           BYTE         0
+;   E_VOLT          FLOAT     Array[8]
+;   P_VERS          BYTE        96
+;   P_STAT          BYTE        99
+;   P_LERR          BYTE         0
+;   P_NERR          BYTE         0
+;   P_NRES          BYTE        64
+;   P_BSTAT         BYTE         0
+;   P_SWP           BYTE         0
+;   P_VOLT          FLOAT     Array[8]
+;   TEMP            FLOAT     Array[4]
+;   VALID           LONG                 1
+
+
+good  = WHERE(hkdat.TIME LE trg[1] AND hkdat.TIME GE trg[0] AND hkdat.VALID,gd)
+PRINT,';  ',gd, '   => For  '+tdate[0]
+;           911   => For  1998-08-26
+
+hkdat = hkdat[good]
+PRINT,';  ',MIN(hkdat.FSPIN,/NAN), MAX(hkdat.FSPIN,/NAN), '   => For  '+tdate[0]
+;        34444.4      62267.1   => For  1998-08-26
+
+; => Change in fractional spin
+dspin  = hkdat.FSPIN - hkdat[0].FSPIN
+; => Change in time (s)
+delt   = hkdat.TIME  - hkdat[0].TIME
+
+; => Calculate spin rate (deg/second)
+sprate = dspin/delt*36d1
+PRINT,';  ',MIN(sprate,/NAN), MAX(sprate,/NAN), MEAN(sprate,/NAN), STDDEV(sprate,/NAN), '   => For  '+tdate[0]
+;         115.92391       116.08696       116.06690    0.0050694072   => For  1998-08-26
+
+; => Determine the bias voltage on PESA Low and High MCP
+vbias_pl  = hkdat.P_VOLT[3]
+vbias_ph  = hkdat.P_VOLT[4]
+PRINT,';  ',MIN(vbias_pl,/NAN), MAX(vbias_pl,/NAN), $
+            MEAN(vbias_pl,/NAN), STDDEV(vbias_pl,/NAN), '   => For  '+tdate[0]
+;       -2774.02     -2685.95     -2713.96      21.4030   => For  1998-08-26
+
+PRINT,';  ',MIN(vbias_ph,/NAN), MAX(vbias_ph,/NAN), $
+            MEAN(vbias_ph,/NAN), STDDEV(vbias_ph,/NAN), '   => For  '+tdate[0]
+;       -2583.55     -2539.01     -2539.10      2.08596   => For  1998-08-26
+
+; => Determine the (??SW voltage??) on PESA Low and High MCP
+voltsw_pl = hkdat.P_VOLT[6]
+voltsw_ph = hkdat.P_VOLT[7]
+PRINT,';  ',MIN(voltsw_pl,/NAN), MAX(voltsw_pl,/NAN), $
+            MEAN(voltsw_pl,/NAN), STDDEV(voltsw_pl,/NAN), '   => For  '+tdate[0]
+;        682.240      2256.64      1756.09      569.569   => For  1998-08-26
+
+PRINT,';  ',MIN(voltsw_ph,/NAN), MAX(voltsw_ph,/NAN), $
+            MEAN(voltsw_ph,/NAN), STDDEV(voltsw_ph,/NAN), '   => For  '+tdate[0]
+;        0.00000      9163.78      9153.82      303.604   => For  1998-08-26
+
+
+;-----------------------------------------------------------------------------------------
+; => From get_hkp.pro
+;-----------------------------------------------------------------------------------------
+;m_volt_names=['main_p5','main_m5','main_p12','main_m12','sst_p9', $
+;    'sst_p5','sst_m4','sst_m9','sst_hv']
+;
+;e_volt_names=['eesa_p5','eesa_p12','eesa_m12','eesa_mcpl','eesa_mcph', $
+;    'eesa_pmt','eesa_swpl','eesa_swph']
+;
+;p_volt_names=['pesa_p5','pesa_p12','pesa_m12','pesa_mcpl','pesa_mcph', $
+;    'pesa_pmt','pesa_swpl','pesa_swph']
+;
+;temp_names=['eesa_temp','pesa_temp','sst1_temp','sst3_temp']
+
+

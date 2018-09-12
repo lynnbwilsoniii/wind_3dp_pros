@@ -1,0 +1,275 @@
+;-----------------------------------------------------------------------------------------
+; => Calculate whistler Mach numbers and Alfvenic Mach Numbers
+;-----------------------------------------------------------------------------------------
+tdates          = ['1997-12-10','1998-08-26','1998-09-24','2000-02-11','2000-04-06']
+dateout         = '    => For '+tdates
+
+f               = !VALUES.F_NAN
+d               = !VALUES.D_NAN
+epo             = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo             = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me              = 9.1093897d-31     ; -Electron mass (kg)
+mp              = 1.6726231d-27     ; -Proton mass (kg)
+ma              = 4d0*(mp + me)     ; -Alpha-Particle mass (kg)
+qq              = 1.60217733d-19    ; -Fundamental charge (C)
+kB              = 1.380658d-23      ; -Boltzmann Constant (J/K)
+K_eV            = 1.160474d4        ; -Conversion   = degree Kelvin/eV
+c               = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c_km            = c[0]*1d-3         ;   => Speed of light [km/s]
+mrat            = SQRT(mp[0]/me[0])
+mrat2           = SQRT(mp[0]/(2d0*me[0]))
+wcefac          = qq[0]*1d-9/me[0]
+wcifac          = qq[0]*1d-9/mp[0]
+wpefac          = SQRT(1d6*qq^2/me/epo)
+wpifac          = SQRT(1d6*qq^2/mp/epo)
+
+; => Shock ramp duration estimates [s]
+deltramp        = [0.277d0,0.274d0,0.184d0,0.277d0,0.369d0]
+unc_t           = 0.092d0  ; => Uncertainty in shock ramp duration estimates [s]
+; => Upstream shock normal flow speed [km/s, SC-frame]
+vshn_8_all      = [ 391.2, 687.4, 772.4, 641.4, 646.9]
+d_vshn_8_all    = [  12.4,  26.8,  95.6,  13.2,  97.9]
+vshn_9_all      = [ 403.9, 747.2, 780.0, 661.1, 647.1]
+d_vshn_9_all    = [  11.7,  25.5,  95.5,  12.3,  97.6]
+; => Shock compression ratio [N_i2/N_i1 = unitless]
+compr_all       = [2.49,2.88,2.17,3.27,3.84]
+d_compr_all     = [0.35,0.31,0.38,0.50,1.25]
+; => Upstream/Downstream Alfven speed [km/s]
+valf_up_all     = [ 48.44, 64.75,114.45, 66.20, 64.81]
+d_valf_up_all   = [  2.96,  4.04,  5.16,  2.07, 10.17]
+valf_dn_all     = [ 68.60,111.14,213.44,123.23,136.41]
+d_valf_dn_all   = [  3.48, 13.00, 19.04,  1.89, 13.85]
+; => Upstream shock normal flow speed [km/s, shock frame]
+ushn_8_all      = [ 132.3, 401.3, 386.3, 263.6, 278.1]
+d_ushn_8_all    = [   2.3,   3.8,   3.7,   2.4,   8.3]
+ushn_9_all      = [ 124.0, 379.6, 381.2, 255.3, 277.4]
+d_ushn_9_all    = [   1.9,   3.9,   3.5,   2.6,   8.2]
+; => Alfvenic Mode Mach #
+mach_A8_all     = ushn_8_all/valf_up_all
+d_mach_A8_all   = mach_A8_all*SQRT((d_valf_up_all/valf_up_all)^2 + (d_ushn_8_all/ushn_8_all)^2)
+mach_A9_all     = ushn_9_all/valf_up_all
+d_mach_A9_all   = mach_A9_all*SQRT((d_valf_up_all/valf_up_all)^2 + (d_ushn_9_all/ushn_9_all)^2)
+; => Fast Mode Mach #
+machf_8_all     = [2.26,4.74,2.91,3.25,3.97]
+d_machf_8_all   = [0.10,0.18,0.09,0.08,0.56]
+machf_9_all     = [2.12,4.49,2.87,3.15,3.97]
+d_machf_9_all   = [0.09,0.17,0.08,0.08,0.56]
+; => Upstream shock normal angle [deg]
+thbn_8_all      = [ 70.9, 82.2, 82.1, 86.5, 69.6]*!DPI/18d1
+d_thbn_8_all    = [  1.6,  3.0,  2.4,  2.2,  5.2]*!DPI/18d1
+thbn_9_all      = [ 71.9, 78.7, 78.6, 89.9, 68.5]*!DPI/18d1
+d_thbn_9_all    = [  1.1,  2.5,  2.4,  2.3,  5.2]*!DPI/18d1
+; => Shock normal thickness [SC-Frame, km/s]
+;     => L_shn = (Vshn * delta_t)/2  {Bale et al., [2003] PRL}
+L_shn8_all      = vshn_8_all*deltramp/2d0
+d_L_shn8_all    = L_shn8_all*SQRT((d_vshn_8_all/vshn_8_all)^2 + (unc_t[0]/deltramp)^2)
+L_shn9_all      = vshn_9_all*deltramp/2d0
+d_L_shn9_all    = L_shn9_all*SQRT((d_vshn_9_all/vshn_9_all)^2 + (unc_t[0]/deltramp)^2)
+; => 1st whistler critical Mach # [Krasnosel'skikh et al., 2002]
+mach_w8_all     = mrat[0]*ABS(COS(thbn_8_all))/2d0
+d_mach_w8_all   = mrat[0]*ABS(SIN(thbn_8_all))/2d0*d_thbn_8_all
+mach_w9_all     = mrat[0]*ABS(COS(thbn_9_all))/2d0
+d_mach_w9_all   = mrat[0]*ABS(SIN(thbn_9_all))/2d0*d_thbn_9_all
+; => Whistler group velocity critical Mach # [Krasnosel'skikh et al., 2002]
+mach_wgr8_all   = ABS(COS(thbn_8_all))*SQRT(27d0*mp[0]/(64d0*me[0]))
+d_mach_wgr8_all = ABS(SIN(thbn_8_all))*SQRT(27d0*mp[0]/(64d0*me[0]))*d_thbn_8_all
+mach_wgr9_all   = ABS(COS(thbn_9_all))*SQRT(27d0*mp[0]/(64d0*me[0]))
+d_mach_wgr9_all = ABS(SIN(thbn_9_all))*SQRT(27d0*mp[0]/(64d0*me[0]))*d_thbn_9_all
+; => Non-linear whistler critical Mach # [Krasnosel'skikh et al., 2002]
+mach_nl8_all    = mrat2[0]*ABS(COS(thbn_8_all))
+d_mach_nl8_all  = mrat2[0]*ABS(SIN(thbn_8_all))*d_thbn_8_all
+mach_nl9_all    = mrat2[0]*ABS(COS(thbn_9_all))
+d_mach_nl9_all  = mrat2[0]*ABS(SIN(thbn_9_all))*d_thbn_9_all
+
+;-------------------------------------------------------------------
+; => Calculate ratio of Alfvenic Mode Mach # to 3 whistler Mach #'s
+;-------------------------------------------------------------------
+; => RH08
+rat_mAmw_8      = mach_A8_all/mach_w8_all
+d_rat_mAmw_8    = rat_mAmw_8*SQRT((d_mach_A8_all/mach_A8_all)^2 + (d_mach_w8_all/mach_w8_all)^2)
+rat_mAmwgr_8    = mach_A8_all/mach_wgr8_all
+d_rat_mAmwgr_8  = rat_mAmwgr_8*SQRT((d_mach_A8_all/mach_A8_all)^2 + (d_mach_wgr8_all/mach_wgr8_all)^2)
+rat_mAmnl_8     = mach_A8_all/mach_nl8_all
+d_rat_mAmnl_8   = rat_mAmnl_8*SQRT((d_mach_A8_all/mach_A8_all)^2 + (d_mach_nl8_all/mach_nl8_all)^2)
+; => RH09
+rat_mAmw_9      = mach_A9_all/mach_w9_all
+d_rat_mAmw_9    = rat_mAmw_9*SQRT((d_mach_A9_all/mach_A9_all)^2 + (d_mach_w9_all/mach_w9_all)^2)
+rat_mAmwgr_9    = mach_A9_all/mach_wgr9_all
+d_rat_mAmwgr_9  = rat_mAmwgr_9*SQRT((d_mach_A9_all/mach_A9_all)^2 + (d_mach_wgr9_all/mach_wgr9_all)^2)
+rat_mAmnl_9     = mach_A9_all/mach_nl9_all
+d_rat_mAmnl_9   = rat_mAmnl_9*SQRT((d_mach_A9_all/mach_A9_all)^2 + (d_mach_nl9_all/mach_nl9_all)^2)
+;-------------------------------------------------------------------
+; => Calculate ratio of Fast Mode Mach # to 3 whistler Mach #'s
+;-------------------------------------------------------------------
+; => RH08
+rat_mfmw_8      = machf_8_all/mach_w8_all
+d_rat_mfmw_8    = rat_mfmw_8*SQRT((d_machf_8_all/machf_8_all)^2 + (d_mach_w8_all/mach_w8_all)^2)
+rat_mfmwgr_8    = machf_8_all/mach_wgr8_all
+d_rat_mfmwgr_8  = rat_mfmwgr_8*SQRT((d_machf_8_all/machf_8_all)^2 + (d_mach_wgr8_all/mach_wgr8_all)^2)
+rat_mfmnl_8     = machf_8_all/mach_nl8_all
+d_rat_mfmnl_8   = rat_mfmnl_8*SQRT((d_machf_8_all/machf_8_all)^2 + (d_mach_nl8_all/mach_nl8_all)^2)
+; => RH09
+rat_mfmw_9      = machf_9_all/mach_w9_all
+d_rat_mfmw_9    = rat_mfmw_9*SQRT((d_machf_9_all/machf_9_all)^2 + (d_mach_w9_all/mach_w9_all)^2)
+rat_mfmwgr_9    = machf_9_all/mach_wgr9_all
+d_rat_mfmwgr_9  = rat_mfmwgr_9*SQRT((d_machf_9_all/machf_9_all)^2 + (d_mach_wgr9_all/mach_wgr9_all)^2)
+rat_mfmnl_9     = machf_9_all/mach_nl9_all
+d_rat_mfmnl_9   = rat_mfmnl_9*SQRT((d_machf_9_all/machf_9_all)^2 + (d_mach_nl9_all/mach_nl9_all)^2)
+
+
+mform = '(a2,6f15.4,a29)'
+FOR j=0L, 4L DO BEGIN $
+  PRINT,'; ', FLOAT(rat_mAmw_8[j]),   FLOAT(d_rat_mAmw_8[j]),   $
+              FLOAT(rat_mAmwgr_8[j]), FLOAT(d_rat_mAmwgr_8[j]), $
+              FLOAT(rat_mAmnl_8[j]), FLOAT(d_rat_mAmnl_8[j]),   $
+              dateout[j]+'  [RH08]',FORMAT=mform
+;------------------------------------------------------------------------------------------------------------------------
+;         M_A/M_w     d(M_A/M_w)       M_A/M_gr    d(M_A/M_gr)       M_A/M_nl    d(M_A/M_nl)
+;========================================================================================================================
+;          0.3896         0.0400         0.2999         0.0308         0.2755         0.0283    => For 1997-12-10  [RH08]
+;          2.1314         0.8257         1.6408         0.6357         1.5072         0.5839    => For 1998-08-26  [RH08]
+;          1.1462         0.3500         0.8823         0.2694         0.8105         0.2475    => For 1998-09-24  [RH08]
+;          3.0443         1.9138         2.3435         1.4732         2.1526         1.3532    => For 2000-02-11  [RH08]
+;          0.5746         0.1676         0.4423         0.1290         0.4063         0.1185    => For 2000-04-06  [RH08]
+;------------------------------------------------------------------------------------------------------------------------
+
+mform = '(a2,6f15.4,a29)'
+FOR j=0L, 4L DO BEGIN $
+  PRINT,'; ', FLOAT(rat_mfmw_8[j]),   FLOAT(d_rat_mfmw_8[j]),   $
+              FLOAT(rat_mfmwgr_8[j]), FLOAT(d_rat_mfmwgr_8[j]), $
+              FLOAT(rat_mfmnl_8[j]), FLOAT(d_rat_mfmnl_8[j]),   $
+              dateout[j]+'  [RH08]',FORMAT=mform
+;------------------------------------------------------------------------------------------------------------------------
+;         M_f/M_w     d(M_f/M_w)       M_f/M_gr    d(M_f/M_gr)       M_f/M_nl    d(M_f/M_nl)
+;========================================================================================================================
+;          0.3224         0.0297         0.2482         0.0228         0.2279         0.0210    => For 1997-12-10  [RH08]
+;          1.6301         0.6262         1.2549         0.4820         1.1527         0.4428    => For 1998-08-26  [RH08]
+;          0.9882         0.2999         0.7607         0.2308         0.6988         0.2120    => For 1998-09-24  [RH08]
+;          2.4848         1.5611         1.9128         1.2017         1.7570         1.1039    => For 2000-02-11  [RH08]
+;          0.5316         0.1498         0.4092         0.1153         0.3759         0.1060    => For 2000-04-06  [RH08]
+;------------------------------------------------------------------------------------------------------------------------
+
+mform = '(a2,6f15.4,a29)'
+FOR j=0L, 4L DO BEGIN $
+  PRINT,'; ', FLOAT(rat_mAmw_9[j]),   FLOAT(d_rat_mAmw_9[j]),   $
+              FLOAT(rat_mAmwgr_9[j]), FLOAT(d_rat_mAmwgr_9[j]), $
+              FLOAT(rat_mAmnl_9[j]), FLOAT(d_rat_mAmnl_9[j]),   $
+              dateout[j]+'  [RH09]',FORMAT=mform
+;------------------------------------------------------------------------------------------------------------------------
+;         M_A/M_w     d(M_A/M_w)       M_A/M_gr    d(M_A/M_gr)       M_A/M_nl    d(M_A/M_nl)
+;========================================================================================================================
+;          0.3846         0.0331         0.2960         0.0255         0.2719         0.0234    => For 1997-12-10  [RH09]
+;          1.3964         0.3175         1.0750         0.2444         0.9874         0.2245    => For 1998-08-26  [RH09]
+;          0.7865         0.1673         0.6054         0.1288         0.5561         0.1183    => For 1998-09-24  [RH09]
+;        103.1331      2372.0967        79.3919      1826.0408        72.9261      1677.3256    => For 2000-02-11  [RH09]
+;          0.5451         0.1528         0.4196         0.1176         0.3854         0.1080    => For 2000-04-06  [RH09]
+;------------------------------------------------------------------------------------------------------------------------
+
+mform = '(a2,6f15.4,a29)'
+FOR j=0L, 4L DO BEGIN $
+  PRINT,'; ', FLOAT(rat_mfmw_9[j]),   FLOAT(d_rat_mfmw_9[j]),   $
+              FLOAT(rat_mfmwgr_9[j]), FLOAT(d_rat_mfmwgr_9[j]), $
+              FLOAT(rat_mfmnl_9[j]), FLOAT(d_rat_mfmnl_9[j]),   $
+              dateout[j]+'  [RH09]',FORMAT=mform
+;------------------------------------------------------------------------------------------------------------------------
+;         M_f/M_w     d(M_f/M_w)       M_f/M_gr    d(M_f/M_gr)       M_f/M_nl    d(M_f/M_nl)
+;========================================================================================================================
+;          0.3185         0.0231         0.2452         0.0178         0.2252         0.0163    => For 1997-12-10  [RH09]
+;          1.0695         0.2370         0.8233         0.1825         0.7563         0.1676    => For 1998-08-26  [RH09]
+;          0.6777         0.1420         0.5217         0.1094         0.4792         0.1004    => For 1998-09-24  [RH09]
+;         84.2395      1937.5366        64.8476      1491.5164        59.5663      1370.0453    => For 2000-02-11  [RH09]
+;          0.5056         0.1366         0.3892         0.1051         0.3575         0.0966    => For 2000-04-06  [RH09]
+;------------------------------------------------------------------------------------------------------------------------
+
+
+
+FOR j=0L, 4L DO BEGIN $
+  PRINT,'; ', L_shn8_all[j], d_L_shn8_all[j], L_shn9_all[j], d_L_shn9_all[j], dateout[j]
+;-----------------------------------------------------------------------------------------
+;        L_sh (km)      dL_sh (km)       L_sh (km)      dL_sh (km)
+;           RH08            RH08            RH09            RH09
+;=========================================================================================
+;        54.181202       18.076966       55.940149       18.649932    => For 1997-12-10
+;        94.173803       31.832851       102.36640       34.548285    => For 1998-08-26
+;        71.060802       36.602800       71.760000       36.940062    => For 1998-09-24
+;        88.833903       29.560988       91.562347       30.458276    => For 2000-02-11
+;        119.35305       34.810324       119.38995       34.789505    => For 2000-04-06
+;-----------------------------------------------------------------------------------------
+
+FOR j=0L, 4L DO BEGIN $
+  PRINT,'; ', FLOAT(mach_A8_all[j]), FLOAT(d_mach_A8_all[j]), $
+              FLOAT(mach_w8_all[j]), FLOAT(d_mach_w8_all[j]), dateout[j]+'  [RH08]'
+;-----------------------------------------------------------------------------------------
+;         M_A         dM_A          M_w         dM_w
+;=========================================================================================
+;       2.73121     0.173518      7.01070     0.565367    => For 1997-12-10  [RH08]
+;       6.19768     0.391125      2.90773      1.11144    => For 1998-08-26  [RH08]
+;       3.37527     0.155571      2.94477     0.888938    => For 1998-09-24  [RH08]
+;       3.98187     0.129679      1.30798     0.821133    => For 2000-02-11  [RH08]
+;       4.29100     0.685416      7.46822      1.82253    => For 2000-04-06  [RH08]
+;-----------------------------------------------------------------------------------------
+
+FOR j=0L, 4L DO BEGIN $
+  PRINT,'; ', FLOAT(mach_wgr8_all[j]), FLOAT(d_mach_wgr8_all[j]), $
+              FLOAT(mach_nl8_all[j]),  FLOAT(d_mach_nl8_all[j]), dateout[j]+'  [RH08]'
+;-----------------------------------------------------------------------------------------
+;         M_gr        dM_gr         M_nw        dM_nw
+;=========================================================================================
+;       9.10717     0.734433      9.91463     0.799549    => For 1997-12-10  [RH08]
+;       3.77725      1.44380      4.11215      1.57181    => For 1998-08-26  [RH08]
+;       3.82537      1.15476      4.16454      1.25715    => For 1998-09-24  [RH08]
+;       1.69911      1.06668      1.84976      1.16126    => For 2000-02-11  [RH08]
+;       9.70150      2.36754      10.5617      2.57745    => For 2000-04-06  [RH08]
+;-----------------------------------------------------------------------------------------
+
+
+FOR j=0L, 4L DO BEGIN $
+  PRINT,'; ', FLOAT(mach_A9_all[j]), FLOAT(d_mach_A9_all[j]), $
+              FLOAT(mach_w9_all[j]), FLOAT(d_mach_w9_all[j]), dateout[j]+'  [RH09]'
+;-----------------------------------------------------------------------------------------
+;         M_A         dM_A          M_w         dM_w
+;=========================================================================================
+;       2.55987     0.161267      6.65630     0.390979    => For 1997-12-10  [RH09]
+;       5.86255     0.370713      4.19818     0.916727    => For 1998-08-26  [RH09]
+;       3.33071     0.153248      4.23484     0.879750    => For 1998-09-24  [RH09]
+;       3.85650     0.126823    0.0373934     0.860060    => For 2000-02-11  [RH09]
+;       4.28020     0.683464      7.85235      1.80919    => For 2000-04-06  [RH09]
+;-----------------------------------------------------------------------------------------
+
+FOR j=0L, 4L DO BEGIN $
+  PRINT,'; ', FLOAT(mach_wgr9_all[j]), FLOAT(d_mach_wgr9_all[j]), $
+              FLOAT(mach_nl9_all[j]),  FLOAT(d_mach_nl9_all[j]), dateout[j]+'  [RH09]'
+;-----------------------------------------------------------------------------------------
+;         M_gr        dM_gr         M_nw        dM_nw
+;=========================================================================================
+;       8.64678     0.507897      9.41343     0.552928    => For 1997-12-10  [RH09]
+;       5.45360      1.19086      5.93713      1.29645    => For 1998-08-26  [RH09]
+;       5.50122      1.14283      5.98897      1.24415    => For 1998-09-24  [RH09]
+;     0.0485754      1.11725    0.0528823      1.21631    => For 2000-02-11  [RH09]
+;       10.2005      2.35020      11.1049      2.55857    => For 2000-04-06  [RH09]
+;-----------------------------------------------------------------------------------------
+
+
+
+temp_shock_param_lhw_print,DATE=date
+
+;--------------------------------------------------------------------------------------------------------------------------
+;         Mcr[JCK]      dMcr[JCK]       Mcr[3DP]     Mf/Mcr[JCK]    d(Mf/Mcr)[JCK]  Mf/Mcr[3DP]    d(Mf/Mcr)[3DP]   RH08
+;==========================================================================================================================
+;          2.006          0.266          1.330          1.127          0.157          1.699          0.113  => For 1997-12-10
+;          1.808          0.295          1.250          2.622          0.439          3.792          0.238  => For 1998-08-26
+;          2.176          0.241          1.812          1.337          0.154          1.606          0.094  => For 1998-09-24
+;          2.011          0.283          1.322          1.616          0.231          2.458          0.137  => For 2000-02-11
+;          2.340          0.179          1.550          1.696          0.272          2.561          0.383  => For 2000-04-06
+;--------------------------------------------------------------------------------------------------------------------------
+
+
+;--------------------------------------------------------------------------------------------------------------------------
+;         Mcr[JCK]      dMcr[JCK]       Mcr[3DP]     Mf/Mcr[JCK]    d(Mf/Mcr)[JCK]  Mf/Mcr[3DP]    d(Mf/Mcr)[3DP]   RH09
+;==========================================================================================================================
+;          2.006          0.266          1.330          1.057          0.147          1.699          0.113  => For 1997-12-10
+;          1.808          0.295          1.250          2.483          0.416          3.792          0.238  => For 1998-08-26
+;          2.176          0.241          1.812          1.319          0.150          1.606          0.094  => For 1998-09-24
+;          2.011          0.283          1.322          1.566          0.224          2.458          0.137  => For 2000-02-11
+;          2.340          0.179          1.550          1.696          0.272          2.561          0.383  => For 2000-04-06
+;--------------------------------------------------------------------------------------------------------------------------

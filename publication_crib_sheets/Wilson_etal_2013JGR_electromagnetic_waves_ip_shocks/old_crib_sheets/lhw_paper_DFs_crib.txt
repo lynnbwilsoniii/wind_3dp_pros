@@ -1,0 +1,949 @@
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+beta_fac = 1d6*(kB*K_eV)*(2d0*muo)
+wpefac = SQRT(1d6*qq^2/me/epo)
+wppfac = SQRT(1d6*qq^2/mp/epo)
+
+;-----------------------------------------------------------------------------------------
+; => Define date-specific parameters
+;-----------------------------------------------------------------------------------------
+date    = '121097'
+t       = ['1997-12-10/03:33:00','1997-12-10/05:33:00']
+tramp   = '1997-12-10/04:33:14.664'
+gnorm   = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+dgnorm  = [ 0.015, 0.032, 0.374]
+gnorm2  = [-0.971, 0.094,-0.218]   ; => Using RH08 from JCK's site
+dgnorm2 = [ 0.016, 0.071, 0.214]
+ushn    = [132.3, 54.3]           ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2   = [124.0, 50.4]           ; => Up/Downstream normal flow speed [shock frame] RHO9
+vshn    = 391.2                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+vshn2   = 403.9                   ; => Up/Downstream normal flow speed [SC frame] RHO9
+ni_up   = 11.18    ; => Avg. upstream density [cm^(-3)]
+
+date    = '082698'
+t       = ['1998-08-26/05:40:00','1998-08-26/07:40:00']  ; -For moment writing
+tramp   = '1998-08-26/06:40:24.972'
+gnorm   = [-0.655,0.040,-0.754]   ; => Using RH08 from JCK's site
+dgnorm  = [0.010,0.009,0.561]
+gnorm2  = [-0.822,0.138,-0.553]   ; => Using RH09 from JCK's site
+dgnorm2 = [0.040,0.070,0.488]
+ushn    = [401.3,142.3]           ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2   = [379.6,135.6]           ; => Up/Downstream normal flow speed [shock frame] RHO9
+vshn    = 687.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+vshn2   = 747.2                   ; => Up/Downstream normal flow speed [SC frame] RHO9
+ni_up   = 6.68     ; => Avg. upstream density [cm^(-3)]
+
+date    = '092498'
+t       = ['1998-09-24/22:20:00','1998-09-25/00:30:00']
+tramp   = '1998-09-24/23:20:37.374'
+gnorm   = [-0.914,-0.220,-0.341]   ; => Using RH08 from JCK's site
+dgnorm  = [ 0.004, 0.009, 0.327]
+gnorm2  = [-0.939,-0.175,-0.296]   ; => Using RH09 from JCK's site
+dgnorm2 = [ 0.024, 0.070, 0.287]
+ushn    = [386.3,174.6]           ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2   = [381.2,171.3]           ; => Up/Downstream normal flow speed [shock frame] RHO9
+vshn    = 772.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+vshn2   = 780.0                   ; => Up/Downstream normal flow speed [SC frame] RHO9
+ni_up   = 8.40     ; => Avg. upstream density [cm^(-3)]
+
+date    = '021100'
+t       = ['2000-02-11/22:33:00','2000-02-12/00:33:00']
+tramp   = '2000-02-11/23:33:55.319'
+tramp2  = '2000-02-11/02:35:07.281'
+tura2   = time_double(tramp2)
+gnorm   = [-0.865,-0.452,0.218]   ; => Using RH08 from JCK's site
+dgnorm  = [ 0.017, 0.030,0.214]
+gnorm2  = [-0.930,-0.367,-0.028]   ; => Using RH09 from JCK's site
+dgnorm2 = [ 0.025, 0.063, 0.028]
+ushn    = [263.6, 81.7]           ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2   = [255.3, 79.3]           ; => Up/Downstream normal flow speed [shock frame] RHO9
+vshn    = 641.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+vshn2   = 661.1                   ; => Up/Downstream normal flow speed [SC frame] RHO9
+ni_up   = 5.31     ; => Avg. upstream density [cm^(-3)]
+
+
+;-----------------------------------------------------------------------------------------
+; => Load MFI data
+;-----------------------------------------------------------------------------------------
+tr3    = time_double(t)
+tura   = time_double(tramp)
+mydate = my_str_date(DATE=date)
+sdate  = mydate.S_DATE[0]  ; -('MMDDYY')
+ldate  = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate  = mydate.TDATE[0]   ; => 'YYYY-MM-DD'
+
+
+mag3   = read_wind_mfi(TRANGE=tr3)
+t3x    = mag3.MAG.X
+bmag4  = mag3.MAG.Y
+magf4  = mag3.BGSE.Y
+nt     = N_ELEMENTS(t3x) 
+nn0    = ['wi_B3_MAG','wi_B3_GSE']
+store_data,nn0[0],DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,nn0[1],DATA={X:mag3.MAG.X,Y:magf4}
+options,nn0[0],'YTITLE','|B| (nT)!C[GSE,3s]'
+options,nn0[1],'YTITLE','B (nT)!C[GSE,3s]'
+options,nn0[1],'COLORS',[250,150,50]
+tplot_options,'xmargin',[18,12]
+tplot_options,'ymargin',[5,5]
+tplot,nn0,TRANGE=tr3
+
+htr_mfi2tplot,DATE=date
+nn0     = ['WIND_MAG_HTR(GSE,nT)','WIND_B3_HTR(GSE,nT)']
+tplot,nn0,TRANGE=tr3
+get_data,'WIND_B3_HTR(GSE,nT)',DATA=htr_mfi
+magfhtr = htr_mfi.Y
+htr_t   = htr_mfi.X
+
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+sh_mit     = read_shocks_jck_database()
+mit_dates  = sh_mit.SDATES                 ; => 'MMDDYY'
+shocks     = sh_mit.SHOCK
+header     = sh_mit.HEADER
+ymdb_ra    = header.DATE_TIME              ; => ['YYYY-MM-DD/HH:MM:SS.sss']
+mts        = my_time_string(ymdb_ra,STR=1,FORM=1)
+unix_ra    = mts.UNIX
+
+a_compr    = shocks.COMPRESSION            ; => Shock compression ratio
+gshock     = WHERE(mit_dates EQ date,gsh)
+IF (sdate[0] EQ '021100') THEN kk = 1 ELSE kk = 0
+gcomp      = (REFORM(a_compr[gshock[kk]]))[0]
+gnorm      = gnorm                         ; => Use RH08
+;-----------------------------------------------------------------------------------------
+; => Restore distributions to IDL
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+
+mfiles = FILE_SEARCH(mdir,'*.sav')
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;-----------------------------------------------------------------------------------------
+; => Calculate Ion Moments
+;-----------------------------------------------------------------------------------------
+pesa_low_moment_calibrate,DATE=date,/NOLOAD,PLM=apl,PLBM=aplb,BNAME=nn0[1],$
+                          TRANGE=tr3,COMPRESS=gcomp,MIDRA=tura[0]
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Create stacked flux plots
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+IF (N_ELEMENTS(aelb) GT 0) THEN all_el = [ael,aelb] ELSE all_el = ael
+IF (N_ELEMENTS(aehb) GT 0) THEN all_eh = [aeh,aehb] ELSE all_eh = aeh
+
+;-----------------------------------
+; => Eesa Low
+;-----------------------------------
+sp               = SORT(all_el.TIME)
+all_el           = all_el[sp]
+elener           = dat_3dp_energy_bins(all_el[0])
+eleners          = elener.ALL_ENERGIES
+
+get_spec,'el',NAME='elspec_raw_flux',UNITS='flux',DAT_ARR=all_el
+get_data,'elspec_raw_flux' ,DATA=test0,DLIM=dlim0,LIM=lim0
+labs0 = dlim0.LABELS
+labs1  = labs0
+
+net = N_ELEMENTS(test0.X)
+ney = N_ELEMENTS(REFORM(test0.Y[0,*]))
+; => Kill off data below 20 eV [SC potential effects]
+bad = WHERE(eleners LE 45.,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN test0.Y[*,bad] = d
+IF (bd GT 0) THEN labs1[bad] = ''
+;IF (gd GT 0) THEN labs1 = [labs0[good],REPLICATE('',bd)]
+extract_tags,lim1,lim0
+extract_tags,dlim1,dlim0
+str_element,dlim1,'LABELS',labs1,/ADD_REPLACE
+store_data,'elspec_raw_flux' ,DATA=test0,DLIM=dlim1,LIM=lim1
+; => redefine colors
+ncols  = N_ELEMENTS(labs1) - bd
+colors = LINDGEN(ncols)*(250L - 30L)/(ncols - 1L) + 30L
+options,'elspec_raw_flux' ,'COLORS',colors
+DELVAR,bind,eind,test0,test1,dlim0,lim0,era,ncols,net,ney,bad
+;-----------------------------------
+; => Eesa High
+;-----------------------------------
+eh_corrupt_abins = [00, 02, 04, 06, 08, 09, 10, 11, 13, 15, 17, 19, $
+                    20, 21, 66, 68, 70, 72, 74, 75, 76, 77, 79, 81, $
+                    83, 85, 86, 87]
+gbins            = BYTARR(88) + 1
+gbins[eh_corrupt_abins] = 0b
+
+sp               = SORT(all_eh.TIME)
+all_eh           = all_eh[sp]
+all_ehc          = all_eh
+ehener           = dat_3dp_energy_bins(all_eh[0])
+eheners          = ehener.ALL_ENERGIES
+
+get_spec,'eh',NAME='ehspec_raw_flux',UNITS='flux',DAT_ARR=all_eh
+get_spec,'eh',NAME='ehspec_corrected_flux',UNITS='flux',DAT_ARR=all_ehc,BINS=gbins
+colors = LINDGEN(15L)*(250L - 30L)/(15L - 1L) + 30L
+options,['ehspec_raw_flux','ehspec_corrected_flux'],'COLORS',colors
+
+get_data,'ehspec_raw_flux'       ,DATA=test0,DLIM=dlim0,LIM=lim0
+get_data,'ehspec_corrected_flux' ,DATA=test1,DLIM=dlim1,LIM=lim1
+labs0  = dlim0.LABELS
+labs1  = labs0
+labs2  = dlim1.LABELS
+labs3  = labs2
+
+; => Kill off data above 8 keV 
+bad  = WHERE(eheners GE 8e3,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (bd GT 0) THEN test0.Y[*,bad] = d
+IF (bd GT 0) THEN test1.Y[*,bad] = d
+IF (bd GT 0) THEN labs1[bad] = ''
+IF (bd GT 0) THEN labs3[bad] = ''
+;IF (gd GT 0) THEN labs1 = [labs0[good],REPLICATE('',bd)]
+extract_tags,lim01,lim0
+extract_tags,dlim01,dlim0
+str_element,dlim01,'LABELS',labs1,/ADD_REPLACE
+extract_tags,lim2,lim1
+extract_tags,dlim2,dlim1
+str_element,dlim2,'LABELS',labs3,/ADD_REPLACE
+store_data,'ehspec_raw_flux'       ,DATA=test0,DLIM=dlim01,LIM=lim01
+store_data,'ehspec_corrected_flux' ,DATA=test1,DLIM=dlim2 ,LIM=lim2
+; => redefine colors
+ncols  = N_ELEMENTS(labs1) - bd
+col00  = LINDGEN(ncols)*(250L - 30L)/(ncols - 1L) + 30L
+colors = LONARR(ncols+bd)
+colors[good] = col00
+options,['ehspec_raw_flux','ehspec_corrected_flux'] ,'COLORS',colors
+DELVAR,bind,eind,test0,test1,dlim0,lim0,era,ncols,net,ney,bad
+;-----------------------------------
+; => Pesa High
+;-----------------------------------
+ph_raw  = aph
+ph_cor  = aph
+pesa_high_bad_bins,ph_cor
+
+IF (date NE '092498') THEN phb_raw = aphb
+IF (date NE '092498') THEN phb_cor = aphb
+IF (date NE '092498') THEN pesa_high_bad_bins,phb_cor
+
+get_spec,'ph',NAME='phspec_raw_flux',UNITS='flux',DAT_ARR=ph_raw
+get_spec,'ph',NAME='phspec_corrected_flux',UNITS='flux',DAT_ARR=ph_cor
+
+IF (date NE '092498') THEN get_spec,'phb',NAME='phbspec_raw_flux',UNITS='flux',DAT_ARR=phb_raw
+IF (date NE '092498') THEN get_spec,'phb',NAME='phbspec_corrected_flux',UNITS='flux',DAT_ARR=phb_cor
+; => combine PH and PHB [Raw]
+get_data,'phspec_raw_flux' ,DATA=test0,DLIM=dlim0,LIM=lim0
+IF (date NE '092498') THEN get_data,'phbspec_raw_flux',DATA=test1,DLIM=dlim1,LIM=lim1
+IF (date EQ '092498') THEN phtraw = test0.X ELSE phtraw = [test0.X,test1.X]
+IF (date EQ '092498') THEN phyraw = test0.Y ELSE phyraw = [test0.Y,test1.Y]
+IF (date EQ '092498') THEN phvraw = test0.V ELSE phvraw = [test0.V,test1.V]
+sp     = SORT(phtraw)
+phtraw = phtraw[sp]
+phyraw = phyraw[sp,*]
+phvraw = phvraw[sp,*]
+store_data,'phspec_raw_flux_b',DATA={X:phtraw,Y:phyraw,V:phvraw},DLIM=dlim0,LIM=lim0
+; => combine PH and PHB [Corrected]
+get_data,'phspec_corrected_flux' ,DATA=test0,DLIM=dlim0,LIM=lim0
+IF (date NE '092498') THEN get_data,'phbspec_corrected_flux',DATA=test1,DLIM=dlim1,LIM=lim1
+IF (date EQ '092498') THEN phtraw = test0.X ELSE phtraw = [test0.X,test1.X]
+IF (date EQ '092498') THEN phyraw = test0.Y ELSE phyraw = [test0.Y,test1.Y]
+IF (date EQ '092498') THEN phvraw = test0.V ELSE phvraw = [test0.V,test1.V]
+sp     = SORT(phtraw)
+phtraw = phtraw[sp]
+phyraw = phyraw[sp,*]
+phvraw = phvraw[sp,*]
+store_data,'phspec_corrected_flux_b',DATA={X:phtraw,Y:phyraw,V:phvraw},DLIM=dlim0,LIM=lim0
+
+colors = LINDGEN(15L)*(250L - 30L)/(15L - 1L) + 30L
+nna = ['phspec_raw_flux','phbspec_raw_flux',$
+       'phspec_corrected_flux','phbspec_corrected_flux',$
+       'phspec_raw_flux_b','phspec_corrected_flux_b']
+options,nna,'COLORS',colors
+DELVAR,test0,test1,phtraw,phyraw,phvraw;,ph_raw,phb_raw,ph_cor,phb_cor
+store_data,DELETE=tnames(['phspec_raw_flux','phbspec_raw_flux','phspec_corrected_flux','phbspec_corrected_flux'])
+
+;-----------------------------------
+; => Look at SST Moments
+;-----------------------------------
+RESTORE,mfiles[2]
+IF (date EQ '082698') THEN RESTORE,mfiles[3]
+IF (N_ELEMENTS(asfb) GT 0) THEN all_sf = [asf,asfb] ELSE all_sf = asf
+IF (N_ELEMENTS(asob) GT 0) THEN all_so = [aso,asob] ELSE all_so = aso
+sp               = SORT(all_sf.TIME)
+all_sf           = all_sf[sp]
+sp               = SORT(all_so.TIME)
+all_so           = all_so[sp]
+
+sf_corrupt_abins = [7,8,9,15,31,32,33]
+gbins            = BYTARR(48) + 1
+gbins[sf_corrupt_abins] = 0b
+
+get_spec,'sf',NAME='sfspec_raw_flux',UNITS='flux',DAT_ARR=all_sf
+get_spec,'sf',NAME='sfspec_corrected_flux',UNITS='flux',DAT_ARR=all_sf,BINS=gbins
+get_data,'sfspec_raw_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+sp = SORT(test0.X)
+test0.X = test0.X[sp]
+test0.Y = test0.Y[sp,*]
+test0.V = test0.V[sp,*]
+store_data,'sfspec_raw_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+get_data,'sfspec_corrected_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+sp = SORT(test0.X)
+test0.X = test0.X[sp]
+test0.Y = test0.Y[sp,*]
+test0.V = test0.V[sp,*]
+store_data,'sfspec_corrected_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+
+colors = LINDGEN(7L)*(250L - 30L)/(7L - 1L) + 30L
+options,['sfspec_raw_flux','sfspec_corrected_flux'],'COLORS',REVERSE(colors)
+
+get_spec,'so',NAME='sospec_raw_flux',UNITS='flux',DAT_ARR=all_so
+colors = LINDGEN(9L)*(250L - 30L)/(9L - 1L) + 30L
+options,'sospec_raw_flux','COLORS',REVERSE(colors)
+get_data,'sospec_raw_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+sp = SORT(test0.X)
+test0.X = test0.X[sp]
+test0.Y = test0.Y[sp,*]
+test0.V = test0.V[sp,*]
+store_data,'sospec_raw_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+
+;-----------------------------------
+; => Fix Y-Axis Tick marks
+;-----------------------------------
+ytnpw   = ['10!U-30!N','10!U-29!N','10!U-28!N','10!U-27!N','10!U-26!N','10!U-25!N',$
+           '10!U-24!N','10!U-23!N','10!U-22!N','10!U-21!N','10!U-20!N','10!U-19!N',$
+           '10!U-18!N','10!U-17!N','10!U-16!N','10!U-15!N','10!U-14!N','10!U-13!N',$
+           '10!U-12!N','10!U-11!N','10!U-10!N','10!U-09!N','10!U-08!N','10!U-07!N',$
+           '10!U-06!N','10!U-05!N','10!U-04!N','10!U-03!N','10!U-02!N','10!U-01!N',$
+           '10!U+00!N','10!U+01!N','10!U+02!N','10!U+03!N','10!U+04!N','10!U+05!N',$
+           '10!U+06!N','10!U+07!N','10!U+08!N','10!U+09!N','10!U+10!N','10!U+11!N',$
+           '10!U+12!N','10!U+13!N']
+ytvpw   = [1e-30,1e-29,1e-28,1e-27,1e-26,1e-25,1e-24,1e-23,1e-22,1e-21,1e-20,1e-19,  $
+           1e-18,1e-17,1e-16,1e-15,1e-14,1e-13,1e-12,1e-11,1e-10,1e-9,1e-8,1e-7,1e-6,$
+           1e-5,1e-4,1e-3,1e-2,1e-1,1e0,1e1,1e2,1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10,    $
+           1e11,1e12,1e13]
+
+; => Force Y-Axis ranges within the following time range
+tg      = tr3
+;tg       = tura2[0] + [-1d0,1d0]*fac_tr        ; => Only for 02-11-2000
+
+get_data,'elspec_raw_flux',DATA=test0
+good0 = WHERE(test0.X GE tg[0] AND test0.X LE tg[1],gd0)
+bad0  = WHERE(test0.Y LE 0.,bd0)
+IF (bd0 GT 0) THEN bind0 = ARRAY_INDICES(test0.Y,bad0)
+IF (bd0 GT 0) THEN test0.Y[bind0[0,*],bind0[1,*]] = f
+
+nna   = ['elspec_raw_flux']
+ymin  = MIN([test0.Y[good0,*]],/NAN)/1.05
+ymax  = MAX([test0.Y[good0,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+get_data,'phspec_raw_flux_b',DATA=test0
+get_data,'phspec_corrected_flux_b',DATA=test1
+bad0  = WHERE(test0.Y LE 0.,bd0)
+bad1  = WHERE(test1.Y LE 0.,bd1)
+good0 = WHERE(test0.X GE tg[0] AND test0.X LE tg[1],gd0)
+good1 = WHERE(test1.X GE tg[0] AND test1.X LE tg[1],gd1)
+IF (bd0 GT 0) THEN bind0 = ARRAY_INDICES(test0.Y,bad0)
+IF (bd1 GT 0) THEN bind1 = ARRAY_INDICES(test1.Y,bad1)
+IF (bd0 GT 0) THEN test0.Y[bind0[0,*],bind0[1,*]] = f
+IF (bd1 GT 0) THEN test1.Y[bind1[0,*],bind1[1,*]] = f
+
+nna   = 'phspec_raw_flux_b'
+ymin  = MIN([test0.Y[good0,*]],/NAN)/1.05
+ymax  = MAX([test0.Y[good0,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+nna   = 'phspec_corrected_flux_b'
+ymin  = MIN([test1.Y[good1,*]],/NAN)/1.05
+ymax  = MAX([test1.Y[good1,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+get_data,'ehspec_raw_flux',DATA=test0
+get_data,'ehspec_corrected_flux',DATA=test1
+bad0  = WHERE(test0.Y LE 0.,bd0)
+bad1  = WHERE(test1.Y LE 0.,bd1)
+good0 = WHERE(test0.X GE tg[0] AND test0.X LE tg[1],gd0)
+good1 = WHERE(test1.X GE tg[0] AND test1.X LE tg[1],gd1)
+IF (bd0 GT 0) THEN bind0 = ARRAY_INDICES(test0.Y,bad0)
+IF (bd1 GT 0) THEN bind1 = ARRAY_INDICES(test1.Y,bad1)
+IF (bd0 GT 0) THEN test0.Y[bind0[0,*],bind0[1,*]] = f
+IF (bd1 GT 0) THEN test1.Y[bind1[0,*],bind1[1,*]] = f
+
+nna   = ['ehspec_raw_flux','ehspec_corrected_flux']
+ymin  = MIN([test0.Y[good0,*],test1.Y[good1,*]],/NAN)/1.05
+ymax  = MAX([test0.Y[good0,*],test1.Y[good1,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+get_data,'sfspec_raw_flux',DATA=test0
+get_data,'sfspec_corrected_flux',DATA=test1
+bad0  = WHERE(test0.Y LE 0.,bd0)
+bad1  = WHERE(test1.Y LE 0.,bd1)
+good0 = WHERE(test0.X GE tg[0] AND test0.X LE tg[1],gd0)
+good1 = WHERE(test1.X GE tg[0] AND test1.X LE tg[1],gd1)
+IF (bd0 GT 0) THEN bind0 = ARRAY_INDICES(test0.Y,bad0)
+IF (bd1 GT 0) THEN bind1 = ARRAY_INDICES(test1.Y,bad1)
+IF (bd0 GT 0) THEN test0.Y[bind0[0,*],bind0[1,*]] = f
+IF (bd1 GT 0) THEN test1.Y[bind1[0,*],bind1[1,*]] = f
+
+nna   = ['sfspec_raw_flux','sfspec_corrected_flux']
+ymin  = MIN([test0.Y[good0,*],test1.Y[good1,*]],/NAN)/1.05
+ymax  = MAX([test0.Y[good0,*],test1.Y[good1,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+get_data,'sospec_raw_flux',DATA=test0
+bad0  = WHERE(test0.Y LE 0.,bd0)
+good0 = WHERE(test0.X GE tg[0] AND test0.X LE tg[1],gd0)
+IF (bd0 GT 0) THEN bind0 = ARRAY_INDICES(test0.Y,bad0)
+IF (bd0 GT 0) THEN test0.Y[bind0[0,*],bind0[1,*]] = f
+
+nna   = ['sospec_raw_flux']
+ymin  = MIN([test0.Y[good0,*]],/NAN)/1.05
+ymax  = MAX([test0.Y[good0,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+IF (date EQ '121097') THEN eb = [0,9]
+IF (date EQ '082698') THEN eb = [0,8]
+IF (date EQ '092498') THEN eb = [0,9]
+IF (date EQ '021100') THEN eb = [0,8] ELSE eb = [0,7]
+name      = tnames('phspec_corrected_flux_b')
+new_name1 = name[0]+'_low'
+new_name2 = name[0]+'_high'
+energy_remove_split,name,NEW_NAME1=new_name1,NEW_NAME2=new_name2,/SPLIT,ENERGIES=eb
+
+get_data,new_name1,DATA=test0
+get_data,new_name2,DATA=test1
+bad0  = WHERE(test0.Y LE 0.,bd0)
+bad1  = WHERE(test1.Y LE 0.,bd1)
+good0 = WHERE(test0.X GE tg[0] AND test0.X LE tg[1],gd0)
+good1 = WHERE(test1.X GE tg[0] AND test1.X LE tg[1],gd1)
+IF (bd0 GT 0) THEN bind0 = ARRAY_INDICES(test0.Y,bad0)
+IF (bd1 GT 0) THEN bind1 = ARRAY_INDICES(test1.Y,bad1)
+IF (bd0 GT 0) THEN test0.Y[bind0[0,*],bind0[1,*]] = f
+IF (bd1 GT 0) THEN test1.Y[bind1[0,*],bind1[1,*]] = f
+
+nna   = new_name1
+ymin  = MIN([test0.Y[good0,*]],/NAN)/1.05
+ymax  = MAX([test0.Y[good0,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+nna   = new_name2
+ymin  = MIN([test1.Y[good1,*]],/NAN)/1.05
+ymax  = MAX([test1.Y[good1,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+nnw = tnames('*spec_*')
+options,nnw,'YMINOR',9
+;-----------------------------------------------------------------------------------------
+; => Get TDS Times
+;-----------------------------------------------------------------------------------------
+test   = tdss_sort_relevant(DATE=date,FIXFILE=1)
+scets  = test.SCETS       ; => e.g. '2000-10-03/00:01:11.598'
+ntds   = N_ELEMENTS(scets)
+tdsst  = test.TIMES*1d-3  ; => convert to seconds
+tdssen = test.EVENT_N     ; => Event #
+tsunix = time_double(scets)  ; => Unix start time of TDSS samples
+tdsevl = DBLARR(ntds)
+FOR j=0L, ntds - 1L DO tdsevl[j] = MAX(tdsst[j,*],/NAN) - MIN(tdsst[j,*],/NAN)
+teunix = tsunix + tdsevl
+
+
+test   = tdsf_sort_relevant(DATE=date,FIXFILE=1)
+scetf  = test.SCETS          ; => e.g. '2000-10-03/00:01:11.598'
+tfunix = time_double(scetf)  ; => Unix start time of TDSF samples
+
+;-----------------------------------------------------------------------------------------
+; => Plot all TPLOT quantities
+;-----------------------------------------------------------------------------------------
+fac_tr  = 60d0
+fac_tr  = 12d1
+fac_tr  = 18d1
+fac_tr  = 36d1
+fac_tr  = 90d1
+;fac_tr  = 36d2
+;n_td    = tura2[0] + [-1d0,1d0]*fac_tr        ; => Only for 02-11-2000
+n_td    = tura[0] + [-1d0,1d0]*fac_tr
+n_t     = time_string(n_td,PREC=3)
+
+;t_u2    = t
+;nn0     = ['wi_B3_MAG','wi_B3_GSE']
+;mfipre  = 'Wind_MFI3s_'
+t_u2    = n_t
+nn0     = ['WIND_MAG_HTR(GSE,nT)','WIND_B3_HTR(GSE,nT)']
+mfipre  = 'Wind_HTR-MFI_'
+fnm     = file_name_times(t_u2,prec=0)
+sfname  = fnm.F_TIME[0]+'_'+fnm.F_TIME[1]+'_TDSS-Start-Red-End-Blue_TDSF-Green'
+
+prefx   = mfipre[0]+'SST-Foil_Flux_'
+nna     = tnames([nn0,'sfspec_corrected_flux'])
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+popen,prefx[0]+sfname[0],/PORT
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+pclose
+
+prefx   = mfipre[0]+'SST-Open_Flux_'
+nna     = tnames([nn0,'sospec_raw_flux'])
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+popen,prefx[0]+sfname[0],/PORT
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+pclose
+
+prefx   = mfipre[0]+'Eesa-Low_Flux_'
+nna     = tnames([nn0,'elspec_raw_flux'])
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+popen,prefx[0]+sfname[0],/PORT
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+pclose
+
+prefx   = mfipre[0]+'Eesa-High_Flux_'
+nna     = tnames([nn0,'ehspec_corrected_flux'])
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+popen,prefx[0]+sfname[0],/PORT
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+pclose
+
+prefx   = mfipre[0]+'Pesa-High-raw-corrected_Flux_'
+nna     = tnames([nn0,'phspec_raw_flux_b','phspec_corrected_flux_b'])
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+popen,prefx[0]+sfname[0],/PORT
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+pclose
+
+
+prefx   = mfipre[0]+'Pesa-High-raw-corrected_Flux_High-Low_'
+nna     = tnames([nn0,new_name1,new_name2])
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+popen,prefx[0]+sfname[0],/PORT
+  tplot,nna,TRANGE=time_double(t_u2)
+  time_bar,tsunix,VARNAME=nna,COLOR=250L
+  time_bar,teunix,VARNAME=nna,COLOR= 50L
+  time_bar,tfunix,VARNAME=nna,COLOR=150L
+pclose
+
+;-----------------------------------------------------------------------------------------
+; => Create Electron DFs and PADs
+;-----------------------------------------------------------------------------------------
+ngrid   = 30
+vlim    = 2d4
+numpa   = 24L
+nel     = N_ELEMENTS(ael)
+npast   = STRING(numpa[0],FORMAT='(I2.2)')
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+dfdir   = '~/Desktop/3DP_contours/'+date[0]+'/PS_EL/'
+pddir   = '~/Desktop/3DP_contours/'+date[0]+'/PADS_EL/'
+mtsel   = my_time_string(ael.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+dfsuff  = '_'+npast[0]+'PAs-30Grids-one-count_vtherm-taniso-heatf_interp-no-low_DF_RH08'
+pdsuff  = '_'+npast[0]+'PAs-30Grids-7-Highest-Energies_interp-no-low_PAD_RH08'
+FOR j=0L, nel - 1L DO BEGIN                                                         $
+  dat   = ael[j]                                                                  & $
+  del   = convert_vframe(dat,/INTERP)                                             & $
+  bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)                                 & $
+  IF (bd GT 0) THEN del.DATA[bad,*] = f                                           & $
+  pd    = pad(del,NUM_PA=numpa[0])                                                & $
+  df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)                   & $
+  extract_tags,del,df                                                             & $
+  pltn2 = pddir[0]+'el_'+gdate[j]+'_'+UTtime[j]+pdsuff[0]                         & $
+  popen,pltn2,/port                                                               & $
+    my_padplot_both,pd,UNITS='flux',EBINS=[0L,6L]                                 & $
+  pclose                                                                          & $
+  pltn1  = dfdir+'el_'+gdate[j]+'_'+UTtime[j]+dfsuff[0]                           & $
+  popen,pltn1,/port                                                               & $
+    cont2d,del,NGRID=30,VLIM=2d4,GNORM=gnorm,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=dat   & $
+  pclose
+
+
+ngrid   = 30
+vlim    = 2d4
+numpa   = 24L
+nelb    = N_ELEMENTS(aelb)
+suffex  = '-one-count_vtherm-taniso-heatf_interp-no-low_'
+npast   = STRING(numpa[0],FORMAT='(I2.2)')
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+dfdir   = '~/Desktop/3DP_contours/'+date[0]+'/PS_ELB/'
+pddir   = '~/Desktop/3DP_contours/'+date[0]+'/PADS_ELB/'
+mtsel   = my_time_string(aelb.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+dfsuff  = '_'+npast[0]+'PAs-30Grids'+suffex[0]+'DF_RH08'
+pdsuff  = '_'+npast[0]+'PAs-30Grids-7-Highest-Energies_interp-no-low_PAD_RH08'
+FOR j=0L, nelb - 1L DO BEGIN                                                        $
+  dat   = aelb[j]                                                                 & $
+  del   = convert_vframe(dat,/INTERP)                                             & $
+  bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)                                 & $
+  IF (bd GT 0) THEN del.DATA[bad,*] = f                                           & $
+  pd    = pad(del,NUM_PA=numpa[0])                                                & $
+  df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)                   & $
+  extract_tags,del,df                                                             & $
+  pltn2 = pddir[0]+'elb_'+gdate[j]+'_'+UTtime[j]+pdsuff[0]                        & $
+  popen,pltn2,/port                                                               & $
+    my_padplot_both,pd,UNITS='flux',EBINS=[0L,6L]                                 & $
+  pclose                                                                          & $
+  pltn1  = dfdir+'elb_'+gdate[j]+'_'+UTtime[j]+dfsuff[0]                          & $
+  popen,pltn1,/port                                                               & $
+    cont2d,del,NGRID=30,VLIM=2d4,GNORM=gnorm,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=dat   & $
+  pclose
+
+
+;gaelb   = aelb
+;dfra    = [1e-16,1.5e-10] ; => Specific to 1998-08-26 Event
+;suffex  = '-one-count_vtherm-taniso-heatf_interp-no-low_1E-16_to_1.5E-10_' ; => Specific to 1998-08-26 Event
+;dfra    = [1e-17,2.5e-10] ; => Specific to 1997-12-10 Event
+;suffex  = '-one-count_vtherm-taniso-heatf_interp-no-low_1E-17_to_2.5E-10_' ; => Specific to 1997-12-10 Event
+dfra    = [1e-16,5e-11] ; => Specific to 2000-02-11 Event
+suffex  = '-one-count_vtherm-taniso-heatf_interp-no-low_1E-16_to_5E-11_' ; => Specific to 2000-02-11 Event
+gaelb   = aelb[0L:97L] ; => Specific to 2000-02-11 Event
+ngrid   = 30
+vlim    = 2d4
+;numpa   = 24L
+numpa   = 17L
+nelb    = N_ELEMENTS(gaelb)
+npast   = STRING(numpa[0],FORMAT='(I2.2)')
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+dfdir   = '~/Desktop/3DP_contours/'+date[0]+'/PS_ELB/'
+mtsel   = my_time_string(gaelb.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+dfsuff  = '_'+npast[0]+'PAs-30Grids'+suffex[0]+'DF_RH08'
+FOR j=0L, nelb - 1L DO BEGIN                                                        $
+  dat   = gaelb[j]                                                                & $
+  del   = convert_vframe(dat,/INTERP)                                             & $
+  bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)                                 & $
+  IF (bd GT 0) THEN del.DATA[bad,*] = f                                           & $
+  pd    = pad(del,NUM_PA=numpa[0])                                                & $
+  df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)                   & $
+  extract_tags,del,df                                                             & $
+  pltn1  = dfdir+'elb_'+gdate[j]+'_'+UTtime[j]+dfsuff[0]                          & $
+  popen,pltn1,/port                                                               & $
+    cont2d,del,NGRID=30,VLIM=2d4,GNORM=gnorm,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=dat,DFRA=dfra   & $
+  pclose
+
+
+dfra    = [1e-16,5e-11] ; => Specific to 2000-02-11 Event
+suffex  = '-one-count_vtherm-taniso-heatf_interp_1E-16_to_5E-11_' ; => Specific to 2000-02-11 Event
+gaelb   = aelb[0L:97L] ; => Specific to 2000-02-11 Event
+ngrid   = 30
+vlim    = 2d4
+numpa   = 24L
+;numpa   = 17L
+nelb    = N_ELEMENTS(gaelb)
+npast   = STRING(numpa[0],FORMAT='(I2.2)')
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+dfdir   = '~/Desktop/3DP_contours/'+date[0]+'/PS_ELB/'
+mtsel   = my_time_string(gaelb.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+dfsuff  = '_'+npast[0]+'PAs-30Grids'+suffex[0]+'DF_RH08'
+FOR j=0L, nelb - 1L DO BEGIN                                                        $
+  dat   = gaelb[j]                                                                & $
+  del   = convert_vframe(dat,/INTERP)                                             & $
+  pd    = pad(del,NUM_PA=numpa[0])                                                & $
+  df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)                   & $
+  extract_tags,del,df                                                             & $
+  pltn1  = dfdir+'elb_'+gdate[j]+'_'+UTtime[j]+dfsuff[0]                          & $
+  popen,pltn1,/port                                                               & $
+    cont2d,del,NGRID=30,VLIM=2d4,GNORM=gnorm,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=dat,DFRA=dfra   & $
+  pclose
+
+
+; => 3 times in paper
+gscet = ymdels[56:58]
+gelbt = aelb[56:58].TIME
+testx = interp(magfhtr[*,0],htr_t,gelbt,/NO_EXTRAP)
+testy = interp(magfhtr[*,1],htr_t,gelbt,/NO_EXTRAP)
+testz = interp(magfhtr[*,2],htr_t,gelbt,/NO_EXTRAP)
+FOR j=0L, 2L DO PRINT,';  ',gscet[j],'  ',testx[j],testy[j],testz[j]
+; => HTR MFI fields at start of 3 ELB Samples
+;  1998-08-26/06:40:21.6715        -2.7752904       8.4069914      0.92587210
+;  1998-08-26/06:40:24.7731        -3.2315945       8.7934422       1.2457221
+;  1998-08-26/06:40:27.8748        -1.8241928       18.035406      0.59850252
+
+gelbt = aelb[56:58].END_TIME
+testx = interp(magfhtr[*,0],htr_t,gelbt,/NO_EXTRAP)
+testy = interp(magfhtr[*,1],htr_t,gelbt,/NO_EXTRAP)
+testz = interp(magfhtr[*,2],htr_t,gelbt,/NO_EXTRAP)
+FOR j=0L, 2L DO PRINT,';  ',gscet[j],'  ',testx[j],testy[j],testz[j]
+; => HTR MFI fields at end   of 3 ELB Samples
+;  1998-08-26/06:40:21.6715        -3.2316358       8.7933974       1.2457404
+;  1998-08-26/06:40:24.7731        -1.8241920       18.035467      0.59827560
+;  1998-08-26/06:40:27.8748         1.5503834       18.223336      -1.4494076
+
+gelb0 = aelb[56:58]
+FOR j=0L, 2L DO PRINT,';  ',gscet[j],'  ',gelb0[j].MAGF[0],gelb0[j].MAGF[1],gelb0[j].MAGF[2]
+; => MFI fields used by 3 ELB Samples
+;  1998-08-26/06:40:21.6715       -2.73839      9.63616      1.29416
+;  1998-08-26/06:40:24.7731       -2.50432      15.6703      1.75252
+;  1998-08-26/06:40:27.8748       -1.03814      18.7230   -0.0773245
+
+;-----------------------------------------------------------------------------------------
+; => Create Ion DFs
+;-----------------------------------------------------------------------------------------
+
+vcirc   = 700d0   ; => Put a circle of constant energy at 700 km/s on contours
+gaphb   = aphb
+mts     = my_time_string(gaphb.TIME,UNIX=1)
+ymdb    = mts.DATE_TIME
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+nphb    = N_ELEMENTS(gaphb)
+
+mdir    = '~/Desktop/3DP_contours/'+date[0]+'/Pesa_High_Burst_Dists/'
+suffx   = '-3D-20Grids_sundir_Vsw-B-Plane_DF_RH08'
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+FOR j=0L, nphb - 1L DO BEGIN                                                            $
+  dat    = gaphb[j]                                                                   & $
+  pltn1  = mdir[0]+'phb_'+gdate[j]+'_'+UTtime[j]+suffx[0]                             & $
+  popen,pltn1,/port                                                                   & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NNORM=gnorm,EX_VEC=sunv,EX_VN=sunn,VCIRC=vcirc[0],/ONE_C,/SM_CUTS  & $
+  pclose
+
+
+; => Specific to 1997-12-10 Event
+dfra    = [1e-13,2.5e-10]
+vcirc   = 500d0   ; => Put a circle of constant energy at 500 km/s on contours
+gaphb   = aphb
+mts     = my_time_string(gaphb.TIME,UNIX=1)
+ymdb    = mts.DATE_TIME
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+nphb    = N_ELEMENTS(gaphb)
+
+mdir    = '~/Desktop/3DP_contours/'+date[0]+'/Pesa_High_Burst_Dists/'
+suffx   = '-3D-20Grids_sundir_Vsw-B-Plane_1E-13_to_2.5E-10_DF_RH08'
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+FOR j=0L, nphb - 1L DO BEGIN                                                            $
+  dat    = gaphb[j]                                                                   & $
+  pltn1  = mdir[0]+'phb_'+gdate[j]+'_'+UTtime[j]+suffx[0]                             & $
+  popen,pltn1,/port                                                                   & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NNORM=gnorm,EX_VEC=sunv,EX_VN=sunn,VCIRC=vcirc[0],/ONE_C,/SM_CUTS,DFRA=dfra  & $
+  pclose
+
+
+
+dfra    = [1e-13,2.5e-10]
+vcirc   = 500d0   ; => Put a circle of constant energy at 500 km/s on contours
+gaphb   = aphb
+mts     = my_time_string(gaphb.TIME,UNIX=1)
+ymdb    = mts.DATE_TIME
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+nphb    = N_ELEMENTS(gaphb)
+
+mdir    = '~/Desktop/3DP_contours/'+date[0]+'/Pesa_High_Burst_Dists/'
+suffx   = '-3D-20Grids_sundir_VxB-BxVxB-Plane_1E-13_to_2.5E-10_DF_RH08'
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+FOR j=0L, nphb - 1L DO BEGIN                                                            $
+  dat    = gaphb[j]                                                                   & $
+  pltn1  = mdir[0]+'phb_'+gdate[j]+'_'+UTtime[j]+suffx[0]                             & $
+  popen,pltn1,/port                                                                   & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NNORM=gnorm,EX_VEC=sunv,EX_VN=sunn,/VXB_PLANE,VCIRC=vcirc[0],/ONE_C,/SM_CUTS,DFRA=dfra  & $
+  pclose
+
+
+; => Specific to 1998-08-26 Event
+dfra    = [1e-13,1.5e-9]
+vcirc   = 700d0   ; => Put a circle of constant energy at 700 km/s on contours
+gaphb   = aphb
+mts     = my_time_string(gaphb.TIME,UNIX=1)
+ymdb    = mts.DATE_TIME
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+nphb    = N_ELEMENTS(gaphb)
+
+mdir    = '~/Desktop/3DP_contours/'+date[0]+'/Pesa_High_Burst_Dists/'
+suffx   = '-3D-20Grids_sundir_Vsw-B-Plane_1E-13_to_1.5E-09_DF_RH08'
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+FOR j=0L, nphb - 1L DO BEGIN                                                            $
+  dat    = gaphb[j]                                                                   & $
+  pltn1  = mdir[0]+'phb_'+gdate[j]+'_'+UTtime[j]+suffx[0]                             & $
+  popen,pltn1,/port                                                                   & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NNORM=gnorm,EX_VEC=sunv,EX_VN=sunn,VCIRC=vcirc[0],/ONE_C,/SM_CUTS,DFRA=dfra  & $
+  pclose
+
+
+
+dfra    = [1e-13,1.5e-9]
+vcirc   = 700d0   ; => Put a circle of constant energy at 700 km/s on contours
+gaphb   = aphb
+mts     = my_time_string(gaphb.TIME,UNIX=1)
+ymdb    = mts.DATE_TIME
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+nphb    = N_ELEMENTS(gaphb)
+
+mdir    = '~/Desktop/3DP_contours/'+date[0]+'/Pesa_High_Burst_Dists/'
+suffx   = '-3D-20Grids_sundir_VxB-BxVxB-Plane_1E-13_to_1.5E-09_DF_RH08'
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+FOR j=0L, nphb - 1L DO BEGIN                                                            $
+  dat    = gaphb[j]                                                                   & $
+  pltn1  = mdir[0]+'phb_'+gdate[j]+'_'+UTtime[j]+suffx[0]                             & $
+  popen,pltn1,/port                                                                   & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NNORM=gnorm,EX_VEC=sunv,EX_VN=sunn,/VXB_PLANE,VCIRC=vcirc[0],/ONE_C,/SM_CUTS,DFRA=dfra  & $
+  pclose
+
+
+; => Specific to 2000-02-11 Event
+
+dfra    = [1e-13,4e-9]
+vcirc   = 760d0   ; => Put a circle of constant energy at 760 km/s on contours
+gaphb   = aphb[0L:99L]
+mts     = my_time_string(gaphb.TIME,UNIX=1)
+ymdb    = mts.DATE_TIME
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+nphb    = N_ELEMENTS(gaphb)
+
+mdir    = '~/Desktop/3DP_contours/'+date[0]+'/Pesa_High_Burst_Dists/'
+suffx   = '-3D-20Grids_sundir_Vsw-B-Plane_1E-13_to_4E-09_DF_RH08'
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+FOR j=0L, nphb - 1L DO BEGIN                                                            $
+  dat    = gaphb[j]                                                                   & $
+  pltn1  = mdir[0]+'phb_'+gdate[j]+'_'+UTtime[j]+suffx[0]                             & $
+  popen,pltn1,/port                                                                   & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NNORM=gnorm,EX_VEC=sunv,EX_VN=sunn,VCIRC=vcirc[0],/ONE_C,/SM_CUTS,DFRA=dfra  & $
+  pclose
+
+
+mdir    = '~/Desktop/3DP_contours/'+date[0]+'/Pesa_High_Burst_Dists/'
+suffx   = '-3D-20Grids_sundir_VxB-BxVxB-Plane_1E-13_to_4E-09_DF_RH08'
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+FOR j=0L, nphb - 1L DO BEGIN                                                            $
+  dat    = gaphb[j]                                                                   & $
+  pltn1  = mdir[0]+'phb_'+gdate[j]+'_'+UTtime[j]+suffx[0]                             & $
+  popen,pltn1,/port                                                                   & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NNORM=gnorm,EX_VEC=sunv,EX_VN=sunn,/VXB_PLANE,VCIRC=vcirc[0],/ONE_C,/SM_CUTS,DFRA=dfra  & $
+  pclose
+

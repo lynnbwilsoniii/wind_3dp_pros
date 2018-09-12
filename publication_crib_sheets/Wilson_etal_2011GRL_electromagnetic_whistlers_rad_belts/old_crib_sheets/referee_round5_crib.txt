@@ -1,0 +1,2128 @@
+
+
+
+
+
+
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Plot 2 TDSS examples in FACs  [V2 = +X-GSE direction or Earth-Sun Vector]
+;-----------------------------------------------------------------------------------------
+;------------------------------------------------
+; => 1998-11-13 Event
+;------------------------------------------------
+freq       = [9d2,22d2]                ; => Frequency range [Hz]
+bo         = [452.000d0,452.000d0]     ; => (nT)
+no         = [127.540d0,168.418d0]     ; => [cm^(-3)]
+ndat       = 1000L
+ep1        = 4d2
+ep2        = 7d1
+angles     = wave_normal_angle_cold(ep1,ep2,bo,no,FREQF=freq,NDAT=ndat)
+PRINT, angles
+;       76.126126       70.180180
+;       76.126126       70.270270
+
+date     = '111398'
+test0    = tds_waves_to_facs(DATE=date,FIXFILE=0,TDSS=1,TDSF=0,NPOW=0,MAGNETO=1,PARAX=0)
+j        = 10L
+scet0    = test0.SCETS[j]
+event0   = test0.EVENT_N[j]
+bf0      = REFORM(test0.BF_FAC[j,*,*])
+ef0      = REFORM(test0.EF_FAC[j,*,*])
+tt0      = REFORM(test0.TIMES[j,*])
+PRINT,';  ', minmax(ABS(ef0))
+PRINT,';  ', minmax(ABS(bf0))
+;     0.00044317079       204.37498
+;     0.00017891054       5.8002350
+yrae0    = [-1d0,1d0]*210d0
+; => Define E-field Components (mV/m)
+epara00  = REFORM(ef0[*,2])     ; => Field-Aligned E-field
+eperp10  = REFORM(ef0[*,0])     ; => (B x V2) x B
+eperp20  = REFORM(ef0[*,1])     ; => (B x V2)
+; => Define B-field Components (nT)
+bpara00  = REFORM(bf0[*,2])     ; => Field-Aligned B-field
+bperp10  = REFORM(bf0[*,0])     ; => (B x V2) x B
+bperp20  = REFORM(bf0[*,1])     ; => (B x V2)
+
+rms_ep10 = SQRT(MEAN(eperp10,/NAN)^2 + STDDEV(eperp10,/NAN)^2)
+rms_ep20 = SQRT(MEAN(eperp20,/NAN)^2 + STDDEV(eperp20,/NAN)^2)
+PRINT,';  ', rms_ep10, rms_ep20
+;         14.205250       30.272726
+
+PRINT,';  ', MEAN(eperp10/eperp20,/NAN), STDDEV(eperp10/eperp20,/NAN)/SQRT(2048d0)
+PRINT,';  ', MEAN(eperp20/eperp10,/NAN), STDDEV(eperp20/eperp10,/NAN)/SQRT(2048d0)
+;         1.1236722       2.1185123
+;        -2.9845200       4.5420825
+
+
+freq       = [9d2,22d2]                ; => Frequency range [Hz]
+bo         = [452.000d0,452.000d0]     ; => (nT)
+no         = [127.540d0,168.418d0]     ; => [cm^(-3)]
+ndat       = 1000L
+ep1        = ABS(MEAN(eperp20/eperp10,/NAN))
+ep2        = 1d0
+angles     = wave_normal_angle_cold(ep1,ep2,bo,no,FREQF=freq,NDAT=ndat)
+PRINT,';  ', MIN(angles,/NAN), MAX(angles,/NAN), MEAN(angles,/NAN), STDDEV(angles,/NAN)
+;         61.261261       66.846847       64.031532       3.1990440
+
+freq       = [9d2,22d2]                ; => Frequency range [Hz]
+bo         = [452.000d0,452.000d0]     ; => (nT)
+no         = [127.540d0,168.418d0]     ; => [cm^(-3)]
+ndat       = 1000L
+ep1        = ABS(MEAN(eperp10/eperp20,/NAN))
+ep2        = 1d0
+angles     = wave_normal_angle_cold(ep1,ep2,bo,no,FREQF=freq,NDAT=ndat)
+PRINT,';  ', MIN(angles,/NAN), MAX(angles,/NAN), MEAN(angles,/NAN), STDDEV(angles,/NAN)
+;         22.882883       25.405405       24.144144       1.4563791
+
+freq       = [9d2,22d2]                ; => Frequency range [Hz]
+bo         = [452.000d0,452.000d0]     ; => (nT)
+no         = [127.540d0,168.418d0]     ; => [cm^(-3)]
+ndat       = 1000L
+ep1        = rms_ep20[0]/rms_ep10[0]
+ep2        = 1d0
+angles     = wave_normal_angle_cold(ep1,ep2,bo,no,FREQF=freq,NDAT=ndat)
+PRINT,';  ', MIN(angles,/NAN), MAX(angles,/NAN), MEAN(angles,/NAN), STDDEV(angles,/NAN)
+;         53.513514       58.648649       56.081081       2.9647717
+
+; => new angles range from 22.9 - 66.8 degrees
+thkb       = [22.9d0,66.8d0]
+freq       = [9d2,22d2]                ; => Frequency range [Hz]
+bo         = [452.000d0,452.000d0]     ; => (nT)
+no         = [127.540d0,168.418d0]     ; => [cm^(-3)]
+landres    = DBLARR(2,2,2)
+cyclres    = DBLARR(2,2,2)
+FOR i=0L, 1L DO BEGIN $
+  FOR j=0L, 1L DO BEGIN $
+    FOR k=0L, 1L DO BEGIN $
+    test0 = cold_plasma_whistler_params(bo[k],no[k],freq[i],thkb[j]) & $
+    landres[i,j,k] = test0.ERES_LAND[0] & $
+    cyclres[i,j,k] = test0.ERES_NCYC[0]
+
+PRINT, minmax(landres[*,*,0],/POS), minmax(cyclres[*,*,0],/POS)
+; => For theta_kB = 23 - 67
+;       283.46208       980.86383
+;       13750.926       100371.12
+PRINT, minmax(landres[*,*,1],/POS), minmax(cyclres[*,*,1],/POS)
+; => For theta_kB = 23 - 67
+;       214.66087       742.79099
+;       10413.336       76009.287
+
+
+; => new RMS angles range from 53.5 - 58.6 degrees
+thkb       = [53.513514d0,58.648649d0]
+freq       = [9d2,22d2]                ; => Frequency range [Hz]
+bo         = [452.000d0,452.000d0]     ; => (nT)
+no         = [127.540d0,168.418d0]     ; => [cm^(-3)]
+landres    = DBLARR(2,2,2)
+cyclres    = DBLARR(2,2,2)
+FOR i=0L, 1L DO BEGIN $
+  FOR j=0L, 1L DO BEGIN $
+    FOR k=0L, 1L DO BEGIN $
+    test0 = cold_plasma_whistler_params(bo[k],no[k],freq[i],thkb[j]) & $
+    landres[i,j,k] = test0.ERES_LAND[0] & $
+    cyclres[i,j,k] = test0.ERES_NCYC[0]
+
+PRINT, minmax(landres[*,*,0],/POS), minmax(cyclres[*,*,0],/POS)
+; => For theta_kB = 54 - 59
+;       418.95017       885.17250
+;       18580.538       80064.135
+PRINT, minmax(landres[*,*,1],/POS), minmax(cyclres[*,*,1],/POS)
+; => For theta_kB = 54 - 59
+;       317.26362       670.32562
+;       14070.716       60631.166
+
+; => Angle range from MVA
+thkb       = [0d0,6d1]
+freq       = [9d2,22d2]                ; => Frequency range [Hz]
+bo         = [452.000d0,452.000d0]     ; => (nT)
+no         = [127.540d0,168.418d0]     ; => [cm^(-3)]
+landres    = DBLARR(2,2,2)
+cyclres    = DBLARR(2,2,2)
+FOR i=0L, 1L DO BEGIN $
+  FOR j=0L, 1L DO BEGIN $
+    FOR k=0L, 1L DO BEGIN $
+    test0 = cold_plasma_whistler_params(bo[k],no[k],freq[i],thkb[j]) & $
+    landres[i,j,k] = test0.ERES_LAND[0] & $
+    cyclres[i,j,k] = test0.ERES_NCYC[0]
+
+PRINT, minmax(landres[*,*,0],/POS), minmax(cyclres[*,*,0],/POS)
+; => For theta_kB = 0 - 60
+;       262.84326       902.32687
+;       12899.442       82777.016
+PRINT, minmax(landres[*,*,1],/POS), minmax(cyclres[*,*,1],/POS)
+; => For theta_kB = 0 - 60
+;       199.04659       683.31632
+;       9768.5212       62685.584
+
+;------------------------------------------------
+; => 2000-04-10 Event
+;------------------------------------------------
+freq       = [8d2,21d2]                ; => Frequency range [Hz]
+bo         = [168.000d0,168.000d0]     ; => (nT)
+no         = [ 10.651d0, 70.920d0]     ; => [cm^(-3)]
+ndat       = 1000L
+ep1        = 65d0
+ep2        = 2d1
+angles     = wave_normal_angle_cold(ep1,ep2,bo,no,FREQF=freq,NDAT=ndat)
+PRINT, angles
+;       62.972973       48.198198
+;       63.063063       48.468468
+
+date     = '040900'
+test1    = tds_waves_to_facs(DATE=date,FIXFILE=0,TDSS=1,TDSF=0,NPOW=0,MAGNETO=1,PARAX=0)
+j        = 8L
+scet1    = test1.SCETS[j]
+event1   = test1.EVENT_N[j]
+bf1      = REFORM(test1.BF_FAC[j,*,*])
+ef1      = REFORM(test1.EF_FAC[j,*,*])
+tt1      = REFORM(test1.TIMES[j,*])
+PRINT,';  ', minmax(ABS(ef1))
+PRINT,';  ', minmax(ABS(bf1))
+
+yrae1    = [-1d0,1d0]*6d1
+; => Define E-field Components (mV/m)
+epara01  = REFORM(ef1[*,2])     ; => Field-Aligned E-field
+eperp11  = REFORM(ef1[*,0])     ; => (B x V2) x B
+eperp21  = REFORM(ef1[*,1])     ; => (B x V2)
+; => Define B-field Components (nT)
+bpara01  = REFORM(bf1[*,2])     ; => Field-Aligned B-field
+bperp11  = REFORM(bf1[*,0])     ; => (B x V2) x B
+bperp21  = REFORM(bf1[*,1])     ; => (B x V2)
+
+rms_ep11 = SQRT(MEAN(eperp11,/NAN)^2 + STDDEV(eperp11,/NAN)^2)
+rms_ep21 = SQRT(MEAN(eperp21,/NAN)^2 + STDDEV(eperp21,/NAN)^2)
+PRINT,';  ', rms_ep11, rms_ep21
+;         13.368791       12.133481
+
+PRINT,';  ', MEAN(eperp11/eperp21,/NAN), STDDEV(eperp11/eperp21,/NAN)/SQRT(2048d0)
+PRINT,';  ', MEAN(eperp21/eperp11,/NAN), STDDEV(eperp21/eperp11,/NAN)/SQRT(2048d0)
+;        -1.9557798      0.87236617
+;        0.25169368      0.51296109
+
+freq       = [8d2,21d2]                ; => Frequency range [Hz]
+bo         = [168.000d0,168.000d0]     ; => (nT)
+no         = [ 10.651d0, 70.920d0]     ; => [cm^(-3)]
+ndat       = 1000L
+
+ep1        = ABS(MEAN(eperp11/eperp21,/NAN))
+ep2        = 1d0
+angles     = wave_normal_angle_cold(ep1,ep2,bo,no,FREQF=freq,NDAT=ndat)
+PRINT,';  ', MIN(angles,/NAN), MAX(angles,/NAN), MEAN(angles,/NAN), STDDEV(angles,/NAN)
+;         38.558559       51.261261       44.932432       7.2563546
+
+ep1        = ABS(MEAN(eperp21/eperp11,/NAN))
+ep2        = 1d0
+angles     = wave_normal_angle_cold(ep1,ep2,bo,no,FREQF=freq,NDAT=ndat)
+PRINT,';  ', MIN(angles,/NAN), MAX(angles,/NAN), MEAN(angles,/NAN), STDDEV(angles,/NAN)
+;         0.0000000     0.090090090     0.045045045     0.052013538
+
+ep1        = rms_ep11[0]/rms_ep21[0]
+ep2        = 1d0
+angles     = wave_normal_angle_cold(ep1,ep2,bo,no,FREQF=freq,NDAT=ndat)
+PRINT,';  ', MIN(angles,/NAN), MAX(angles,/NAN), MEAN(angles,/NAN), STDDEV(angles,/NAN)
+;         15.405405       22.522523       18.986486       4.0832284
+
+; => new angles range from 15.4 - 51.3 degrees
+thkb       = [15.4d0,51.3d0]
+freq       = [8d2,21d2]                ; => Frequency range [Hz]
+bo         = [168.000d0,168.000d0]     ; => (nT)
+no         = [ 10.651d0, 70.920d0]     ; => [cm^(-3)]
+landres    = DBLARR(2,2,2)
+cyclres    = DBLARR(2,2,2)
+FOR i=0L, 1L DO BEGIN $
+  FOR j=0L, 1L DO BEGIN $
+    FOR k=0L, 1L DO BEGIN $
+    test0 = cold_plasma_whistler_params(bo[k],no[k],freq[i],thkb[j]) & $
+    landres[i,j,k] = test0.ERES_LAND[0] & $
+    cyclres[i,j,k] = test0.ERES_NCYC[0]
+
+PRINT, minmax(landres[*,*,0],/POS), minmax(cyclres[*,*,0],/POS)
+; => For theta_kB = 15 - 51
+;       956.28531       1636.2741
+;       2063.3916       31017.939
+PRINT, minmax(landres[*,*,1],/POS), minmax(cyclres[*,*,1],/POS)
+; => For theta_kB = 15 - 51
+;       143.61809       245.74105
+;       309.88698       4658.3766
+
+
+; => new RMS angles range from 15.4 - 22.5 degrees
+thkb       = [15.405405d0,22.522523d0]
+freq       = [8d2,21d2]                ; => Frequency range [Hz]
+bo         = [168.000d0,168.000d0]     ; => (nT)
+no         = [ 10.651d0, 70.920d0]     ; => [cm^(-3)]
+landres    = DBLARR(2,2,2)
+cyclres    = DBLARR(2,2,2)
+FOR i=0L, 1L DO BEGIN $
+  FOR j=0L, 1L DO BEGIN $
+    FOR k=0L, 1L DO BEGIN $
+    test0 = cold_plasma_whistler_params(bo[k],no[k],freq[i],thkb[j]) & $
+    landres[i,j,k] = test0.ERES_LAND[0] & $
+    cyclres[i,j,k] = test0.ERES_NCYC[0]
+
+PRINT, minmax(landres[*,*,0],/POS), minmax(cyclres[*,*,0],/POS)
+; => For theta_kB = 15 - 23
+;       956.30484       1643.3872
+;       2513.5045       23530.774
+PRINT, minmax(landres[*,*,1],/POS), minmax(cyclres[*,*,1],/POS)
+; => For theta_kB = 15 - 23
+;       143.62102       246.80932
+;       377.48641       3533.9294
+
+; => Angle range from MVA
+thkb       = [0d0,6d1]
+freq       = [8d2,21d2]                ; => Frequency range [Hz]
+bo         = [168.000d0,168.000d0]     ; => (nT)
+no         = [ 10.651d0, 70.920d0]     ; => [cm^(-3)]
+landres    = DBLARR(2,2,2)
+cyclres    = DBLARR(2,2,2)
+FOR i=0L, 1L DO BEGIN $
+  FOR j=0L, 1L DO BEGIN $
+    FOR k=0L, 1L DO BEGIN $
+    test0 = cold_plasma_whistler_params(bo[k],no[k],freq[i],thkb[j]) & $
+    landres[i,j,k] = test0.ERES_LAND[0] & $
+    cyclres[i,j,k] = test0.ERES_NCYC[0]
+
+PRINT, minmax(landres[*,*,0],/POS), minmax(cyclres[*,*,0],/POS)
+; => For theta_kB = 0 - 60
+;       628.29942       1626.3946
+;       965.13646       35156.039
+PRINT, minmax(landres[*,*,1],/POS), minmax(cyclres[*,*,1],/POS)
+; => For theta_kB = 0 - 60
+;       94.360084       244.25732
+;       144.94738       5279.8502
+
+;-----------------------------------------------------------------------------------------
+; => Plot 2 TDSS examples in FACs  [V2 = +X-GSE direction or Earth-Sun Vector]
+;-----------------------------------------------------------------------------------------
+date     = '111398'
+test0    = tds_waves_to_facs(DATE=date,FIXFILE=1,TDSS=1,TDSF=0,NPOW=0,MAGNETO=1,PARAX=0)
+j        = 10L
+scet0    = test0.SCETS[j]
+event0   = test0.EVENT_N[j]
+bf0      = REFORM(test0.BF_FAC[j,*,*])
+ef0      = REFORM(test0.EF_FAC[j,*,*])
+tt0      = REFORM(test0.TIMES[j,*])
+PRINT,';  ', minmax(ABS(ef0))
+PRINT,';  ', minmax(ABS(bf0))
+;     0.00089062243       204.37502
+;     0.00017896192       5.8001931
+
+; => Filter E-fields and B-fields
+freq     = [9d2,22d2]                ; => Frequency range [Hz]
+samra    = (2048L - 1L)/(MAX(tt0,/NAN)*1d-3 - MIN(tt0,/NAN)*1d-3)
+filte0   = vector_bandpass(ef0,samra[0],freq[0],freq[1],/MIDF)
+filtb0   = vector_bandpass(bf0,samra[0],freq[0],freq[1],/MIDF)
+
+yrae0    = [-1d0,1d0]*210d0
+ttle0    = 'TDSS: '+scet0[0]+' UT, Event #: '+STRTRIM(STRING(event0[0],FORMAT='(I8.8)'),2)
+ftimes   = file_name_times(scet0,PREC=3,FORMFN=2)
+fname0   = 'E-Fields_FACs_'+ftimes.F_TIME[0]
+; => Define E-field Components (mV/m)
+epara00  = REFORM(filte0[*,2])     ; => Field-Aligned E-field
+eperp10  = REFORM(filte0[*,0])     ; => (B x V2) x B
+eperp20  = REFORM(filte0[*,1])     ; => (B x V2)
+; => Define B-field Components (nT)
+bpara00  = REFORM(filtb0[*,2])     ; => Field-Aligned B-field
+bperp10  = REFORM(filtb0[*,0])     ; => (B x V2) x B
+bperp20  = REFORM(filtb0[*,1])     ; => (B x V2)
+ytv0     = [-2d2,-15d1,-1d2,-5d1,0d0,5d1,1d2,15d1,2d2]
+ytn0     = ['-200','-150','-100','-50','0','50','100','150','200']
+yts0     = N_ELEMENTS(ytv0) - 1L
+tr00     = [MIN(tt0,/NAN),MAX(tt0,/NAN)]
+
+date     = '040900'
+test1    = tds_waves_to_facs(DATE=date,FIXFILE=1,TDSS=1,TDSF=0,NPOW=0,MAGNETO=1,PARAX=0)
+j        = 6L
+scet1    = test1.SCETS[j]
+event1   = test1.EVENT_N[j]
+bf1      = REFORM(test1.BF_FAC[j,*,*])
+ef1      = REFORM(test1.EF_FAC[j,*,*])
+tt1      = REFORM(test1.TIMES[j,*])
+PRINT,';  ', minmax(ABS(ef1))
+PRINT,';  ', minmax(ABS(bf1))
+;     3.5135275e-05       52.652253
+;     7.0145007e-05       1.0121940
+
+; => Filter E-fields and B-fields
+freq     = [8d2,21d2]                ; => Frequency range [Hz]
+samra    = (2048L - 1L)/(MAX(tt1,/NAN)*1d-3 - MIN(tt1,/NAN)*1d-3)
+filte1   = vector_bandpass(ef1,samra[0],freq[0],freq[1],/MIDF)
+filtb1   = vector_bandpass(bf1,samra[0],freq[0],freq[1],/MIDF)
+
+yrae1    = [-1d0,1d0]*6d1
+ttle1    = 'TDSS: '+scet1[0]+' UT, Event #: '+STRTRIM(STRING(event1[0],FORMAT='(I8.8)'),2)
+ftimes   = file_name_times(scet1,PREC=3,FORMFN=2)
+fname1   = 'E-Fields_FACs_'+ftimes.F_TIME[0]
+; => Define E-field Components (mV/m)
+epara01  = REFORM(filte1[*,2])     ; => Field-Aligned E-field
+eperp11  = REFORM(filte1[*,0])     ; => (B x V2) x B
+eperp21  = REFORM(filte1[*,1])     ; => (B x V2)
+; => Define B-field Components (nT)
+bpara01  = REFORM(filtb1[*,2])     ; => Field-Aligned B-field
+bperp11  = REFORM(filtb1[*,0])     ; => (B x V2) x B
+bperp21  = REFORM(filtb1[*,1])     ; => (B x V2)
+ytv1     = [-6d1,-4d1,-2d1,0d0,2d1,4d1,6d1]
+ytn1     = ['-60','-40','-20','0','20','40','60']
+yts1     = N_ELEMENTS(ytv1) - 1L
+tr01     = [MIN(tt1,/NAN),MAX(tt1,/NAN)]
+
+
+; => Set up dummy plot structure
+xtv      = [4d1,8d1,12d1,16d1,2d2,24d1]
+xtn      = ['40','80','120','160','200','240'] 
+xts      = N_ELEMENTS(xtv) - 1L
+yttls    = 'E'+['para','perp1','perp2']+' [mV/m, FACs]'
+xttls    = 'Time (ms)'
+
+pstr0    = {XSTYLE:1,YSTYLE:1,XTITLE:xttls[0],XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,$
+            XMINOR:5,XTICKLEN:0.04,YRANGE:yrae0,NODATA:1,TITLE:ttle0,             $
+            YTICKNAME:ytn0,YTICKV:ytv0,YTICKS:yts0,YMINOR:5}
+
+pstr1    = {XSTYLE:1,YSTYLE:1,XTITLE:xttls[0],XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,$
+            XMINOR:5,XTICKLEN:0.04,YRANGE:yrae1,NODATA:1,TITLE:ttle1,             $
+            YTICKNAME:ytn1,YTICKV:ytv1,YTICKS:yts1,YMINOR:5}
+
+; => Plot data
+!P.MULTI    = [0,1,3]
+!P.CHARSIZE = 1.2
+!P.THICK    = 2.0
+
+  PLOT,tt0,epara00,YTITLE=yttls[0],_EXTRA=pstr0
+    OPLOT,tt0,epara00,COLOR=250L
+    FOR k=0L, yts0 DO OPLOT,[tr00[0],tr00[1]],[ytv0[k],ytv0[k]],LINESTYLE=1,THICK=1
+  PLOT,tt0,eperp10,YTITLE=yttls[1],_EXTRA=pstr0
+    OPLOT,tt0,eperp10,COLOR=150L
+    FOR k=0L, yts0 DO OPLOT,[tr00[0],tr00[1]],[ytv0[k],ytv0[k]],LINESTYLE=1,THICK=1
+  PLOT,tt0,eperp20,YTITLE=yttls[2],_EXTRA=pstr0
+    OPLOT,tt0,eperp20,COLOR= 50L
+    FOR k=0L, yts0 DO OPLOT,[tr00[0],tr00[1]],[ytv0[k],ytv0[k]],LINESTYLE=1,THICK=1
+popen,fname0[0],/LAND
+  PLOT,tt0,epara00,YTITLE=yttls[0],_EXTRA=pstr0
+    OPLOT,tt0,epara00,COLOR=250L
+    FOR k=0L, yts0 DO OPLOT,[tr00[0],tr00[1]],[ytv0[k],ytv0[k]],LINESTYLE=1,THICK=1
+  PLOT,tt0,eperp10,YTITLE=yttls[1],_EXTRA=pstr0
+    OPLOT,tt0,eperp10,COLOR=150L
+    FOR k=0L, yts0 DO OPLOT,[tr00[0],tr00[1]],[ytv0[k],ytv0[k]],LINESTYLE=1,THICK=1
+  PLOT,tt0,eperp20,YTITLE=yttls[2],_EXTRA=pstr0
+    OPLOT,tt0,eperp20,COLOR= 50L
+    FOR k=0L, yts0 DO OPLOT,[tr00[0],tr00[1]],[ytv0[k],ytv0[k]],LINESTYLE=1,THICK=1
+pclose
+
+!P.MULTI = 0
+
+!P.MULTI    = [0,1,3]
+!P.CHARSIZE = 1.2
+!P.THICK    = 2.0
+
+  PLOT,tt1,epara01,YTITLE=yttls[0],_EXTRA=pstr1
+    OPLOT,tt1,epara01,COLOR=250L
+    FOR k=0L, yts1 DO OPLOT,[tr01[0],tr01[1]],[ytv1[k],ytv1[k]],LINESTYLE=1,THICK=1
+  PLOT,tt1,eperp11,YTITLE=yttls[1],_EXTRA=pstr1
+    OPLOT,tt1,eperp11,COLOR=150L
+    FOR k=0L, yts1 DO OPLOT,[tr01[0],tr01[1]],[ytv1[k],ytv1[k]],LINESTYLE=1,THICK=1
+  PLOT,tt1,eperp21,YTITLE=yttls[2],_EXTRA=pstr1
+    OPLOT,tt1,eperp21,COLOR= 50L
+    FOR k=0L, yts1 DO OPLOT,[tr01[0],tr01[1]],[ytv1[k],ytv1[k]],LINESTYLE=1,THICK=1
+popen,fname1[0],/LAND
+  PLOT,tt1,epara01,YTITLE=yttls[0],_EXTRA=pstr1
+    OPLOT,tt1,epara01,COLOR=250L
+    FOR k=0L, yts1 DO OPLOT,[tr01[0],tr01[1]],[ytv1[k],ytv1[k]],LINESTYLE=1,THICK=1
+  PLOT,tt1,eperp11,YTITLE=yttls[1],_EXTRA=pstr1
+    OPLOT,tt1,eperp11,COLOR=150L
+    FOR k=0L, yts1 DO OPLOT,[tr01[0],tr01[1]],[ytv1[k],ytv1[k]],LINESTYLE=1,THICK=1
+  PLOT,tt1,eperp21,YTITLE=yttls[2],_EXTRA=pstr1
+    OPLOT,tt1,eperp21,COLOR= 50L
+    FOR k=0L, yts1 DO OPLOT,[tr01[0],tr01[1]],[ytv1[k],ytv1[k]],LINESTYLE=1,THICK=1
+pclose
+
+!P.MULTI = 0
+;-----------------------------------------------------------------------------------------
+; => Plot 2 TDSS examples in WAVES Coordinates with wavelet
+;-----------------------------------------------------------------------------------------
+
+lim      = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',1.5)
+to       = time_double('1970-01-01/12:00:00.000')
+yttle    = 'E'+['x','y','z']+' [mV/m, WAVES]'
+yttlb    = 'B'+['x','y','z']+' [mV/m, WAVES]'
+;------------------------------------------------
+; => 1998-11-13 Event
+;------------------------------------------------
+date     = '111398'
+test0    = tdss_sort_relevant(DATE=date,FIXFILE=1)
+j        = 10L
+scet0    = test0.SCETS[j]
+event0   = test0.EVENT_N[j]
+bf0      = REFORM(test0.BFIELD[j,*,*])
+ef0      = REFORM(test0.EFIELD[j,*,*])
+tt0      = REFORM(test0.TIMES[j,*])
+unx0     = tt0*1d-3 + to[0]
+; => Filter E-fields and B-fields
+freq     = [9d2,22d2]                ; => Frequency range [Hz]
+filt_0   = STRMID(STRING(freq,FORMAT='(f6.1)'),0L,4L)
+filt00   = string_replace_char(filt_0[0],' ','_')
+filt_st  = STRTRIM(filt00[0]+'-'+filt_0[1]+'Hz',2L)
+
+samra    = (2048L - 1L)/(MAX(tt0,/NAN)*1d-3 - MIN(tt0,/NAN)*1d-3)
+filte0   = vector_bandpass(ef0,samra[0],freq[0],freq[1],/MIDF)
+filtb0   = vector_bandpass(bf0,samra[0],freq[0],freq[1],/MIDF)
+yrae0    = [-1d0,1d0]*170d0
+yrab0    = [-1d0,1d0]*5d0
+
+ttle0    = 'TDSS: '+scet0[0]+' UT, Event #: '+STRTRIM(STRING(event0[0],FORMAT='(I8.8)'),2)
+ftimes   = file_name_times(scet0,PREC=3,FORMFN=2)
+tname00  = 'Ex'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tname10  = 'Ey'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tname20  = 'Ez'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tnamb00  = 'Bx'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tnamb10  = 'By'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tnamb20  = 'Bz'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+
+efname00 = [tname00,tname10,tname20]
+bfname00 = [tnamb00,tnamb10,tnamb20]
+wnamee00 = efname00+'_wavelet'
+wnameb00 = bfname00+'_wavelet'
+
+; => send data to TPLOT
+; Ex
+store_data,efname00[0],DATA={X:unx0,Y:filte0[*,0]}
+wavelet_to_tplot,unx0,ef0[*,0],NEW_NAME=wnamee00[0]
+; Ey
+store_data,efname00[1],DATA={X:unx0,Y:filte0[*,1]}
+wavelet_to_tplot,unx0,ef0[*,1],NEW_NAME=wnamee00[1]
+; Ez
+store_data,efname00[2],DATA={X:unx0,Y:filte0[*,2]}
+wavelet_to_tplot,unx0,ef0[*,2],NEW_NAME=wnamee00[2]
+; By
+store_data,bfname00[1],DATA={X:unx0,Y:filtb0[*,1]}
+wavelet_to_tplot,unx0,bf0[*,1],NEW_NAME=wnameb00[1]
+
+wextrae0 = tnames(efname00+'_wavelet_*')
+wextrab0 = tnames(bfname00+'_wavelet_*')
+; => set TPLOT options
+;   => titles and labels
+  options,[efname00,bfname00],'COLORS', 50
+  options,efname00[0],'YTITLE',yttle[0]
+  options,efname00[0],'TITLE', 'Ex '+ttle0[0]
+  options,efname00[1],'YTITLE',yttle[1]
+  options,efname00[1],'TITLE', 'Ey '+ttle0[0]
+  options,efname00[2],'YTITLE',yttle[2]
+  options,efname00[2],'TITLE', 'Ez '+ttle0[0]
+  options,bfname00[1],'YTITLE',yttlb[1]
+  options,bfname00[1],'TITLE', 'By '+ttle0[0]
+  options,[wnamee00,wnameb00],'ZTICKS',4  ; => 5 tick marks
+  options,wnamee00,'ZTITLE','Morlet Wavelet Power [(mV/m)!U2!N'+'/Hz]'
+  options,wnameb00,'ZTITLE','Morlet Wavelet Power [(nT)!U2!N'+'/Hz]'
+; => Axes Range options
+  options,tnames([efname00,bfname00]+'_wavelet*'),'YRANGE',[1d1,4d3]
+  options,wnamee00,'ZRANGE',[1d-3,1d1]
+  options,wnameb00,'ZRANGE',[1d-4,1d-2]
+  options,efname00,'YRANGE',yrae0
+  options,bfname00,'YRANGE',yrab0
+
+
+nnw      = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+; => Set up TPLOT times
+tr3 = [MIN(unx0,/NAN),MAX(unx0,/NAN)]
+tplot,[efname00[0],wnamee00[0]],TRANGE=tr3
+
+
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+'_Morlet_wavelet_Unfiltered'  & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+
+nna = [bfname00[1],wnameb00[1]]
+nno = tnames(bfname00[1]+'_wavelet_*')
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+fname = bfname00[1]+'_Morlet_wavelet_Unfiltered'
+popen,fname[0],/LAND
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+pclose
+
+
+; => 2nd Axes Range options with linear scale
+options,tnames([efname00,bfname00]+'_wavelet*'),'YRANGE',[7d2,4d3]
+options,tnames([efname00,bfname00]+'_wavelet*'),'YLOG',0
+
+suffx2 = '_Morlet_wavelet_Unfiltered-2nd_Linear'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+suffx2[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+
+nna = [bfname00[1],wnameb00[1]]
+nno = tnames(bfname00[1]+'_wavelet_*')
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+fname = bfname00[1]+suffx2[0]
+popen,fname[0],/LAND
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+pclose
+
+; => 2nd Y-Axis and Time-Axis Range options with linear scale
+options,tnames([efname00,bfname00]+'_wavelet*'),'YRANGE',[7d2,4d3]
+options,tnames([efname00,bfname00]+'_wavelet*'),'YLOG',0
+
+tr3 = [MIN(unx0,/NAN)+1d-1,MIN(unx0,/NAN)+2d-1]
+tplot,[efname00[0],wnamee00[0]],TRANGE=tr3
+
+suffx3 = '_Morlet_wavelet_Unfiltered-2nd_Linear_100-200ms'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+suffx3[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+nna = [bfname00[1],wnameb00[1]]
+nno = tnames(bfname00[1]+'_wavelet_*')
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+fname = bfname00[1]+suffx3[0]
+popen,fname[0],/LAND
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+pclose
+
+; => 3rd Y-Axis and Time-Axis Range options with linear scale
+options,tnames([efname00,bfname00]+'_wavelet*'),'YRANGE',[7d2,3d3]
+options,tnames([efname00,bfname00]+'_wavelet*'),'YLOG',0
+
+tr3 = [MIN(unx0,/NAN)+1d-1,MIN(unx0,/NAN)+2d-1]
+tplot,[efname00[0],wnamee00[0]],TRANGE=tr3
+
+suffx4 = '_Morlet_wavelet_Unfiltered-3rd_Linear_100-200ms'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+suffx4[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+nna = [bfname00[1],wnameb00[1]]
+nno = tnames(bfname00[1]+'_wavelet_*')
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+fname = bfname00[1]+suffx4[0]
+popen,fname[0],/LAND
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+pclose
+
+;------------------------------------------------
+; => 2000-04-10 Event
+;------------------------------------------------
+date     = '040900'
+test1    = tdss_sort_relevant(DATE=date,FIXFILE=1)
+j        = 6L
+scet1    = test1.SCETS[j]
+event1   = test1.EVENT_N[j]
+bf1      = REFORM(test1.BFIELD[j,*,*])
+ef1      = REFORM(test1.EFIELD[j,*,*])
+tt1      = REFORM(test1.TIMES[j,*])
+unx1     = tt1*1d-3 + to[0]
+
+; => Filter E-fields and B-fields
+freq     = [8d2,21d2]                ; => Frequency range [Hz]
+filt_0   = STRMID(STRING(freq,FORMAT='(f6.1)'),0L,4L)
+filt00   = string_replace_char(filt_0[0],' ','_')
+filt_st  = STRTRIM(filt00[0]+'-'+filt_0[1]+'Hz',2L)
+
+samra    = (2048L - 1L)/(MAX(tt1,/NAN)*1d-3 - MIN(tt1,/NAN)*1d-3)
+filte1   = vector_bandpass(ef1,samra[0],freq[0],freq[1],/MIDF)
+filtb1   = vector_bandpass(bf1,samra[0],freq[0],freq[1],/MIDF)
+yrae1    = [-1d0,1d0]*6d1
+yrab1    = [-1d0,1d0]*1.25d0
+
+ttle1    = 'TDSS: '+scet1[0]+' UT, Event #: '+STRTRIM(STRING(event1[0],FORMAT='(I8.8)'),2)
+ftimes   = file_name_times(scet1,PREC=3,FORMFN=2)
+tname01  = 'Ex'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tname11  = 'Ey'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tname21  = 'Ez'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tnamb01  = 'Bx'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tnamb11  = 'By'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+tnamb21  = 'Bz'+'_WAVES_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]
+
+efname01 = [tname01,tname11,tname21]
+bfname01 = [tnamb01,tnamb11,tnamb21]
+wnamee01 = efname01+'_wavelet'
+wnameb01 = bfname01+'_wavelet'
+
+; => send data to TPLOT
+; Ex
+store_data,efname01[0],DATA={X:unx1,Y:filte1[*,0]}
+wavelet_to_tplot,unx1,ef1[*,0],NEW_NAME=wnamee01[0]
+; Ey
+store_data,efname01[1],DATA={X:unx1,Y:filte1[*,1]}
+wavelet_to_tplot,unx1,ef1[*,1],NEW_NAME=wnamee01[1]
+; Ez
+store_data,efname01[2],DATA={X:unx1,Y:filte1[*,2]}
+wavelet_to_tplot,unx1,ef1[*,2],NEW_NAME=wnamee01[2]
+; By
+store_data,bfname01[1],DATA={X:unx1,Y:filtb1[*,1]}
+wavelet_to_tplot,unx1,bf1[*,1],NEW_NAME=wnameb01[1]
+
+wextrae1 = tnames(efname01+'_wavelet_*')
+wextrab1 = tnames(bfname01+'_wavelet_*')
+
+; => set TPLOT options
+;   => titles and labels
+  options,[efname01,bfname01],'COLORS', 50
+  options,efname01[0],'YTITLE',yttle[0]
+  options,efname01[0],'TITLE', 'Ex '+ttle1[0]
+  options,efname01[1],'YTITLE',yttle[1]
+  options,efname01[1],'TITLE', 'Ey '+ttle1[0]
+  options,efname01[2],'YTITLE',yttle[2]
+  options,efname01[2],'TITLE', 'Ez '+ttle1[0]
+  options,bfname01[1],'YTITLE',yttlb[1]
+  options,bfname01[1],'TITLE', 'By '+ttle1[0]
+  options,[wnamee01,wnameb01],'ZTICKS',4  ; => 5 tick marks
+  options,wnamee01,'ZTITLE','Morlet Wavelet Power [(mV/m)!U2!N'+'/Hz]'
+  options,wnameb01,'ZTITLE','Morlet Wavelet Power [(nT)!U2!N'+'/Hz]'
+; => Y-Axis Range options
+  options,tnames([efname01,bfname01]+'_wavelet*'),'YRANGE',[1d1,4d3]
+  options,wnamee01,'ZRANGE',[1d-3,1d0]
+  options,wnameb01,'ZRANGE',[1d-5,1d-3]
+  options,efname01,'YRANGE',yrae1
+  options,bfname01[1],'YRANGE',yrab1
+
+nnw      = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+; => Set up TPLOT times
+tr3 = [MIN(unx1,/NAN),MAX(unx1,/NAN)]
+tplot,[efname01[0],wnamee01[0]],TRANGE=tr3
+
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname01[k],wnamee01[k]]                 & $
+  nno   = tnames(efname01[k]+'_wavelet_*')          & $
+  fname = efname01[k]+'_Morlet_wavelet_Unfiltered'  & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+nna = [bfname01[1],wnameb01[1]]
+nno = tnames(bfname01[1]+'_wavelet_*')
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+fname = bfname01[1]+'_Morlet_wavelet_Unfiltered'
+popen,fname[0],/LAND
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+pclose
+; => 2nd Axes Range options with linear scale
+options,tnames([efname01,bfname01]+'_wavelet*'),'YRANGE',[7d2,4d3]
+options,tnames([efname01,bfname01]+'_wavelet*'),'YLOG',0
+
+suffx2 = '_Morlet_wavelet_Unfiltered-2nd_Linear'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname01[k],wnamee01[k]]                 & $
+  nno   = tnames(efname01[k]+'_wavelet_*')          & $
+  fname = efname01[k]+suffx2[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+nna = [bfname01[1],wnameb01[1]]
+nno = tnames(bfname01[1]+'_wavelet_*')
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+fname = bfname01[1]+suffx2[0]
+popen,fname[0],/LAND
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+pclose
+
+; => 2nd Y-Axis and Time-Axis Range options with linear scale
+options,tnames([efname01,bfname01]+'_wavelet*'),'YRANGE',[7d2,4d3]
+options,tnames([efname01,bfname01]+'_wavelet*'),'YLOG',0
+
+tr3 = [MIN(unx1,/NAN),MIN(unx1,/NAN)+7d-2]
+tplot,[efname01[0],wnamee01[0]],TRANGE=tr3
+
+suffx3 = '_Morlet_wavelet_Unfiltered-2nd_Linear_000-070ms'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname01[k],wnamee01[k]]                 & $
+  nno   = tnames(efname01[k]+'_wavelet_*')          & $
+  fname = efname01[k]+suffx3[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+nna = [bfname01[1],wnameb01[1]]
+nno = tnames(bfname01[1]+'_wavelet_*')
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+fname = bfname01[1]+suffx3[0]
+popen,fname[0],/LAND
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+pclose
+
+; => 3rd Y-Axis and Time-Axis Range options with linear scale
+options,tnames([efname01,bfname01]+'_wavelet*'),'YRANGE',[7d2,2.5d3]
+options,tnames([efname01,bfname01]+'_wavelet*'),'YLOG',0
+tr3 = [MIN(unx1,/NAN),MIN(unx1,/NAN)+7d-2]
+tplot,[efname01[0],wnamee01[0]],TRANGE=tr3
+
+suffx4 = '_Morlet_wavelet_Unfiltered-3rd_Linear_000-070ms'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname01[k],wnamee01[k]]                 & $
+  nno   = tnames(efname01[k]+'_wavelet_*')          & $
+  fname = efname01[k]+suffx4[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+nna = [bfname01[1],wnameb01[1]]
+nno = tnames(bfname01[1]+'_wavelet_*')
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+fname = bfname01[1]+suffx4[0]
+popen,fname[0],/LAND
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim
+pclose
+
+
+;-----------------------------------------------------------------------------------------
+; => Propagation angle and AE-Index Stats
+;-----------------------------------------------------------------------------------------
+test_wh  = all_stats_all_waves_read(/NO_INCOMP,WAVET='Whistlers')
+all_evns = test_wh.EVENT_N
+wscets   = STRTRIM(test_wh.SCETS,2)
+wavetype = STRLOWCASE(STRTRIM(test_wh.WAVE_TYPE,2))
+rectype  = STRLOWCASE(STRTRIM(test_wh.REC_TYPE,2))
+nall     = N_ELEMENTS(wscets)
+wunix    = time_double(wscets)
+w_rad    = test_wh.WIND_RAD_DIST
+w_lsh    = test_wh.WIND_L_SHELL
+w_mlt    = test_wh.WIND_MLT
+; => AE-Index and GSE DC B-field
+w_aeind  = test_wh.AE_INDEX
+w_bgse   = test_wh.WI_B3_GSE
+; => MVA Results
+kmin     = test_wh.MIN_EIG_VEC
+kmid     = test_wh.MID_EIG_VEC
+kmax     = test_wh.MAX_EIG_VEC
+eigvals  = test_wh.EIG_VALS
+; => Wave Amplitudes
+alle_rms = test_wh.E_RMS
+allb_rms = test_wh.B_RMS
+whe_rms  = test_wh.EMAG_RMS
+whb_rms  = test_wh.BMAG_RMS
+whe_pk   = test_wh.EMAG_PK
+whb_pk   = test_wh.BMAG_PK
+
+;----------------------------------------------
+; => Find Only Whistler Waves in Magnetosphere
+;----------------------------------------------
+wgood  = STRLOWCASE('Whistlers')
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','101002']
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN                                                   $
+  date       = gdates[j]                                                                   & $
+  temp       = orbit_region_time_range(DATE=date[0])                                       & $
+  tr_m       = time_double(temp.MAGNETOSPHERE)                                             & $
+  testm      = (wunix LE tr_m[1] AND wunix GT tr_m[0]) AND (wavetype EQ wgood[0])          & $
+  good_m0    = WHERE(testm,gdm0)                                                           & $
+  IF (gdm0 GT 0 AND j EQ 0) THEN good_m = good_m0                                          & $
+  IF (gdm0 GT 0 AND j GT 0) THEN good_m = [good_m,good_m0]
+
+; => Limit to L < 15
+lshell   = 15.
+l_string = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+test_l   = (w_lsh[good_m] LE lshell[0])
+good0    = WHERE(test_l,gd0)
+PRINT,';  ', gd0
+; => For L < 15
+;           253
+good_m   = good_m[good0]
+n_m      = N_ELEMENTS(good_m)
+
+wscets   = wscets[good_m]
+wunix    = wunix[good_m]
+wavetype = wavetype[good_m]
+rectype  = rectype[good_m]
+
+w_rad    = w_rad[good_m]
+w_lsh    = w_lsh[good_m]
+w_mlt    = w_mlt[good_m]
+w_aeind  = w_aeind[good_m]
+w_bgse   = w_bgse[good_m,*]
+kmin     = kmin[good_m,*]
+kmid     = kmid[good_m,*]
+kmax     = kmax[good_m,*]
+eigvals  = eigvals[good_m,*]
+
+alle_rms = alle_rms[good_m,*]
+allb_rms = allb_rms[good_m,*]
+whe_rms  = whe_rms[good_m]
+whb_rms  = whb_rms[good_m]
+whe_pk   = whe_pk[good_m]
+whb_pk   = whb_pk[good_m]
+
+;------------------------------------------------------------------
+; => Check theta_kB now
+;------------------------------------------------------------------
+w_bmag   = SQRT(TOTAL(w_bgse^2,2,/NAN)) # REPLICATE(1e0,3L)
+w_ubgse  = w_bgse/w_bmag
+kminu    = kmin/(SQRT(TOTAL(kmin^2,2,/NAN)) # REPLICATE(1e0,3L))
+kdotb    = my_dot_prod(kminu,w_ubgse,/NOM)
+thetakb  = ACOS(kdotb)*18d1/!DPI
+thetakbs = thetakb < (18d1 - thetakb)
+
+eigrat   = eigvals[*,1]/eigvals[*,0]
+
+testb    = (allb_rms[*,0] GT 0) AND (allb_rms[*,1] GT 0) AND (allb_rms[*,2] GT 0)
+test     = WHERE(eigrat GE 5. AND testb,gtt)
+PRINT,';  ', gtt
+;            50
+
+good_20  = WHERE(thetakbs[test] LE 20.,gd20)
+good_2_4 = WHERE(thetakbs[test] GT 20. AND thetakbs[test] LE 40.,gd2_4)
+good_2_6 = WHERE(thetakbs[test] GT 20. AND thetakbs[test] LE 60.,gd2_6)
+good_4_6 = WHERE(thetakbs[test] GE 40. AND thetakbs[test] LE 60.,gd4_6)
+good_2_9 = WHERE(thetakbs[test] GT 20.,gd2_9)
+good_4_9 = WHERE(thetakbs[test] GE 40.,gd4_9)
+PRINT,';  ', gd20, gd2_4, gd2_6, gd4_6, gd2_9, gd4_9
+;            40           7          10           3          10           3
+PRINT,';  ', 1d0*[gd20, gd2_4, gd2_6, gd4_6, gd2_9, gd4_9]/(1d0*gtt)
+;        0.80000000      0.14000000      0.20000000     0.060000000      0.20000000     0.060000000
+
+
+;------------------------------------------------------------------
+; => Check AE now
+;------------------------------------------------------------------
+good_ef  = WHERE(whe_rms GT 0,gdef)
+good_bf  = WHERE(whb_rms GT 0,gdbf)
+PRINT,';  ', gdef, gdbf
+;           253          68
+
+testb    = (allb_rms[*,0] GT 0) AND (allb_rms[*,1] GT 0) AND (allb_rms[*,2] GT 0)
+good_nt  = WHERE(testb,gdnt,COMPLEMENT=good_mv,NCOMPLEMENT=gdmv)
+PRINT,';  ', gdnt, gdmv
+;            58         195
+
+; => Electric field stats
+HELP, WHERE(whe_rms[good_mv] GE 40.,gdrmv4), WHERE(whe_rms[good_mv] GE 60.,gdrmv6), $
+      WHERE(whe_rms[good_mv] GE 80.,gdrmv8), WHERE(whe_rms[good_mv] GE 1e2,gdrmv1)
+;  <Expression>    LONG      = Array[14]
+;  <Expression>    LONG      = Array[4]
+;  <Expression>    LONG      = Array[1]
+;  <Expression>    LONG      = Array[1]
+HELP, WHERE(whe_pk[good_mv] GE 40.,gdpmv4), WHERE(whe_pk[good_mv] GE 60.,gdpmv6), $
+      WHERE(whe_pk[good_mv] GE 80.,gdpmv8), WHERE(whe_pk[good_mv] GE 1e2,gdpmv1)
+;  <Expression>    LONG      = Array[106]
+;  <Expression>    LONG      = Array[74]
+;  <Expression>    LONG      = Array[53]
+;  <Expression>    LONG      = Array[45]
+PRINT,';  ', 1d0*[gdrmv4,gdrmv6,gdrmv8,gdrmv1]/(1d0*gdmv)
+PRINT,';  ', 1d0*[gdpmv4,gdpmv6,gdpmv8,gdpmv1]/(1d0*gdmv)
+;       0.071794872     0.020512821    0.0051282051    0.0051282051
+;        0.54358974      0.37948718      0.27179487      0.23076923
+
+
+; => Magnetic field stats
+HELP, WHERE(whb_rms[good_nt] GE 0.4,gdrnt4), WHERE(whb_rms[good_nt] GE 0.6,gdrnt6), $
+      WHERE(whb_rms[good_nt] GE 0.8,gdrnt8), WHERE(whb_rms[good_nt] GE 1e0,gdrnt1)
+;  <Expression>    LONG      = Array[1]
+;  <Expression>    LONG      = Array[1]
+;  <Expression>    LONG      = Array[1]
+;  <Expression>    LONG      = Array[1]
+HELP, WHERE(whb_pk[good_nt] GE 0.4,gdpnt4), WHERE(whb_pk[good_nt] GE 0.6,gdpnt6), $
+      WHERE(whb_pk[good_nt] GE 0.8,gdpnt8), WHERE(whb_pk[good_nt] GE 1e0,gdpnt1)
+;  <Expression>    LONG      = Array[29]
+;  <Expression>    LONG      = Array[15]
+;  <Expression>    LONG      = Array[8]
+;  <Expression>    LONG      = Array[4]
+PRINT,';  ', 1d0*[gdrnt4,gdrnt6,gdrnt8,gdrnt1]/(1d0*gdnt)
+PRINT,';  ', 1d0*[gdpnt4,gdpnt6,gdpnt8,gdpnt1]/(1d0*gdnt)
+;       0.017241379     0.017241379     0.017241379     0.017241379
+;        0.50000000      0.25862069      0.13793103     0.068965517
+
+
+
+badd_200 = WHERE(w_aeind LE 200.,bd200)
+good_200 = WHERE(w_aeind GT 200.,gd200)
+good_2_6 = WHERE(w_aeind GE 200. AND w_aeind LE 600.,gd2_6)
+good_2_8 = WHERE(w_aeind GE 200. AND w_aeind LE 800.,gd2_8)
+PRINT,';  ', gd200, gd2_6, gd2_8
+;           162         104         122
+PRINT,';  ', 1d0*[gd200,gd2_6,gd2_8]/(1d0*n_m)
+;        0.64031621      0.41106719      0.48221344
+
+PRINT,';  ', 1d0*bd200/(1d0*n_m)
+; => Percentaged observed when (AE LE 200.) EQ TRUE
+;        0.35968379
+
+badd_e200 = WHERE(whe_rms[badd_200] GT 0,bde200)
+badd_b200 = WHERE(whb_rms[badd_200] GT 0,bdb200)
+good_e200 = WHERE(whe_rms[good_200] GT 0,gde200)
+good_b200 = WHERE(whb_rms[good_200] GT 0,gdb200)
+good_e2_6 = WHERE(whe_rms[good_2_6] GT 0,gde2_6)
+good_b2_6 = WHERE(whb_rms[good_2_6] GT 0,gdb2_6)
+good_e2_8 = WHERE(whe_rms[good_2_8] GT 0,gde2_8)
+good_b2_8 = WHERE(whb_rms[good_2_8] GT 0,gdb2_8)
+PRINT,';  ', bde200, gde200, gde2_6, gde2_8
+;            91         162         104         122
+PRINT,';  ', bdb200, gdb200, gdb2_6, gdb2_8
+;            26          42          25          28
+
+PRINT,';  ', 1d0*[bde200,gde200,gde2_6,gde2_8]/(1d0*gdef)
+;        0.35968379      0.64031621      0.41106719      0.48221344
+PRINT,';  ', 1d0*[bdb200,gdb200,gdb2_6,gdb2_8]/(1d0*gdbf)
+;        0.38235294      0.61764706      0.36764706      0.41176471
+
+; => Electric field stats
+avg_rms_e = [MEAN(whe_rms[good_200[good_e200]],/NAN), MEAN(whe_rms[good_2_6[good_e2_6]],/NAN), $
+             MEAN(whe_rms[good_2_8[good_e2_8]],/NAN), MEAN(whe_rms[badd_200[badd_e200]],/NAN)]
+std_rms_e = [STDDEV(whe_rms[good_200[good_e200]],/NAN), STDDEV(whe_rms[good_2_6[good_e2_6]],/NAN), $
+             STDDEV(whe_rms[good_2_8[good_e2_8]],/NAN), STDDEV(whe_rms[badd_200[badd_e200]],/NAN)]
+stdmrms_e = std_rms_e/SQRT(1d0*[gde200,gde2_6,gde2_8,bde200])  ; => Std. Dev. of Mean
+
+avg_pek_e = [MEAN(whe_pk[good_200[good_e200]],/NAN), MEAN(whe_pk[good_2_6[good_e2_6]],/NAN), $
+             MEAN(whe_pk[good_2_8[good_e2_8]],/NAN), MEAN(whe_pk[badd_200[badd_e200]],/NAN)]
+std_pek_e = [STDDEV(whe_pk[good_200[good_e200]],/NAN), STDDEV(whe_pk[good_2_6[good_e2_6]],/NAN), $
+             STDDEV(whe_pk[good_2_8[good_e2_8]],/NAN), STDDEV(whe_pk[badd_200[badd_e200]],/NAN)]
+stdmpek_e = std_pek_e/SQRT(1d0*[gde200,gde2_6,gde2_8,bde200])  ; => Std. Dev. of Mean
+
+
+; => Electric field stats
+PRINT,'; => RMS E-fields [mV/m]'
+PRINT,';  ', avg_rms_e
+PRINT,'; => Std. Dev. of RMS E-fields [mV/m]'
+PRINT,';  ', std_rms_e
+PRINT,'; => Std. Dev. of the Mean RMS E-fields [mV/m]'
+PRINT,';  ', stdmrms_e
+;------------------------------------------------------------------
+; AE       >200 nT       200-600 nT       200-800 nT       < 200 nT
+;==================================================================
+; => RMS E-fields [mV/m]
+;         15.581973       19.352529       18.370687       5.8272562
+; => Std. Dev. of RMS E-fields [mV/m]
+;         17.144873       19.431757       18.691487       5.0892496
+; => Std. Dev. of the Mean RMS E-fields [mV/m]
+;         1.3470284       1.9054406       1.6922477      0.53349832
+;------------------------------------------------------------------
+
+PRINT,'; => Peak E-fields [mV/m]'
+PRINT,';  ', avg_pek_e
+PRINT,'; => Std. Dev. of Peak E-fields [mV/m]'
+PRINT,';  ', std_pek_e
+PRINT,'; => Std. Dev. of the Mean Peak E-fields [mV/m]'
+PRINT,';  ', stdmpek_e
+;------------------------------------------------------------------
+; AE       >200 nT       200-600 nT       200-800 nT       < 200 nT
+;==================================================================
+; => Peak E-fields [mV/m]
+;         71.250233       85.766977       82.852984       25.433781
+; => Std. Dev. of Peak E-fields [mV/m]
+;         71.411562       79.539436       77.350800       21.542346
+; => Std. Dev. of the Mean Peak E-fields [mV/m]
+;         5.6106222       7.7994834       7.0030124       2.2582515
+;------------------------------------------------------------------
+
+; => Magnetic field stats
+avg_rms_b = [MEAN(whb_rms[good_200[good_b200]],/NAN), MEAN(whb_rms[good_2_6[good_b2_6]],/NAN), $
+             MEAN(whb_rms[good_2_8[good_b2_8]],/NAN), MEAN(whb_rms[badd_200[badd_b200]],/NAN)]
+std_rms_b = [STDDEV(whb_rms[good_200[good_b200]],/NAN), STDDEV(whb_rms[good_2_6[good_b2_6]],/NAN), $
+             STDDEV(whb_rms[good_2_8[good_b2_8]],/NAN), STDDEV(whb_rms[badd_200[badd_b200]],/NAN)]
+stdmrms_b = std_rms_b/SQRT(1d0*[gdb200,gdb2_6,gdb2_8,bdb200])  ; => Std. Dev. of Mean
+
+avg_pek_b = [MEAN(whb_pk[good_200[good_b200]],/NAN), MEAN(whb_pk[good_2_6[good_b2_6]],/NAN), $
+             MEAN(whb_pk[good_2_8[good_b2_8]],/NAN), MEAN(whb_pk[badd_200[badd_b200]],/NAN)]
+std_pek_b = [STDDEV(whb_pk[good_200[good_b200]],/NAN), STDDEV(whb_pk[good_2_6[good_b2_6]],/NAN), $
+             STDDEV(whb_pk[good_2_8[good_b2_8]],/NAN), STDDEV(whb_pk[badd_200[badd_b200]],/NAN)]
+stdmpek_b = std_pek_b/SQRT(1d0*[gdb200,gdb2_6,gdb2_8,bdb200])  ; => Std. Dev. of Mean
+
+; => Magnetic field stats
+PRINT,'; => RMS B-fields [nT]'
+PRINT,';  ', avg_rms_b
+PRINT,'; => Std. Dev. of RMS B-fields [nT]'
+PRINT,';  ', std_rms_b
+PRINT,'; => Std. Dev. of the Mean RMS B-fields [nT]'
+PRINT,';  ', stdmrms_b
+;------------------------------------------------------------------
+; AE       >200 nT       200-600 nT       200-800 nT       < 200 nT
+;==================================================================
+; => RMS B-fields [nT]
+;        0.20723421      0.22276395      0.22559619      0.11745219
+; => Std. Dev. of RMS B-fields [nT]
+;        0.16607026      0.20178262      0.19873658      0.21933051
+; => Std. Dev. of the Mean RMS B-fields [nT]
+;       0.025625198     0.040356524     0.037557684     0.043014252
+;------------------------------------------------------------------
+
+PRINT,'; => Peak B-fields [nT]'
+PRINT,';  ', avg_pek_b
+PRINT,'; => Std. Dev. of Peak B-fields [nT]'
+PRINT,';  ', std_pek_b
+PRINT,'; => Std. Dev. of the Mean Peak B-fields [nT]'
+PRINT,';  ', stdmpek_b
+;------------------------------------------------------------------
+; AE       >200 nT       200-600 nT       200-800 nT       < 200 nT
+;==================================================================
+; => Peak B-fields [nT]
+;         1.0233200       1.2023032       1.1922332      0.36461670
+; => Std. Dev. of Peak B-fields [nT]
+;         1.1933729       1.4914399       1.4294864      0.86587375
+; => Std. Dev. of the Mean Peak B-fields [nT]
+;        0.18414143      0.29828798      0.27014755      0.16981181
+;------------------------------------------------------------------
+
+
+;-----------------------------------------------------------------------------------------
+; => Location Stats
+;-----------------------------------------------------------------------------------------
+epo      = 8.854187817d-12        ; => Permittivity of free space (F/m)
+muo      = 4d0*!DPI*1d-7          ; => Permeability of free space (N/A^2 or H/m)
+me       = 9.1093897d-31          ; => Electron mass (kg)
+mp       = 1.6726231d-27          ; => Proton mass (kg)
+qq       = 1.60217733d-19         ; => Fundamental charge (C)
+wcefac   = qq*1d-9/me             ; => factor for electron cyclotron frequency [rad s^(-1) nT^(-1)]
+wcpfac   = qq*1d-9/mp             ; => factor for proton cyclotron frequency [rad s^(-1) nT^(-1)]
+wpefac   = SQRT(1d6*qq^2/(me*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+wppfac   = SQRT(1d6*qq^2/(mp*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+
+test_wh  = all_stats_all_waves_read(/NO_INCOMP,WAVET='Whistlers')
+all_evns = test_wh.EVENT_N
+wscets   = STRTRIM(test_wh.SCETS,2)
+wavetype = STRLOWCASE(STRTRIM(test_wh.WAVE_TYPE,2))
+rectype  = STRLOWCASE(STRTRIM(test_wh.REC_TYPE,2))
+nall     = N_ELEMENTS(wscets)
+wunix    = time_double(wscets)
+w_rad    = test_wh.WIND_RAD_DIST
+w_lsh    = test_wh.WIND_L_SHELL
+w_mlt    = test_wh.WIND_MLT
+frq_low  = test_wh.FREQ_LOW*(2d0*!DPI)    ; => Convert to rad/s
+frq_high = test_wh.FREQ_HIGH*(2d0*!DPI)   ; => Convert to rad/s
+
+bmag_all = test_wh.B_MAG
+nipl_all = test_wh.N_PL      ; => Ion density from PL [cm^(-3)]
+niph_all = test_wh.N_PH      ; => Ion density from PH [cm^(-3)]
+; => Define the relevant frequencies
+wce_all  = wcefac[0]*bmag_all
+wpe_pl   = wpefac[0]*SQRT(nipl_all)
+wpe_ph   = wpefac[0]*SQRT(niph_all)
+
+;----------------------------------------------
+; => Find Only Whistler Waves in Magnetosphere
+;----------------------------------------------
+wgood  = STRLOWCASE('Whistlers')
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','101002']
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN                                                   $
+  date       = gdates[j]                                                                   & $
+  temp       = orbit_region_time_range(DATE=date[0])                                       & $
+  tr_m       = time_double(temp.MAGNETOSPHERE)                                             & $
+  testm      = (wunix LE tr_m[1] AND wunix GT tr_m[0]) AND (wavetype EQ wgood[0])          & $
+  good_m0    = WHERE(testm,gdm0)                                                           & $
+  IF (gdm0 GT 0 AND j EQ 0) THEN good_m = good_m0                                          & $
+  IF (gdm0 GT 0 AND j GT 0) THEN good_m = [good_m,good_m0]
+
+; => Limit to L < 15
+lshell   = 15.
+l_string = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+test_l   = (w_lsh[good_m] LE lshell[0])
+good0    = WHERE(test_l,gd0)
+PRINT,';  ', gd0
+; => For L < 15
+;           253
+good_m   = good_m[good0]
+n_m      = N_ELEMENTS(good_m)
+
+wscets   = wscets[good_m]
+wunix    = wunix[good_m]
+wavetype = wavetype[good_m]
+rectype  = rectype[good_m]
+
+w_rad    = w_rad[good_m]
+w_lsh    = w_lsh[good_m]
+w_mlt    = w_mlt[good_m]
+wce_all  = wce_all[good_m]
+wpe_pl   = wpe_pl[good_m]
+wpe_ph   = wpe_ph[good_m]
+frq_low  = frq_low[good_m]
+frq_high = frq_high[good_m]
+
+test_pl  = wpe_pl/wce_all
+test_ph  = wpe_ph/wce_all
+PRINT,';  ', MIN(test_pl,/NAN), MAX(test_pl,/NAN), MEAN(test_pl,/NAN), STDDEV(test_pl,/NAN)
+;        0.25712973       19.614943       7.3600054       5.4893147
+PRINT,';  ', MIN(test_ph,/NAN), MAX(test_ph,/NAN), MEAN(test_ph,/NAN), STDDEV(test_ph,/NAN)
+;        0.72344297       17.588817       5.7560309       3.9900483
+
+bad_pl   = WHERE(test_pl LE 1. AND w_lsh LE 15.,bdpl)
+bad_ph   = WHERE(test_ph LE 1. AND w_lsh LE 15.,bdph)
+PRINT,';  ', bdpl, bdph, n_m
+;            28          20         253
+
+PRINT,';  ', MIN(w_rad[bad_pl],/NAN), MAX(w_rad[bad_pl],/NAN), $
+             MEAN(w_rad[bad_pl],/NAN), STDDEV(w_rad[bad_pl],/NAN)
+;        4.57400      11.4450      7.64704      1.34035
+
+PRINT,';  ', MIN(w_mlt[bad_pl],/NAN), MAX(w_mlt[bad_pl],/NAN), $
+             MEAN(w_mlt[bad_pl],/NAN), STDDEV(w_mlt[bad_pl],/NAN)
+;        2.63000      19.9810      12.8847      4.77460
+
+PRINT,';  ', MIN(w_rad[bad_ph],/NAN), MAX(w_rad[bad_ph],/NAN), $
+             MEAN(w_rad[bad_ph],/NAN), STDDEV(w_rad[bad_ph],/NAN)
+;        4.42100      11.4450      5.16795      1.49791
+
+PRINT,';  ', MIN(w_mlt[bad_ph],/NAN), MAX(w_mlt[bad_ph],/NAN), $
+             MEAN(w_mlt[bad_ph],/NAN), STDDEV(w_mlt[bad_ph],/NAN)
+;        1.52300      18.6760      2.82950      3.74031
+
+
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','101002']
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN                                                   $
+  date       = gdates[j]                                                                   & $
+  temp       = orbit_region_time_range(DATE=date[0])                                       & $
+  tr_r       = time_double(temp.RADIATION_BELTS)                                           & $
+  testr      = (wunix LE tr_r[1] AND wunix GT tr_r[0])                                     & $
+  good_r0    = WHERE(testr,gdr0)                                                           & $
+  IF (j EQ 0)               THEN good_r = good_r0                                          & $
+  IF (gdr0 GT 0 AND j GT 0) THEN good_r = [good_r,good_r0]
+
+good_all = good_m
+nall     = N_ELEMENTS(good_all)
+badr     = WHERE(good_r LT 0,bdr,COMPLEMENT=ggoodr,NCOMPLEMENT=ggdr)
+IF (ggdr GT 0) THEN good_r = good_r[ggoodr]
+unq      = UNIQ(good_r,SORT(good_r))
+good_r   = good_r[unq]
+HELP, good_all, good_r
+;GOOD_ALL        LONG      = Array[253]
+;GOOD_R          LONG      = Array[223]
+
+inds     = LINDGEN(nall)
+bads     = array_where(inds,good_r,/N_UNIQ,NCOMP1=ncomp1,NCOMP2=ncomp2)
+HELP, ncomp1,ncomp2
+;NCOMP1          LONG      = Array[30]
+;NCOMP2          LONG      =           -1
+
+els_mg    = ncomp1
+els_rd    = good_r
+HELP, els_mg,els_rd
+;ELS_MG          LONG      = Array[30]
+;ELS_RD          LONG      = Array[223]
+
+
+n_mg        = N_ELEMENTS(els_mg)
+wscets_mg   = wscets[els_mg]
+wunix_mg    = wunix[els_mg]
+w_rad_mg    = w_rad[els_mg]
+w_lsh_mg    = w_lsh[els_mg]
+w_mlt_mg    = w_mlt[els_mg]
+wce_all_mg  = wce_all[els_mg]
+wpe_pl_mg   = wpe_pl[els_mg]
+wpe_ph_mg   = wpe_ph[els_mg]
+frq_low_mg  = frq_low[els_mg]
+frq_high_mg = frq_high[els_mg]
+test_pl_mg  = wpe_pl_mg/wce_all_mg
+test_ph_mg  = wpe_ph_mg/wce_all_mg
+
+n_rd        = N_ELEMENTS(els_rd)
+wscets_rd   = wscets[els_rd]
+wunix_rd    = wunix[els_rd]
+w_rad_rd    = w_rad[els_rd]
+w_lsh_rd    = w_lsh[els_rd]
+w_mlt_rd    = w_mlt[els_rd]
+wce_all_rd  = wce_all[els_rd]
+wpe_pl_rd   = wpe_pl[els_rd]
+wpe_ph_rd   = wpe_ph[els_rd]
+frq_low_rd  = frq_low[els_rd]
+frq_high_rd = frq_high[els_rd]
+test_pl_rd  = wpe_pl_rd/wce_all_rd
+test_ph_rd  = wpe_ph_rd/wce_all_rd
+
+PRINT,';  ', MIN(test_pl_mg,/NAN), MAX(test_pl_mg,/NAN), MEAN(test_pl_mg,/NAN), STDDEV(test_pl_mg,/NAN)
+;        0.25712973       2.1998589       1.1341998      0.63995692
+PRINT,';  ', MIN(test_ph_mg,/NAN), MAX(test_ph_mg,/NAN), MEAN(test_ph_mg,/NAN), STDDEV(test_ph_mg,/NAN)
+;        0.87196929       12.099995       5.2744239       2.8996871
+
+bad_pl_mg   = WHERE(test_pl_mg LE 1. AND w_lsh LE 15.,bdpl_mg)
+bad_ph_mg   = WHERE(test_ph_mg LE 1. AND w_lsh LE 15.,bdph_mg)
+PRINT,';  ', bdpl_mg, bdph_mg, n_mg
+;            15           1          30
+
+PRINT,';  ', MIN(test_pl_rd,/NAN), MAX(test_pl_rd,/NAN), MEAN(test_pl_rd,/NAN), STDDEV(test_pl_rd,/NAN)
+;        0.39057497       19.614943       8.1975577       5.3111644
+PRINT,';  ', MIN(test_ph_rd,/NAN), MAX(test_ph_rd,/NAN), MEAN(test_ph_rd,/NAN), STDDEV(test_ph_rd,/NAN)
+;        0.72344297       17.588817       5.8208210       4.1155772
+
+bad_pl_rd   = WHERE(test_pl_rd LE 1. AND w_lsh LE 15.,bdpl_rd)
+bad_ph_rd   = WHERE(test_ph_rd LE 1. AND w_lsh LE 15.,bdph_rd)
+PRINT,';  ', bdpl_rd, bdph_rd, n_rd
+;            13          19         223
+
+
+;-----------------------------------------------------------------------------------------
+; => Determine parameters for Figure 2
+;-----------------------------------------------------------------------------------------
+epo      = 8.854187817d-12        ; => Permittivity of free space (F/m)
+muo      = 4d0*!DPI*1d-7          ; => Permeability of free space (N/A^2 or H/m)
+me       = 9.1093897d-31          ; => Electron mass (kg)
+mp       = 1.6726231d-27          ; => Proton mass (kg)
+qq       = 1.60217733d-19         ; => Fundamental charge (C)
+wcefac   = qq*1d-9/me             ; => factor for electron cyclotron frequency [rad s^(-1) nT^(-1)]
+wcpfac   = qq*1d-9/mp             ; => factor for proton cyclotron frequency [rad s^(-1) nT^(-1)]
+wpefac   = SQRT(1d6*qq^2/(me*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+wppfac   = SQRT(1d6*qq^2/(mp*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+evn_gd   = [05881617L,27520153L]
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+
+
+test_wh  = all_stats_all_waves_read()
+all_evns = test_wh.EVENT_N
+wscets   = STRTRIM(test_wh.SCETS,2)
+nall     = N_ELEMENTS(wscets)
+wunix    = time_double(wscets)
+w_rad    = test_wh.WIND_RAD_DIST
+w_lsh    = test_wh.WIND_L_SHELL
+w_mlt    = test_wh.WIND_MLT
+; => Define the background plasma parameters
+gse_magf = test_wh.WI_B3_GSE
+bmag_all = test_wh.B_MAG
+nipl_all = test_wh.N_PL      ; => Ion density from PL [cm^(-3)]
+niph_all = test_wh.N_PH      ; => Ion density from PH [cm^(-3)]
+; => Estimate the dipole B-field at the equator dependent upon the L-shell
+bmag_eq  = magnfactor[0]/(w_lsh)^3
+;   => estimate the equitorial cyclotron frequency
+wce_eq   = wcefac[0]*bmag_eq*1d9
+; => Define the relevant frequencies
+wce_all  = wcefac[0]*bmag_all
+wcp_all  = wcpfac[0]*bmag_all
+wlh_all  = SQRT(wce_all*wcp_all)
+wpe_pl   = wpefac[0]*SQRT(nipl_all)
+wpe_ph   = wpefac[0]*SQRT(niph_all)
+wpp_pl   = wppfac[0]*SQRT(nipl_all)
+wpp_ph   = wppfac[0]*SQRT(niph_all)
+
+; => 2 examples
+good_2   = array_where(all_evns,evn_gd,/N_UNIQ)
+PRINT,';  ', wce_eq[good_2[*,0]]/(2d0*!DPI)
+;         12942.167       7158.5844
+PRINT,';  ', wce_all[good_2[*,0]]/(2d0*!DPI)
+;         12649.244       4698.5104
+
+; => Define the SC positions
+pos_xgsm = test_wh.GSM_POS[*,0]
+pos_ygsm = test_wh.GSM_POS[*,1]
+pos_zgsm = test_wh.GSM_POS[*,2]
+pos_wgsm = [[pos_xgsm],[pos_ygsm],[pos_zgsm]]
+pos_ugsm = pos_wgsm/(SQRT(TOTAL(pos_wgsm^2,2,/NAN)) # REPLICATE(1d0,nall))
+; => Calculate SM Coordinates
+coord_trans_wrapper,wunix,pos_wgsm,data_out,/GSM,/TO_SM
+pos_wsm  = data_out
+pos_usm  = pos_wsm/(SQRT(TOTAL(pos_wsm^2,2,/NAN)) # REPLICATE(1d0,nall))
+gsm_lat0 = ATAN(pos_ugsm[*,2]/SQRT(pos_ugsm[*,0]^2 + pos_ugsm[*,1]^2))*18d1/!DPI
+sm_lat0  = ATAN(pos_usm[*,2]/SQRT(pos_usm[*,0]^2 + pos_usm[*,1]^2))*18d1/!DPI
+
+wcerat   = wce_all/wce_eq
+PRINT,';  ', MIN(wcerat,/NAN), MAX(wcerat,/NAN), MEAN(wcerat,/NAN), STDDEV(wcerat,/NAN)
+;        0.55335764       46.613710       6.1628766       6.1188516
+
+; => Get elements of relevant waves
+good     = array_where(all_evns,evn_gd,/N_UNIQ,NCOMP1=ncomp1,NCOMP2=ncomp2)
+
+good_m   = good[*,0]
+wscets   = wscets[good_m]
+wunix    = wunix[good_m]
+all_evns = all_evns[good_m]
+w_rad    = w_rad[good_m]
+w_lsh    = w_lsh[good_m]
+w_mlt    = w_mlt[good_m]
+gse_magf = gse_magf[good_m,*]
+bmag_all = bmag_all[good_m]
+bmag_eq  = bmag_eq[good_m]
+nipl_all = nipl_all[good_m]
+niph_all = niph_all[good_m]
+wce_all  = wce_all[good_m]
+wce_eq   = wce_eq[good_m]
+wcp_all  = wcp_all[good_m]
+wlh_all  = wlh_all[good_m]
+wpe_pl   = wpe_pl[good_m]
+wpe_ph   = wpe_ph[good_m]
+wpp_pl   = wpp_pl[good_m]
+wpp_ph   = wpp_ph[good_m]
+wcerat   = wcerat[good_m]
+
+pos_wgsm = pos_wgsm[good_m,*]
+pos_wsm  = pos_wsm[good_m,*]
+gsm_lat0 = gsm_lat0[good_m]
+sm_lat0  = sm_lat0[good_m]
+
+rth      = 1d0/(2d0*!DPI)
+suffx    = '   => For '+wscets
+FOR j=0L, 1L DO BEGIN $
+  PRINT,';  ', w_rad[j], w_lsh[j], w_mlt[j], gsm_lat0[j], sm_lat0[j], suffx[j]
+;        3.86800      4.02800      2.46600       3.0984083       10.071225   => For 1998-11-13/18:20:58.872
+;        4.93200      4.90700     0.515000       1.3690255       2.8625437   => For 2000-04-10/03:10:42.599
+
+FOR j=0L, 1L DO BEGIN $
+  PRINT,';  ', bmag_all[j], bmag_eq[j]*1d9, nipl_all[j], niph_all[j], suffx[j]
+;        451.880       462.34437      168.418      127.540   => For 1998-11-13/18:20:58.872
+;        167.849       255.73238      70.9200      10.6510   => For 2000-04-10/03:10:42.599
+
+FOR j=0L, 1L DO BEGIN $
+  PRINT,';  ', wce_all[j]*rth[0], wce_eq[j]*rth[0], wcp_all[j]*rth[0], wlh_all[j]*rth[0], suffx[j]
+;         12649.244       12942.167       6.8889931       295.19579   => For 1998-11-13/18:20:58.872
+;         4698.5104       7158.5844       2.5588886       109.64928   => For 2000-04-10/03:10:42.599
+
+FOR j=0L, 1L DO BEGIN $
+  PRINT,';  ', wpe_pl[j]*rth[0], wpe_ph[j]*rth[0], wpp_pl[j]*rth[0], wpp_ph[j]*rth[0], suffx[j]
+;         116521.47       101399.29       2719.2652       2366.3583   => For 1998-11-13/18:20:58.872
+;         75612.928       29302.650       1764.5812       683.83685   => For 2000-04-10/03:10:42.599
+
+PRINT,';  ', wcerat
+;        0.97736673      0.65634630
+;-----------------------------------------------------------------------------------------
+; => Determine statistics on Lambda_SM and Theta_kB 
+;-----------------------------------------------------------------------------------------
+epo      = 8.854187817d-12        ; => Permittivity of free space (F/m)
+muo      = 4d0*!DPI*1d-7          ; => Permeability of free space (N/A^2 or H/m)
+me       = 9.1093897d-31          ; => Electron mass (kg)
+mp       = 1.6726231d-27          ; => Proton mass (kg)
+qq       = 1.60217733d-19         ; => Fundamental charge (C)
+wcefac   = qq*1d-9/me             ; => factor for electron cyclotron frequency [rad s^(-1) nT^(-1)]
+wcpfac   = qq*1d-9/mp             ; => factor for proton cyclotron frequency [rad s^(-1) nT^(-1)]
+wpefac   = SQRT(1d6*qq^2/(me*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+wppfac   = SQRT(1d6*qq^2/(mp*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+evn_gd   = [05881617L,27520153L]
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+
+test_wh  = all_stats_all_waves_read()
+
+wscets   = STRTRIM(test_wh.SCETS,2)
+nall     = N_ELEMENTS(wscets)
+wunix    = time_double(wscets)
+wavetype = STRLOWCASE(STRTRIM(test_wh.WAVE_TYPE,2))
+rectype  = STRLOWCASE(STRTRIM(test_wh.REC_TYPE,2))
+w_rad    = test_wh.WIND_RAD_DIST
+w_lsh    = test_wh.WIND_L_SHELL
+w_mlt    = test_wh.WIND_MLT
+
+; => Estimate the dipole B-field at the equator dependent upon the L-shell
+bmag_eq  = magnfactor[0]/(w_lsh)^3
+; => estimate the equitorial cyclotron frequency
+wce_eq   = wcefac[0]*bmag_eq*1d9
+; => Define the relevant frequencies
+bmag_all = test_wh.B_MAG
+wce_all  = wcefac[0]*bmag_all
+wcerat   = wce_all/wce_eq
+wavefreq = (2d0*!DPI)*(test_wh.FREQ_LOW + test_wh.FREQ_HIGH)/2d0
+tanis_el = test_wh.TANIS_EL
+tanis_eh = test_wh.TANIS_EH
+
+alle_rms = test_wh.E_RMS
+allb_rms = test_wh.B_RMS
+whe_rms  = test_wh.EMAG_RMS
+whb_rms  = test_wh.BMAG_RMS
+whe_pk   = test_wh.EMAG_PK
+whb_pk   = test_wh.BMAG_PK
+
+evalmin  = test_wh.EIG_VALS[*,0]
+evalmid  = test_wh.EIG_VALS[*,1]
+evalmax  = test_wh.EIG_VALS[*,2]
+emidmin  = evalmid/evalmin
+
+pos_xgsm = test_wh.GSM_POS[*,0]
+pos_ygsm = test_wh.GSM_POS[*,1]
+pos_zgsm = test_wh.GSM_POS[*,2]
+pos_wgsm = [[pos_xgsm],[pos_ygsm],[pos_zgsm]]
+
+coord_trans_wrapper,wunix,pos_wgsm,data_out,/GSM,/TO_SM
+
+pos_wsm  = data_out
+pos_ugsm = pos_wgsm/(SQRT(TOTAL(pos_wgsm^2,2,/NAN)) # REPLICATE(1d0,nall))
+pos_usm  = pos_wsm/(SQRT(TOTAL(pos_wsm^2,2,/NAN)) # REPLICATE(1d0,nall))
+
+mloctime = ATAN(pos_wsm[*,1]/pos_wsm[*,0])*18d1/!DPI/15d0 + 12d0
+; => Check for negative X-SM coordinate points
+low_tmp  = WHERE(pos_wsm[*,0] LT 0d0,lwtp)
+IF (lwtp GT 0L) THEN $
+  mloctime[low_tmp] = (ATAN(pos_wsm[low_tmp,1]/pos_wsm[low_tmp,0]) + !DPI)*18d1/!DPI/15d0 + 12d0
+; => Check for MLTs > 24
+hig_mloc = WHERE(mloctime GE 24d0,mlc)
+IF (mlc GT 0L) THEN mloctime[hig_mloc] = mloctime[hig_mloc] - 24d0
+diff     = w_mlt - mloctime
+PRINT,';  ', MIN(diff,/NAN), MAX(diff,/NAN)
+;    -0.00050031908   0.00050027231
+
+
+; => Define the GSE DC B-fields
+gse_magf = test_wh.WI_B3_GSE
+ugsemagf = gse_magf/( SQRT(TOTAL(gse_magf^2,2,/NAN)) # REPLICATE(1d0,nall) )
+; => Define k-Vector GSE 
+kxgse    = test_wh.MIN_EIG_VEC[*,0]
+kygse    = test_wh.MIN_EIG_VEC[*,1]
+kzgse    = test_wh.MIN_EIG_VEC[*,2]
+kgse     = [[kxgse],[kygse],[kzgse]]
+
+; => Define Theta_kB
+kdotb    = my_dot_prod(ugsemagf,kgse,/NOM)
+thetakB  = ACOS(kdotb)*18d1/!DPI
+thetakB  = thetakB < (18d1 - thetakB)
+
+;-------------------------------------
+; => Find Only Waves in Magnetosphere
+;-------------------------------------
+wgood  = STRLOWCASE('Whistlers')
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','101002']
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN                                                   $
+  date       = gdates[j]                                                                   & $
+  temp       = orbit_region_time_range(DATE=date[0])                                       & $
+  tr_m       = time_double(temp.MAGNETOSPHERE)                                             & $
+  testm      = (wunix LE tr_m[1] AND wunix GT tr_m[0]) AND (wavetype EQ wgood[0])          & $
+  good_m0    = WHERE(testm,gdm0)                                                           & $
+  IF (gdm0 GT 0 AND j EQ 0) THEN good_m = good_m0                                          & $
+  IF (gdm0 GT 0 AND j GT 0) THEN good_m = [good_m,good_m0]
+
+; => Limit to L < 15
+lshell   = 15.
+l_string = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+test_l   = (w_lsh[good_m] LE lshell[0])
+good0    = WHERE(test_l,gd0)
+PRINT,';  ', gd0
+; => For L < 15
+;           257
+good_m   = good_m[good0]
+
+wscets   = wscets[good_m]
+wunix    = wunix[good_m]
+wavetype = wavetype[good_m]
+rectype  = rectype[good_m]
+
+tanis_el = tanis_el[good_m]
+tanis_eh = tanis_eh[good_m]
+wce_eq   = wce_eq[good_m]
+wce_all  = wce_all[good_m]
+wcerat   = wcerat[good_m]
+wavefreq = wavefreq[good_m]
+
+alle_rms = alle_rms[good_m,*]
+allb_rms = allb_rms[good_m,*]
+whe_rms  = whe_rms[good_m]
+whb_rms  = whb_rms[good_m]
+whe_pk   = whe_pk[good_m]
+whb_pk   = whb_pk[good_m]
+
+w_rad    = w_rad[good_m]
+w_lsh    = w_lsh[good_m]
+w_mlt    = w_mlt[good_m]
+wgsm_pos = pos_wgsm[good_m,*]
+wsm_pos  = pos_wsm[good_m,*]
+; => Remove incomplete TDS Samples [i.e. TDS with < 2 components]
+exrms    = alle_rms[*,0]
+eyrms    = alle_rms[*,1]
+ezrms    = alle_rms[*,2]
+bxrms    = allb_rms[*,0]
+byrms    = allb_rms[*,1]
+bzrms    = allb_rms[*,2]
+
+test_f   = (rectype EQ 'tdsf') AND ((exrms GT 0.) AND (eyrms GT 0.))
+
+test_e0  = ((exrms GT 0.) AND (eyrms GT 0.) AND (ezrms GT 0.))
+test_b0  = ((bxrms GT 0.) AND (byrms GT 0.) AND (bzrms GT 0.))
+test_s   = (rectype EQ 'tdss') AND (test_e0 OR test_b0)
+
+good_f   = WHERE(test_f,gdf)
+good_s   = WHERE(test_s,gds)
+PRINT,';  ', gdf, gds
+; => For L < 15
+;           185          68
+
+good_all = [good_f,good_s]
+sp       = SORT(good_all)
+good_all = good_all[sp]
+nall     = N_ELEMENTS(good_all)
+
+wscets   = wscets[good_all]
+wunix    = wunix[good_all]
+wavetype = wavetype[good_all]
+rectype  = rectype[good_all]
+
+tanis_el = tanis_el[good_all]
+tanis_eh = tanis_eh[good_all]
+wce_eq   = wce_eq[good_all]
+wce_all  = wce_all[good_all]
+wcerat   = wcerat[good_all]
+wavefreq = wavefreq[good_all]
+
+alle_rms = alle_rms[good_all,*]
+allb_rms = allb_rms[good_all,*]
+whe_rms  = whe_rms[good_all]
+whb_rms  = whb_rms[good_all]
+whe_pk   = whe_pk[good_all]
+whb_pk   = whb_pk[good_all]
+
+w_rad    = w_rad[good_all]
+w_lsh    = w_lsh[good_all]
+w_mlt    = w_mlt[good_all]
+wgsm_pos = wgsm_pos[good_all,*]
+wsm_pos  = wsm_pos[good_all,*]
+
+pos_ugsm = wgsm_pos/(SQRT(TOTAL(wgsm_pos^2,2,/NAN)) # REPLICATE(1d0,nall))
+pos_usm  = wsm_pos/(SQRT(TOTAL(wsm_pos^2,2,/NAN)) # REPLICATE(1d0,nall))
+; => Define GSM and SM Latitudes
+gsm_lat0 = ATAN(pos_ugsm[*,2]/SQRT(pos_ugsm[*,0]^2 + pos_ugsm[*,1]^2))*18d1/!DPI
+sm_lat0  = ATAN(pos_usm[*,2]/SQRT(pos_usm[*,0]^2 + pos_usm[*,1]^2))*18d1/!DPI
+
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','101002']
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN                                                   $
+  date       = gdates[j]                                                                   & $
+  temp       = orbit_region_time_range(DATE=date[0])                                       & $
+  tr_r       = time_double(temp.RADIATION_BELTS)                                           & $
+  testr      = (wunix LE tr_r[1] AND wunix GT tr_r[0])                                     & $
+  good_r0    = WHERE(testr,gdr0)                                                           & $
+  IF (j EQ 0)               THEN good_r = good_r0                                          & $
+  IF (gdr0 GT 0 AND j GT 0) THEN good_r = [good_r,good_r0]
+
+badr     = WHERE(good_r LT 0,bdr,COMPLEMENT=ggoodr,NCOMPLEMENT=ggdr)
+IF (ggdr GT 0) THEN good_r = good_r[ggoodr]
+unq      = UNIQ(good_r,SORT(good_r))
+good_r   = good_r[unq]
+HELP, good_all, good_r
+;GOOD_ALL        LONG      = Array[253]
+;GOOD_R          LONG      = Array[223]
+
+inds     = LINDGEN(nall)
+bads     = array_where(inds,good_r,/N_UNIQ,NCOMP1=ncomp1,NCOMP2=ncomp2)
+HELP, ncomp1,ncomp2
+;NCOMP1          LONG      = Array[30]
+;NCOMP2          LONG      =           -1
+
+els_mg    = ncomp1
+els_rd    = good_r
+HELP, els_mg,els_rd
+;ELS_MG          LONG      = Array[30]
+;ELS_RD          LONG      = Array[223]
+
+tanis_el_mg = tanis_el[els_mg]
+tanis_eh_mg = tanis_eh[els_mg]
+wce_eq_mg   = wce_eq[els_mg]
+wce_all_mg  = wce_all[els_mg]
+wcerat_mg   = wcerat[els_mg]
+wavefreq_mg = wavefreq[els_mg]
+
+pos_wgsm_mg = pos_wgsm[els_mg,*]
+pos_ugsm_mg = pos_ugsm[els_mg,*]
+pos_wsm_mg  = pos_wsm[els_mg,*]
+pos_usm_mg  = pos_usm[els_mg,*]
+gsm_lat_mg  = gsm_lat0[els_mg]
+sm_lat_mg   = sm_lat0[els_mg]
+
+tanis_el_rd = tanis_el[els_rd]
+tanis_eh_rd = tanis_eh[els_rd]
+wce_eq_rd   = wce_eq[els_rd]
+wce_all_rd  = wce_all[els_rd]
+wcerat_rd   = wcerat[els_rd]
+wavefreq_rd = wavefreq[els_rd]
+
+pos_wgsm_rd = pos_wgsm[els_rd,*]
+pos_ugsm_rd = pos_ugsm[els_rd,*]
+pos_wsm_rd  = pos_wsm[els_rd,*]
+pos_usm_rd  = pos_usm[els_rd,*]
+gsm_lat_rd  = gsm_lat0[els_rd]
+sm_lat_rd   = sm_lat0[els_rd]
+
+HELP, WHERE(wavefreq_mg/wce_eq_mg LE 0.5), WHERE(wavefreq_rd/wce_eq_rd LE 0.5)
+;  <Expression>    LONG      = Array[23]
+;  <Expression>    LONG      = Array[214]
+
+HELP, WHERE(wcerat_mg LE 2.), WHERE(wcerat_rd LE 2.), WHERE(wcerat_rd LE 1.5), WHERE(wcerat_rd LE 1.)
+;  <Expression>    LONG      = Array[19]
+;  <Expression>    LONG      = Array[201]
+;  <Expression>    LONG      = Array[155]
+;  <Expression>    LONG      = Array[111]
+PRINT,';  ', 1d0*N_ELEMENTS(WHERE(wcerat_rd LE 1.5))/(1d0*N_ELEMENTS(wcerat_rd)),$
+             1d0*N_ELEMENTS(WHERE(wcerat_rd LE 1.0))/(1d0*N_ELEMENTS(wcerat_rd))
+;        0.69506726      0.49775785
+
+HELP, WHERE(tanis_el_mg GE 1.), WHERE(tanis_eh_mg GE 1.)
+;  <Expression>    LONG      = Array[13]
+;  <Expression>    LONG      = Array[25]
+PRINT,';  ', 1d0*N_ELEMENTS(WHERE(tanis_el_mg GE 1.))/(1d0*N_ELEMENTS(tanis_el_mg)),$
+             1d0*N_ELEMENTS(WHERE(tanis_eh_mg GE 1.))/(1d0*N_ELEMENTS(tanis_eh_mg))
+;        0.43333333      0.83333333
+
+HELP, WHERE(tanis_el_rd GE 1.), WHERE(tanis_eh_rd GE 1.)
+;  <Expression>    LONG      = Array[169]
+;  <Expression>    LONG      = Array[220]
+PRINT,';  ', 1d0*N_ELEMENTS(WHERE(tanis_el_rd GE 1.))/(1d0*N_ELEMENTS(tanis_el_rd)),$
+             1d0*N_ELEMENTS(WHERE(tanis_eh_rd GE 1.))/(1d0*N_ELEMENTS(tanis_eh_rd))
+;        0.75784753      0.98654709
+
+
+; => Plot hodograms
+
+pref       = 'Whistler_TDS-ALL_L'+l_string[0]+'_'
+suffxmg    = '_Magnetosphere_histogram'
+suffxrd    = '_Radiation-Belts_histogram'
+ttl_mg     = 'Magnetosphere ONLY'
+ttl_rd     = 'Radiation Belts'
+
+ttlmg      = 'TDS ['+ttl_mg[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+ttlrd      = 'TDS ['+ttl_rd[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+
+;-------------------------------------
+; => SM Latitude histograms
+;-------------------------------------
+;   Outer Magnetosphere
+xttl       = '!7k!3'+'!DSM!N (deg)'
+ttle       = ttlmg
+midstr     = 'SM-Latitude'
+dra0       = [-9e1,9e1]
+nbins      = 10L
+xdat       = sm_lat_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+;   Radiation Belts
+xdat       = sm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+
+; => 2nd set of angle ranges
+;   Outer Magnetosphere
+midstr     = 'SM-Latitude-2nd'
+dra0       = [-5e1,5e1]
+nbins      = 9L
+xdat       = sm_lat_mg
+ttle       = ttlmg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+;   Radiation Belts
+xdat       = sm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+
+; => 3rd set of angle ranges
+;   Outer Magnetosphere
+midstr     = 'SM-Latitude-3rd'
+dra0       = [-3e1,3e1]
+nbins      = 7L
+xdat       = sm_lat_mg
+ttle       = ttlmg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+;   Radiation Belts
+xdat       = sm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+
+;-------------------------------------
+; => GSM Latitude histograms
+;-------------------------------------
+;   Outer Magnetosphere
+xttl       = '!7k!3'+'!DGSM!N (deg)'
+ttle       = ttlmg
+midstr     = 'GSM-Latitude'
+dra0       = [-9e1,9e1]
+nbins      = 10L
+xdat       = gsm_lat_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+;   Radiation Belts
+xdat       = gsm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+
+; => 2nd set of angle ranges
+;   Outer Magnetosphere
+midstr     = 'GSM-Latitude-2nd'
+dra0       = [-5e1,5e1]
+nbins      = 9L
+xdat       = gsm_lat_mg
+ttle       = ttlmg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+;   Radiation Belts
+xdat       = gsm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+
+; => 3rd set of angle ranges
+;   Outer Magnetosphere
+midstr     = 'GSM-Latitude-3rd'
+dra0       = [-3e1,3e1]
+nbins      = 7L
+xdat       = gsm_lat_mg
+ttle       = ttlmg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+;   Radiation Belts
+xdat       = gsm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+
+;-------------------------------------
+; => f/fce [equatorial]
+;-------------------------------------
+midstr     = 'f-fce-eq'
+dra0       = [0.,1.]
+nbins      = 11L
+xttl       = 'f/f!Dce!N [f!Dce!N = equatorial]'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = wavefreq_mg/wce_eq_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = wavefreq_rd/wce_eq_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+
+
+
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Correlation between theta_kB and lambda_GSM? [TDSS]
+;-----------------------------------------------------------------------------------------
+test_wh  = all_stats_all_waves_read()
+
+wscets   = STRTRIM(test_wh.SCETS,2)
+nall     = N_ELEMENTS(wscets)
+wunix    = time_double(wscets)
+wavetype = STRLOWCASE(STRTRIM(test_wh.WAVE_TYPE,2))
+rectype  = STRLOWCASE(STRTRIM(test_wh.REC_TYPE,2))
+w_rad    = test_wh.WIND_RAD_DIST
+w_lsh    = test_wh.WIND_L_SHELL
+w_mlt    = test_wh.WIND_MLT
+
+alle_rms = test_wh.E_RMS
+allb_rms = test_wh.B_RMS
+whe_rms  = test_wh.EMAG_RMS
+whb_rms  = test_wh.BMAG_RMS
+whe_pk   = test_wh.EMAG_PK
+whb_pk   = test_wh.BMAG_PK
+
+evalmin  = test_wh.EIG_VALS[*,0]
+evalmid  = test_wh.EIG_VALS[*,1]
+evalmax  = test_wh.EIG_VALS[*,2]
+emidmin  = evalmid/evalmin
+
+pos_xgsm = test_wh.GSM_POS[*,0]
+pos_ygsm = test_wh.GSM_POS[*,1]
+pos_zgsm = test_wh.GSM_POS[*,2]
+pos_wgsm = [[pos_xgsm],[pos_ygsm],[pos_zgsm]]
+kxgse    = test_wh.MIN_EIG_VEC[*,0]
+kygse    = test_wh.MIN_EIG_VEC[*,1]
+kzgse    = test_wh.MIN_EIG_VEC[*,2]
+kgse     = [[kxgse],[kygse],[kzgse]]
+
+gse_magf = test_wh.WI_B3_GSE
+ugsemagf = gse_magf/( SQRT(TOTAL(gse_magf^2,2,/NAN)) # REPLICATE(1d0,nall) )
+; => Define Theta_kB
+kdotb    = my_dot_prod(ugsemagf,kgse,/NOM)
+thetakB  = ACOS(kdotb)*18d1/!DPI
+thetakB  = thetakB < (18d1 - thetakB)
+
+coord_trans_wrapper,wunix,pos_wgsm,data_out,/GSM,/TO_SM
+
+pos_wsm  = data_out
+pos_ugsm = pos_wgsm/(SQRT(TOTAL(pos_wgsm^2,2,/NAN)) # REPLICATE(1d0,nall))
+pos_usm  = pos_wsm/(SQRT(TOTAL(pos_wsm^2,2,/NAN)) # REPLICATE(1d0,nall))
+
+; => Remove incomplete TDS Samples [i.e. TDS with < 2 components]
+exrms    = alle_rms[*,0]
+eyrms    = alle_rms[*,1]
+ezrms    = alle_rms[*,2]
+bxrms    = allb_rms[*,0]
+byrms    = allb_rms[*,1]
+bzrms    = allb_rms[*,2]
+
+test_e0  = ((exrms GT 0.) AND (eyrms GT 0.) AND (ezrms GT 0.))
+test_b0  = ((bxrms GT 0.) AND (byrms GT 0.) AND (bzrms GT 0.))
+test_s   = (rectype EQ 'tdss') AND (test_e0 OR test_b0)
+
+good_s   = WHERE(test_s,gds)
+PRINT,';  ', gds
+;           332
+
+wscets   = wscets[good_s]
+nall     = gds
+wunix    = wunix[good_s]
+wavetype = wavetype[good_s]
+rectype  = rectype[good_s]
+w_rad    = w_rad[good_s]
+w_lsh    = w_lsh[good_s]
+w_mlt    = w_mlt[good_s]
+
+alle_rms = alle_rms[good_s,*]
+allb_rms = allb_rms[good_s,*]
+
+evalmin  = evalmin[good_s]
+evalmid  = evalmid[good_s]
+evalmax  = evalmax[good_s]
+emidmin  = emidmin[good_s]
+
+pos_wgsm = pos_wgsm[good_s,*]
+pos_ugsm = pos_ugsm[good_s,*]
+pos_wsm  = pos_wsm[good_s,*]
+pos_usm  = pos_usm[good_s,*]
+kgse     = kgse[good_s,*]
+gse_magf = gse_magf[good_s,*]
+thetakB  = thetakB[good_s]
+
+wgood  = STRLOWCASE('Whistlers')
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','101002']
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN                                                   $
+  date       = gdates[j]                                                                   & $
+  temp       = orbit_region_time_range(DATE=date[0])                                       & $
+  tr_m       = time_double(temp.MAGNETOSPHERE)                                             & $
+  testm      = (wunix LE tr_m[1] AND wunix GT tr_m[0]) AND (wavetype EQ wgood[0])          & $
+  good_m0    = WHERE(testm,gdm0)                                                           & $
+  IF (gdm0 GT 0 AND j EQ 0) THEN good_m = good_m0                                          & $
+  IF (gdm0 GT 0 AND j GT 0) THEN good_m = [good_m,good_m0]
+
+; => Limit to L < 15
+lshell   = 15.
+l_string = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+test_l   = (w_lsh[good_m] LE lshell[0])
+good0    = WHERE(test_l,gd0)
+PRINT,';  ', gd0
+;            68
+good_m   = good_m[good0]
+
+wscets   = wscets[good_m]
+wunix    = wunix[good_m]
+wavetype = wavetype[good_m]
+rectype  = rectype[good_m]
+
+w_rad    = w_rad[good_m]
+w_lsh    = w_lsh[good_m]
+w_mlt    = w_mlt[good_m]
+
+alle_rms = alle_rms[good_m,*]
+allb_rms = allb_rms[good_m,*]
+bxrms    = allb_rms[*,0]
+byrms    = allb_rms[*,1]
+bzrms    = allb_rms[*,2]
+exrms    = alle_rms[*,0]
+eyrms    = alle_rms[*,1]
+ezrms    = alle_rms[*,2]
+
+evalmin  = evalmin[good_m]
+evalmid  = evalmid[good_m]
+evalmax  = evalmax[good_m]
+emidmin  = emidmin[good_m]
+emidmin0 = emidmin
+
+pos_wgsm = pos_wgsm[good_m,*]
+pos_ugsm = pos_ugsm[good_m,*]
+pos_wsm  = pos_wsm[good_m,*]
+pos_usm  = pos_usm[good_m,*]
+kgse     = kgse[good_m,*]
+
+thetakB  = thetakB[good_m]
+thetakB0 = thetakB
+
+test_e2  = ((exrms GT 0.) AND (eyrms GT 0.) AND (ezrms GT 0.))
+test_b2  = ((bxrms GT 0.) AND (byrms GT 0.) AND (bzrms GT 0.))
+test_s2  = (rectype EQ 'tdss') AND test_b2 AND (emidmin GE 5d0)
+test_s3  = (rectype EQ 'tdss') AND (test_b2 OR test_e2) AND (emidmin GE 5d0)
+test_s4  = (rectype EQ 'tdss') AND (test_b2 OR test_e2) AND (emidmin GE 3d0)
+
+good_s2  = WHERE(test_s2,gds2)
+good_s3  = WHERE(test_s3,gds3)
+good_s4  = WHERE(test_s4,gds4)
+PRINT,';  ', gds2, gds3, gds4
+;            50          54          60
+
+wscets   = wscets[good_s2]
+nall     = gds2
+wunix    = wunix[good_s2]
+wavetype = wavetype[good_s2]
+rectype  = rectype[good_s2]
+w_rad    = w_rad[good_s2]
+w_lsh    = w_lsh[good_s2]
+w_mlt    = w_mlt[good_s2]
+
+alle_rms = alle_rms[good_s2,*]
+allb_rms = allb_rms[good_s2,*]
+
+evalmin  = evalmin[good_s2]
+evalmid  = evalmid[good_s2]
+evalmax  = evalmax[good_s2]
+emidmin  = emidmin[good_s2]
+
+pos_wgsm = pos_wgsm[good_s2,*]
+pos_ugsm = pos_ugsm[good_s2,*]
+pos_wsm  = pos_wsm[good_s2,*]
+pos_usm  = pos_usm[good_s2,*]
+kgse     = kgse[good_s2,*]
+gse_magf = gse_magf[good_s2,*]
+thetakB  = thetakB[good_s2]
+
+; => Define GSM and SM Latitudes
+gsm_lat0 = ATAN(pos_ugsm[*,2]/SQRT(pos_ugsm[*,0]^2 + pos_ugsm[*,1]^2))*18d1/!DPI
+sm_lat0  = ATAN(pos_usm[*,2]/SQRT(pos_usm[*,0]^2 + pos_usm[*,1]^2))*18d1/!DPI
+
+gdates = ['111398','040900','050300','052600','061000','062600','071000',$
+          '072300','080400','081500','100301','102401','101002']
+FOR j=0L, N_ELEMENTS(gdates) - 1L DO BEGIN                                                   $
+  date       = gdates[j]                                                                   & $
+  temp       = orbit_region_time_range(DATE=date[0])                                       & $
+  tr_r       = time_double(temp.RADIATION_BELTS)                                           & $
+  testr      = (wunix LE tr_r[1] AND wunix GT tr_r[0])                                     & $
+  good_r0    = WHERE(testr,gdr0)                                                           & $
+  IF (j EQ 0)               THEN good_r = good_r0                                          & $
+  IF (gdr0 GT 0 AND j GT 0) THEN good_r = [good_r,good_r0]
+
+badr     = WHERE(good_r LT 0,bdr,COMPLEMENT=ggoodr,NCOMPLEMENT=ggdr)
+IF (ggdr GT 0) THEN good_r = good_r[ggoodr]
+unq      = UNIQ(good_r,SORT(good_r))
+good_r   = good_r[unq]
+HELP, good_s2, good_r
+;GOOD_S2         LONG      = Array[50]
+;GOOD_R          LONG      = Array[33]
+
+inds     = LINDGEN(nall)
+bads     = array_where(inds,good_r,/N_UNIQ,NCOMP1=ncomp1,NCOMP2=ncomp2)
+HELP, ncomp1,ncomp2
+;NCOMP1          LONG      = Array[17]
+;NCOMP2          LONG      =           -1
+
+els_mg    = ncomp1
+els_rd    = good_r
+HELP, els_mg,els_rd
+;ELS_MG          LONG      = Array[17]
+;ELS_RD          LONG      = Array[33]
+
+; => Define Magnetospheric Parameters
+wscets_mg   = wscets[els_mg]
+wunix_mg    = wunix[els_mg]
+wavetype_mg = wavetype[els_mg]
+rectype_mg  = rectype[els_mg]
+w_rad_mg    = w_rad[els_mg]
+w_lsh_mg    = w_lsh[els_mg]
+w_mlt_mg    = w_mlt[els_mg]
+alle_rms_mg = alle_rms[els_mg,*]
+allb_rms_mg = allb_rms[els_mg,*]
+bxrms_mg    = allb_rms_mg[*,0]
+byrms_mg    = allb_rms_mg[*,1]
+bzrms_mg    = allb_rms_mg[*,2]
+evalmin_mg  = evalmin[els_mg]
+evalmid_mg  = evalmid[els_mg]
+evalmax_mg  = evalmax[els_mg]
+emidmin_mg  = emidmin[els_mg]
+pos_wgsm_mg = pos_wgsm[els_mg,*]
+pos_ugsm_mg = pos_ugsm[els_mg,*]
+pos_wsm_mg  = pos_wsm[els_mg,*]
+pos_usm_mg  = pos_usm[els_mg,*]
+kgse_mg     = kgse[els_mg,*]
+gse_magf_mg = gse_magf[els_mg,*]
+thetakB_mg  = thetakB[els_mg]
+gsm_lat_mg  = gsm_lat0[els_mg]
+sm_lat_mg   = sm_lat0[els_mg]
+
+; => Define Radiation Belt Parameters
+wscets_rd   = wscets[els_rd]
+wunix_rd    = wunix[els_rd]
+wavetype_rd = wavetype[els_rd]
+rectype_rd  = rectype[els_rd]
+w_rad_rd    = w_rad[els_rd]
+w_lsh_rd    = w_lsh[els_rd]
+w_mlt_rd    = w_mlt[els_rd]
+alle_rms_rd = alle_rms[els_rd,*]
+allb_rms_rd = allb_rms[els_rd,*]
+bxrms_rd    = allb_rms_rd[*,0]
+byrms_rd    = allb_rms_rd[*,1]
+bzrms_rd    = allb_rms_rd[*,2]
+evalmin_rd  = evalmin[els_rd]
+evalmid_rd  = evalmid[els_rd]
+evalmax_rd  = evalmax[els_rd]
+emidmin_rd  = emidmin[els_rd]
+kgse_rd     = kgse[els_rd,*]
+gse_magf_rd = gse_magf[els_rd,*]
+pos_wgsm_rd = pos_wgsm[els_rd,*]
+pos_ugsm_rd = pos_ugsm[els_rd,*]
+pos_wsm_rd  = pos_wsm[els_rd,*]
+pos_usm_rd  = pos_usm[els_rd,*]
+thetakB_rd  = thetakB[els_rd]
+gsm_lat_rd  = gsm_lat0[els_rd]
+sm_lat_rd   = sm_lat0[els_rd]
+
+
+pref       = 'Whistler_TDSS-nT_L'+l_string[0]+'_'
+suffxmg    = '_Magnetosphere_histogram_Emid-min-5'
+suffxrd    = '_Radiation-Belts_histogram_Emid-min-5'
+ttl_mg     = 'Magnetosphere ONLY'
+ttl_rd     = 'Radiation Belts'
+xttl       = '!7h!3'+'!DkB!N (deg)'
+yttl       = '!7k!3'+'!DGSM,SM!N (deg) [GSM-Red, SM-Blue]'+'!C'+'[Rad. Belts = !9V!3, Magneto = *'+']'
+ttepref    = 'TDSS !7k!3'+'!DGSM,SM!N vs. !7h!3'+'!DkB!N [TDSS, nT] Whistler Statistics (L < '+l_string[0]+')'
+
+xra        = [0e0,9e1]
+yra        = [-7e1,7e1]
+pstr       = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttepref}
+suffx      = '_Radiation-Belts-diamonds_and_Magnetosphere-stars_Emid-min-5'
+pref       = 'Wind-GSM_and_SM-Latitude_Theta-kB_TDSS'
+
+
+
+
+!P.MULTI   = 0
+  PLOT,thetakb_mg,gsm_lat_mg,_EXTRA=pstr
+    OPLOT,thetakb_mg,gsm_lat_mg,PSYM=2,COLOR=250L
+    OPLOT,thetakb_mg,sm_lat_mg, PSYM=2,COLOR= 50L
+    OPLOT,thetakb_rd,gsm_lat_rd,PSYM=4,COLOR=250L
+    OPLOT,thetakb_rd,sm_lat_rd, PSYM=4,COLOR= 50L
+popen,pref[0]+suffx[0],/LAND
+  PLOT,thetakb_mg,gsm_lat_mg,_EXTRA=pstr
+    OPLOT,thetakb_mg,gsm_lat_mg,PSYM=2,COLOR=250L
+    OPLOT,thetakb_mg,sm_lat_mg, PSYM=2,COLOR= 50L
+    OPLOT,thetakb_rd,gsm_lat_rd,PSYM=4,COLOR=250L
+    OPLOT,thetakb_rd,sm_lat_rd, PSYM=4,COLOR= 50L
+pclose
+
+
+
+
+
+
+
+
+
+
+;ttlemg     = ttepref[0]+ttl_mg[0]+'] (nT) Whistler Statistics (L < '+l_string[0]+')'
+;ttlerd     = ttepref[0]+ttl_rd[0]+'] (nT) Whistler Statistics (L < '+l_string[0]+')'
+;pstrmg     = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+;              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttlemg}
+;pstrrd     = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+;              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttlerd}
+;suffxmg    = '_Magnetosphere_Emid-min-5'
+;suffxrd    = '_Radiation-Belts_Emid-min-5'

@@ -1,0 +1,277 @@
+date     = '111398'
+date     = '040900'
+
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+beta_fac = 1d6*(kB*K_eV)*(2d0*muo)
+wpefac = SQRT(1d6*qq^2/me/epo)
+wppfac = SQRT(1d6*qq^2/mp/epo)
+fcefac  = qq/me*1d-9/(2d0*!DPI)
+fpefac  = SQRT(1d6*qq^2/me/epo)/(2d0*!DPI)
+
+;-----------------------------------------------------------------------------------------
+; => Time Ranges and dates
+;-----------------------------------------------------------------------------------------
+temp        = orbit_region_time_range(DATE=date[0])
+t_orbit_all = temp.ENTIRE_ORBIT
+t_outer_mag = temp.MAGNETOSPHERE
+t_rad_belts = temp.RADIATION_BELTS
+;-----------------------------------------------------------------------------------------
+; => Format dates
+;-----------------------------------------------------------------------------------------
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate  = mydate.DATE[0]    ; -('YYYYMMDD')
+ldate  = STRMID(mdate,4L,4L)+STRMID(mdate,0L,4L)
+tdate  = mydate.TDATE[0]
+
+;-----------------------------------------------------------------------------------------
+; => Load MFI data
+;-----------------------------------------------------------------------------------------
+mag3   = read_wind_mfi_ascii_magneto(DATE=date)
+t3x    = mag3.MAG.X
+bmag4  = mag3.MAG.Y
+magf4  = mag3.BGSE.Y
+nt     = N_ELEMENTS(t3x) 
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+tplot_options,'xmargin',[18,12]
+tplot_options,'ymargin',[5,5]
+tplot,nn0,TRANGE=tr3
+
+fce   = fcefac[0]*bmag4*1d-3
+store_data,'fce',DATA={X:mag3.MAG.X,Y:fce}
+options,'fce','YTITLE','f!Dce!N (kHz)'
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Find Wind/3DP IDL Save Files
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;-----------------------------------------------------------------------------------------
+; => TDS whistler times
+;-----------------------------------------------------------------------------------------
+temp       = tds_whist_ehole_times(DATE=date[0],FIXFILE=fixfile)
+ymdb_whist = temp.WHISTLER_T
+unix_whist = temp.WHISTLER_UNX
+;-----------------------------------------------------------------------------------------
+; => Load orbit data
+;-----------------------------------------------------------------------------------------
+tds_magneto_orbits,DATE=date
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+tplot_options, var_label=['Wind_Radial_Distance','Wind_L-Shell','Wind_MLT']
+;-----------------------------------------------------------------------------------------
+; => Calc Density, temp, etc... for ions
+;-----------------------------------------------------------------------------------------
+pesa_low_moment_calibrate,DATE=date,/NOLOAD,PLM=apl,PLBM=aplb,TRANGE=tr3
+pesa_high_moment_calibrate,DATE=date,/NOLOAD,PHM=aph,PHBM=aphb,TRANGE=tr3
+
+options,tnames(['N_i2','N_ph']),'YLOG',1
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => fix Pesa data
+;-----------------------------------------------------------------------------------------
+plnames = tnames(['N_i2','T_i2','V_Ti2','V_sw2','V_mag2','Ti_perp','Ti_para','Ti_anisotropy'])
+phnames = tnames(['N_ph','Tavg_ph','VTh_ph','Vel_ph','Vmag_ph','Ti_perp_ph','Ti_para_ph','Ti_anisotropy_ph'])
+
+;-----------------------------------------------------------
+; => 1998-11-13
+;-----------------------------------------------------------
+kill_data_tr,names=plnames
+;   0           N_i2:       1998-11-13/18:00:37.0      204.6                      
+;   1           N_i2:       1998-11-13/18:06:45.0      205.9                      
+;-----------------------------------------------------------
+;   0           T_i2:       1998-11-13/13:12:15.0      74.28                      
+;   1           T_i2:       1998-11-13/13:13:45.0      74.28                      
+;-----------------------------------------------------------
+;   0     wi_B3(GSE):       1998-11-13/13:31:05.0      20.31                      
+;   1     wi_B3(GSE):       1998-11-13/13:32:05.0      20.31                      
+;-----------------------------------------------------------
+;   0     wi_B3(GSE):       1998-11-13/13:43:00.0      23.94                      
+;   1     wi_B3(GSE):       1998-11-13/13:44:05.0      23.94                      
+;-----------------------------------------------------------
+;   0     wi_B3(GSE):       1998-11-13/13:19:14.0      38.12                      
+;   1     wi_B3(GSE):       1998-11-13/13:20:58.0      35.74                      
+;-----------------------------------------------------------
+;   0           T_i2:       1998-11-13/14:11:56.0      18.16                      
+;   1           T_i2:       1998-11-13/14:13:08.0      18.16                      
+;-----------------------------------------------------------
+;   0           T_i2:       1998-11-13/14:39:58.0      18.16                      
+;   1           T_i2:       1998-11-13/14:41:38.0      18.16                      
+;-----------------------------------------------------------
+
+
+
+kill_data_tr,names=phnames
+;   0           N_ph:       1998-11-13/17:59:41.0      351.3                      
+;   1           N_ph:       1998-11-13/18:07:31.0      360.9                      
+;-----------------------------------------------------------
+;   0        Vmag_ph:       1998-11-14/03:16:27.3      272.3                      
+;   1        Vmag_ph:       1998-11-14/03:22:16.7      263.8                      
+;-----------------------------------------------------------
+
+
+;-----------------------------------------------------------
+; => 2000-04-10
+;-----------------------------------------------------------
+kill_data_tr,names=plnames
+;   0           N_i2:       2000-04-10/03:21:35.0      26.23                      
+;   1           N_i2:       2000-04-10/03:28:00.0      29.90                      
+;-----------------------------------------------------------
+;   0     wi_B3(GSE):       2000-04-10/19:09:36.0     -5.938                      
+;   1     wi_B3(GSE):       2000-04-10/19:12:22.0     -5.878                      
+;-----------------------------------------------------------
+;   0     wi_B3(GSE):       2000-04-09/15:41:52.0     -9.010                      
+;   1     wi_B3(GSE):       2000-04-09/15:47:34.0     -9.010                      
+;-----------------------------------------------------------
+;   0           Null:       2000-04-09/18:19:10.0        NaN                      
+;   1           Null:       2000-04-09/18:23:40.0        NaN                      
+;-----------------------------------------------------------
+;   0           T_i2:       2000-04-09/20:47:30.0      21.22                      
+;   1           T_i2:       2000-04-09/20:52:00.0      21.22                      
+;-----------------------------------------------------------
+;   0           T_i2:       2000-04-09/22:47:00.0      11.09                      
+;   1           T_i2:       2000-04-09/22:54:20.0      11.09                      
+;-----------------------------------------------------------
+;   0           T_i2:       2000-04-10/00:55:50.0      11.53                      
+;   1           T_i2:       2000-04-10/01:06:30.0      9.620                      
+;-----------------------------------------------------------
+;   0     wi_B3(GSE):       2000-04-10/12:29:50.0     -17.77                      
+;   1     wi_B3(GSE):       2000-04-10/12:37:10.0     -17.49                      
+;-----------------------------------------------------------
+;   0           T_i2:       2000-04-09/21:41:05.0      24.06                      
+;   1           T_i2:       2000-04-09/21:51:10.0      19.82                      
+
+
+kill_data_tr,names=phnames
+;   0           N_ph:       2000-04-10/03:21:45.0      2.064                      
+;   1           N_ph:       2000-04-10/03:28:00.0      2.064                      
+;-----------------------------------------------------------
+;   0           N_i2:       2000-04-10/19:12:00.0     0.7120                      
+;   1           N_i2:       2000-04-10/19:12:14.0     0.7120                      
+;-----------------------------------------------------------
+;   0           N_i2:       2000-04-09/15:42:26.0      1.260                      
+;   1           N_i2:       2000-04-09/15:46:48.0      1.260                      
+;-----------------------------------------------------------------------------------------
+; => Calc plasma and upper-hybrid frequencies
+;-----------------------------------------------------------------------------------------
+get_data,'N_ph',DATA=ions,DLIM=dlim,LIM=lim
+idens      = ions.Y
+; => Fill in gaps produced by removing spikes in above procedure
+idens      = SMOOTH(idens,1,/NAN,/EDGE_TRUNCATE)  ; => Doesn't smooth, just replaces NaNs
+fpe_ph     = fpefac[0]*SQRT(idens)*1d-3
+store_data,'fpe_ph',DATA={X:ions.X,Y:fpe_ph}
+options,'fpe_ph','YTITLE','f!Dpe!N (kHz)'
+
+get_data,'N_i2',DATA=ions,DLIM=dlim,LIM=lim
+idens      = ions.Y
+; => Fill in gaps produced by removing spikes in above procedure
+idens      = SMOOTH(idens,1,/NAN,/EDGE_TRUNCATE)  ; => Doesn't smooth, just replaces NaNs
+fpe_pl     = fpefac[0]*SQRT(idens)*1d-3
+store_data,'fpe_pl',DATA={X:ions.X,Y:fpe_pl}
+options,'fpe_pl','YTITLE','f!Dpe!N (kHz)'
+
+
+get_data,'fce',data=test0,dlim=dlim0,lim=lim0
+get_data,'fpe_ph',data=test1,dlim=dlim1,lim=lim1
+get_data,'fpe_pl',data=test2,dlim=dlim2,lim=lim2
+temp      = interp(test0.Y,test0.X,test1.X,/NO_EXTRAP)
+upperh_ph = SQRT(temp^2 + test1.Y^2)
+freqs_ph  = [[temp],[fpe_ph],[upperh_ph]]
+temp      = interp(test0.Y,test0.X,test2.X,/NO_EXTRAP)
+upperh_pl = SQRT(temp^2 + test2.Y^2)
+freqs_pl  = [[temp],[fpe_pl],[upperh_pl]]
+store_data,'freq_fce_fpe_fuh_ph',DATA={X:test1.X,Y:freqs_ph}
+store_data,'freq_fce_fpe_fuh_pl',DATA={X:test2.X,Y:freqs_pl}
+options,'freq_fce_fpe_fuh_ph','YTITLE','[f!Dce!N'+', f!Dpe!N'+', f!Duh!N'+']!C'+'Frequency [kHz, PH]'
+options,'freq_fce_fpe_fuh_pl','YTITLE','[f!Dce!N'+', f!Dpe!N'+', f!Duh!N'+']!C'+'Frequency [kHz, PL]'
+options,['freq_fce_fpe_fuh_ph','freq_fce_fpe_fuh_pl'],'COLORS',[255,255,255]
+options,['freq_fce_fpe_fuh_ph','freq_fce_fpe_fuh_pl'],'YLOG',1
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Clean up PESA High velocities and add to PH structures
+;-----------------------------------------------------------------------------------------
+get_data,'Vel_ph',data=test0,DLIM=dlim,LIM=lim
+smvelx  = SMOOTH(test0.Y[*,0],5,/NAN,/EDGE_TRUNCATE)
+smvely  = SMOOTH(test0.Y[*,1],5,/NAN,/EDGE_TRUNCATE)
+smvelz  = SMOOTH(test0.Y[*,2],5,/NAN,/EDGE_TRUNCATE)
+smvel   = [[smvelx],[smvely],[smvelz]]
+smvelmg = SQRT(smvelx^2 + smvely^2 + smvelz^2)
+store_data,'Vel_ph_sm5pts',data={X:test0.X,Y:smvel},DLIM=dlim,LIM=lim
+get_data,'Vmag_ph',data=test0,DLIM=dlim,LIM=lim
+store_data,'Vmag_ph_sm5pts',data={X:test0.X,Y:smvelmg},DLIM=dlim,LIM=lim
+options,'Vel_ph_sm5pts','YTITLE','Velocity [PH, km/s]'+'!C'+'[Smoothed, 5pts]'
+options,'Vmag_ph_sm5pts','YTITLE','|V| [PH, km/s]'+'!C'+'[Smoothed, 5pts]'
+
+
+add_vsw2,aph,'Vel_ph_sm5pts'
+add_vsw2,aphb,'Vel_ph_sm5pts'
+
+;-----------------------------------------------------------------------------------------
+; => Plot PESA High DFs
+;-----------------------------------------------------------------------------------------
+vcirc   = 700d0   ; => Put a circle of constant energy at 700 km/s on contours
+mts     = my_time_string(aph.TIME,UNIX=1)
+ymdb    = mts.DATE_TIME
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+nph     = N_ELEMENTS(aph)
+
+mdir    = '~/Desktop/3DP_contours/'+date[0]+'/Pesa_High_Dists/'
+suffx   = '-3D-20Grids_sundir_Vsw-B-Plane_DF_Vcirc-700km-s'
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+ehstr   = {VLIM:vlim,NGRID:ngrid,EX_VEC:sunv,EX_VN:sunn,VCIRC:vcirc[0],ONE_C:1,SM_CUTS:1,MAGNETO:1}
+FOR j=0L, nph - 1L DO BEGIN                                                             $
+  dat    = aph[j]                                                                     & $
+  pltn1  = mdir[0]+'ph_'+gdate[j]+'_'+UTtime[j]+suffx[0]                              & $
+  popen,pltn1,/port                                                                   & $
+    eh_cont3d,dat,_EXTRA=ehstr                                                        & $
+  pclose
+
+

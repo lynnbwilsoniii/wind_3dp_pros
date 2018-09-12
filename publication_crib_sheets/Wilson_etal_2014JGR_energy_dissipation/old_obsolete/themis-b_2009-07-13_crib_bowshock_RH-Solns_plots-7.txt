@@ -1,0 +1,900 @@
+;;----------------------------------------------------------------------------------------
+;; => Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+me             = 9.1093829100d-31     ;; => Electron mass [kg]
+mp             = 1.6726217770d-27     ;; => Proton mass [kg]
+ma             = 6.6446567500d-27     ;; => Alpha-Particle mass [kg]
+c              = 2.9979245800d+08     ;; => Speed of light in vacuum [m/s]
+epo            = 8.8541878170d-12     ;; => Permittivity of free space [F/m]
+muo            = !DPI*4.00000d-07     ;; => Permeability of free space [N/A^2 or H/m]
+qq             = 1.6021765650d-19     ;; => Fundamental charge [C]
+kB             = 1.3806488000d-23     ;; => Boltzmann Constant [J/K]
+hh             = 6.6260695700d-34     ;; => Planck Constant [J s]
+GG             = 6.6738400000d-11     ;; => Newtonian Constant [m^(3) kg^(-1) s^(-1)]
+
+f_1eV          = qq[0]/hh[0]          ;; => Freq. associated with 1 eV of energy [Hz]
+J_1eV          = hh[0]*f_1eV[0]       ;; => Energy associated with 1 eV of energy [J]
+;; => Temp. associated with 1 eV of energy [K]
+K_eV           = qq[0]/kB[0]          ;; ~ 11,604.519 K
+R_E            = 6.37814d3            ;; => Earth's Equitorial Radius [km]
+
+;; => Compile necessary routines
+@comp_lynn_pros
+thm_init
+;; => Date/Time and Probe
+tdate          = '2009-07-13'
+tr_00          = tdate[0]+'/'+['07:50:00','10:10:00']
+date           = '071309'
+probe          = 'b'
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+prefu          = STRUPCASE(pref[0])
+;;----------------------------------------------------------------------------------------
+;; => Load all relevant data
+;;----------------------------------------------------------------------------------------
+;; => Restore TPLOT session
+mdir           = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_tplot_save/')
+fpref          = 'TPLOT_save_file_'+prefu[0]+'FGM-ALL_EESA-IESA-Moments_Vsw-Corrected_'
+fnm            = file_name_times(tr_00,PREC=0)
+ftimes         = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+tsuffx         = ftimes[0]+'-'+STRMID(ftimes[1],11L)
+fname          = fpref[0]+tsuffx[0]+'.tplot'
+file           = FILE_SEARCH(mdir,fname[0])
+tplot_restore,FILENAME=file[0],VERBOSE=0
+
+
+!themis.VERBOSE = 2
+tplot_options,'VERBOSE',2
+;;  Remove color table from default options
+options,tnames(),'COLOR_TABLE',/DEF
+options,tnames(),'COLOR_TABLE'
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100,TITLE='RH Solutions ['+tdate[0]+']'
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+coord          = 'gse'
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+velname        = pref[0]+'peib_velocity_'+coord[0]
+magname        = pref[0]+'fgh_'+coord[0]
+fgmnm          = pref[0]+'fgh_'+['mag',coord[0]]
+tr_jj          = time_double(tdate[0]+'/'+['08:50:00.000','09:30:00.000'])
+
+tplot,fgmnm,TRANGE=tr_jj
+;;----------------------------------------------------------------------------------------
+;; => Avg. terms [1st Shock]
+;;----------------------------------------------------------------------------------------
+;;  Upstream
+avg_magf_up  = [-2.88930d0,1.79045d0,-1.37976d0]
+avg_vswi_up  = [-328.746d0,10.8691d0,16.8013d0]
+avg_dens_up  =    7.21921d0
+avg_Ti_up    =   30.1554d0
+avg_Te_up    =   11.2373d0
+vshn_up      =  -52.769597d0
+ushn_up      = -271.85307d0
+gnorm        = [0.99012543d0,0.086580460d0,-0.0038282813d0]
+bmag_up      = NORM(avg_magf_up)
+vmag_up      = NORM(avg_vswi_up)
+b_dot_n      = my_dot_prod(gnorm,avg_magf_up,/NOM)/(bmag_up[0]*NORM(gnorm))
+theta_Bn     = ACOS(b_dot_n[0])*18d1/!DPI
+theta_Bn     = theta_Bn[0] < (18d1 - theta_Bn[0])
+nkT_up       = (avg_dens_up[0]*1d6)*(kB[0]*K_eV[0]*(avg_Te_up[0] + avg_Ti_up[0]))  ;; plasma pressure [J m^(-3)]
+sound_up     = SQRT(5d0*nkT_up[0]/(3d0*(avg_dens_up[0]*1d6)*mp[0]))                ;; sound speed [m/s]
+alfven_up    = (bmag_up[0]*1d-9)/SQRT(muo[0]*(avg_dens_up[0]*1d6)*mp[0])           ;; Alfven speed [m/s]
+Vs_p_Va_2    = (sound_up[0]^2 + alfven_up[0]^2)
+b2_4ac       = Vs_p_Va_2[0]^2 + 4d0*sound_up[0]^2*alfven_up[0]^2*SIN(theta_Bn[0]*!DPI/18d1)^2
+fast_up      = SQRT((Vs_p_Va_2[0] + SQRT(b2_4ac[0]))/2d0)
+;  Mach numbers
+Ma_up        = ABS(ushn_up[0]*1d3/alfven_up[0])
+Ms_up        = ABS(ushn_up[0]*1d3/sound_up[0])
+Mf_up        = ABS(ushn_up[0]*1d3/fast_up[0])
+PRINT,';;', theta_Bn[0], Ma_up[0], Ms_up[0], Mf_up[0]
+;       42.213702       9.1285256       3.3441957       3.0716594
+
+;;  Downstream
+avg_magf_dn  = [  -3.85673d0,10.8180d0,-8.72761d0]
+avg_vswi_dn  = [ -97.0335d0,23.6190d0,-9.12016d0]
+avg_dens_dn  =   47.8403d0
+avg_Ti_dn    =  158.597d0
+avg_Te_dn    =   30.5007d0
+ushn_dn      =  -41.225873d0
+bmag_dn      = NORM(avg_magf_dn)
+vmag_dn      = NORM(avg_vswi_dn)
+nkT_dn       = (avg_dens_dn[0]*1d6)*(kB[0]*K_eV[0]*(avg_Te_dn[0] + avg_Ti_dn[0]))  ;; plasma pressure [J m^(-3)]
+sound_dn     = SQRT(5d0*nkT_dn[0]/(3d0*(avg_dens_dn[0]*1d6)*mp[0]))
+alfven_dn    = (bmag_dn[0]*1d-9)/SQRT(muo[0]*(avg_dens_dn[0]*1d6)*mp[0])           ;; Alfven speed [m/s]
+Vs_p_Va_2    = (sound_dn[0]^2 + alfven_dn[0]^2)
+b2_4ac       = Vs_p_Va_2[0]^2 + 4d0*sound_dn[0]^2*alfven_dn[0]^2*SIN(theta_Bn[0]*!DPI/18d1)^2
+fast_dn      = SQRT((Vs_p_Va_2[0] + SQRT(b2_4ac[0]))/2d0)
+;  Mach numbers
+Ma_dn        = ABS(ushn_dn[0]*1d3/alfven_dn[0])
+Ms_dn        = ABS(ushn_dn[0]*1d3/sound_dn[0])
+Mf_dn        = ABS(ushn_dn[0]*1d3/fast_dn[0])
+PRINT,';;', theta_Bn[0], Ma_dn[0], Ms_dn[0], Mf_dn[0], avg_dens_dn[0]/avg_dens_up[0]
+;;       42.213702      0.90627711      0.23727176      0.22656385       6.6268054
+
+;-----------------------------------------------------
+; => Calculate gyrospeeds of specular reflection
+;-----------------------------------------------------
+; => calculate unit vectors
+bhat         = avg_magf_up/bmag_up[0]
+vhat         = avg_vswi_up/vmag_up[0]
+; => calculate upstream inflow velocity
+v_up         = avg_vswi_up - gnorm*ABS(vshn_up[0])
+; => Eq. 2 from Gosling et al., [1982]
+;      [specularly reflected ion velocity]
+Vref_s       = v_up - gnorm*(2d0*my_dot_prod(v_up,gnorm,/NOM))
+; => Eq. 4 and 3 from Gosling et al., [1982]
+;      [guiding center velocity of a specularly reflected ion]
+Vper_r       = v_up - bhat*my_dot_prod(v_up,bhat,/NOM)  ; => Eq. 4
+Vgc_r        = Vper_r + bhat*(my_dot_prod(Vref_s,bhat,/NOM))
+; => Eq. 6 from Gosling et al., [1982]
+;      [gyro-velocity of a specularly reflected ion]
+Vgy_r        = Vref_s - Vgc_r
+; => Eq. 7 and 9 from Gosling et al., [1982]
+;      [guiding center velocity of a specularly reflected ion perp. to shock surface]
+Vgcn_r       = my_dot_prod(Vgc_r,gnorm,/NOM)
+;      [guiding center velocity of a specularly reflected ion para. to B-field]
+Vgcb_r       = my_dot_prod(Vgc_r,bhat,/NOM)
+; => gyrospeed and guiding center speed
+Vgy_rs       = NORM(REFORM(Vgy_r))
+Vgc_rs       = NORM(REFORM(Vgc_r))
+
+PRINT,';;', Vgy_rs[0], Vgc_rs[0]
+PRINT,';;', Vgcn_r[0], Vgcb_r[0]
+;;       503.19490       352.06282
+;;       31.566969      -257.92576
+
+
+;;----------------------------------------------------------------------------------------
+;; => Avg. terms [2nd Shock]
+;;----------------------------------------------------------------------------------------
+
+
+;;----------------------------------------------------------------------------------------
+;; => Avg. terms [3rd Shock]
+;;----------------------------------------------------------------------------------------
+;;  Upstream
+avg_magf_up  = [-2.05709d0,-1.18931d0,2.15410d0]
+avg_vswi_up  = [-323.564d0,-32.8703d0,17.0731d0]
+avg_dens_up  =    8.33293d0
+avg_Ti_up    =   26.2486d0
+avg_Te_up    =   10.8482d0
+vshn_up      =   16.475852d0
+ushn_up      = -334.99183d0
+gnorm        = [0.95852364d0,0.18728308d0,-0.12980884d0]
+bmag_up      = NORM(avg_magf_up)
+vmag_up      = NORM(avg_vswi_up)
+b_dot_n      = my_dot_prod(gnorm,avg_magf_up,/NOM)/(bmag_up[0]*NORM(gnorm))
+theta_Bn     = ACOS(b_dot_n[0])*18d1/!DPI
+theta_Bn     = theta_Bn[0] < (18d1 - theta_Bn[0])
+nkT_up       = (avg_dens_up[0]*1d6)*(kB[0]*K_eV[0]*(avg_Te_up[0] + avg_Ti_up[0]))  ;; plasma pressure [J m^(-3)]
+sound_up     = SQRT(5d0*nkT_up[0]/(3d0*(avg_dens_up[0]*1d6)*mp[0]))                ;; sound speed [m/s]
+alfven_up    = (bmag_up[0]*1d-9)/SQRT(muo[0]*(avg_dens_up[0]*1d6)*mp[0])           ;; Alfven speed [m/s]
+Vs_p_Va_2    = (sound_up[0]^2 + alfven_up[0]^2)
+b2_4ac       = Vs_p_Va_2[0]^2 + 4d0*sound_up[0]^2*alfven_up[0]^2*SIN(theta_Bn[0]*!DPI/18d1)^2
+fast_up      = SQRT((Vs_p_Va_2[0] + SQRT(b2_4ac[0]))/2d0)
+;  Mach numbers
+Ma_up        = ABS(ushn_up[0]*1d3/alfven_up[0])
+Ms_up        = ABS(ushn_up[0]*1d3/sound_up[0])
+Mf_up        = ABS(ushn_up[0]*1d3/fast_up[0])
+PRINT,';;', theta_Bn[0], Ma_up[0], Ms_up[0], Mf_up[0]
+;;       38.465327       13.823210       4.3529663       4.0894497
+
+;;  Downstream
+avg_magf_dn  = [-5.35942d0,0.247479d0,2.50644d0]
+avg_vswi_dn  = [ -68.2614d0,10.4541d0,-38.6761d0]
+avg_dens_dn  =   42.6933d0
+avg_Ti_dn    =  210.088d0
+avg_Te_dn    =   31.1514d0
+ushn_dn      =  -74.927640d0
+bmag_dn      = NORM(avg_magf_dn)
+vmag_dn      = NORM(avg_vswi_dn)
+nkT_dn       = (avg_dens_dn[0]*1d6)*(kB[0]*K_eV[0]*(avg_Te_dn[0] + avg_Ti_dn[0]))  ;; plasma pressure [J m^(-3)]
+sound_dn     = SQRT(5d0*nkT_dn[0]/(3d0*(avg_dens_dn[0]*1d6)*mp[0]))
+alfven_dn    = (bmag_dn[0]*1d-9)/SQRT(muo[0]*(avg_dens_dn[0]*1d6)*mp[0])           ;; Alfven speed [m/s]
+Vs_p_Va_2    = (sound_dn[0]^2 + alfven_dn[0]^2)
+b2_4ac       = Vs_p_Va_2[0]^2 + 4d0*sound_dn[0]^2*alfven_dn[0]^2*SIN(theta_Bn[0]*!DPI/18d1)^2
+fast_dn      = SQRT((Vs_p_Va_2[0] + SQRT(b2_4ac[0]))/2d0)
+;  Mach numbers
+Ma_dn        = ABS(ushn_dn[0]*1d3/alfven_dn[0])
+Ms_dn        = ABS(ushn_dn[0]*1d3/sound_dn[0])
+Mf_dn        = ABS(ushn_dn[0]*1d3/fast_dn[0])
+PRINT,';;', theta_Bn[0], Ma_dn[0], Ms_dn[0], Mf_dn[0], avg_dens_dn[0]/avg_dens_up[0]
+;;       38.465327       3.7903317      0.38180117      0.37915286       5.1234440
+
+;-----------------------------------------------------
+; => Calculate gyrospeeds of specular reflection
+;-----------------------------------------------------
+; => calculate unit vectors
+bhat         = avg_magf_up/bmag_up[0]
+vhat         = avg_vswi_up/vmag_up[0]
+; => calculate upstream inflow velocity
+v_up         = avg_vswi_up - gnorm*ABS(vshn_up[0])
+; => Eq. 2 from Gosling et al., [1982]
+;      [specularly reflected ion velocity]
+Vref_s       = v_up - gnorm*(2d0*my_dot_prod(v_up,gnorm,/NOM))
+; => Eq. 4 and 3 from Gosling et al., [1982]
+;      [guiding center velocity of a specularly reflected ion]
+Vper_r       = v_up - bhat*my_dot_prod(v_up,bhat,/NOM)  ; => Eq. 4
+Vgc_r        = Vper_r + bhat*(my_dot_prod(Vref_s,bhat,/NOM))
+; => Eq. 6 from Gosling et al., [1982]
+;      [gyro-velocity of a specularly reflected ion]
+Vgy_r        = Vref_s - Vgc_r
+; => Eq. 7 and 9 from Gosling et al., [1982]
+;      [guiding center velocity of a specularly reflected ion perp. to shock surface]
+Vgcn_r       = my_dot_prod(Vgc_r,gnorm,/NOM)
+;      [guiding center velocity of a specularly reflected ion para. to B-field]
+Vgcb_r       = my_dot_prod(Vgc_r,bhat,/NOM)
+; => gyrospeed and guiding center speed
+Vgy_rs       = NORM(REFORM(Vgy_r))
+Vgc_rs       = NORM(REFORM(Vgc_r))
+
+PRINT,';;', Vgy_rs[0], Vgc_rs[0]
+PRINT,';;', Vgcn_r[0], Vgcb_r[0]
+;;       410.01307       362.53425
+;;       63.622219      -272.19966
+
+
+
+;;----------------------------------------------------------------------------------------
+;; => smooth Bo
+;;----------------------------------------------------------------------------------------
+coord          = 'gse'
+fglnm          = pref[0]+'fgl_'+coord[0]
+get_data,fglnm[0],DATA=th_magf,DLIM=dlim,LIM=lim
+;; => Smooth the B-field [for Avg. or <B> upstream and downstream]
+nsm            = 30L
+nsms           = STRING(FORMAT='(I3.3)',nsm[0])
+suffx          = '_sm'+nsms[0]+'pts'
+name1          = fglnm[0]+suffx[0]
+xmagf          = SMOOTH(th_magf.Y[*,0],nsm[0],/NAN,/EDGE_TRUNCATE)
+ymagf          = SMOOTH(th_magf.Y[*,1],nsm[0],/NAN,/EDGE_TRUNCATE)
+zmagf          = SMOOTH(th_magf.Y[*,2],nsm[0],/NAN,/EDGE_TRUNCATE)
+smmagf         = [[xmagf],[ymagf],[zmagf]]
+smbmag         = SQRT(TOTAL(smmagf^2,2,/NAN))
+smmagf         = [[xmagf],[ymagf],[zmagf],[smbmag]]
+store_data,name1[0],DATA={X:th_magf.X,Y:smmagf},DLIM=dlim,LIM=lim
+options,name1[0],'COLORS',[250,150,50,25],/DEF
+options,name1[0],'LABELS',['Bx','By','Bz','|B|'],/DEF
+sm_fgmnm       = name1[0]
+
+options,tnames(),'LABFLAG',2,/DEF
+
+;;----------------------------------------------------------------------------------------
+;; => Get parameters used in RH relations
+;;----------------------------------------------------------------------------------------
+nsm            = 30L
+nsms           = STRING(FORMAT='(I3.3)',nsm[0])
+suffx          = '_sm'+nsms[0]+'pts'
+pref           = 'th'+sc[0]+'_'
+coord_in       = 'gse'
+peib_tn        = 'peib_'
+peeb_tn        = 'peeb_'
+
+coord          = 'gse'
+fglnm          = pref[0]+'fgl_'+coord[0]
+sm_fgmnm       = fglnm[0]+suffx[0]
+velnm0         = pref[0]+'Velocity_'+peib_tn[0]+'no_GIs_UV_2'
+vsw_name       = tnames(velnm0[0])
+den_name       = tnames(pref[0]+'N_'+peib_tn[0]+'no_GIs_UV')
+Ti__name       = tnames(pref[0]+'T_avg_'+peib_tn[0]+'no_GIs_UV')
+Te__name       = tnames(pref[0]+peeb_tn[0]+'avgtemp')
+fglgse         = tnames(sm_fgmnm[0])
+
+;;  Bo
+get_data,fglgse[0],DATA=th_magf
+;;  Ni
+get_data,den_name[0],DATA=ti_dens
+;;  Ti
+get_data,Ti__name[0],DATA=ti_stru
+;;  Vsw
+get_data,vsw_name[0],DATA=ti_vsw
+;;  Te
+get_data,Te__name[0],DATA=te_stru
+;;----------------------------------------------------------------------------------------
+;; => Avg. terms [1st Shock]
+;;----------------------------------------------------------------------------------------
+tr_up          = time_double(tdate[0]+'/'+['09:00:08.700','09:01:38.800'])
+tr_dn          = time_double(tdate[0]+'/'+['08:57:35.000','08:59:00.000'])
+t_ramp_se      = time_double(tdate[0]+'/'+['08:59:45.440','08:59:48.290'])
+
+good_up_Bo     = WHERE(th_magf.X GE tr_up[0] AND th_magf.X LE tr_up[1],gdupBo)
+good_up_Ni     = WHERE(ti_dens.X GE tr_up[0] AND ti_dens.X LE tr_up[1],gdupNi)
+good_up_Ti     = WHERE(ti_stru.X GE tr_up[0] AND ti_stru.X LE tr_up[1],gdupTi)
+good_up_Te     = WHERE(te_stru.X GE tr_up[0] AND te_stru.X LE tr_up[1],gdupTe)
+good_up_Vi     = WHERE(ti_vsw.X  GE tr_up[0] AND ti_vsw.X  LE tr_up[1],gdupVi)
+
+good_dn_Bo     = WHERE(th_magf.X GE tr_dn[0] AND th_magf.X LE tr_dn[1],gddnBo)
+good_dn_Ni     = WHERE(ti_dens.X GE tr_dn[0] AND ti_dens.X LE tr_dn[1],gddnNi)
+good_dn_Ti     = WHERE(ti_stru.X GE tr_dn[0] AND ti_stru.X LE tr_dn[1],gddnTi)
+good_dn_Te     = WHERE(te_stru.X GE tr_dn[0] AND te_stru.X LE tr_dn[1],gddnTe)
+good_dn_Vi     = WHERE(ti_vsw.X  GE tr_dn[0] AND ti_vsw.X  LE tr_dn[1],gddnVi)
+
+PRINT,';;', gdupBo, gdupNi, gdupTi, gdupTe, gdupVi
+PRINT,';;', gddnBo, gddnNi, gddnTi, gddnTe, gddnVi
+;;         360          29          29          30          29
+;;         340          29          29          29          29
+
+;; => Interpolate to ion times
+;;  Bo
+tx_magf        = interp(th_magf.Y[*,0],th_magf.X,ti_dens.X,/NO_EXTRAP)
+ty_magf        = interp(th_magf.Y[*,1],th_magf.X,ti_dens.X,/NO_EXTRAP)
+tz_magf        = interp(th_magf.Y[*,2],th_magf.X,ti_dens.X,/NO_EXTRAP)
+tm_magf        = [[tx_magf],[ty_magf],[tz_magf]]
+;;  Ti
+ti_temp        = interp(ti_stru.Y,ti_stru.X,ti_dens.X,/NO_EXTRAP)
+;;  Te
+te_temp        = interp(te_stru.Y,te_stru.X,ti_dens.X,/NO_EXTRAP)
+;;  Vsw
+vswx           = interp(ti_vsw.Y[*,0],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+vswy           = interp(ti_vsw.Y[*,1],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+vswz           = interp(ti_vsw.Y[*,2],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+
+;; => Define [up,down]stream
+up_magf        = FLOAT(tm_magf[good_up_Ni,*])
+vswx_up        = FLOAT(vswx[good_up_Ni])
+vswy_up        = FLOAT(vswy[good_up_Ni])
+vswz_up        = FLOAT(vswz[good_up_Ni])
+up_Ti          = FLOAT(ti_temp[good_up_Ni])
+up_Te          = FLOAT(te_temp[good_up_Ni])
+up_Ni          = FLOAT(ti_dens.Y[good_up_Ni])
+
+dn_magf        = FLOAT(tm_magf[good_dn_Ni,*])
+vswx_dn        = FLOAT(vswx[good_dn_Ni])
+vswy_dn        = FLOAT(vswy[good_dn_Ni])
+vswz_dn        = FLOAT(vswz[good_dn_Ni])
+dn_Ti          = FLOAT(ti_temp[good_dn_Ni])
+dn_Te          = FLOAT(te_temp[good_dn_Ni])
+dn_Ni          = FLOAT(ti_dens.Y[good_dn_Ni])
+
+PRINT,';', up_Ni
+PRINT,';', up_Ti
+PRINT,';', up_Te
+;      7.07309      6.94231      7.24725      7.09166      7.57944      6.50510      6.56785      6.86059      6.80491      7.12088      6.63134      6.63572      6.76323      7.16061      7.17674      7.07219      6.94646      7.20353      7.19970      6.85925      7.19086      7.05820      7.32919      7.34909      7.33728      7.66464      8.24446      9.48765      8.25387
+;      27.9521      29.0306      27.0957      27.5606      29.4961      28.2101      28.7773      30.0791      29.3048      30.6265      29.9438      32.8888      33.2325      32.2569      33.2552      33.2854      32.5035      32.7801      32.0462      32.7725      32.2295      32.3276      33.7334      29.8235      29.8371      26.6801      24.2807      25.9705      26.5252
+;      13.4200      13.8634      13.1068      13.3362      12.0094      12.2394      12.0810      11.9554      11.7059      11.2118      10.9941      10.5550      10.4803      10.7837      10.8060      10.5236      10.3936      10.1871      10.4057      10.1770      10.4710      10.5616      10.6896      10.6691      10.4963      10.8782      11.1172      10.5043      10.2576
+
+PRINT,';', vswx_up
+PRINT,';', vswy_up
+PRINT,';', vswz_up
+;     -316.447     -319.870     -318.987     -320.648     -326.112     -321.746     -322.206     -322.740     -324.489     -327.459     -328.011     -330.537     -326.407     -328.028     -330.313     -331.141     -329.029     -334.743     -340.333     -334.648     -336.701     -334.982     -330.380     -332.186     -336.363     -327.660     -337.738     -337.917     -325.802
+;      29.0735      19.9851      23.6322      22.5127      13.6763      20.6679      17.7925      16.5352      15.4735      11.1588      18.1249    -0.686537     0.431731      3.64825     -2.38933     -6.70178      5.13271     -1.68937     -26.8039     -8.24689     -9.09138     -14.1291     -11.9587      18.9613      18.4688      34.6628      38.0143      34.8041      34.1452
+;      12.4615      15.1059      16.8155      17.6163      17.3923      17.0570      16.2849      15.0066      17.2698      16.9474      18.2318      16.0893      13.6373      14.5016      14.8361      14.3231      15.3637      18.4846      18.1510      17.2716      18.7987      16.6775      12.7282      18.5495      20.4625      15.9689      23.3047      22.7276      15.1724
+
+PRINT,';', up_magf[*,0]
+PRINT,';', up_magf[*,1]
+PRINT,';', up_magf[*,2]
+;     -2.71921     -2.63767     -2.57030     -2.61222     -2.64007     -2.73514     -2.81840     -2.86072     -2.85699     -2.89828     -2.85913     -2.79519     -2.83627     -2.86735     -2.90454     -2.93435     -2.96339     -2.95289     -2.96248     -3.00701     -2.97521     -3.03407     -3.04655     -2.96712     -2.92469     -3.00907     -3.04743     -3.18937     -3.16468
+;      2.76717      2.61890      2.51639      2.43629      2.25644      2.21154      2.21048      2.15294      2.02738      1.88479      1.83512      1.93592      1.94767      1.86384      1.73370      1.64626      1.49788      1.39670      1.31966      1.25594      1.33410      1.37250      1.38116      1.37442      1.47827      1.41318      1.40196      1.34582      1.30659
+;     -1.33057     -1.24411     -1.23385     -1.33517     -1.47593     -1.34271     -1.26750     -1.26045     -1.24838     -1.21476     -1.26460     -1.31246     -1.37037     -1.44833     -1.50094     -1.49084     -1.51346     -1.52782     -1.42195     -1.43509     -1.48602     -1.49456     -1.48293     -1.53285     -1.42843     -1.35082     -1.42873     -1.28517     -1.28430
+
+
+PRINT,';', dn_Ni
+PRINT,';', dn_Ti
+PRINT,';', dn_Te
+;      51.4770      48.6373      52.8328      53.0221      52.6641      49.2217      48.5648      47.0462      44.4818      44.9738      46.4381      47.5547      45.9673      47.9835      45.1012      46.5187      45.8831      50.0338      47.2762      49.9218      50.3316      47.0770      47.2242      47.2203      44.5792      47.8478      48.1071      46.9614      42.4192
+;      136.216      147.522      138.781      139.658      139.380      149.361      143.321      150.672      154.902      154.678      161.065      154.660      157.191      159.400      166.408      162.171      167.363      160.988      171.104      164.133      164.538      161.970      166.976      166.715      162.359      168.119      171.535      168.439      189.694
+;      35.4064      34.3931      33.8612      33.0007      32.6866      32.1967      31.4333      31.0074      29.6826      29.3683      29.0726      28.9296      28.6810      29.5491      29.5996      30.3012      29.3947      29.8207      30.3661      30.0133      28.9117      29.5370      29.6329      29.4599      28.8308      29.7145      31.6728      29.3668      28.6293
+
+PRINT,';', vswx_dn
+PRINT,';', vswy_dn
+PRINT,';', vswz_dn
+;     -99.7757     -91.3455     -100.521     -91.3240     -85.1202     -87.6931     -89.5073     -90.3370     -89.0330     -92.7631     -94.4428     -93.7327     -89.0600     -91.1821     -88.3397     -87.0060     -97.8387     -96.7625     -97.6818     -98.5620     -110.408     -104.318     -113.354     -107.950     -105.255     -103.566     -109.812     -111.376     -95.9041
+;      1.29185     -2.67234     -1.56431      2.48126      17.3283      13.2345      13.0037      24.4695      21.2880      25.9305      29.1140      30.8326      30.1751      30.8178      32.1754      30.5344      24.6059      33.6962      35.4118      31.0414      40.9501      39.4945      31.6942      28.0520      19.8128      29.5090      25.8648      25.8563      20.5214
+;     -36.1378     -35.3487     -25.4118     -22.9297     -12.1057     -19.1379     -23.2724     -14.8829     -13.9791     -5.74354     -6.12225     -15.1837     -15.7466     -9.57345     -9.34075     -14.7443     -7.74867     -8.78665     -4.68833      4.37108      12.8612     -5.13128     0.589624      2.90983      2.14932    -0.220928      11.4042      6.61171     0.854871
+
+PRINT,';', dn_magf[*,0]
+PRINT,';', dn_magf[*,1]
+PRINT,';', dn_magf[*,2]
+;     -2.85254     -4.38791     -5.25074     -5.71555     -5.09506     -5.07019     -3.50667     -2.03397    -0.559578     -1.03866     -1.69489     -2.30181     -3.04395     -3.78189     -3.79427     -3.02144     -2.55475     -1.68151     -1.56837     -1.88195     -2.53389     -3.19386     -4.38612     -3.68446     -3.01186     -6.66559     -8.29718     -10.2946     -8.94205
+;      9.10890      8.98608      9.75641      10.9756      12.0652      11.9153      11.2363      11.0488      10.5072      10.8080      10.6384      11.7010      11.9402      12.2919      11.4328      10.6806      9.79786      8.81896      9.05667      10.4926      12.3263      12.6549      10.5018      10.0199      10.3786      11.5168      10.7903      11.5269      10.7470
+;     -11.7891     -10.9465     -10.2212     -8.84202     -8.16173     -8.59907     -9.56875     -10.3676     -10.0322     -10.8820     -12.2061     -14.2414     -13.3400     -11.6500     -9.91840     -11.2097     -11.6609     -9.90315     -6.04828     -1.20433     -1.59500     -2.86089     -5.02634     -5.01501     -6.21976     -5.03831     -6.33364     -9.42352     -10.7958
+
+
+; => Upstream values
+dens_up  = [  7.07309,6.94231,7.24725,7.09166,7.57944,6.50510,6.56785,6.86059,6.80491,7.12088,6.63134,6.63572,6.76323,7.16061,7.17674,7.07219,6.94646,7.20353,7.19970,6.85925,7.19086,7.05820,7.32919,7.34909,7.33728,7.66464,8.24446,9.48765,8.25387]
+ti_avgu  = [ 27.9521,29.0306,27.0957,27.5606,29.4961,28.2101,28.7773,30.0791,29.3048,30.6265,29.9438,32.8888,33.2325,32.2569,33.2552,33.2854,32.5035,32.7801,32.0462,32.7725,32.2295,32.3276,33.7334,29.8235,29.8371,26.6801,24.2807,25.9705,26.5252]
+te_avgu  = [ 13.4200,13.8634,13.1068,13.3362,12.0094,12.2394,12.0810,11.9554,11.7059,11.2118,10.9941,10.5550,10.4803,10.7837,10.8060,10.5236,10.3936,10.1871,10.4057,10.1770,10.4710,10.5616,10.6896,10.6691,10.4963,10.8782,11.1172,10.5043,10.2576]
+vsw_x_up = [-316.447,-319.870,-318.987,-320.648,-326.112,-321.746,-322.206,-322.740,-324.489,-327.459,-328.011,-330.537,-326.407,-328.028,-330.313,-331.141,-329.029,-334.743,-340.333,-334.648,-336.701,-334.982,-330.380,-332.186,-336.363,-327.660,-337.738,-337.917,-325.802]
+vsw_y_up = [  29.0735,19.9851,23.6322,22.5127,13.6763,20.6679,17.7925,16.5352,15.4735,11.1588,18.1249,-0.686537,0.431731,3.64825,-2.38933,-6.70178,5.13271,-1.68937,-26.8039,-8.24689,-9.09138,-14.1291,-11.9587,18.9613,18.4688,34.6628,38.0143,34.8041,34.1452]
+vsw_z_up = [  12.4615,15.1059,16.8155,17.6163,17.3923,17.0570,16.2849,15.0066,17.2698,16.9474,18.2318,16.0893,13.6373,14.5016,14.8361,14.3231,15.3637,18.4846,18.1510,17.2716,18.7987,16.6775,12.7282,18.5495,20.4625,15.9689,23.3047,22.7276,15.1724]
+vsw_up   = [[vsw_x_up],[vsw_y_up],[vsw_z_up]]
+mag_x_up = [  -2.71921,-2.63767,-2.57030,-2.61222,-2.64007,-2.73514,-2.81840,-2.86072,-2.85699,-2.89828,-2.85913,-2.79519,-2.83627,-2.86735,-2.90454,-2.93435,-2.96339,-2.95289,-2.96248,-3.00701,-2.97521,-3.03407,-3.04655,-2.96712,-2.92469,-3.00907,-3.04743,-3.18937,-3.16468]
+mag_y_up = [   2.76717, 2.61890, 2.51639, 2.43629, 2.25644, 2.21154, 2.21048, 2.15294, 2.02738, 1.88479, 1.83512, 1.93592, 1.94767, 1.86384, 1.73370, 1.64626, 1.49788, 1.39670, 1.31966, 1.25594, 1.33410, 1.37250, 1.38116, 1.37442, 1.47827, 1.41318, 1.40196, 1.34582, 1.30659]
+mag_z_up = [  -1.33057,-1.24411,-1.23385,-1.33517,-1.47593,-1.34271,-1.26750,-1.26045,-1.24838,-1.21476,-1.26460,-1.31246,-1.37037,-1.44833,-1.50094,-1.49084,-1.51346,-1.52782,-1.42195,-1.43509,-1.48602,-1.49456,-1.48293,-1.53285,-1.42843,-1.35082,-1.42873,-1.28517,-1.28430]
+magf_up  = [[mag_x_up],[mag_y_up],[mag_z_up]]
+temp_up  = te_avgu + ti_avgu
+PRINT,';;', MEAN(dens_up,/NAN),  MEAN(ti_avgu,/NAN),  MEAN(te_avgu,/NAN)
+PRINT,';;', MEAN(vsw_x_up,/NAN), MEAN(vsw_y_up,/NAN), MEAN(vsw_z_up,/NAN)
+PRINT,';;', MEAN(mag_x_up,/NAN), MEAN(mag_y_up,/NAN), MEAN(mag_z_up,/NAN)
+;;      7.21921      30.1554      11.2373
+;;     -328.746      10.8691      16.8013
+;;     -2.88930      1.79045     -1.37976
+
+
+; => Downstream values
+dens_dn  = [  51.4770,48.6373,52.8328,53.0221,52.6641,49.2217,48.5648,47.0462,44.4818,44.9738,46.4381,47.5547,45.9673,47.9835,45.1012,46.5187,45.8831,50.0338,47.2762,49.9218,50.3316,47.0770,47.2242,47.2203,44.5792,47.8478,48.1071,46.9614,42.4192]
+ti_avgd  = [ 136.216,147.522,138.781,139.658,139.380,149.361,143.321,150.672,154.902,154.678,161.065,154.660,157.191,159.400,166.408,162.171,167.363,160.988,171.104,164.133,164.538,161.970,166.976,166.715,162.359,168.119,171.535,168.439,189.694]
+te_avgd  = [  35.4064,34.3931,33.8612,33.0007,32.6866,32.1967,31.4333,31.0074,29.6826,29.3683,29.0726,28.9296,28.6810,29.5491,29.5996,30.3012,29.3947,29.8207,30.3661,30.0133,28.9117,29.5370,29.6329,29.4599,28.8308,29.7145,31.6728,29.3668,28.6293]
+vsw_x_dn = [ -99.7757,-91.3455,-100.521,-91.3240,-85.1202,-87.6931,-89.5073,-90.3370,-89.0330,-92.7631,-94.4428,-93.7327,-89.0600,-91.1821,-88.3397,-87.0060,-97.8387,-96.7625,-97.6818,-98.5620,-110.408,-104.318,-113.354,-107.950,-105.255,-103.566,-109.812,-111.376,-95.9041]
+vsw_y_dn = [   1.29185,-2.67234,-1.56431,2.48126,17.3283,13.2345,13.0037,24.4695,21.2880,25.9305,29.1140,30.8326,30.1751,30.8178,32.1754,30.5344,24.6059,33.6962,35.4118,31.0414,40.9501,39.4945,31.6942,28.0520,19.8128,29.5090,25.8648,25.8563,20.5214]
+vsw_z_dn = [ -36.1378,-35.3487,-25.4118,-22.9297,-12.1057,-19.1379,-23.2724,-14.8829,-13.9791,-5.74354,-6.12225,-15.1837,-15.7466,-9.57345,-9.34075,-14.7443,-7.74867,-8.78665,-4.68833,4.37108,12.8612,-5.13128,0.589624,2.90983,2.14932,-0.220928,11.4042,6.61171,0.854871]
+vsw_dn   = [[vsw_x_dn],[vsw_y_dn],[vsw_z_dn]]
+mag_x_dn = [  -2.85254,-4.38791,-5.25074,-5.71555,-5.09506,-5.07019,-3.50667,-2.03397,-0.559578,-1.03866,-1.69489,-2.30181,-3.04395,-3.78189,-3.79427,-3.02144,-2.55475,-1.68151,-1.56837,-1.88195,-2.53389,-3.19386,-4.38612,-3.68446,-3.01186,-6.66559,-8.29718,-10.2946,-8.94205]
+mag_y_dn = [   9.10890, 8.98608, 9.75641, 10.9756, 12.0652, 11.9153, 11.2363, 11.0488, 10.5072, 10.8080, 10.6384, 11.7010, 11.9402, 12.2919, 11.4328, 10.6806, 9.79786, 8.81896, 9.05667, 10.4926, 12.3263, 12.6549, 10.5018, 10.0199, 10.3786, 11.5168, 10.7903, 11.5269, 10.7470]
+mag_z_dn = [ -11.7891,-10.9465,-10.2212,-8.84202,-8.16173,-8.59907,-9.56875,-10.3676,-10.0322,-10.8820,-12.2061,-14.2414,-13.3400,-11.6500,-9.91840,-11.2097,-11.6609,-9.90315,-6.04828,-1.20433,-1.59500,-2.86089,-5.02634,-5.01501,-6.21976,-5.03831,-6.33364,-9.42352,-10.7958]
+magf_dn  = [[mag_x_dn],[mag_y_dn],[mag_z_dn]]
+temp_dn  = te_avgd + ti_avgd
+PRINT,';;', MEAN(dens_dn,/NAN),  MEAN(ti_avgd,/NAN),  MEAN(te_avgd,/NAN)
+PRINT,';;', MEAN(vsw_x_dn,/NAN), MEAN(vsw_y_dn,/NAN), MEAN(vsw_z_dn,/NAN)
+PRINT,';;', MEAN(mag_x_dn,/NAN), MEAN(mag_y_dn,/NAN), MEAN(mag_z_dn,/NAN)
+;;      47.8403      158.597      30.5007
+;;     -97.0335      23.6190     -9.12016
+;;     -3.85673      10.8180     -8.72761
+
+
+; => combine terms
+vsw      = [[[vsw_up]],[[vsw_dn]]]
+mag      = [[[magf_up]],[[magf_dn]]]
+dens     = [[dens_up],[dens_dn]]
+temp     = [[temp_up],[temp_dn]]
+
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/rh_pros/temp_rh_soln_print.pro
+temp_rh_soln_print,dens,vsw,mag,temp,tdate[0],NMAX=120L
+;; => Print out best fit poloidal angles
+PRINT,';', soln.THETA*18d1/!DPI
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;     -0.19392372       5.0439683
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;     -0.21957170       5.1326202
+;;-----------------------------------------------------------
+
+;; => Print out best fit azimuthal angles
+PRINT,';', soln.PHI*18d1/!DPI
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;       4.1397612       3.3763486
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;       4.9981732       3.8275669
+;;-----------------------------------------------------------
+
+;; => Print out best fit shock normal speed in spacecraft frame [km/s]
+PRINT,';', soln.VSHN
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;      -53.258843       8.6910291
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;      -52.769597       8.7314762
+;;-----------------------------------------------------------
+
+;; => Print out best fit upstream shock normal speed in shock frame [km/s]
+PRINT,';', soln.USHN_UP
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;      -272.11389       10.652992
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;      -271.85307       10.936048
+;;-----------------------------------------------------------
+
+;; => Print out best fit downstream shock normal speed in shock frame [km/s]
+PRINT,';', soln.USHN_DN
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;      -41.266288       5.2095465
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;      -41.225873       5.2047397
+;;-----------------------------------------------------------
+
+;; => Print out best fit shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,0]
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;      0.99194103     0.071788369   -0.0033773195
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;      0.99012543     0.086580460   -0.0038282813
+;;-----------------------------------------------------------
+
+;; => Print out best fit uncertainty in shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,1]
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;    0.0056842096     0.056927603     0.087283562
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;    0.0074044322     0.064699062     0.088898234
+;;-----------------------------------------------------------
+
+
+
+;;----------------------------------------------------------------------------------------
+;; => Avg. terms [2nd Shock]
+;;----------------------------------------------------------------------------------------
+tr_up          = time_double(tdate[0]+'/'+)
+tr_dn          = time_double(tdate[0]+'/'+)
+t_ramp_se      = time_double(tdate[0]+'/'+)
+
+
+;;----------------------------------------------------------------------------------------
+;; => Avg. terms [3rd Shock]
+;;----------------------------------------------------------------------------------------
+tr_up          = time_double(tdate[0]+'/'+['09:27:30.000','09:29:31.000'])
+tr_dn          = time_double(tdate[0]+'/'+['09:20:15.000','09:22:15.000'])
+t_ramp_se      = time_double(tdate[0]+'/'+['09:24:43.340','09:24:55.100'])
+
+good_up_Bo     = WHERE(th_magf.X GE tr_up[0] AND th_magf.X LE tr_up[1],gdupBo)
+good_up_Ni     = WHERE(ti_dens.X GE tr_up[0] AND ti_dens.X LE tr_up[1],gdupNi)
+good_up_Ti     = WHERE(ti_stru.X GE tr_up[0] AND ti_stru.X LE tr_up[1],gdupTi)
+good_up_Te     = WHERE(te_stru.X GE tr_up[0] AND te_stru.X LE tr_up[1],gdupTe)
+good_up_Vi     = WHERE(ti_vsw.X  GE tr_up[0] AND ti_vsw.X  LE tr_up[1],gdupVi)
+
+good_dn_Bo     = WHERE(th_magf.X GE tr_dn[0] AND th_magf.X LE tr_dn[1],gddnBo)
+good_dn_Ni     = WHERE(ti_dens.X GE tr_dn[0] AND ti_dens.X LE tr_dn[1],gddnNi)
+good_dn_Ti     = WHERE(ti_stru.X GE tr_dn[0] AND ti_stru.X LE tr_dn[1],gddnTi)
+good_dn_Te     = WHERE(te_stru.X GE tr_dn[0] AND te_stru.X LE tr_dn[1],gddnTe)
+good_dn_Vi     = WHERE(ti_vsw.X  GE tr_dn[0] AND ti_vsw.X  LE tr_dn[1],gddnVi)
+
+PRINT,';;', gdupBo, gdupNi, gdupTi, gdupTe, gdupVi
+PRINT,';;', gddnBo, gddnNi, gddnTi, gddnTe, gddnVi
+;;         484          41          41          41          41
+;;         480          41          41          41          41
+
+;; => Interpolate to ion times
+;;  Bo
+tx_magf        = interp(th_magf.Y[*,0],th_magf.X,ti_dens.X,/NO_EXTRAP)
+ty_magf        = interp(th_magf.Y[*,1],th_magf.X,ti_dens.X,/NO_EXTRAP)
+tz_magf        = interp(th_magf.Y[*,2],th_magf.X,ti_dens.X,/NO_EXTRAP)
+tm_magf        = [[tx_magf],[ty_magf],[tz_magf]]
+;;  Ti
+ti_temp        = interp(ti_stru.Y,ti_stru.X,ti_dens.X,/NO_EXTRAP)
+;;  Te
+te_temp        = interp(te_stru.Y,te_stru.X,ti_dens.X,/NO_EXTRAP)
+;;  Vsw
+vswx           = interp(ti_vsw.Y[*,0],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+vswy           = interp(ti_vsw.Y[*,1],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+vswz           = interp(ti_vsw.Y[*,2],ti_vsw.X,ti_dens.X,/NO_EXTRAP)
+
+;; => Define [up,down]stream
+up_magf        = FLOAT(tm_magf[good_up_Ni,*])
+vswx_up        = FLOAT(vswx[good_up_Ni])
+vswy_up        = FLOAT(vswy[good_up_Ni])
+vswz_up        = FLOAT(vswz[good_up_Ni])
+up_Ti          = FLOAT(ti_temp[good_up_Ni])
+up_Te          = FLOAT(te_temp[good_up_Ni])
+up_Ni          = FLOAT(ti_dens.Y[good_up_Ni])
+
+dn_magf        = FLOAT(tm_magf[good_dn_Ni,*])
+vswx_dn        = FLOAT(vswx[good_dn_Ni])
+vswy_dn        = FLOAT(vswy[good_dn_Ni])
+vswz_dn        = FLOAT(vswz[good_dn_Ni])
+dn_Ti          = FLOAT(ti_temp[good_dn_Ni])
+dn_Te          = FLOAT(te_temp[good_dn_Ni])
+dn_Ni          = FLOAT(ti_dens.Y[good_dn_Ni])
+
+PRINT,';', up_Ni
+PRINT,';', up_Ti
+PRINT,';', up_Te
+;      8.41247      8.28590      8.28981      8.48068      8.64472      8.18646      8.53687      8.67176      8.66126      8.79699      8.47861      8.23434      8.33785      8.33055      8.42757      8.25936      8.19084      8.35152      8.43943      8.57739      8.27819      8.07213      8.39834      8.23835      8.30305      7.95141      8.29550      8.31656      8.44741      8.42009      8.42227      8.87939      9.07846      8.37519      8.21254      8.09672      8.34765      7.74889      7.81901      7.73737      7.61740
+;      28.8131      28.8049      28.8711      28.6524      28.3339      27.8738      28.1278      28.3454      28.7765      28.0237      28.5017      28.2015      28.3215      28.3339      28.4170      27.6589      26.3475      25.0510      26.4406      25.4392      25.5361      23.7456      22.8319      23.7594      23.2509      24.1279      22.2844      21.7893      22.3824      22.6947      22.7921      23.6658      25.0917      26.4325      27.3372      27.2870      26.6084      25.8847      26.9094      26.7669      27.6770
+;      10.6393      10.4846      10.6312      10.5296      10.6256      10.7011      10.7390      10.8701      10.8844      10.7075      11.5802      11.6617      11.4015      10.9348      10.8650      10.6534      10.8566      10.7184      10.5027      10.5007      10.5917      10.6503      10.7149      10.9565      10.8178      10.7903      10.5920      11.1100      10.9371      11.2399      11.2806      11.1501      11.1416      10.7675      10.9171      10.9307      10.7003      10.8235      10.7280      10.7927      10.6564
+
+PRINT,';', vswx_up
+PRINT,';', vswy_up
+PRINT,';', vswz_up
+;     -324.151     -323.835     -324.253     -324.132     -324.336     -322.654     -322.536     -323.135     -323.332     -324.439     -323.834     -324.050     -324.534     -324.988     -325.321     -324.822     -324.000     -324.548     -324.153     -325.817     -325.781     -326.469     -323.453     -322.307     -322.272     -322.792     -321.070     -320.840     -319.823     -319.576     -319.548     -319.872     -322.718     -324.135     -324.758     -324.873     -325.262     -323.988     -322.917     -325.453     -325.345
+;     -14.6963     -14.3565     -13.1784     -18.6968     -20.3775     -19.3911     -19.5558     -22.6564     -19.5119     -25.4063     -21.5175     -24.6073     -22.8260     -24.9453     -26.0734     -32.0907     -35.9256     -40.5255     -36.9529     -41.1380     -44.8946     -47.9227     -47.1975     -45.7365     -46.1035     -42.9433     -47.7794     -48.4501     -45.8045     -44.9678     -45.1175     -43.8534     -38.2981     -34.3081     -31.2160     -30.6434     -35.5359     -36.6384     -30.0238     -33.8565     -31.9601
+;      19.2798      19.0376      19.1483      18.4318      18.4769      18.6953      18.1579      17.7899      17.6487      17.6992      17.6433      17.6211      17.5546      17.2085      16.8648      16.1591      16.5673      16.6007      16.5709      16.4546      15.1831      15.5945      15.9919      15.6731      15.6808      16.3129      16.1874      16.2948      16.5813      16.8910      16.4276      16.5143      16.7728      16.8898      17.0044      16.9973      16.4503      17.1478      17.7345      16.8990      17.1574
+
+PRINT,';', up_magf[*,0]
+PRINT,';', up_magf[*,1]
+PRINT,';', up_magf[*,2]
+;     -1.96668     -1.90975     -1.90698     -1.87854     -1.85799     -1.88737     -1.90401     -1.85561     -1.81066     -1.76142     -1.74404     -1.71657     -1.75572     -1.80509     -1.90224     -1.95670     -1.98389     -2.01316     -2.04993     -2.07563     -2.09108     -2.16935     -2.27883     -2.36314     -2.35300     -2.36642     -2.36072     -2.37768     -2.38650     -2.40391     -2.37768     -2.22666     -2.01859     -1.87140     -1.91793     -2.13244     -2.20539     -2.19401     -2.18759     -2.21491     -2.10132
+;     -1.04798     -1.11558     -1.16529     -1.12016     -1.13815     -1.22472     -1.25267     -1.12115     -1.05157     -1.11963     -1.24890     -1.35834     -1.35112     -1.27808     -1.09447    -0.961962    -0.904906    -0.886882    -0.868371    -0.849367    -0.869564     -1.05340     -1.26426     -1.32045     -1.30960     -1.28763     -1.26724     -1.28415     -1.32578     -1.36165     -1.35429     -1.30842     -1.25317     -1.29624     -1.42628     -1.41496     -1.36270     -1.27817     -1.26191     -1.17853     -1.12415
+;      2.35352      2.31241      2.27760      2.20477      2.15520      2.16488      2.18377      2.19130      2.15332      2.08702      1.97537      1.96046      2.13058      2.32719      2.39357      2.30970      2.14447      2.03515      1.95090      1.89789      1.82548      1.90047      2.02428      2.12248      2.15046      2.14128      2.14629      2.18184      2.23184      2.26555      2.27437      2.23233      2.19403      2.14860      2.19195      2.25491      2.23743      2.16218      2.16686      2.15859      2.09762
+
+
+PRINT,';', dn_Ni
+PRINT,';', dn_Ti
+PRINT,';', dn_Te
+;      34.9241      31.6147      31.7990      29.4056      27.6867      27.1349      37.2424      37.1233      33.5744      30.8103      26.5205      30.4891      28.3689      25.4411      36.5602      56.4820      37.3213      39.2016      29.8067      31.9543      42.4122      54.5268      67.8023      86.7644      84.4063      77.6275      74.5796      59.3192      48.6423      47.8975      47.2830      41.5702      32.3353      38.3317      50.2416      43.7094      35.6807      42.5751      42.8810      34.0320      34.3466
+;      279.061      283.088      302.052      299.415      297.095      324.816      293.284      274.493      264.484      273.113      303.726      237.487      219.242      219.819      162.448      122.169      222.339      234.201      296.215      309.042      193.537      148.469      102.251      79.2339      78.5176      83.0226      85.8153      131.368      170.276      203.359      197.673      191.615      177.320      168.049      171.082      186.465      215.892      190.797      184.693      246.540      190.051
+;      31.2431      30.6693      30.2684      29.9266      29.2427      30.7513      32.7169      35.8594      34.2592      34.7337      32.9792      29.0988      28.3781      29.3709      29.6124      30.2793      29.4673      28.4429      29.0007      29.9599      26.5714      30.2196      32.2167      32.5111      33.6447      34.5632      35.3621      32.9204      34.4401      37.1444      36.2458      33.8220      31.9111      32.7658      34.6391      31.2355      29.6402      27.6769      25.2657      23.5672      24.5836
+
+PRINT,';', vswx_dn
+PRINT,';', vswy_dn
+PRINT,';', vswz_dn
+;     -58.2274     -41.9603     -58.4619     -55.0989     -38.5915     -31.5609     -75.6594     -52.9869     -45.3441     -53.6580     -64.8692     -66.0783     -55.1548     -32.0883     -42.0753     -78.0777     -62.8897     -66.5670     -65.8222     -67.9394     -67.3398     -66.1350     -79.0058     -70.3699     -66.6346     -76.4456     -80.5608     -76.2406     -68.7491     -77.4558     -74.6339     -69.6774     -44.6051     -52.3938     -81.7772     -95.6977     -96.5712     -97.3538     -109.505     -124.016     -110.438
+;     -27.5317     -21.2426     -6.40440      6.48074      8.74008      9.37884      14.3833      1.57548     -8.36012     -12.6438     -21.1714     -33.5047     -38.3639     -23.0204     -42.2407     -9.74701     -4.04015      9.86170      22.5193      26.9724      19.7475      43.1604      60.9372      77.0746      68.7894      58.8122      49.4065      41.9078      45.9602      53.5815      55.6782      58.3010      27.5343      11.0495     -13.8501     -30.8110     -41.9467     -27.0048     -15.2085     -5.26216      39.1198
+;     -19.8220     -24.2222     -18.4361     -40.1135     -50.9067     -51.8259     -80.2379     -98.3610     -94.6814     -96.7368     -63.4990     -36.8573     -38.1971     -53.7528     -60.3677     -30.4465     -40.2984     -43.6322     -45.0775     -67.5518     -100.549     -81.1161     -58.0289     -44.9767     -37.5505     -34.1501     -33.4762     -28.8115     -17.7666     -10.2094     -7.20101     -2.17392    0.0123508     -6.48278      1.81533     -7.05603     -29.7594      8.92172      24.6459     -10.0189     -56.7648
+
+PRINT,';', dn_magf[*,0]
+PRINT,';', dn_magf[*,1]
+PRINT,';', dn_magf[*,2]
+;     -8.21984     -7.04158     -5.93307     -4.92930     -4.84153     -6.92803     -9.47019     -12.5854     -13.0058     -9.53577     -2.68885     -1.52987     -1.93786     -1.33608     -2.85751     -6.70811     -6.05965     -4.79426     -2.11343     -1.57753     -1.93605     -4.56646     -7.69197     -10.2518     -10.8288     -11.1815     -10.5875     -10.2648     -9.13896     -7.20927     -5.40622     -5.22153     -4.20521     -2.52753    -0.926127     -3.05505     -2.49270    -0.966095      2.18468      1.40783    -0.777599
+;     -4.85087     -5.06587     -5.15166     -3.58753    -0.277658     -3.16420     -8.32201     -10.0111     -7.22399     -2.61666    -0.852181     -4.93392     -12.1126     -13.9744     -12.1840     -4.92438     0.713513     -3.36535     -9.75913     -8.36478      1.03605      15.7675      23.0009      21.7551      20.4605      22.4649      24.6157      24.4065      17.0857      7.07030      1.91461     -2.10846     -2.06990     -2.60236    -0.142740     -8.56587     -10.3298     -9.91495     -6.78372     -7.00845     0.123898
+;      3.21728      3.93288      5.68717      4.15856     0.192269     -4.77850     -8.95120     -12.4502     -5.43872      4.93389      13.3544      11.1673      9.89685      11.6613      12.8130      8.65247      6.74954      5.12221      5.82784     0.438649     -2.15252     -4.77885     -5.01069     -5.39877     -4.27051     -3.73089     -6.45869     -7.51395     -5.62730     -2.22404      1.79343      11.5740      17.3357      13.7749      8.95768      3.70796     0.669863      3.93797      6.62665      8.32090     -2.95580
+
+; => Upstream values
+dens_up  = [   8.41247,8.28590,8.28981,8.48068,8.64472,8.18646,8.53687,8.67176,8.66126,8.79699,8.47861,8.23434,8.33785,8.33055,8.42757,8.25936,8.19084,8.35152,8.43943,8.57739,8.27819,8.07213,8.39834,8.23835,8.30305,7.95141,8.29550,8.31656,8.44741,8.42009,8.42227,8.87939,9.07846,8.37519,8.21254,8.09672,8.34765,7.74889,7.81901,7.73737,7.61740]
+ti_avgu  = [  28.8131,28.8049,28.8711,28.6524,28.3339,27.8738,28.1278,28.3454,28.7765,28.0237,28.5017,28.2015,28.3215,28.3339,28.4170,27.6589,26.3475,25.0510,26.4406,25.4392,25.5361,23.7456,22.8319,23.7594,23.2509,24.1279,22.2844,21.7893,22.3824,22.6947,22.7921,23.6658,25.0917,26.4325,27.3372,27.2870,26.6084,25.8847,26.9094,26.7669,27.6770]
+te_avgu  = [  10.6393,10.4846,10.6312,10.5296,10.6256,10.7011,10.7390,10.8701,10.8844,10.7075,11.5802,11.6617,11.4015,10.9348,10.8650,10.6534,10.8566,10.7184,10.5027,10.5007,10.5917,10.6503,10.7149,10.9565,10.8178,10.7903,10.5920,11.1100,10.9371,11.2399,11.2806,11.1501,11.1416,10.7675,10.9171,10.9307,10.7003,10.8235,10.7280,10.7927,10.6564]
+vsw_x_up = [-324.151,-323.835,-324.253,-324.132,-324.336,-322.654,-322.536,-323.135,-323.332,-324.439,-323.834,-324.050,-324.534,-324.988,-325.321,-324.822,-324.000,-324.548,-324.153,-325.817,-325.781,-326.469,-323.453,-322.307,-322.272,-322.792,-321.070,-320.840,-319.823,-319.576,-319.548,-319.872,-322.718,-324.135,-324.758,-324.873,-325.262,-323.988,-322.917,-325.453,-325.345]
+vsw_y_up = [ -14.6963,-14.3565,-13.1784,-18.6968,-20.3775,-19.3911,-19.5558,-22.6564,-19.5119,-25.4063,-21.5175,-24.6073,-22.8260,-24.9453,-26.0734,-32.0907,-35.9256,-40.5255,-36.9529,-41.1380,-44.8946,-47.9227,-47.1975,-45.7365,-46.1035,-42.9433,-47.7794,-48.4501,-45.8045,-44.9678,-45.1175,-43.8534,-38.2981,-34.3081,-31.2160,-30.6434,-35.5359,-36.6384,-30.0238,-33.8565,-31.9601]
+vsw_z_up = [  19.2798,19.0376,19.1483,18.4318,18.4769,18.6953,18.1579,17.7899,17.6487,17.6992,17.6433,17.6211,17.5546,17.2085,16.8648,16.1591,16.5673,16.6007,16.5709,16.4546,15.1831,15.5945,15.9919,15.6731,15.6808,16.3129,16.1874,16.2948,16.5813,16.8910,16.4276,16.5143,16.7728,16.8898,17.0044,16.9973,16.4503,17.1478,17.7345,16.8990,17.1574]
+vsw_up   = [[vsw_x_up],[vsw_y_up],[vsw_z_up]]
+mag_x_up = [  -1.96668,-1.90975,-1.90698,-1.87854,-1.85799,-1.88737,-1.90401,-1.85561,-1.81066,-1.76142,-1.74404,-1.71657,-1.75572,-1.80509,-1.90224,-1.95670,-1.98389,-2.01316,-2.04993,-2.07563,-2.09108,-2.16935,-2.27883,-2.36314,-2.35300,-2.36642,-2.36072,-2.37768,-2.38650,-2.40391,-2.37768,-2.22666,-2.01859,-1.87140,-1.91793,-2.13244,-2.20539,-2.19401,-2.18759,-2.21491,-2.10132]
+mag_y_up = [  -1.04798,-1.11558,-1.16529,-1.12016,-1.13815,-1.22472,-1.25267,-1.12115,-1.05157,-1.11963,-1.24890,-1.35834,-1.35112,-1.27808,-1.09447,-0.961962,-0.904906,-0.886882,-0.868371,-0.849367,-0.869564,-1.05340,-1.26426,-1.32045,-1.30960,-1.28763,-1.26724,-1.28415,-1.32578,-1.36165,-1.35429,-1.30842,-1.25317,-1.29624,-1.42628,-1.41496,-1.36270,-1.27817,-1.26191,-1.17853,-1.12415]
+mag_z_up = [   2.35352,2.31241,2.27760,2.20477,2.15520,2.16488,2.18377,2.19130,2.15332,2.08702,1.97537,1.96046,2.13058,2.32719,2.39357,2.30970,2.14447,2.03515,1.95090,1.89789,1.82548,1.90047,2.02428,2.12248,2.15046,2.14128,2.14629,2.18184,2.23184,2.26555,2.27437,2.23233,2.19403,2.14860,2.19195,2.25491,2.23743,2.16218,2.16686,2.15859,2.09762]
+magf_up  = [[mag_x_up],[mag_y_up],[mag_z_up]]
+temp_up  = te_avgu + ti_avgu
+PRINT,';;', MEAN(dens_up,/NAN),  MEAN(ti_avgu,/NAN),  MEAN(te_avgu,/NAN)
+PRINT,';;', MEAN(vsw_x_up,/NAN), MEAN(vsw_y_up,/NAN), MEAN(vsw_z_up,/NAN)
+PRINT,';;', MEAN(mag_x_up,/NAN), MEAN(mag_y_up,/NAN), MEAN(mag_z_up,/NAN)
+;;      8.33293      26.2486      10.8482
+;;     -323.564     -32.8703      17.0731
+;;     -2.05709     -1.18931      2.15410
+
+
+; => Downstream values
+dens_dn  = [  34.9241,31.6147,31.7990,29.4056,27.6867,27.1349,37.2424,37.1233,33.5744,30.8103,26.5205,30.4891,28.3689,25.4411,36.5602,56.4820,37.3213,39.2016,29.8067,31.9543,42.4122,54.5268,67.8023,86.7644,84.4063,77.6275,74.5796,59.3192,48.6423,47.8975,47.2830,41.5702,32.3353,38.3317,50.2416,43.7094,35.6807,42.5751,42.8810,34.0320,34.3466]
+ti_avgd  = [ 279.061,283.088,302.052,299.415,297.095,324.816,293.284,274.493,264.484,273.113,303.726,237.487,219.242,219.819,162.448,122.169,222.339,234.201,296.215,309.042,193.537,148.469,102.251,79.2339,78.5176,83.0226,85.8153,131.368,170.276,203.359,197.673,191.615,177.320,168.049,171.082,186.465,215.892,190.797,184.693,246.540,190.051]
+te_avgd  = [  31.2431,30.6693,30.2684,29.9266,29.2427,30.7513,32.7169,35.8594,34.2592,34.7337,32.9792,29.0988,28.3781,29.3709,29.6124,30.2793,29.4673,28.4429,29.0007,29.9599,26.5714,30.2196,32.2167,32.5111,33.6447,34.5632,35.3621,32.9204,34.4401,37.1444,36.2458,33.8220,31.9111,32.7658,34.6391,31.2355,29.6402,27.6769,25.2657,23.5672,24.5836]
+vsw_x_dn = [ -58.2274,-41.9603,-58.4619,-55.0989,-38.5915,-31.5609,-75.6594,-52.9869,-45.3441,-53.6580,-64.8692,-66.0783,-55.1548,-32.0883,-42.0753,-78.0777,-62.8897,-66.5670,-65.8222,-67.9394,-67.3398,-66.1350,-79.0058,-70.3699,-66.6346,-76.4456,-80.5608,-76.2406,-68.7491,-77.4558,-74.6339,-69.6774,-44.6051,-52.3938,-81.7772,-95.6977,-96.5712,-97.3538,-109.505,-124.016,-110.438]
+vsw_y_dn = [ -27.5317,-21.2426,-6.40440,6.48074,8.74008,9.37884,14.3833,1.57548,-8.36012,-12.6438,-21.1714,-33.5047,-38.3639,-23.0204,-42.2407,-9.74701,-4.04015,9.86170,22.5193,26.9724,19.7475,43.1604,60.9372,77.0746,68.7894,58.8122,49.4065,41.9078,45.9602,53.5815,55.6782,58.3010,27.5343,11.0495,-13.8501,-30.8110,-41.9467,-27.0048,-15.2085,-5.26216,39.1198]
+vsw_z_dn = [ -19.8220,-24.2222,-18.4361,-40.1135,-50.9067,-51.8259,-80.2379,-98.3610,-94.6814,-96.7368,-63.4990,-36.8573,-38.1971,-53.7528,-60.3677,-30.4465,-40.2984,-43.6322,-45.0775,-67.5518,-100.549,-81.1161,-58.0289,-44.9767,-37.5505,-34.1501,-33.4762,-28.8115,-17.7666,-10.2094,-7.20101,-2.17392,0.0123508,-6.48278,1.81533,-7.05603,-29.7594,8.92172,24.6459,-10.0189,-56.7648]
+vsw_dn   = [[vsw_x_dn],[vsw_y_dn],[vsw_z_dn]]
+mag_x_dn = [  -8.21984,-7.04158,-5.93307,-4.92930,-4.84153,-6.92803,-9.47019,-12.5854,-13.0058,-9.53577,-2.68885,-1.52987,-1.93786,-1.33608,-2.85751,-6.70811,-6.05965,-4.79426,-2.11343,-1.57753,-1.93605,-4.56646,-7.69197,-10.2518,-10.8288,-11.1815,-10.5875,-10.2648,-9.13896,-7.20927,-5.40622,-5.22153,-4.20521,-2.52753,-0.926127,-3.05505,-2.49270,-0.966095,2.18468,1.40783,-0.777599]
+mag_y_dn = [  -4.85087,-5.06587,-5.15166,-3.58753,-0.277658,-3.16420,-8.32201,-10.0111,-7.22399,-2.61666,-0.852181,-4.93392,-12.1126,-13.9744,-12.1840,-4.92438,0.713513,-3.36535,-9.75913,-8.36478,1.03605,15.7675,23.0009,21.7551,20.4605,22.4649,24.6157,24.4065,17.0857,7.07030,1.91461,-2.10846,-2.06990,-2.60236,-0.142740,-8.56587,-10.3298,-9.91495,-6.78372,-7.00845,0.123898]
+mag_z_dn = [   3.21728,3.93288,5.68717,4.15856,0.192269,-4.77850,-8.95120,-12.4502,-5.43872,4.93389,13.3544,11.1673,9.89685,11.6613,12.8130,8.65247,6.74954,5.12221,5.82784,0.438649,-2.15252,-4.77885,-5.01069,-5.39877,-4.27051,-3.73089,-6.45869,-7.51395,-5.62730,-2.22404,1.79343,11.5740,17.3357,13.7749,8.95768,3.70796,0.669863,3.93797,6.62665,8.32090,-2.95580]
+magf_dn  = [[mag_x_dn],[mag_y_dn],[mag_z_dn]]
+temp_dn  = te_avgd + ti_avgd
+PRINT,';;', MEAN(dens_dn,/NAN),  MEAN(ti_avgd,/NAN),  MEAN(te_avgd,/NAN)
+PRINT,';;', MEAN(vsw_x_dn,/NAN), MEAN(vsw_y_dn,/NAN), MEAN(vsw_z_dn,/NAN)
+PRINT,';;', MEAN(mag_x_dn,/NAN), MEAN(mag_y_dn,/NAN), MEAN(mag_z_dn,/NAN)
+;;      42.6933      210.088      31.1514
+;;     -68.2614      10.4541     -38.6761
+;;     -5.35942     0.247479      2.50644
+
+; => combine terms
+vsw      = [[[vsw_up]],[[vsw_dn]]]
+mag      = [[[magf_up]],[[magf_dn]]]
+dens     = [[dens_up],[dens_dn]]
+temp     = [[temp_up],[temp_dn]]
+
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/rh_pros/temp_rh_soln_print.pro
+temp_rh_soln_print,dens,vsw,mag,temp,tdate[0],NMAX=120L
+;; => Print out best fit poloidal angles
+PRINT,';', soln.THETA*18d1/!DPI
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;      -8.8028654       6.1227009
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;      -7.5149366       6.9823684
+;;-----------------------------------------------------------
+
+;; => Print out best fit azimuthal angles
+PRINT,';', soln.PHI*18d1/!DPI
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;       10.226525       6.2922962
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;       11.058541       7.0940575
+;;-----------------------------------------------------------
+
+;; => Print out best fit shock normal speed in spacecraft frame [km/s]
+PRINT,';', soln.VSHN
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;       17.454276       47.026312
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;       16.475852       46.461163
+;;-----------------------------------------------------------
+
+;; => Print out best fit upstream shock normal speed in shock frame [km/s]
+PRINT,';', soln.USHN_UP
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;      -336.78311       46.907820
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;      -334.99183       46.494333
+;;-----------------------------------------------------------
+
+;; => Print out best fit downstream shock normal speed in shock frame [km/s]
+PRINT,';', soln.USHN_DN
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;      -75.371746       30.706395
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;      -74.927640       30.423146
+;;-----------------------------------------------------------
+
+;; => Print out best fit shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,0]
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;      0.96126335      0.17340832     -0.15220981
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;      0.95852364      0.18728308     -0.12980884
+;;-----------------------------------------------------------
+
+;; => Print out best fit uncertainty in shock normal vector [GSE coordinates]
+PRINT,';', soln.SH_NORM[*,1]
+;;-----------------------------------------------------------
+;;         Avg.          Std. Dev.
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, and 5 for 2009-07-13 bow shock
+;;===========================================================
+;;     0.025481462      0.10522003      0.10495581
+;;-----------------------------------------------------------
+;;  => Equations 2, 3, 4, 5, and 6 for 2009-07-13 bow shock
+;;===========================================================
+;;     0.030550733      0.11832532      0.11989211
+;;-----------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;;----------------------------------------------------------------------------------------
+;; => Save moments
+;;----------------------------------------------------------------------------------------
+probe          = 'c'
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+prefu          = STRUPCASE(pref[0])
+mdir           = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_tplot_save/')
+fpref          = 'TPLOT_save_file_'+prefu[0]+'FGM-ALL_EESA-IESA-Moments_Vsw-Corrected_'
+fnm            = file_name_times(tr_00,PREC=0)
+ftimes         = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+tsuffx         = ftimes[0]+'-'+STRMID(ftimes[1],11L)
+fname          = fpref[0]+tsuffx[0]
+tplot_save,FILENAME=fname[0]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

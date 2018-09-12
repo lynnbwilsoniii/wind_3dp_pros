@@ -1,0 +1,210 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   zero_pad.pro
+;  PURPOSE  :   Appends an [N]-element array with M-zeros such that (M+N) is an integer
+;                 power of 2, i.e., 2^(K) = (M+N) for integer K.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               get_zeros_mins_maxs_type.pro
+;               is_a_number.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               SIGNAL   :  [N]-Element [numeric] array of values to which an [M]-element
+;                             array of zeros will be appended on output
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               new_sign = zero_pad(signal [,FORCE_N=force_n])
+;
+;  KEYWORDS:    
+;               FORCE_N  :  Scalar [long/integer] defining the number of elements to force
+;                             for the output result.  Note that the routine will
+;                             ignore this value if it is not an integer number of 2.
+;
+;   CHANGED:  1)  First version was slower than power_of_2.pro, so let's try removing
+;                   dependencies to see if that helps
+;                                                                   [04/30/2018   v1.0.1]
+;
+;   NOTES:      
+;               1)  This is meant to be a streamlined version of power_of_2.pro
+;
+;  REFERENCES:  
+;               1)  Harris, F.J. "On the Use of Windows for Harmonic Analysis with the
+;                      Discrete Fourier Transform," Proc. IEEE Vol. 66, No. 1,
+;                      pp. 51-83, (1978).
+;               2)  Paschmann, G. and P.W. Daly "Analysis Methods for Multi-Spacecraft
+;                      Data," ISSI Scientific Report, Noordwijk, The Netherlands.,
+;                      Int. Space Sci. Inst, (1998).
+;               3)  Torrence, C. and G.P. Compo "A Practical Guide to Wavelet Analysis,"
+;                      Bull. Amer. Meteor. Soc. 79, pp. 61-78, (1998).
+;               4)  Donnelly, D. and B. Rust "The Fast Fourier Transform for
+;                      Experimentalists, Part I:  Concepts," Comput. Sci. & Eng. 7(2),
+;                      pp. 80-88, (2005).
+;               5)  Donnelly, D. and B. Rust "The Fast Fourier Transform for
+;                      Experimentalists, Part II:  Convolutions," Comput. Sci.
+;                      & Eng. 7(4), pp. 92-95, (2005).
+;               6)  Rust, B. and D. Donnelly "The Fast Fourier Transform for
+;                      Experimentalists, Part III:  Classical Spectral Analysis,"
+;                      Comput. Sci. & Eng. 7(5), pp. 74-78, (2005).
+;               7)  Rust, B. and D. Donnelly "The Fast Fourier Transform for
+;                      Experimentalists, Part IV:  Autoregressive Spectral Analysis,"
+;                      Comput. Sci. & Eng. 7(6), pp. 85-90, (2005).
+;               8)  Donnelly, D. "The Fast Fourier Transform for Experimentalists,
+;                      Part V:  Filters," Comput. Sci. & Eng. 8(1), pp. 92-95, (2006).
+;
+;   CREATED:  04/30/2018
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/30/2018   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION zero_pad,signal,FORCE_N=force_n
+
+;;----------------------------------------------------------------------------------------
+;;  Constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define allowed types
+;all_type_str   = get_zeros_mins_maxs_type()     ;;  Get all type info for system
+;all_ok_types   = all_type_str.TYPES             ;;  i.e., [1L,2L,3L,4L,5L,6L,7L,9L,12L,13L,14L,15L]
+;all_ok_zeros   = all_type_str.ZEROS             ;;  e.g., OL for Long
+;;  Define allowed number types
+all_num_type   = [1,2,3,4,5,6,9,12,13,14,15]
+;;  Dummy error messages
+notstr1msg     = 'User must supply an [N]-element [numeric] array on input...'
+notstr3msg     = 'SIGNAL must be of a valid IDL numeric type...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+;;  Check for an input
+;test           = (is_a_number(signal,/NOMSSG) EQ 0) OR (N_PARAMS() LT 1)
+;IF (test[0]) THEN BEGIN
+IF (N_PARAMS() LT 1) THEN BEGIN
+  MESSAGE,notstr1msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check against available types
+old_t          = SIZE(signal,/TYPE)
+;test           = (TOTAL(old_t[0] EQ all_num_type) EQ 0)
+;IF (test[0]) THEN BEGIN
+IF (TOTAL(old_t[0] EQ all_num_type) EQ 0) THEN BEGIN
+  MESSAGE,notstr3msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define allowed types and zeros
+;;----------------------------------------------------------------------------------------
+;;  Define array to manipulate
+n_a            = N_ELEMENTS(signal)
+;;  Force to be 1D
+IF (SIZE(signal,/N_DIMENSIONS) GT 1) THEN arr = REFORM(signal,n_a[0]) ELSE arr = signal
+;arr            = REFORM(signal,n_a[0])       ;;  Force to be 1D
+;;----------------------------------------------------------------------------------------
+;;  Define zero value
+;;----------------------------------------------------------------------------------------
+;;  Define allowed types
+all_ok_types   = [1L,2L,3L,4L,5L,6L,7L,9L,12L,13L,14L,15L]
+;;  Define allowed type zeros
+all_ok_zeros   = {B:0B,IN:0S,L:0L,F:0e0,D:0d0,C:COMPLEX(0e0,0e0), $
+                  S:'',DC:DCOMPLEX(0d0,0d0),UI:0U,UL:0UL,L64:0LL,$
+                  UL64:0ULL}
+;;  Determine which type to use
+good           = WHERE(old_t[0] EQ all_ok_types,gd)
+IF (gd[0] EQ 0) THEN STOP   ;;  Should not have happened --> Debug!
+zero           = all_ok_zeros.(good[0])        ;;  Zero value of proper type
+;zero           = MAKE_ARRAY(1,TYPE=all_ok_types[good[0]])        ;;  Zero value of proper type
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check FORCE_N
+;test           = is_a_number(force_n,/NOMSSG)
+;IF (test[0]) THEN BEGIN
+
+;IF (TOTAL(SIZE(force_n,/TYPE) EQ all_num_type) EQ 0) THEN fcn0 = force_n ELSE fcn0 = -1
+;IF (fcn0[0] GT 0) THEN BEGIN
+IF (TOTAL(SIZE(force_n,/TYPE) EQ all_num_type) GT 0) THEN BEGIN
+;  test           = ((force_n[0] MOD 2) EQ 0) AND (force_n[0] GE n_a[0])
+;  test           = ((fcn0[0] MOD 2) EQ 0) AND (fcn0[0] GE n_a[0])
+;  IF (test[0]) THEN fcn_on = 1b ELSE fcn_on = 0b
+;  IF (((force_n[0] MOD 2) EQ 0) AND (force_n[0] GE n_a[0])) THEN fcn_on = 1b ELSE fcn_on = 0b
+;ENDIF ELSE fcn_on = 0b
+  IF (((force_n[0] MOD 2) EQ 0) AND (force_n[0] GE n_a[0])) THEN fcn = (ROUND(force_n))[0] ELSE fcn = 0
+ENDIF ELSE fcn = 0b
+;;----------------------------------------------------------------------------------------
+;;  Determine # of zeros to append
+;;----------------------------------------------------------------------------------------
+;;  Define nearest power of 2 lower bound
+low_pow2       = FLOOR(ALOG(1d0*n_a[0])/ALOG(2d0))
+;;  Define nearest power of 2 upper bound
+upp_pow2       = low_pow2[0] + 1L
+IF (2L^upp_pow2[0] LT n_a[0]) THEN upp_pow2 += 1L   ;;  Make sure upper bound is above input N
+IF (fcn[0] GT 0) THEN BEGIN
+;IF (fcn_on[0]) THEN BEGIN
+  ;;  User properly defined FORCE_N --> Append zeros
+;  fcn            = (ROUND(fcn0[0]))[0]
+;  fcn            = (ROUND(force_n))[0]
+  new_n          = fcn[0]
+;  del_n          = new_n[0] - n_a[0]
+;  ;;  Define array of zeros
+;;  app_z          = MAKE_ARRAY(del_n[0],VALUE=zero[0])
+;  app_z          = REPLICATE(zero[0],del_n[0])
+;  ;;  Append to output array
+;  out_arr        = [arr,app_z]
+ENDIF ELSE BEGIN
+  new_n          = 2L^upp_pow2[0]
+;  del_n          = new_n[0] - n_a[0]
+;  ;;  Define array of zeros
+;  app_z          = MAKE_ARRAY(del_n[0],VALUE=zero[0])
+;;  app_z          = REPLICATE(zero[0],del_n[0])
+;  ;;  Append to output array
+;  out_arr        = [arr,app_z]
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define output array
+;;----------------------------------------------------------------------------------------
+del_n          = new_n[0] - n_a[0]
+app_z          = REPLICATE(zero[0],del_n[0])
+out_arr        = TEMPORARY([arr,app_z])
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,out_arr
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

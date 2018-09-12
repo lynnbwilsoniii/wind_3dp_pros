@@ -1,0 +1,396 @@
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.3806504d-23     ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+
+invdenf = 1d-6*(2d0*!DPI)^2*(me*epo/qq^2)  ; => [cm^(-3) s^2]
+
+fcefac  = qq/me*1d-9/(2d0*!DPI)
+fpefac  = SQRT(1d6*qq^2/me/epo)/(2d0*!DPI)
+
+fcpfac  = qq/mp*1d-9/(2d0*!DPI)
+fppfac  = SQRT(1d6*qq^2/mp/epo)/(2d0*!DPI)
+;-----------------------------------------------------------------------------------------
+; => Dates and time ranges
+;-----------------------------------------------------------------------------------------
+date = '021100'
+t    = ['2000-02-11/22:33:00','2000-02-12/00:33:00']
+tramp = '2000-02-11/23:33:55.319'
+tr3   = time_double(t)
+tura  = time_double(tramp)
+
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate  = mydate.DATE[0]    ; -('YYYYMMDD')
+ldate  = STRMID(mdate,4L,4L)+STRMID(mdate,0L,4L)
+tdate  = mydate.TDATE[0]
+;-----------------------------------------------------------------------------------------
+; => Find Wind/3DP IDL Save Files
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+
+
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;-----------------------------------------------------------------------------------------
+; => Load mag data
+;-----------------------------------------------------------------------------------------
+mag3  = read_wind_mfi(TRANGE=tr3)
+t3x   = mag3.MAG.X
+bmag4 = mag3.MAG.Y
+magf4 = mag3.BGSE.Y
+nt    = N_ELEMENTS(t3x) 
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+tplot_options,'xmargin',[18,12]
+tplot_options,'ymargin',[5,5]
+tplot,nn0,TRANGE=tr3
+
+htr_mfi2tplot,DATE=date
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+sh_mit     = read_shocks_jck_database()
+mit_dates  = sh_mit.SDATES                 ; => 'MMDDYY'
+shocks     = sh_mit.SHOCK
+header     = sh_mit.HEADER
+ymdb_ra    = header.DATE_TIME              ; => ['YYYY-MM-DD/HH:MM:SS.sss']
+mts        = my_time_string(ymdb_ra,STR=1,FORM=1)
+unix_ra    = mts.UNIX
+
+a_thetabn  = shocks.THETA_BN               ; => Shock normal angles (deg)
+a_shnorms  = shocks.SH_NORM                ; => " " vectors (GSE)
+a_vshn     = shocks.VSH_N                  ; => Shock normal velocity (SC-Frame) [km/s]
+a_ushn     = shocks.USH_N                  ; => Shock normal velocity (Shock-Frame) [km/s]
+a_compr    = shocks.COMPRESSION            ; => Shock compression ratio
+a_vsw_up   = REFORM(header.VSW[*,*,0])     ; => Upstream SW Velocity (km/s)
+a_vsw_dn   = REFORM(header.VSW[*,*,1])     ; => Downstream SW Velocity (km/s)
+a_Cs_up    = REFORM(header.C_SOUND[*,0])   ; => Upstream Sound Speed (km/s)
+a_Cs_dn    = REFORM(header.C_SOUND[*,1])   ; => Downstream Sound Speed (km/s)
+a_Va_up    = REFORM(header.V_ALFVEN[*,0])  ; => Upstream Alfven Speed (km/s)
+a_Va_dn    = REFORM(header.V_ALFVEN[*,1])  ; => Downstream Alfven Speed (km/s)
+
+gshock     = WHERE(mit_dates EQ date,gsh)
+IF (date[0] Eq '021100') THEN gel = 1 ELSE gel = 0
+gshock     = gshock[gel]
+midra = tura
+  gnorm = REFORM(a_shnorms[gshock[0],*])
+  gthbn = (REFORM(a_thetabn[gshock[0]]))[0]
+  gvshn = (REFORM(a_vshn[gshock[0]]))[0]
+  gushn = (REFORM(a_ushn[gshock[0]]))[0]
+  gcomp = (REFORM(a_compr[gshock[0]]))[0]
+  gvswu = REFORM(a_vsw_up)
+  gvswd = REFORM(a_vsw_dn)
+  gcsup = (REFORM(a_Cs_up[gshock[0]]))[0]
+  gcsdn = (REFORM(a_Cs_dn[gshock[0]]))[0]
+  gvaup = (REFORM(a_Va_up[gshock[0]]))[0]
+  gvadn = (REFORM(a_Va_dn[gshock[0]]))[0]
+;-----------------------------------------------------------------------------------------
+; => Load ion moments
+;-----------------------------------------------------------------------------------------
+pesa_low_moment_calibrate,DATE=date,/NOLOAD,PLM=apl,PLBM=aplb,TRANGE=tr3,COMPRESS=gcomp,MIDRA=midra
+pesa_high_moment_calibrate,DATE=date,/NOLOAD,PHM=aph,PHBM=aphb,TRANGE=tr3
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Load WAVES data
+;-----------------------------------------------------------------------------------------
+fl        = 4.
+fh        = 13e3
+yscl      = 'log'
+wave_tnr_rad_to_tplot,DATE=date,FLOW=fl,FHIGH=fh,YSCL=yscl,TRANGE=tr3
+
+pref = ['TNR','RAD1','RAD2']
+wnam = tnames(pref[*]+'_'+date[0])
+options,wnam,'ZTITLE','dB Above'+'!C'+'Background'
+options,tnames(pref[0]+'_'+date[0]),'YRANGE',[4.00000,245.148]
+;-----------------------------------------------------------------------------------------
+; => Load WAVES Denstiy estimates
+;-----------------------------------------------------------------------------------------
+test  = waves_fpe_ascii_read(DATE=date)
+wunix = test.UNIX          ; => Unix times
+wdens = test.DENSITY       ; => cm^(-3)
+weine = test.E_INERT_L     ; => m
+wfpe  = test.F_PE          ; => Hz
+
+store_data,'waves_density',DATA={X:wunix,Y:wdens}
+options,'waves_density','YTITLE','N!De!N (cm!U-3!N)'
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+get_data,'WIND_B3_HTR(GSE,nT)',DATA=htrmag
+unixh = htrmag.X
+magfh = htrmag.Y
+bmagh = SQRT(TOTAL(magfh^2,2,/NAN))
+
+fceh  = fcefac[0]*bmagh[*]
+fcph  = fcpfac[0]*bmagh[*]
+nna   = tnames(['WIND_MAG_HTR(GSE,nT)','WIND_B3_HTR(GSE,nT)','N_i3'])
+tw    = time_double(['2000-02-11/23:33:56.4910','2000-02-11/23:33:58.3510'])
+
+get_data,'N_i3',DATA=pl_dens
+pldens = pl_dens.Y
+pltime = pl_dens.X
+high   = WHERE(pltime GT tw[1],hg)
+print, time_string(pltime[high[0]-1L],PREC=3), pldens[high[0]-1L]
+;  2000-02-11/23:33:56.026       7.2968731
+print, time_string(pltime[high[0]],PREC=3), pldens[high[0]]
+;  2000-02-11/23:33:59.123       14.271135
+print, time_string(pltime[high[0]+1L],PREC=3), pldens[high[0]+1L]
+;  2000-02-11/23:34:02.221       13.007138
+
+
+twdens = pldens[high[0]]
+twfceh = interp(fceh,unixh,tw[*],/NO_EXTRAP)
+twfcph = interp(fcph,unixh,tw[*],/NO_EXTRAP)
+twbmag = interp(bmagh,unixh,tw[*],/NO_EXTRAP)
+PRINT, twbmag[0],twdens[0], twfceh[0], twfcph[0], SQRT(twfceh[0]*twfcph[0])
+;       16.570758       14.271135       463.85667      0.25262423       10.825037
+PRINT, twbmag[1],twdens[0], twfceh[1], twfcph[1], SQRT(twfceh[1]*twfcph[1])
+;       16.261976       14.271135       455.21309      0.24791679       10.623322
+
+PRINT, MEAN(twbmag,/nan)
+;       16.416367
+
+; => Compare WAVES results to 3DP PL
+
+pl_waves = interp(pldens,pltime,wunix,/NO_EXTRAP)
+ratio    = pl_waves/wdens
+store_data,'ratio_PL3DP_to_WAVES-TNR',DATA={X:wunix,Y:ratio}
+options,'ratio_PL3DP_to_WAVES-TNR','YTITLE','N!D3DP!N'+'/N!DWAVES!N'
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+;-----------------------------------------------------------------------------------------
+; => examples
+;-----------------------------------------------------------------------------------------
+bo    = 16.42e0
+no    = 14.27e0
+
+
+; => Polarization according to Stix, [1962], Eq. 1.31
+;      polarize >=  1 -> RH
+;      polarize <= -1 -> LH
+
+f0        = 1e0
+f0        = 5e0
+f0        = 2e1
+f0        = 6e1
+f0        = 12e1
+f0        = 2e2
+test0     = cold_plasma_params(bo[0],no[0],FREQF=f0,NDAT=10000L)
+nsqr      = test0.INDEX_REF_1
+nsql      = test0.INDEX_REF_0
+rterm     = test0.R_term[0]
+lterm     = test0.L_term[0]
+pterm     = test0.P_term[0]
+sterm     = test0.S_term[0]
+dterm     = test0.D_term[0]
+vphaser   = c/SQRT(nsqr)
+polarizer = (nsqr - sterm[0])/dterm[0]
+polarizel = (nsql - sterm[0])/dterm[0]
+rhand     = WHERE(polarizer GE  1.,rh,COMPLEMENT=lhand,NCOMPLEMENT=lh)
+
+
+print, minmax(vphaser)*1d-3
+print, minmax(polarizer)
+print, minmax(vphaser[rhand])*1d-3, minmax(vphaser[lhand])*1d-3
+print, minmax(test0.ANGLES[rhand],/POS), minmax(test0.ANGLES[lhand],/POS), $
+       test0.CONE_ANG[0]
+
+;        Vph,min         Vph,max
+;========================================================
+;       94.371980       211.60437   => For f =   1.0 Hz
+;       83.855416       431.72146   => For f =   5.0 Hz
+;       2.5699351       833.75800   => For f =  20.0 Hz
+;       17.049912       1371.1550   => For f =  60.0 Hz
+;       24.185233       1785.7532   => For f = 120.0 Hz
+;       27.033095       2014.8305   => For f = 200.0 Hz
+
+;             Polarization
+;          min           max
+;========================================================
+;       1.0000000       4.0276278   => For f =   1.0 Hz
+;       1.0000000       25.506052   => For f =   5.0 Hz
+;      -6860.9536       108518.35   => For f =  20.0 Hz
+;      -47341.136       7285.1138   => For f =  60.0 Hz
+;      -58748.023       6864.5521   => For f = 120.0 Hz
+;      -20445.502       7966.4395   => For f = 200.0 Hz
+
+;        Vph,min         Vph,max
+;========================================================
+;       94.371980       211.60437   => RH For f =   1.0 Hz
+;             NaN             NaN   => LH For f =   1.0 Hz
+;--------------------------------
+;       83.855416       431.72146   => RH For f =   5.0 Hz
+;             NaN             NaN   => LH For f =   5.0 Hz
+;--------------------------------
+;       2.5699351       833.75799   => RH For f =  20.0 Hz
+;       833.75800       833.75800   => LH For f =  20.0 Hz
+;--------------------------------
+;       17.049912       1371.1550   => RH For f =  60.0 Hz
+;       1371.1550       1371.1550   => LH For f =  60.0 Hz
+;--------------------------------
+;       24.185233       1785.7532   => RH For f = 120.0 Hz
+;       0.0000000       0.0000000   => LH For f = 120.0 Hz
+;--------------------------------
+;       27.033095       2014.8305   => RH For f = 200.0 Hz
+;       0.0000000       0.0000000   => LH For f = 200.0 Hz
+
+;     Theta,min       Theta,max 
+;========================================================
+;    0.0090009001       90.000000   => RH For f =   1.0 Hz
+;             NaN             NaN   => LH For f =   1.0 Hz
+;--------------------------------
+;    0.0090009001       90.000000   => RH For f =   5.0 Hz
+;             NaN             NaN   => LH For f =   5.0 Hz
+;--------------------------------
+;    0.0090009001       87.893789   => RH For f =  20.0 Hz
+;       87.902790       90.000000   => LH For f =  20.0 Hz
+;--------------------------------
+;    0.0090009001       82.610261   => RH For f =  60.0 Hz
+;       82.619262       90.000000   => LH For f =  60.0 Hz
+;--------------------------------
+;    0.0090009001       74.914491   => RH For f = 120.0 Hz
+;       74.923492       90.000000   => LH For f = 120.0 Hz
+;--------------------------------
+;    0.0090009001       64.230423   => RH For f = 200.0 Hz
+;       64.239424       90.000000   => LH For f = 200.0 Hz
+
+;       Res. Cone
+;========================================================
+;       89.875345   => For f =   1.0 Hz
+;       89.376715   => For f =   5.0 Hz
+;       87.894325   => For f =  20.0 Hz
+;       82.618062   => For f =  60.0 Hz
+;       74.922551   => For f = 120.0 Hz
+;       64.236900   => For f = 200.0 Hz
+
+
+
+bo        = 16.42e0
+no        = 14.27e0
+fcefac    = qq/me*1d-9/(2d0*!DPI)
+fpefac    = SQRT(1d6*qq^2/me/epo)/(2d0*!DPI)
+fpeo      = fpefac[0]*SQRT(no[0])
+fceo      = fcefac[0]*bo[0]
+
+ndat      = 1000L
+test0     = cold_plasma_params(bo[0],no[0],NDAT=ndat)
+nsqr      = test0.INDEX_REF_1
+nsql      = test0.INDEX_REF_0
+rterm     = test0.R_term[*]
+lterm     = test0.L_term[*]
+pterm     = test0.P_term[*]
+sterm     = test0.S_term[*]
+dterm     = test0.D_term[*]
+freq_w    = test0.W_FREQS
+angs_w    = test0.ANGLES
+vphaser   = c/SQRT(nsqr)
+badv      = WHERE(vphaser GE c,bdv,COMPLEMENT=goodv,NCOMPLEMENT=gdv)
+IF (bdv GT 0) THEN bind = ARRAY_INDICES(vphaser,badv)  ELSE bind = -1
+IF (gdv GT 0) THEN gind = ARRAY_INDICES(vphaser,goodv) ELSE gind = -1
+
+free_mode = REPLICATE(d,ndat,ndat)
+free_mode[bind[0,*],bind[1,*]] = nsqr[bind[0,*],bind[1,*]]
+
+x_mode    = REPLICATE(d,ndat,ndat)
+x_mode[gind[0,*],gind[1,*]] = nsqr[gind[0,*],gind[1,*]]
+
+
+shade_surf,free_mode,freq_w/fpeo[0],angs_w,/T3D
+
+
+;IF (bdv GT 0) THEN 
+
+wi,1
+plot,test0.angles,nsqr/test0.INDEX_ALFVEN,/ylog,/ystyle
+
+unbn = UNIQ(bind[0,*],SORT(bind[0,*]))
+gels = REFORM(bind[0,unbn])
+print, freq_w[gels]/fpeo[0]
+;      0.99399402      0.99499501      0.99599601      0.99699700      0.99799800      0.99899899      0.99999998
+plim = {xrange:[0.,90.],xstyle:1,yrange:[1e-3,3e-1],ystyle:1,ylog:1}
+plot,angs_w,reform(free_mode[gels[0],*]),_EXTRA=plim
+  oplot,angs_w,reform(free_mode[gels[0],*]),color=30
+  oplot,angs_w,reform(free_mode[gels[1],*]),color=50
+  oplot,angs_w,reform(free_mode[gels[2],*]),color=70
+  oplot,angs_w,reform(free_mode[gels[3],*]),color=90
+  oplot,angs_w,reform(free_mode[gels[4],*]),color=110
+  oplot,angs_w,reform(free_mode[gels[5],*]),color=130
+  oplot,angs_w,reform(free_mode[gels[6],*]),color=150
+
+
+unbn = UNIQ(gind[0,*],SORT(gind[0,*]))
+gels = REFORM(gind[0,unbn])
+ng   = N_ELEMENTS(gels)
+cols = FINDGEN(ng)*(250. - 30.)/(ng - 1L) + 30.
+gcol = UNIQ(LONG(cols),SORT(LONG(cols)))
+col2 = LONG(cols[gcol])
+gels = gcol
+
+c10s = LINDGEN(22)*(250 - 30)/21 + 30L
+gttt = my_array_where(c10s,col2,/N_UNIQ)
+
+col2 = REFORM(col2[gttt[*,1]])
+gels = REFORM(gcol[gttt[*,1]])
+ng   = N_ELEMENTS(gels)
+
+xmde = x_mode/test0.INDEX_ALFVEN[0]
+yra  = [-1e-6,1e-6]
+plim = {xrange:[0.,90.],xstyle:1,yrange:yra,ystyle:1,ylog:0,nodata:1}
+PLOT,angs_w,REFORM(xmde[gels[0],*]),_EXTRA=plim
+FOR j=1L, ng - 2L DO BEGIN $
+  OPLOT,angs_w,REFORM(xmde[gels[j],*]),COLOR=col2[j]
+
+
+
+theta = 40e0
+print, cold_plasma_whistler_params(bo,no,f0,theta)
+
+
+
+
+
+
+
+
+
+
+

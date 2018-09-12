@@ -1,0 +1,2152 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+; => Multiplication factors for plasma frequency calculations [to angular frequency]
+wpefac = SQRT(1d6*qq^2/me/epo)
+wppfac = SQRT(1d6*qq^2/mp/epo)
+;-----------------------------------------------------------------------------------------
+; => Dates and time ranges
+;-----------------------------------------------------------------------------------------
+date        = '040600'
+t           = ['2000-04-06/15:00:00','2000-04-06/19:00:00']
+tramp       = '2000-04-06/16:32:09.237'
+
+tr3         = time_double(t)
+tura        = time_double(tramp)
+mydate      = my_str_date(DATE=date)
+date        = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate       = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate       = mydate.TDATE[0]
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+gnorm8      = [-0.984,-0.078,-0.162]   ; => Using RH08 from JCK's site
+dgnorm8     = [ 0.002, 0.009, 0.161]
+gnorm9      = [-0.988,-0.061,-0.140]   ; => Using RH09 from JCK's site
+dgnorm9     = [ 0.011, 0.070, 0.139]
+ushn        = [ 278.1, 79.8]           ; => Up/Downstream normal flow speed [shock frame] RHO8
+ushn2       = [ 277.4, 79.7]           ; => Up/Downstream normal flow speed [shock frame] RHO9
+v_shn89     = [ 646.9, 647.1]          ; => Shock normal speed [SC-Frame, km/s] {RHO8, RHO9}
+dv_shn89    = [  97.9,  97.6]
+thetaBn89   = [  69.6,  68.5]          ; => Theta_Bn [degrees, (RH08, RH09)]
+sound_updn  = [ 29.87, 92.08]          ; => Sound Speed [km/s, (up,down)stream]
+valf_updn   = [ 64.81,136.41]          ; => Alfven Speed [km/s, (up,down)stream]
+machf_89    = [  3.97,  3.97]          ; => Fast Mode Mach # [RH08, RH09]
+compr       = [  3.84,  1.25]          ; => Compression Ratio [value, uncertainty]
+ni_up       =  8.62                    ; => Avg. upstream density [cm^(-3)]
+magf_u      = [  3.223, -6.627, -0.586]
+magf_d      = [  6.324,-25.725, -6.278]
+bmag_ud     = [  7.564, 27.720]
+vsw_up      = [-387.161,3.690,-23.599]
+vsw_dn      = [-578.251,-21.021,-67.893]
+;-----------------------------------------------------------------------------------------
+; => B-fields
+;-----------------------------------------------------------------------------------------
+mfi3s       = read_wind_mfi(TRANGE=tr3)
+bgse        = mfi3s.BGSE
+bgsm        = mfi3s.BGSM
+bmags       = mfi3s.MAG
+t3x         = bgse.X
+nt          = N_ELEMENTS(t3x)
+
+store_data,'wi_B3_MAG',DATA=bmags
+store_data,'wi_B3_GSE',DATA=bgse
+store_data,'wi_B3_GSM',DATA=bgsm
+nn0    = ['wi_B3_MAG','wi_B3_GSE']
+options,'wi_B3_MAG','YTITLE','|B| [3s, nT]'
+options,'wi_B3_GSE','YTITLE','B (nT)!C[GSE, 3s]'
+options,'wi_B3_GSM','YTITLE','B (nT)!C[GSM, 3s]'
+options,['wi_B3_GSE','wi_B3_GSM'],'COLORS',[250,150,50]
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+tplot,nn0,TRANGE=tr3
+
+
+mfihtr   = read_wind_htr_mfi(TRANGE=tr3)
+bgse_htr = mfihtr.BGSE
+bgsm_htr = mfihtr.BGSM
+bmag_htr = mfihtr.BMAG
+t3x_htr  = bgse_htr.X
+store_data,'wi_BHTR_MAG',DATA=bmag_htr
+store_data,'wi_BHTR_GSE',DATA=bgse_htr
+store_data,'wi_BHTR_GSM',DATA=bgsm_htr
+
+options,'wi_BHTR_MAG','YTITLE','|B| [HTR, nT]'
+options,'wi_BHTR_GSE','YTITLE','B (nT)!C[GSE, HTR]'
+options,'wi_BHTR_GSM','YTITLE','B (nT)!C[GSM, HTR]'
+options,['wi_BHTR_GSE','wi_BHTR_GSM'],'COLORS',[250,150,50]
+nnh      = ['wi_BHTR_MAG','wi_BHTR_GSE']
+;-----------------------------------------------------------------------------------------
+; => Load orbit data
+;-----------------------------------------------------------------------------------------
+wind_orbit_to_tplot,BNAME='wi_B3_GSE',TRANGE=tr3
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+options,'Wind_GSE_Latitude','YTITLE','GSE Lat. [deg]'
+options,'Wind_GSE_Longitude','YTITLE','GSE Lon. [deg]'
+gnames = ['Wind_Radial_Distance','Wind_GSE_Latitude','Wind_GSE_Longitude','Wind_MLT']
+tplot_options, var_label=gnames
+
+htr_t  = t3x_htr
+nhtr_t = htr_t - tura[0]   ; => normalize to zero
+ndist  = v_shn89[0]*nhtr_t   ; => km
+; => Compute estimates of upstream inertial lengths
+IF (FINITE(ni_up[0])) THEN einert = c/(wpefac[0]*SQRT(ni_up[0])) ELSE einert = f
+IF (FINITE(ni_up[0])) THEN iinert = c/(wppfac[0]*SQRT(ni_up[0])) ELSE iinert = f
+einert *= 1d-3  ; => Convert to km
+iinert *= 1d-3  ; => Convert to km
+
+store_data,'normal_distance',DATA={X:htr_t,Y:ndist}
+options,'normal_distance','YTITLE','Dist. [Normal, km]'
+store_data,'normal_distance_c-wpe',DATA={X:htr_t,Y:ndist/einert[0]}
+options,'normal_distance_c-wpe','YTITLE','Dist. [Normal, c/'+'!7x!3'+'!Dpe!N'+']'
+store_data,'normal_distance_c-wpi',DATA={X:htr_t,Y:ndist/iinert[0]}
+options,'normal_distance_c-wpi','YTITLE','Dist. [Normal, c/'+'!7x!3'+'!Dpi!N'+']'
+
+gnames = ['Wind_Radial_Distance','normal_distance','normal_distance_c-wpe','normal_distance_c-wpi']
+tplot_options, VAR_LABEL=gnames
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Get TDS data
+;-----------------------------------------------------------------------------------------
+mdir     = FILE_EXPAND_PATH('../TDS_WAVES_PLOTS/TDS_DAILY_FILES/'+date[0]+'/TDSS/')
+test     = tds_waves_to_gse(DATE=date,/FIXFILE,DIRECT=mdir,TDSS=1,TDSF=0)
+
+evnnew   = test.EVENT_N
+scets    = test.SCETS                ; => SCET at start of event
+evnlen   = test.EVENT_LEN
+unixs    = time_double(scets)
+unixe    = unixs + evnlen
+scete    = time_string(unixe,PREC=3) ; => SCET at end of event
+
+tds_t    = test.TIMES                ; => TDS times [ms]
+tds_bf   = test.BF_GSE               ; => B-fields [nT]
+; => 2000-04-06
+evns     = [27126638L,27126767L,27127153L,27127228L,27127757L,27128778L,27128936L,$
+            27128950L,27128986L,27128990L,27129174L,27129566L,27129583L,27130144L,$
+            27133978L,27133987L,27134252L]
+
+evns_lhw = [27126767L,27127153L,27127228L,27127757L,27128778L,27128936L,27128950L,$
+            27128986L,27128990L,27129174L,27129566L,27129583L,27130144L,27133978L,$
+            27133987L]
+evns_mix = [27126638L,27134252L]
+
+
+good     = array_where(evnnew,evns,/N_UNIQ)
+gels     = REFORM(good[*,0])
+ntds     = N_ELEMENTS(gels)
+nsams    = N_ELEMENTS(REFORM(tds_t[0,*]))
+n_uq     = ntds - 1L
+
+evnnew   = evnnew[gels]
+scets    = scets[gels]
+scete    = scete[gels]
+evnlen   = evnlen[gels]
+unixs    = unixs[gels]
+unixe    = unixe[gels]
+
+tds_t    = REFORM(tds_t[gels,*])
+tds_bf   = REFORM(tds_bf[gels,*,*])
+
+tds_unix = tds_t*1d-3 + (unixs # REPLICATE(1d0,nsams))
+;-----------------------------------------------------------------------------------------
+; => filter fields
+;-----------------------------------------------------------------------------------------
+lfc0  = [ 3d0, 1d2]                           ; => For 2000-04-06/16:33:08.622 UT
+hfc0  = [ 2d1, 2d2]                           ; => For 2000-04-06/16:33:08.622 UT
+lfc1  = [ 3d0]                                ; => For 2000-04-06/16:33:37.993 UT
+hfc1  = [25d0]                                ; => For 2000-04-06/16:33:37.993 UT
+lfc2  = [ 3d0]                                ; => For 2000-04-06/16:35:10.964 UT
+hfc2  = [25d0]                                ; => For 2000-04-06/16:35:10.964 UT
+lfc3  = [ 3d0]                                ; => For 2000-04-06/16:35:28.336 UT
+hfc3  = [25d0]                                ; => For 2000-04-06/16:35:28.336 UT
+lfc4  = [ 3d0]                                ; => For 2000-04-06/16:37:34.651 UT
+hfc4  = [20d0]                                ; => For 2000-04-06/16:37:34.651 UT
+lfc5  = [ 3d0]                                ; => For 2000-04-06/16:44:03.915 UT
+hfc5  = [20d0]                                ; => For 2000-04-06/16:44:03.915 UT
+lfc6  = [ 3d0]                                ; => For 2000-04-06/16:45:13.405 UT
+hfc6  = [20d0]                                ; => For 2000-04-06/16:45:13.405 UT
+lfc7  = [ 3d0]                                ; => For 2000-04-06/16:45:17.075 UT
+hfc7  = [20d0]                                ; => For 2000-04-06/16:45:17.075 UT
+lfc8  = [ 3d0]                                ; => For 2000-04-06/16:45:29.053 UT
+hfc8  = [20d0]                                ; => For 2000-04-06/16:45:29.053 UT
+lfc9  = [ 3d0]                                ; => For 2000-04-06/16:45:30.676 UT
+hfc9  = [20d0]                                ; => For 2000-04-06/16:45:30.676 UT
+lfc10 = [ 3d0]                                ; => For 2000-04-06/16:46:37.595 UT
+hfc10 = [20d0]                                ; => For 2000-04-06/16:46:37.595 UT
+lfc11 = [ 3d0]                                ; => For 2000-04-06/16:49:14.931 UT
+hfc11 = [20d0]                                ; => For 2000-04-06/16:49:14.931 UT
+lfc12 = [ 3d0]                                ; => For 2000-04-06/16:49:24.620 UT
+hfc12 = [20d0]                                ; => For 2000-04-06/16:49:24.620 UT
+lfc13 = [ 3d0, 7d0,15d0]                      ; => For 2000-04-06/16:57:46.847 UT
+hfc13 = [30d0,15d0,30d0]                      ; => For 2000-04-06/16:57:46.847 UT
+lfc14 = [ 3d0]                                ; => For 2000-04-06/18:24:15.248 UT
+hfc14 = [15d0]                                ; => For 2000-04-06/18:24:15.248 UT
+lfc15 = [ 3d0]                                ; => For 2000-04-06/18:24:27.643 UT
+hfc15 = [20d0]                                ; => For 2000-04-06/18:24:27.643 UT
+lfc16 = [ 3d0,15d1,25d1]                      ; => For 2000-04-06/18:30:59.901 UT
+hfc16 = [15d0,25d1,30d1]                      ; => For 2000-04-06/18:30:59.901 UT
+
+
+tags  = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9',$
+         't10','t11','t12','t13','t14','t15','t16']
+
+lf_str = CREATE_STRUCT(tags,lfc0,lfc1,lfc2,lfc3,lfc4,lfc5,lfc6,lfc7,lfc8,lfc9,$
+                       lfc10,lfc11,lfc12,lfc13,lfc14,lfc15,lfc16)
+hf_str = CREATE_STRUCT(tags,hfc0,hfc1,hfc2,hfc3,hfc4,hfc5,hfc6,hfc7,hfc8,hfc9,$
+                       hfc10,hfc11,hfc12,hfc13,hfc14,hfc15,hfc16)
+
+DELVAR,filter_sf0,filter_ef0,filter_bf0,filter_sf,filter_ef,filter_bf
+jj     = 0L
+FOR j=0L, n_uq DO BEGIN                                                             $
+  evln  = evnlen[j]*1d0                                                           & $
+  tsam  = (nsams - 1L)/evln                                                       & $
+  jstr  = 'T'+STRTRIM(j,2)                                                        & $
+  lf00  = lf_str.(j)                                                              & $
+  hf00  = hf_str.(j)                                                              & $
+  n_fr  = N_ELEMENTS(lf00) - 1L                                                   & $
+  t_bf  = REFORM(tds_bf[j,*,*])                                                   & $
+  FOR k=0L, n_fr DO BEGIN                                                           $
+    kstr  = 'T'+STRTRIM(k,2)                                                      & $
+    flow  = lf00[k]                                                               & $
+    fhigh = hf00[k]                                                               & $
+    filtb = vector_bandpass(t_bf,tsam[0],flow[0],fhigh[0],/MIDF)                  & $
+    str_element,filter_bf0,kstr,filtb,/ADD_REPLACE                                & $
+  ENDFOR                                                                          & $
+  str_element,filter_bf,jstr,filter_bf0,/ADD_REPLACE                              & $
+  filter_bf0 = 0                                                                  & $
+ENDFOR                                                                            & $
+jj += 1L
+
+DELVAR,filter_sf0,filter_ef0,filter_bf0,vec_ef,vec_bf,filte,filtb,poy_sf,t_ef,b_ef
+
+
+FOR j=0L, n_uq DO BEGIN                                                             $
+  jstr  = 'T'+STRTRIM(j,2)                                                        & $
+  lf00  = lf_str.(j)                                                              & $
+  hf00  = hf_str.(j)                                                              & $
+  filsl = STRTRIM(STRING(FORMAT='(I4.4)',lf00*1d0),2)                             & $
+  filsh = STRTRIM(STRING(FORMAT='(I4.4)',hf00*1d0),2)                             & $
+  n_fr  = N_ELEMENTS(lf00) - 1L                                                   & $
+  FOR k=0L, n_fr DO BEGIN                                                           $
+    kstr  = 'T'+STRTRIM(k,2)                                                      & $
+    temp0 = filsl[k]+'-'+filsh[k]+'Hz'                                            & $
+    temp1 = filsl[k]+'_'+filsh[k]+'Hz'                                            & $
+    str_element,filters_fn0,kstr,temp0,/ADD_REPLACE                               & $
+    str_element,filters_tg0,kstr,temp1,/ADD_REPLACE                               & $
+  ENDFOR                                                                          & $
+  str_element,filters_fn,jstr,filters_fn0,/ADD_REPLACE                            & $
+  str_element,filters_tg,jstr,filters_tg0,/ADD_REPLACE                            & $
+  filters_fn0 = 0                                                                 & $
+  filters_tg0 = 0
+
+;-----------------------------------------------------------------------------------------
+; => Perform MVA
+;-----------------------------------------------------------------------------------------
+tags     = [  't0',  't1',  't2',  't3',  't4',  't5',  't6',  't7',  't8',  't9',$
+             't10', 't11', 't12', 't13', 't14', 't15', 't16', 't17', 't18', 't19',$
+             't20', 't21', 't22', 't23', 't24', 't25', 't26', 't27', 't28', 't29',$
+             't30', 't31', 't32', 't33', 't34', 't35', 't36', 't37', 't38', 't39',$
+             't40', 't41', 't42', 't43', 't44', 't45', 't46', 't47', 't48', 't49',$
+             't50', 't51', 't52', 't53', 't54', 't55', 't56', 't57', 't58', 't59',$
+             't60', 't61', 't62', 't63', 't64', 't65', 't66', 't67', 't68', 't69',$
+             't70', 't71', 't72', 't73', 't74', 't75', 't76', 't77', 't78', 't79',$
+             't80', 't81', 't82', 't83', 't84', 't85', 't86', 't87', 't88', 't89',$
+             't90', 't91', 't92', 't93', 't94', 't95', 't96', 't97', 't98', 't99',$
+            't100','t101','t102','t103','t104','t105','t106','t107','t108','t109',$
+            't110','t111','t112','t113','t114','t115','t116','t117','t118','t119',$
+            't120','t121','t122','t123','t124','t125','t126','t127','t128','t129',$
+            't130','t131','t132','t133','t134','t135','t136','t137','t138','t139',$
+            't140','t141','t142','t143','t144','t145','t146','t147','t148','t149',$
+            't150','t151','t152','t153','t154','t155','t156','t157','t158','t159',$
+            't160','t161','t162','t163','t164','t165','t166','t167','t168','t169',$
+            't170','t171','t172','t173','t174','t175','t176','t177','t178','t179',$
+            't180','t181','t182','t183','t184','t185','t186','t187','t188','t189',$
+            't190','t191','t192','t193','t194','t195','t196','t197','t198','t199',$
+            't200','t201','t202','t203','t204','t205','t206','t207','t208','t209' ]
+
+
+jj      = 0L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+bf01    = REFORM(filter_bf.(jj).(1))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+suffx1  = '_filt_'+filters_tg.(jj).(1)
+
+dummy0  = {X:tt0,Y:bf00}
+dummy1  = {X:tt0,Y:bf01}
+
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_0
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:33:08.622 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 0-285 (286 vectors)
+;Plot Range: 16:33:08.6220-16:33:08.7740
+;The eigenvalues ratios are:
+;       15.851880       3.0836817
+;The Minimum Variance eigenvector is:
+; <-0.77712, 0.09980,-0.62139> +/- <-0.00083,-0.08511,-0.01262>
+;
+;Plot Index Range: 1497-1815 (319 vectors)
+;Plot Range: 16:33:09.4204-16:33:09.5900
+;The eigenvalues ratios are:
+;       413.61647       1.4159253
+;The Minimum Variance eigenvector is:
+; <-0.70656, 0.09960,-0.70061> +/- < 0.00237,-0.01730,-0.00485>
+;
+;-----------------------------------------------------------------------------------------
+
+struct0 = stats_040600_0003_0020_0
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:33:08.6220',prefd[0]+'16:33:08.7740'])
+tr1     = time_double([prefd[0]+'16:33:09.4204',prefd[0]+'16:33:09.5900'])
+kvec0   = [-0.77712, 0.09980,-0.62139]
+kvec1   = [-0.70656, 0.09960,-0.70061]
+dkvec0  = ABS([-0.00083,-0.08511,-0.01262])
+dkvec1  = ABS([ 0.00237,-0.01730,-0.00485])
+elam0   = [15.85188,3.083682]
+elam1   = [413.6165,1.415925]
+
+
+
+vector_mv_plot,DATE=date,MYMAG=dummy1,FCUTOFF=[lf00[1],hf00[1]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx1[0],     $
+               STATS=stats_040600_0100_0200
+;-----------------------------------------------------------------------------------------
+; => For 100 Hz < f < 200 Hz  at  2000-04-06/16:33:08.622 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 53-90 (38 vectors)
+;Plot Range: 16:33:08.6503-16:33:08.6700
+;The eigenvalues ratios are:
+;       13.117531       1.4326771
+;The Minimum Variance eigenvector is:
+; < 0.89636,-0.44168,-0.03808> +/- <-0.07568,-0.14732,-0.07258>
+;
+;Plot Index Range: 160-202 (43 vectors)
+;Plot Range: 16:33:08.7073-16:33:08.7297
+;The eigenvalues ratios are:
+;       50.277239       1.4511521
+;The Minimum Variance eigenvector is:
+; < 0.32989, 0.88157, 0.33766> +/- <-0.04980, 0.04095,-0.05826>
+;
+;Plot Index Range: 212-275 (64 vectors)
+;Plot Range: 16:33:08.7351-16:33:08.7687
+;The eigenvalues ratios are:
+;       38.713131       2.3789486
+;The Minimum Variance eigenvector is:
+; <-0.34741,-0.78367,-0.51495> +/- < 0.02794,-0.05064, 0.05822>
+;
+;Plot Index Range: 278-320 (43 vectors)
+;Plot Range: 16:33:08.7703-16:33:08.7927
+;The eigenvalues ratios are:
+;       14.460470       1.8972449
+;The Minimum Variance eigenvector is:
+; <-0.15329,-0.97388,-0.16754> +/- <-0.15209, 0.02881,-0.02832>
+;
+;Plot Index Range: 339-390 (52 vectors)
+;Plot Range: 16:33:08.8028-16:33:08.8300
+;The eigenvalues ratios are:
+;       24.040970       2.4639097
+;The Minimum Variance eigenvector is:
+; <-0.03924,-0.91310,-0.40584> +/- <-0.10803, 0.01226,-0.01713>
+;
+;Plot Index Range: 391-896 (506 vectors)
+;Plot Range: 16:33:08.8305-16:33:09.0999
+;The eigenvalues ratios are:
+;       74.158234       2.3865806
+;The Minimum Variance eigenvector is:
+; <-0.09128,-0.94731,-0.30704> +/- <-0.03378, 0.00549,-0.00689>
+;
+;Plot Index Range: 438-580 (143 vectors)
+;Plot Range: 16:33:08.8556-16:33:08.9313
+;The eigenvalues ratios are:
+;       84.432496       2.4697521
+;The Minimum Variance eigenvector is:
+; <-0.05346,-0.94725,-0.31600> +/- <-0.04340, 0.00556,-0.00931>
+;
+;Plot Index Range: 581-695 (115 vectors)
+;Plot Range: 16:33:08.9319-16:33:08.9927
+;The eigenvalues ratios are:
+;       224.17226       2.4233580
+;The Minimum Variance eigenvector is:
+; <-0.13073,-0.95200,-0.27678> +/- <-0.02783, 0.00557,-0.00600>
+;
+;Plot Index Range: 696-746 (51 vectors)
+;Plot Range: 16:33:08.9932-16:33:09.0199
+;The eigenvalues ratios are:
+;       233.62019       2.3855905
+;The Minimum Variance eigenvector is:
+; <-0.04747,-0.94582,-0.32120> +/- <-0.03431, 0.00386,-0.00630>
+;
+;Plot Index Range: 747-796 (50 vectors)
+;Plot Range: 16:33:09.0204-16:33:09.0465
+;The eigenvalues ratios are:
+;       119.55988       2.2832351
+;The Minimum Variance eigenvector is:
+; <-0.05187,-0.94247,-0.33024> +/- <-0.04821, 0.00630,-0.01041>
+;
+;Plot Index Range: 812-896 (85 vectors)
+;Plot Range: 16:33:09.0551-16:33:09.0999
+;The eigenvalues ratios are:
+;       64.028097       2.2138452
+;The Minimum Variance eigenvector is:
+; <-0.13758,-0.91616,-0.37647> +/- <-0.05721, 0.01311,-0.01101>
+;
+;Plot Index Range: 944-1012 (69 vectors)
+;Plot Range: 16:33:09.1255-16:33:09.1617
+;The eigenvalues ratios are:
+;       126.95181       2.2659527
+;The Minimum Variance eigenvector is:
+; < 0.04210,-0.99035,-0.13202> +/- <-0.04360,-0.00072,-0.00852>
+;
+;Plot Index Range: 1013-1083 (71 vectors)
+;Plot Range: 16:33:09.1623-16:33:09.1996
+;The eigenvalues ratios are:
+;       46.306662       2.1884147
+;The Minimum Variance eigenvector is:
+; <-0.18819,-0.93480,-0.30123> +/- <-0.07014, 0.01856,-0.01379>
+;
+;Plot Index Range: 1084-1152 (69 vectors)
+;Plot Range: 16:33:09.2001-16:33:09.2364
+;The eigenvalues ratios are:
+;       154.58545       2.3906259
+;The Minimum Variance eigenvector is:
+; <-0.30179,-0.88310,-0.35926> +/- <-0.03599, 0.01545,-0.00774>
+;
+;Plot Index Range: 1153-1192 (40 vectors)
+;Plot Range: 16:33:09.2369-16:33:09.2577
+;The eigenvalues ratios are:
+;       118.79436       2.7384658
+;The Minimum Variance eigenvector is:
+; <-0.10149,-0.94978,-0.29601> +/- <-0.05011, 0.00811,-0.00886>
+;
+;Plot Index Range: 1193-1231 (39 vectors)
+;Plot Range: 16:33:09.2583-16:33:09.2785
+;The eigenvalues ratios are:
+;       22.892230       2.1411722
+;The Minimum Variance eigenvector is:
+; < 0.07444,-0.88300,-0.46344> +/- <-0.12399,-0.00742,-0.00577>
+;
+;Plot Index Range: 1300-1365 (66 vectors)
+;Plot Range: 16:33:09.3153-16:33:09.3500
+;The eigenvalues ratios are:
+;       86.881109       2.0430447
+;The Minimum Variance eigenvector is:
+; < 0.01589, 0.85517, 0.51810> +/- <-0.05517, 0.00275,-0.00285>
+;
+;Plot Index Range: 1375-1426 (52 vectors)
+;Plot Range: 16:33:09.3553-16:33:09.3825
+;The eigenvalues ratios are:
+;       66.849566       2.3084702
+;The Minimum Variance eigenvector is:
+; <-0.07308,-0.96722,-0.24319> +/- <-0.06432, 0.00786,-0.01195>
+;
+;Plot Index Range: 1427-1479 (53 vectors)
+;Plot Range: 16:33:09.3831-16:33:09.4108
+;The eigenvalues ratios are:
+;       111.28589       1.9812965
+;The Minimum Variance eigenvector is:
+; <-0.28857,-0.84089,-0.45786> +/- <-0.04808, 0.01907,-0.00471>
+;
+;Plot Index Range: 1480-1520 (41 vectors)
+;Plot Range: 16:33:09.4113-16:33:09.4327
+;The eigenvalues ratios are:
+;       240.19115       2.9191887
+;The Minimum Variance eigenvector is:
+; <-0.10526,-0.90228,-0.41810> +/- <-0.03427, 0.00711,-0.00672>
+;
+;Plot Index Range: 1521-1563 (43 vectors)
+;Plot Range: 16:33:09.4332-16:33:09.4556
+;The eigenvalues ratios are:
+;       74.808389       2.2887832
+;The Minimum Variance eigenvector is:
+; < 0.08511,-0.93693,-0.33899> +/- <-0.06441,-0.00159,-0.01177>
+;
+;Plot Index Range: 1613-1646 (34 vectors)
+;Plot Range: 16:33:09.4823-16:33:09.4999
+;The eigenvalues ratios are:
+;       193.56643       2.8742125
+;The Minimum Variance eigenvector is:
+; < 0.26232,-0.94154,-0.21138> +/- <-0.04010,-0.00962,-0.00690>
+;
+;Plot Index Range: 1718-1773 (56 vectors)
+;Plot Range: 16:33:09.5383-16:33:09.5676
+;The eigenvalues ratios are:
+;       86.453842       2.5900650
+;The Minimum Variance eigenvector is:
+; < 0.07772,-0.98193,-0.17254> +/- <-0.05381,-0.00167,-0.01472>
+;
+;Plot Index Range: 1774-1809 (36 vectors)
+;Plot Range: 16:33:09.5681-16:33:09.5868
+;The eigenvalues ratios are:
+;       25.698447       2.7304836
+;The Minimum Variance eigenvector is:
+; < 0.09881,-0.97644,-0.19185> +/- <-0.11140,-0.00542,-0.02978>
+;
+;Plot Index Range: 1810-1841 (32 vectors)
+;Plot Range: 16:33:09.5873-16:33:09.6039
+;The eigenvalues ratios are:
+;       64.808563       1.9702141
+;The Minimum Variance eigenvector is:
+; < 0.21912, 0.79919, 0.55971> +/- < 0.00055, 0.04465,-0.06396>
+;
+;Plot Index Range: 1885-1927 (43 vectors)
+;Plot Range: 16:33:09.6273-16:33:09.6497
+;The eigenvalues ratios are:
+;       110.87431       2.1830185
+;The Minimum Variance eigenvector is:
+; <-0.06694,-0.96990,-0.23412> +/- <-0.05366, 0.00486,-0.00480>
+;
+;Plot Index Range: 1928-1968 (41 vectors)
+;Plot Range: 16:33:09.6503-16:33:09.6716
+;The eigenvalues ratios are:
+;       534.03704       2.4038781
+;The Minimum Variance eigenvector is:
+; <-0.06210,-0.91921,-0.38883> +/- <-0.02418, 0.00287,-0.00293>
+;
+;Plot Index Range: 1971-2047 (77 vectors)
+;Plot Range: 16:33:09.6732-16:33:09.7137
+;The eigenvalues ratios are:
+;       302.25630       2.7053602
+;The Minimum Variance eigenvector is:
+; < 0.06032,-0.97075,-0.23241> +/- <-0.02690,-0.00066,-0.00423>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0100_0200
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:33:08.6502',prefd[0]+'16:33:08.6700'])
+tr1     = time_double([prefd[0]+'16:33:08.7073',prefd[0]+'16:33:08.7297'])
+tr2     = time_double([prefd[0]+'16:33:08.7350',prefd[0]+'16:33:08.7686'])
+tr3     = time_double([prefd[0]+'16:33:08.7702',prefd[0]+'16:33:08.7926'])
+tr4     = time_double([prefd[0]+'16:33:08.8028',prefd[0]+'16:33:08.8300'])
+tr5     = time_double([prefd[0]+'16:33:08.8305',prefd[0]+'16:33:09.0998'])
+tr6     = time_double([prefd[0]+'16:33:08.8556',prefd[0]+'16:33:08.9313'])
+tr7     = time_double([prefd[0]+'16:33:08.9318',prefd[0]+'16:33:08.9926'])
+tr8     = time_double([prefd[0]+'16:33:08.9932',prefd[0]+'16:33:09.0198'])
+tr9     = time_double([prefd[0]+'16:33:09.0204',prefd[0]+'16:33:09.0465'])
+tr10     = time_double([prefd[0]+'16:33:09.0550',prefd[0]+'16:33:09.0998'])
+tr11     = time_double([prefd[0]+'16:33:09.1254',prefd[0]+'16:33:09.1617'])
+tr12     = time_double([prefd[0]+'16:33:09.1622',prefd[0]+'16:33:09.1996'])
+tr13     = time_double([prefd[0]+'16:33:09.2001',prefd[0]+'16:33:09.2364'])
+tr14     = time_double([prefd[0]+'16:33:09.2369',prefd[0]+'16:33:09.2577'])
+tr15     = time_double([prefd[0]+'16:33:09.2582',prefd[0]+'16:33:09.2785'])
+tr16     = time_double([prefd[0]+'16:33:09.3153',prefd[0]+'16:33:09.3500'])
+tr17     = time_double([prefd[0]+'16:33:09.3553',prefd[0]+'16:33:09.3825'])
+tr18     = time_double([prefd[0]+'16:33:09.3830',prefd[0]+'16:33:09.4108'])
+tr19     = time_double([prefd[0]+'16:33:09.4113',prefd[0]+'16:33:09.4326'])
+tr20     = time_double([prefd[0]+'16:33:09.4332',prefd[0]+'16:33:09.4556'])
+tr21     = time_double([prefd[0]+'16:33:09.4822',prefd[0]+'16:33:09.4998'])
+tr22     = time_double([prefd[0]+'16:33:09.5382',prefd[0]+'16:33:09.5676'])
+tr23     = time_double([prefd[0]+'16:33:09.5681',prefd[0]+'16:33:09.5868'])
+tr24     = time_double([prefd[0]+'16:33:09.5873',prefd[0]+'16:33:09.6038'])
+tr25     = time_double([prefd[0]+'16:33:09.6273',prefd[0]+'16:33:09.6497'])
+tr26     = time_double([prefd[0]+'16:33:09.6502',prefd[0]+'16:33:09.6716'])
+tr27     = time_double([prefd[0]+'16:33:09.6732',prefd[0]+'16:33:09.7137'])
+kvec0   = [ 0.89636,-0.44168,-0.03808]
+kvec1   = [ 0.32989, 0.88157, 0.33766]
+kvec2   = [-0.34741,-0.78367,-0.51495]
+kvec3   = [-0.15329,-0.97388,-0.16754]
+kvec4   = [-0.03924,-0.91310,-0.40584]
+kvec5   = [-0.09128,-0.94731,-0.30704]
+kvec6   = [-0.05346,-0.94725,-0.31600]
+kvec7   = [-0.13073,-0.95200,-0.27678]
+kvec8   = [-0.04747,-0.94582,-0.32120]
+kvec9   = [-0.05187,-0.94247,-0.33024]
+kvec10   = [-0.13758,-0.91616,-0.37647]
+kvec11   = [ 0.04210,-0.99035,-0.13202]
+kvec12   = [-0.18819,-0.93480,-0.30123]
+kvec13   = [-0.30179,-0.88310,-0.35926]
+kvec14   = [-0.10149,-0.94978,-0.29601]
+kvec15   = [ 0.07444,-0.88300,-0.46344]
+kvec16   = [ 0.01589, 0.85517, 0.51810]
+kvec17   = [-0.07308,-0.96722,-0.24319]
+kvec18   = [-0.28857,-0.84089,-0.45786]
+kvec19   = [-0.10526,-0.90228,-0.41810]
+kvec20   = [ 0.08511,-0.93693,-0.33899]
+kvec21   = [ 0.26232,-0.94154,-0.21138]
+kvec22   = [ 0.07772,-0.98193,-0.17254]
+kvec23   = [ 0.09881,-0.97644,-0.19185]
+kvec24   = [ 0.21912, 0.79919, 0.55971]
+kvec25   = [-0.06694,-0.96990,-0.23412]
+kvec26   = [-0.06210,-0.91921,-0.38883]
+kvec27   = [ 0.06032,-0.97075,-0.23241]
+dkvec0  = ABS([-0.07568,-0.14732,-0.07258])
+dkvec1  = ABS([-0.04980, 0.04095,-0.05826])
+dkvec2  = ABS([ 0.02794,-0.05064, 0.05822])
+dkvec3  = ABS([-0.15209, 0.02881,-0.02832])
+dkvec4  = ABS([-0.10803, 0.01226,-0.01713])
+dkvec5  = ABS([-0.03378, 0.00549,-0.00689])
+dkvec6  = ABS([-0.04340, 0.00556,-0.00931])
+dkvec7  = ABS([-0.02783, 0.00557,-0.00600])
+dkvec8  = ABS([-0.03431, 0.00386,-0.00630])
+dkvec9  = ABS([-0.04821, 0.00630,-0.01041])
+dkvec10  = ABS([-0.05721, 0.01311,-0.01101])
+dkvec11  = ABS([-0.04360,-0.00072,-0.00852])
+dkvec12  = ABS([-0.07014, 0.01856,-0.01379])
+dkvec13  = ABS([-0.03599, 0.01545,-0.00774])
+dkvec14  = ABS([-0.05011, 0.00811,-0.00886])
+dkvec15  = ABS([-0.12399,-0.00742,-0.00577])
+dkvec16  = ABS([-0.05517, 0.00275,-0.00285])
+dkvec17  = ABS([-0.06432, 0.00786,-0.01195])
+dkvec18  = ABS([-0.04808, 0.01907,-0.00471])
+dkvec19  = ABS([-0.03427, 0.00711,-0.00672])
+dkvec20  = ABS([-0.06441,-0.00159,-0.01177])
+dkvec21  = ABS([-0.04010,-0.00962,-0.00690])
+dkvec22  = ABS([-0.05381,-0.00167,-0.01472])
+dkvec23  = ABS([-0.11140,-0.00542,-0.02978])
+dkvec24  = ABS([ 0.00055, 0.04465,-0.06396])
+dkvec25  = ABS([-0.05366, 0.00486,-0.00480])
+dkvec26  = ABS([-0.02418, 0.00287,-0.00293])
+dkvec27  = ABS([-0.02690,-0.00066,-0.00423])
+elam0   = [13.11753,1.432677]
+elam1   = [50.27724,1.451152]
+elam2   = [38.71313,2.378949]
+elam3   = [14.46047,1.897245]
+elam4   = [24.04097,2.463910]
+elam5   = [74.15823,2.386581]
+elam6   = [84.43250,2.469752]
+elam7   = [224.1723,2.423358]
+elam8   = [233.6202,2.385591]
+elam9   = [119.5599,2.283235]
+elam10   = [64.02810,2.213845]
+elam11   = [126.9518,2.265953]
+elam12   = [46.30666,2.188415]
+elam13   = [154.5854,2.390626]
+elam14   = [118.7944,2.738466]
+elam15   = [22.89223,2.141172]
+elam16   = [86.88111,2.043045]
+elam17   = [66.84956,2.308470]
+elam18   = [111.2859,1.981297]
+elam19   = [240.1911,2.919189]
+elam20   = [74.80839,2.288783]
+elam21   = [193.5664,2.874213]
+elam22   = [86.45384,2.590065]
+elam23   = [25.69845,2.730484]
+elam24   = [64.80856,1.970214]
+elam25   = [110.8743,2.183018]
+elam26   = [534.0370,2.403878]
+elam27   = [302.2563,2.705360]
+
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 1L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0025_0
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  25 Hz  at  2000-04-06/16:33:37.993 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 0-200 (201 vectors)
+;Plot Range: 16:33:37.9930-16:33:38.0997
+;The eigenvalues ratios are:
+;       74.066195       4.3366645
+;The Minimum Variance eigenvector is:
+; <-0.35191,-0.77694,-0.52203> +/- <-0.01453, 0.02573,-0.02850>
+;
+;Plot Index Range: 932-1138 (207 vectors)
+;Plot Range: 16:33:38.4901-16:33:38.5999
+;The eigenvalues ratios are:
+;       11.099592       4.0833009
+;The Minimum Variance eigenvector is:
+; <-0.84337, 0.32628,-0.42693> +/- <-0.04926,-0.09465, 0.02498>
+;
+;Plot Index Range: 1214-1357 (144 vectors)
+;Plot Range: 16:33:38.6405-16:33:38.7167
+;The eigenvalues ratios are:
+;       11.473889       11.642818
+;The Minimum Variance eigenvector is:
+; < 0.74338,-0.00217, 0.66886> +/- <-0.00558, 0.11024, 0.00656>
+;
+;Plot Index Range: 1358-1613 (256 vectors)
+;Plot Range: 16:33:38.7173-16:33:38.8533
+;The eigenvalues ratios are:
+;       19.014416       3.7544086
+;The Minimum Variance eigenvector is:
+; <-0.72143,-0.67254, 0.16502> +/- <-0.05283, 0.04888,-0.03173>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0025_0
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:33:37.9930',prefd[0]+'16:33:38.0996'])
+tr1     = time_double([prefd[0]+'16:33:38.4900',prefd[0]+'16:33:38.5999'])
+tr2     = time_double([prefd[0]+'16:33:38.6404',prefd[0]+'16:33:38.7167'])
+tr3     = time_double([prefd[0]+'16:33:38.7172',prefd[0]+'16:33:38.8532'])
+kvec0   = [-0.35191,-0.77694,-0.52203]
+kvec1   = [-0.84337, 0.32628,-0.42693]
+kvec2   = [ 0.74338,-0.00217, 0.66886]
+kvec3   = [-0.72143,-0.67254, 0.16502]
+dkvec0  = ABS([-0.01453, 0.02573,-0.02850])
+dkvec1  = ABS([-0.04926,-0.09465, 0.02498])
+dkvec2  = ABS([-0.00558, 0.11024, 0.00656])
+dkvec3  = ABS([-0.05283, 0.04888,-0.03173])
+elam0   = [74.06619,4.336665]
+elam1   = [11.09959,4.083301]
+elam2   = [11.47389,11.64282]
+elam3   = [19.01442,3.754409]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 2L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0025_1
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  25 Hz  at  2000-04-06/16:35:10.964 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 68-573 (506 vectors)
+;Plot Range: 16:35:11.0003-16:35:11.2696
+;The eigenvalues ratios are:
+;       23.234869       9.3269043
+;The Minimum Variance eigenvector is:
+; < 0.85100, 0.52510,-0.00816> +/- < 0.02936,-0.04757, 0.00073>
+;
+;Plot Index Range: 1459-1865 (407 vectors)
+;Plot Range: 16:35:11.7421-16:35:11.9587
+;The eigenvalues ratios are:
+;       130.55329       5.4871949
+;The Minimum Variance eigenvector is:
+; < 0.98764,-0.14852, 0.05015> +/- <-0.00377,-0.02503, 0.00019>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0025_1
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:35:11.0002',prefd[0]+'16:35:11.2696'])
+tr1     = time_double([prefd[0]+'16:35:11.7421',prefd[0]+'16:35:11.9586'])
+kvec0   = [ 0.85100, 0.52510,-0.00816]
+kvec1   = [ 0.98764,-0.14852, 0.05015]
+dkvec0  = ABS([ 0.02936,-0.04757, 0.00073])
+dkvec1  = ABS([-0.00377,-0.02503, 0.00019])
+elam0   = [23.23487,9.326904]
+elam1   = [130.5533,5.487195]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 3L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0025_2
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  25 Hz  at  2000-04-06/16:35:28.336 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 0-223 (224 vectors)
+;Plot Range: 16:35:28.3360-16:35:28.4549
+;The eigenvalues ratios are:
+;       38.743529       3.0110828
+;The Minimum Variance eigenvector is:
+; < 0.89753, 0.43873,-0.04420> +/- < 0.02461,-0.04835, 0.01980>
+;
+;Plot Index Range: 814-1038 (225 vectors)
+;Plot Range: 16:35:28.7701-16:35:28.8896
+;The eigenvalues ratios are:
+;       56.638784       2.9372436
+;The Minimum Variance eigenvector is:
+; < 0.96783, 0.00518, 0.25154> +/- <-0.00521, 0.04337, 0.01915>
+;
+;Plot Index Range: 1339-1526 (188 vectors)
+;Plot Range: 16:35:29.0501-16:35:29.1499
+;The eigenvalues ratios are:
+;       67.058886       3.9634771
+;The Minimum Variance eigenvector is:
+; < 0.99864, 0.03024, 0.04241> +/- <-0.00201, 0.04004, 0.01882>
+;
+;Plot Index Range: 1827-2013 (187 vectors)
+;Plot Range: 16:35:29.3104-16:35:29.4096
+;The eigenvalues ratios are:
+;       31.663900       2.3519461
+;The Minimum Variance eigenvector is:
+; <-0.82705, 0.50759,-0.24152> +/- <-0.03506,-0.03358, 0.04949>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0025_2
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:35:28.3360',prefd[0]+'16:35:28.4549'])
+tr1     = time_double([prefd[0]+'16:35:28.7701',prefd[0]+'16:35:28.8896'])
+tr2     = time_double([prefd[0]+'16:35:29.0501',prefd[0]+'16:35:29.1498'])
+tr3     = time_double([prefd[0]+'16:35:29.3104',prefd[0]+'16:35:29.4096'])
+kvec0   = [ 0.89753, 0.43873,-0.04420]
+kvec1   = [ 0.96783, 0.00518, 0.25154]
+kvec2   = [ 0.99864, 0.03024, 0.04241]
+kvec3   = [-0.82705, 0.50759,-0.24152]
+dkvec0  = ABS([ 0.02461,-0.04835, 0.01980])
+dkvec1  = ABS([-0.00521, 0.04337, 0.01915])
+dkvec2  = ABS([-0.00201, 0.04004, 0.01882])
+dkvec3  = ABS([-0.03506,-0.03358, 0.04949])
+elam0   = [38.74353,3.011083]
+elam1   = [56.63878,2.937244]
+elam2   = [67.05888,3.963477]
+elam3   = [31.66390,2.351946]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 4L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_1
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:37:34.651 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 0-176 (177 vectors)
+;Plot Range: 16:37:34.6510-16:37:34.7449
+;The eigenvalues ratios are:
+;       34.327125       2.3245165
+;The Minimum Variance eigenvector is:
+; <-0.71670,-0.56558,-0.40799> +/- < 0.03662,-0.00564,-0.05650>
+;
+;Plot Index Range: 255-423 (169 vectors)
+;Plot Range: 16:37:34.7870-16:37:34.8766
+;The eigenvalues ratios are:
+;       60.119784       3.5481765
+;The Minimum Variance eigenvector is:
+; <-0.96989, 0.23411, 0.06716> +/- < 0.01132, 0.04729,-0.00138>
+;
+;Plot Index Range: 424-738 (315 vectors)
+;Plot Range: 16:37:34.8771-16:37:35.0446
+;The eigenvalues ratios are:
+;       45.908372       1.2519101
+;The Minimum Variance eigenvector is:
+; <-0.93426,-0.35583,-0.02352> +/- <-0.01831, 0.04629, 0.02679>
+;
+;Plot Index Range: 1086-1376 (291 vectors)
+;Plot Range: 16:37:35.2302-16:37:35.3849
+;The eigenvalues ratios are:
+;       70.774192       1.5328267
+;The Minimum Variance eigenvector is:
+; <-0.85175,-0.47081,-0.22993> +/- < 0.01576,-0.00872,-0.04052>
+;
+;Plot Index Range: 1386-1700 (315 vectors)
+;Plot Range: 16:37:35.3902-16:37:35.5577
+;The eigenvalues ratios are:
+;       24.099313       2.9074622
+;The Minimum Variance eigenvector is:
+; < 0.89042, 0.37303, 0.26079> +/- <-0.03058, 0.05487, 0.02592>
+;
+;Plot Index Range: 1836-2047 (212 vectors)
+;Plot Range: 16:37:35.6302-16:37:35.7427
+;The eigenvalues ratios are:
+;       231.54245       5.9385476
+;The Minimum Variance eigenvector is:
+; < 0.80321,-0.47505, 0.35942> +/- < 0.00066,-0.01269,-0.01825>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_1
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:37:34.6510',prefd[0]+'16:37:34.7448'])
+tr1     = time_double([prefd[0]+'16:37:34.7870',prefd[0]+'16:37:34.8766'])
+tr2     = time_double([prefd[0]+'16:37:34.8771',prefd[0]+'16:37:35.0446'])
+tr3     = time_double([prefd[0]+'16:37:35.2302',prefd[0]+'16:37:35.3848'])
+tr4     = time_double([prefd[0]+'16:37:35.3902',prefd[0]+'16:37:35.5576'])
+tr5     = time_double([prefd[0]+'16:37:35.6302',prefd[0]+'16:37:35.7427'])
+kvec0   = [-0.71670,-0.56558,-0.40799]
+kvec1   = [-0.96989, 0.23411, 0.06716]
+kvec2   = [-0.93426,-0.35583,-0.02352]
+kvec3   = [-0.85175,-0.47081,-0.22993]
+kvec4   = [ 0.89042, 0.37303, 0.26079]
+kvec5   = [ 0.80321,-0.47505, 0.35942]
+dkvec0  = ABS([ 0.03662,-0.00564,-0.05650])
+dkvec1  = ABS([ 0.01132, 0.04729,-0.00138])
+dkvec2  = ABS([-0.01831, 0.04629, 0.02679])
+dkvec3  = ABS([ 0.01576,-0.00872,-0.04052])
+dkvec4  = ABS([-0.03058, 0.05487, 0.02592])
+dkvec5  = ABS([ 0.00066,-0.01269,-0.01825])
+elam0   = [34.32713,2.324517]
+elam1   = [60.11979,3.548177]
+elam2   = [45.90837,1.251910]
+elam3   = [70.77419,1.532827]
+elam4   = [24.09931,2.907462]
+elam5   = [231.5424,5.938548]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 5L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_2
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:44:03.915 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 319-487 (169 vectors)
+;Plot Range: 16:44:04.0851-16:44:04.1747
+;The eigenvalues ratios are:
+;       21.204633       1.5388305
+;The Minimum Variance eigenvector is:
+; < 0.67770,-0.72889, 0.09719> +/- < 0.03997, 0.04669, 0.07141>
+;
+;Plot Index Range: 1008-1153 (146 vectors)
+;Plot Range: 16:44:04.4526-16:44:04.5299
+;The eigenvalues ratios are:
+;       43.100540       10.254766
+;The Minimum Variance eigenvector is:
+; < 0.27488, 0.38072, 0.88289> +/- <-0.04395, 0.03368,-0.00084>
+;
+;Plot Index Range: 1379-1603 (225 vectors)
+;Plot Range: 16:44:04.6505-16:44:04.7699
+;The eigenvalues ratios are:
+;       19.822253       1.6679525
+;The Minimum Variance eigenvector is:
+; < 0.79712,-0.28903,-0.53016> +/- <-0.00653,-0.08201, 0.03489>
+;
+;Plot Index Range: 1632-1781 (150 vectors)
+;Plot Range: 16:44:04.7854-16:44:04.8649
+;The eigenvalues ratios are:
+;       18.284197       4.2786114
+;The Minimum Variance eigenvector is:
+; <-0.67071, 0.59280, 0.44579> +/- < 0.05565, 0.07088,-0.01053>
+;
+;Plot Index Range: 1829-1959 (131 vectors)
+;Plot Range: 16:44:04.8905-16:44:04.9598
+;The eigenvalues ratios are:
+;       51.317237       4.2570469
+;The Minimum Variance eigenvector is:
+; < 0.41241, 0.85674, 0.30969> +/- < 0.04921,-0.02482, 0.00312>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_2
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:44:04.0851',prefd[0]+'16:44:04.1747'])
+tr1     = time_double([prefd[0]+'16:44:04.4526',prefd[0]+'16:44:04.5299'])
+tr2     = time_double([prefd[0]+'16:44:04.6504',prefd[0]+'16:44:04.7699'])
+tr3     = time_double([prefd[0]+'16:44:04.7854',prefd[0]+'16:44:04.8648'])
+tr4     = time_double([prefd[0]+'16:44:04.8904',prefd[0]+'16:44:04.9598'])
+kvec0   = [ 0.67770,-0.72889, 0.09719]
+kvec1   = [ 0.27488, 0.38072, 0.88289]
+kvec2   = [ 0.79712,-0.28903,-0.53016]
+kvec3   = [-0.67071, 0.59280, 0.44579]
+kvec4   = [ 0.41241, 0.85674, 0.30969]
+dkvec0  = ABS([ 0.03997, 0.04669, 0.07141])
+dkvec1  = ABS([-0.04395, 0.03368,-0.00084])
+dkvec2  = ABS([-0.00653,-0.08201, 0.03489])
+dkvec3  = ABS([ 0.05565, 0.07088,-0.01053])
+dkvec4  = ABS([ 0.04921,-0.02482, 0.00312])
+elam0   = [21.20463,1.538831]
+elam1   = [43.10054,10.25477]
+elam2   = [19.82225,1.667952]
+elam3   = [18.28420,4.278611]
+elam4   = [51.31724,4.257047]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 6L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_3
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:45:13.405 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 222-511 (290 vectors)
+;Plot Range: 16:45:13.5234-16:45:13.6775
+;The eigenvalues ratios are:
+;       40.896182       7.0813423
+;The Minimum Variance eigenvector is:
+; < 0.39478,-0.79856,-0.45436> +/- < 0.03762, 0.00096, 0.03100>
+;
+;Plot Index Range: 554-894 (341 vectors)
+;Plot Range: 16:45:13.7005-16:45:13.8818
+;The eigenvalues ratios are:
+;       33.825063       2.6646564
+;The Minimum Variance eigenvector is:
+; < 0.31817, 0.87529, 0.36419> +/- <-0.04484, 0.00196, 0.03446>
+;
+;Plot Index Range: 1004-1284 (281 vectors)
+;Plot Range: 16:45:13.9405-16:45:14.0898
+;The eigenvalues ratios are:
+;       66.362745       9.1400671
+;The Minimum Variance eigenvector is:
+; < 0.90456, 0.33821, 0.25959> +/- < 0.01274,-0.03562, 0.00203>
+;
+;Plot Index Range: 1444-1837 (394 vectors)
+;Plot Range: 16:45:14.1751-16:45:14.3847
+;The eigenvalues ratios are:
+;       81.761294       4.7936297
+;The Minimum Variance eigenvector is:
+; <-0.72562,-0.37585,-0.57639> +/- < 0.01361,-0.02962, 0.00218>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_3
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:45:13.5234',prefd[0]+'16:45:13.6775'])
+tr1     = time_double([prefd[0]+'16:45:13.7004',prefd[0]+'16:45:13.8818'])
+tr2     = time_double([prefd[0]+'16:45:13.9404',prefd[0]+'16:45:14.0898'])
+tr3     = time_double([prefd[0]+'16:45:14.1751',prefd[0]+'16:45:14.3847'])
+kvec0   = [ 0.39478,-0.79856,-0.45436]
+kvec1   = [ 0.31817, 0.87529, 0.36419]
+kvec2   = [ 0.90456, 0.33821, 0.25959]
+kvec3   = [-0.72562,-0.37585,-0.57639]
+dkvec0  = ABS([ 0.03762, 0.00096, 0.03100])
+dkvec1  = ABS([-0.04484, 0.00196, 0.03446])
+dkvec2  = ABS([ 0.01274,-0.03562, 0.00203])
+dkvec3  = ABS([ 0.01361,-0.02962, 0.00218])
+elam0   = [40.89618,7.081342]
+elam1   = [33.82506,2.664656]
+elam2   = [66.36275,9.140067]
+elam3   = [81.76129,4.793630]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 7L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_4
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:45:17.075 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 572-845 (274 vectors)
+;Plot Range: 16:45:17.3801-16:45:17.5257
+;The eigenvalues ratios are:
+;       11.779086       11.565675
+;The Minimum Variance eigenvector is:
+; < 0.70996,-0.70383,-0.02421> +/- <-0.06493,-0.06510,-0.01160>
+;
+;Plot Index Range: 1223-1447 (225 vectors)
+;Plot Range: 16:45:17.7273-16:45:17.8467
+;The eigenvalues ratios are:
+;       20.421627       2.6436437
+;The Minimum Variance eigenvector is:
+; < 0.49135,-0.76987,-0.40728> +/- <-0.06733,-0.04584, 0.00543>
+;
+;Plot Index Range: 1707-1940 (234 vectors)
+;Plot Range: 16:45:17.9854-16:45:18.1097
+;The eigenvalues ratios are:
+;       12.377214       2.0212654
+;The Minimum Variance eigenvector is:
+; < 0.77416,-0.58130, 0.25052> +/- <-0.06775,-0.08555, 0.01086>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_4
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:45:17.3800',prefd[0]+'16:45:17.5256'])
+tr1     = time_double([prefd[0]+'16:45:17.7272',prefd[0]+'16:45:17.8467'])
+tr2     = time_double([prefd[0]+'16:45:17.9854',prefd[0]+'16:45:18.1096'])
+kvec0   = [ 0.70996,-0.70383,-0.02421]
+kvec1   = [ 0.49135,-0.76987,-0.40728]
+kvec2   = [ 0.77416,-0.58130, 0.25052]
+dkvec0  = ABS([-0.06493,-0.06510,-0.01160])
+dkvec1  = ABS([-0.06733,-0.04584, 0.00543])
+dkvec2  = ABS([-0.06775,-0.08555, 0.01086])
+elam0   = [11.77909,11.56568]
+elam1   = [20.42163,2.643644]
+elam2   = [12.37721,2.021265]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 8L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_5
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:45:29.053 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 503-753 (251 vectors)
+;Plot Range: 16:45:29.3213-16:45:29.4546
+;The eigenvalues ratios are:
+;       23.043453       1.8569531
+;The Minimum Variance eigenvector is:
+; <-0.36160, 0.93204,-0.02331> +/- <-0.03978,-0.01708,-0.06585>
+;
+;Plot Index Range: 820-1081 (262 vectors)
+;Plot Range: 16:45:29.4903-16:45:29.6295
+;The eigenvalues ratios are:
+;       27.242307       5.2851120
+;The Minimum Variance eigenvector is:
+; <-0.27063,-0.96069,-0.06194> +/- <-0.05930, 0.01582, 0.01376>
+;
+;Plot Index Range: 1208-1398 (191 vectors)
+;Plot Range: 16:45:29.6973-16:45:29.7986
+;The eigenvalues ratios are:
+;       112.50452       3.5869858
+;The Minimum Variance eigenvector is:
+; < 0.28848, 0.93036, 0.22629> +/- < 0.03273,-0.00884,-0.00538>
+;
+;Plot Index Range: 1467-1588 (122 vectors)
+;Plot Range: 16:45:29.8354-16:45:29.8999
+;The eigenvalues ratios are:
+;       75.198636       4.0925634
+;The Minimum Variance eigenvector is:
+; <-0.51676,-0.80759,-0.28418> +/- <-0.03096, 0.02732,-0.02135>
+;
+;Plot Index Range: 1703-1850 (148 vectors)
+;Plot Range: 16:45:29.9613-16:45:30.0397
+;The eigenvalues ratios are:
+;       52.698687       5.8604859
+;The Minimum Variance eigenvector is:
+; < 0.28547,-0.86811,-0.40608> +/- <-0.04691,-0.00598,-0.02020>
+;
+;Plot Index Range: 1851-1963 (113 vectors)
+;Plot Range: 16:45:30.0402-16:45:30.0999
+;The eigenvalues ratios are:
+;       74.107774       2.2857269
+;The Minimum Variance eigenvector is:
+; < 0.36384, 0.93133,-0.01575> +/- <-0.03971, 0.01599, 0.02830>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_5
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:45:29.3212',prefd[0]+'16:45:29.4546'])
+tr1     = time_double([prefd[0]+'16:45:29.4903',prefd[0]+'16:45:29.6295'])
+tr2     = time_double([prefd[0]+'16:45:29.6972',prefd[0]+'16:45:29.7986'])
+tr3     = time_double([prefd[0]+'16:45:29.8354',prefd[0]+'16:45:29.8999'])
+tr4     = time_double([prefd[0]+'16:45:29.9612',prefd[0]+'16:45:30.0396'])
+tr5     = time_double([prefd[0]+'16:45:30.0402',prefd[0]+'16:45:30.0999'])
+kvec0   = [-0.36160, 0.93204,-0.02331]
+kvec1   = [-0.27063,-0.96069,-0.06194]
+kvec2   = [ 0.28848, 0.93036, 0.22629]
+kvec3   = [-0.51676,-0.80759,-0.28418]
+kvec4   = [ 0.28547,-0.86811,-0.40608]
+kvec5   = [ 0.36384, 0.93133,-0.01575]
+dkvec0  = ABS([-0.03978,-0.01708,-0.06585])
+dkvec1  = ABS([-0.05930, 0.01582, 0.01376])
+dkvec2  = ABS([ 0.03273,-0.00884,-0.00538])
+dkvec3  = ABS([-0.03096, 0.02732,-0.02135])
+dkvec4  = ABS([-0.04691,-0.00598,-0.02020])
+dkvec5  = ABS([-0.03971, 0.01599, 0.02830])
+elam0   = [23.04345,1.856953]
+elam1   = [27.24231,5.285112]
+elam2   = [112.5045,3.586986]
+elam3   = [75.19864,4.092563]
+elam4   = [52.69869,5.860486]
+elam5   = [74.10777,2.285727]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 9L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_6
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:45:30.676 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 27-256 (230 vectors)
+;Plot Range: 16:45:30.6904-16:45:30.8125
+;The eigenvalues ratios are:
+;       17.757405       9.6453262
+;The Minimum Variance eigenvector is:
+; < 0.55624, 0.70999, 0.43186> +/- <-0.06509, 0.03626, 0.02422>
+;
+;Plot Index Range: 480-701 (222 vectors)
+;Plot Range: 16:45:30.9320-16:45:31.0499
+;The eigenvalues ratios are:
+;       127.65072       3.9530380
+;The Minimum Variance eigenvector is:
+; < 0.29912,-0.93475,-0.19178> +/- <-0.02889,-0.00989, 0.00314>
+;
+;Plot Index Range: 983-1179 (197 vectors)
+;Plot Range: 16:45:31.2003-16:45:31.3048
+;The eigenvalues ratios are:
+;       63.962046       2.2520746
+;The Minimum Variance eigenvector is:
+; <-0.59926, 0.66582, 0.44449> +/- < 0.03226, 0.03470,-0.00849>
+;
+;Plot Index Range: 1424-1685 (262 vectors)
+;Plot Range: 16:45:31.4355-16:45:31.5747
+;The eigenvalues ratios are:
+;       35.779835       5.2458834
+;The Minimum Variance eigenvector is:
+; < 0.57422, 0.77316,-0.26926> +/- < 0.04344,-0.03314,-0.00252>
+;
+;Plot Index Range: 1686-1901 (216 vectors)
+;Plot Range: 16:45:31.5752-16:45:31.6899
+;The eigenvalues ratios are:
+;       18.438827       2.4396804
+;The Minimum Variance eigenvector is:
+; <-0.69441, 0.21682, 0.68614> +/- < 0.01569,-0.07672, 0.04012>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_6
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:45:30.6904',prefd[0]+'16:45:30.8125'])
+tr1     = time_double([prefd[0]+'16:45:30.9320',prefd[0]+'16:45:31.0498'])
+tr2     = time_double([prefd[0]+'16:45:31.2002',prefd[0]+'16:45:31.3048'])
+tr3     = time_double([prefd[0]+'16:45:31.4354',prefd[0]+'16:45:31.5746'])
+tr4     = time_double([prefd[0]+'16:45:31.5752',prefd[0]+'16:45:31.6898'])
+kvec0   = [ 0.55624, 0.70999, 0.43186]
+kvec1   = [ 0.29912,-0.93475,-0.19178]
+kvec2   = [-0.59926, 0.66582, 0.44449]
+kvec3   = [ 0.57422, 0.77316,-0.26926]
+kvec4   = [-0.69441, 0.21682, 0.68614]
+dkvec0  = ABS([-0.06509, 0.03626, 0.02422])
+dkvec1  = ABS([-0.02889,-0.00989, 0.00314])
+dkvec2  = ABS([ 0.03226, 0.03470,-0.00849])
+dkvec3  = ABS([ 0.04344,-0.03314,-0.00252])
+dkvec4  = ABS([ 0.01569,-0.07672, 0.04012])
+elam0   = [17.75740,9.645327]
+elam1   = [127.6507,3.953038]
+elam2   = [63.96205,2.252074]
+elam3   = [35.77983,5.245883]
+elam4   = [18.43883,2.439680]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 10L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_7
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:46:37.595 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 385-693 (309 vectors)
+;Plot Range: 16:46:37.8003-16:46:37.9646
+;The eigenvalues ratios are:
+;       26.310120       3.9935701
+;The Minimum Variance eigenvector is:
+; < 0.37134,-0.77544, 0.51069> +/- <-0.04839,-0.03560,-0.01886>
+;
+;Plot Index Range: 694-909 (216 vectors)
+;Plot Range: 16:46:37.9651-16:46:38.0798
+;The eigenvalues ratios are:
+;       38.498212       1.2517347
+;The Minimum Variance eigenvector is:
+; < 0.12390,-0.98319, 0.13413> +/- < 0.05823, 0.00256,-0.03506>
+;
+;Plot Index Range: 1234-1367 (134 vectors)
+;Plot Range: 16:46:38.2531-16:46:38.3241
+;The eigenvalues ratios are:
+;       405.33179       2.1586769
+;The Minimum Variance eigenvector is:
+; <-0.53163,-0.41245,-0.73976> +/- < 0.00049,-0.01857, 0.01000>
+;
+;Plot Index Range: 1772-1959 (188 vectors)
+;Plot Range: 16:46:38.5401-16:46:38.6398
+;The eigenvalues ratios are:
+;       22.885013       9.0808127
+;The Minimum Variance eigenvector is:
+; < 0.75391,-0.02011, 0.65667> +/- <-0.00896, 0.07074, 0.01246>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_7
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:46:37.8003',prefd[0]+'16:46:37.9646'])
+tr1     = time_double([prefd[0]+'16:46:37.9651',prefd[0]+'16:46:38.0798'])
+tr2     = time_double([prefd[0]+'16:46:38.2531',prefd[0]+'16:46:38.3240'])
+tr3     = time_double([prefd[0]+'16:46:38.5400',prefd[0]+'16:46:38.6398'])
+kvec0   = [ 0.37134,-0.77544, 0.51069]
+kvec1   = [ 0.12390,-0.98319, 0.13413]
+kvec2   = [-0.53163,-0.41245,-0.73976]
+kvec3   = [ 0.75391,-0.02011, 0.65667]
+dkvec0  = ABS([-0.04839,-0.03560,-0.01886])
+dkvec1  = ABS([ 0.05823, 0.00256,-0.03506])
+dkvec2  = ABS([ 0.00049,-0.01857, 0.01000])
+dkvec3  = ABS([-0.00896, 0.07074, 0.01246])
+elam0   = [26.31012,3.993570]
+elam1   = [38.49821,1.251735]
+elam2   = [405.3318,2.158677]
+elam3   = [22.88501,9.080812]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 11L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_8
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:49:14.931 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 1067-1220 (154 vectors)
+;Plot Range: 16:49:15.5001-16:49:15.5817
+;The eigenvalues ratios are:
+;       14.211122       1.7454278
+;The Minimum Variance eigenvector is:
+; <-0.88797,-0.16908, 0.42769> +/- < 0.03520, 0.05632, 0.09534>
+;
+;Plot Index Range: 1272-1428 (157 vectors)
+;Plot Range: 16:49:15.6094-16:49:15.6926
+;The eigenvalues ratios are:
+;       29.675842       1.3220604
+;The Minimum Variance eigenvector is:
+; <-0.22544, 0.73915,-0.63470> +/- <-0.07199,-0.03763,-0.01826>
+;
+;Plot Index Range: 1583-1835 (253 vectors)
+;Plot Range: 16:49:15.7753-16:49:15.9097
+;The eigenvalues ratios are:
+;       100.66377       1.9351495
+;The Minimum Variance eigenvector is:
+; <-0.88819, 0.45173,-0.08402> +/- < 0.01679, 0.03105,-0.01050>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_8
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:49:15.5000',prefd[0]+'16:49:15.5816'])
+tr1     = time_double([prefd[0]+'16:49:15.6094',prefd[0]+'16:49:15.6926'])
+tr2     = time_double([prefd[0]+'16:49:15.7752',prefd[0]+'16:49:15.9096'])
+kvec0   = [-0.88797,-0.16908, 0.42769]
+kvec1   = [-0.22544, 0.73915,-0.63470]
+kvec2   = [-0.88819, 0.45173,-0.08402]
+dkvec0  = ABS([ 0.03520, 0.05632, 0.09534])
+dkvec1  = ABS([-0.07199,-0.03763,-0.01826])
+dkvec2  = ABS([ 0.01679, 0.03105,-0.01050])
+elam0   = [14.21112,1.745428]
+elam1   = [29.67584,1.322060]
+elam2   = [100.6638,1.935150]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 12L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_9
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/16:49:24.620 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 407-735 (329 vectors)
+;Plot Range: 16:49:24.8371-16:49:25.0120
+;The eigenvalues ratios are:
+;       147.43827       5.3890338
+;The Minimum Variance eigenvector is:
+; <-0.94940, 0.26491,-0.16871> +/- < 0.00707, 0.02405,-0.00203>
+;
+;Plot Index Range: 1304-1537 (234 vectors)
+;Plot Range: 16:49:25.3155-16:49:25.4397
+;The eigenvalues ratios are:
+;       74.216358       7.6373857
+;The Minimum Variance eigenvector is:
+; <-0.92039,-0.36675, 0.13554> +/- <-0.01479, 0.03299,-0.01118>
+;
+;Plot Index Range: 1795-2047 (253 vectors)
+;Plot Range: 16:49:25.5773-16:49:25.7117
+;The eigenvalues ratios are:
+;       97.409299       2.0074610
+;The Minimum Variance eigenvector is:
+; <-0.74947,-0.65197,-0.11501> +/- < 0.01820,-0.02464, 0.02112>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_9
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:49:24.8370',prefd[0]+'16:49:25.0120'])
+tr1     = time_double([prefd[0]+'16:49:25.3154',prefd[0]+'16:49:25.4397'])
+tr2     = time_double([prefd[0]+'16:49:25.5773',prefd[0]+'16:49:25.7117'])
+kvec0   = [-0.94940, 0.26491,-0.16871]
+kvec1   = [-0.92039,-0.36675, 0.13554]
+kvec2   = [-0.74947,-0.65197,-0.11501]
+dkvec0  = ABS([ 0.00707, 0.02405,-0.00203])
+dkvec1  = ABS([-0.01479, 0.03299,-0.01118])
+dkvec2  = ABS([ 0.01820,-0.02464, 0.02112])
+elam0   = [147.4383,5.389034]
+elam1   = [74.21635,7.637386]
+elam2   = [97.40930,2.007461]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 13L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+bf01    = REFORM(filter_bf.(jj).(1))
+bf02    = REFORM(filter_bf.(jj).(2))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+suffx1  = '_filt_'+filters_tg.(jj).(1)
+suffx2  = '_filt_'+filters_tg.(jj).(2)
+
+dummy0  = {X:tt0,Y:bf00}
+dummy1  = {X:tt0,Y:bf01}
+dummy2  = {X:tt0,Y:bf02}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0030
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  30 Hz  at  2000-04-06/16:57:46.847 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 887-1018 (132 vectors)
+;Plot Range: 16:57:47.3201-16:57:47.3899
+;The eigenvalues ratios are:
+;       66.586258       5.1525584
+;The Minimum Variance eigenvector is:
+; <-0.63190, 0.60427, 0.48534> +/- < 0.02562, 0.03762,-0.01348>
+;
+;Plot Index Range: 1019-1205 (187 vectors)
+;Plot Range: 16:57:47.3905-16:57:47.4897
+;The eigenvalues ratios are:
+;       38.509317       11.254362
+;The Minimum Variance eigenvector is:
+; <-0.67882, 0.57555, 0.45600> +/- <-0.03187,-0.04396, 0.00803>
+;
+;Plot Index Range: 1628-1786 (159 vectors)
+;Plot Range: 16:57:47.7153-16:57:47.7995
+;The eigenvalues ratios are:
+;       32.906495       2.0648641
+;The Minimum Variance eigenvector is:
+; < 0.87423,-0.47890,-0.07987> +/- <-0.03495,-0.06101,-0.01674>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0030
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:57:47.3200',prefd[0]+'16:57:47.3899'])
+tr1     = time_double([prefd[0]+'16:57:47.3904',prefd[0]+'16:57:47.4896'])
+tr2     = time_double([prefd[0]+'16:57:47.7152',prefd[0]+'16:57:47.7995'])
+kvec0   = [-0.63190, 0.60427, 0.48534]
+kvec1   = [-0.67882, 0.57555, 0.45600]
+kvec2   = [ 0.87423,-0.47890,-0.07987]
+dkvec0  = ABS([ 0.02562, 0.03762,-0.01348])
+dkvec1  = ABS([-0.03187,-0.04396, 0.00803])
+dkvec2  = ABS([-0.03495,-0.06101,-0.01674])
+elam0   = [66.58626,5.152558]
+elam1   = [38.50932,11.25436]
+elam2   = [32.90649,2.064864]
+
+
+
+vector_mv_plot,DATE=date,MYMAG=dummy1,FCUTOFF=[lf00[1],hf00[1]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx1[0],     $
+               STATS=stats_040600_0007_0015
+;-----------------------------------------------------------------------------------------
+; => For   7 Hz < f <  15 Hz  at  2000-04-06/16:57:46.847 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 269-543 (275 vectors)
+;Plot Range: 16:57:46.9905-16:57:47.1366
+;The eigenvalues ratios are:
+;       12.474562       2.5449385
+;The Minimum Variance eigenvector is:
+; <-0.54507,-0.80593, 0.23105> +/- < 0.07682,-0.03617, 0.05507>
+;
+;Plot Index Range: 587-755 (169 vectors)
+;Plot Range: 16:57:47.1601-16:57:47.2497
+;The eigenvalues ratios are:
+;       128.90071       5.6239195
+;The Minimum Variance eigenvector is:
+; < 0.00237, 0.99928, 0.03786> +/- < 0.03046,-0.00041, 0.00887>
+;
+;Plot Index Range: 850-1239 (390 vectors)
+;Plot Range: 16:57:47.3003-16:57:47.5078
+;The eigenvalues ratios are:
+;       11.951187       17.185689
+;The Minimum Variance eigenvector is:
+; <-0.67054, 0.56412, 0.48182> +/- <-0.03733,-0.06862, 0.02838>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0007_0015
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:57:46.9904',prefd[0]+'16:57:47.1366'])
+tr1     = time_double([prefd[0]+'16:57:47.1600',prefd[0]+'16:57:47.2496'])
+tr2     = time_double([prefd[0]+'16:57:47.3003',prefd[0]+'16:57:47.5078'])
+kvec0   = [-0.54507,-0.80593, 0.23105]
+kvec1   = [ 0.00237, 0.99928, 0.03786]
+kvec2   = [-0.67054, 0.56412, 0.48182]
+dkvec0  = ABS([ 0.07682,-0.03617, 0.05507])
+dkvec1  = ABS([ 0.03046,-0.00041, 0.00887])
+dkvec2  = ABS([-0.03733,-0.06862, 0.02838])
+elam0   = [12.47456,2.544939]
+elam1   = [128.9007,5.623919]
+elam2   = [11.95119,17.18569]
+
+
+
+vector_mv_plot,DATE=date,MYMAG=dummy2,FCUTOFF=[lf00[2],hf00[2]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx2[0],     $
+               STATS=stats_040600_0015_0030
+;-----------------------------------------------------------------------------------------
+; => For  15 Hz < f <  30 Hz  at  2000-04-06/16:57:46.847 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 944-1130 (187 vectors)
+;Plot Range: 16:57:47.3505-16:57:47.4497
+;The eigenvalues ratios are:
+;       68.444219       5.4521447
+;The Minimum Variance eigenvector is:
+; <-0.70250, 0.62594, 0.33868> +/- <-0.02104,-0.03291, 0.01718>
+;
+;Plot Index Range: 1215-1318 (104 vectors)
+;Plot Range: 16:57:47.4950-16:57:47.5499
+;The eigenvalues ratios are:
+;       28.765372       14.351122
+;The Minimum Variance eigenvector is:
+; <-0.63030,-0.47277, 0.61580> +/- < 0.05110,-0.05098, 0.01317>
+;
+;Plot Index Range: 1347-1451 (105 vectors)
+;Plot Range: 16:57:47.5654-16:57:47.6209
+;The eigenvalues ratios are:
+;       49.246325       5.2812549
+;The Minimum Variance eigenvector is:
+; <-0.31751,-0.88415, 0.34273> +/- < 0.05044,-0.00692, 0.02887>
+;
+;Plot Index Range: 1574-1693 (120 vectors)
+;Plot Range: 16:57:47.6865-16:57:47.7499
+;The eigenvalues ratios are:
+;       43.046432       6.0141958
+;The Minimum Variance eigenvector is:
+; < 0.98679, 0.00094,-0.16199> +/- <-0.00342,-0.05605,-0.02117>
+;
+;Plot Index Range: 1872-1996 (125 vectors)
+;Plot Range: 16:57:47.8454-16:57:47.9115
+;The eigenvalues ratios are:
+;       11.008757       5.1856576
+;The Minimum Variance eigenvector is:
+; < 0.98154,-0.18465,-0.04973> +/- <-0.02178,-0.11970, 0.01456>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0015_0030
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'16:57:47.3504',prefd[0]+'16:57:47.4496'])
+tr1     = time_double([prefd[0]+'16:57:47.4950',prefd[0]+'16:57:47.5499'])
+tr2     = time_double([prefd[0]+'16:57:47.5654',prefd[0]+'16:57:47.6208'])
+tr3     = time_double([prefd[0]+'16:57:47.6864',prefd[0]+'16:57:47.7499'])
+tr4     = time_double([prefd[0]+'16:57:47.8454',prefd[0]+'16:57:47.9115'])
+kvec0   = [-0.70250, 0.62594, 0.33868]
+kvec1   = [-0.63030,-0.47277, 0.61580]
+kvec2   = [-0.31751,-0.88415, 0.34273]
+kvec3   = [ 0.98679, 0.00094,-0.16199]
+kvec4   = [ 0.98154,-0.18465,-0.04973]
+dkvec0  = ABS([-0.02104,-0.03291, 0.01718])
+dkvec1  = ABS([ 0.05110,-0.05098, 0.01317])
+dkvec2  = ABS([ 0.05044,-0.00692, 0.02887])
+dkvec3  = ABS([-0.00342,-0.05605,-0.02117])
+dkvec4  = ABS([-0.02178,-0.11970, 0.01456])
+elam0   = [68.44422,5.452145]
+elam1   = [28.76537,14.35112]
+elam2   = [49.24633,5.281255]
+elam3   = [43.04643,6.014196]
+elam4   = [11.00876,5.185658]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 14L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0015_0
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  15 Hz  at  2000-04-06/18:24:15.248 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 707-875 (169 vectors)
+;Plot Range: 18:24:15.6251-18:24:15.7147
+;The eigenvalues ratios are:
+;       117.17994       3.3308333
+;The Minimum Variance eigenvector is:
+; < 0.98477,-0.06657, 0.16058> +/- < 0.00322,-0.02040,-0.02823>
+;
+;Plot Index Range: 895-1126 (232 vectors)
+;Plot Range: 18:24:15.7253-18:24:15.8485
+;The eigenvalues ratios are:
+;       27.535462       5.4540454
+;The Minimum Variance eigenvector is:
+; < 0.95607,-0.13781, 0.25874> +/- < 0.01237,-0.02392,-0.05843>
+;
+;Plot Index Range: 1410-1710 (301 vectors)
+;Plot Range: 18:24:16.0000-18:24:16.1600
+;The eigenvalues ratios are:
+;       40.670685       3.1470602
+;The Minimum Variance eigenvector is:
+; <-0.86145,-0.02612,-0.50717> +/- < 0.00818, 0.04868,-0.01641>
+;
+;Plot Index Range: 1898-2028 (131 vectors)
+;Plot Range: 18:24:16.2603-18:24:16.3296
+;The eigenvalues ratios are:
+;       92.037861       5.1745293
+;The Minimum Variance eigenvector is:
+; <-0.71573, 0.32569, 0.61779> +/- < 0.00004,-0.03569, 0.01886>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0015_0
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'18:24:15.6250',prefd[0]+'18:24:15.7146'])
+tr1     = time_double([prefd[0]+'18:24:15.7253',prefd[0]+'18:24:15.8485'])
+tr2     = time_double([prefd[0]+'18:24:16.0000',prefd[0]+'18:24:16.1600'])
+tr3     = time_double([prefd[0]+'18:24:16.2602',prefd[0]+'18:24:16.3296'])
+kvec0   = [ 0.98477,-0.06657, 0.16058]
+kvec1   = [ 0.95607,-0.13781, 0.25874]
+kvec2   = [-0.86145,-0.02612,-0.50717]
+kvec3   = [-0.71573, 0.32569, 0.61779]
+dkvec0  = ABS([ 0.00322,-0.02040,-0.02823])
+dkvec1  = ABS([ 0.01237,-0.02392,-0.05843])
+dkvec2  = ABS([ 0.00818, 0.04868,-0.01641])
+dkvec3  = ABS([ 0.00004,-0.03569, 0.01886])
+elam0   = [117.1799,3.330833]
+elam1   = [27.53546,5.454045]
+elam2   = [40.67068,3.147060]
+elam3   = [92.03786,5.174529]
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 15L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+dummy0  = {X:tt0,Y:bf00}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0020_10
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  20 Hz  at  2000-04-06/18:24:27.643 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 1669-1972 (304 vectors)
+;Plot Range: 18:24:28.5331-18:24:28.6947
+;The eigenvalues ratios are:
+;       12.121918       3.0700423
+;The Minimum Variance eigenvector is:
+; < 0.89255,-0.25877, 0.36931> +/- <-0.04326,-0.03356, 0.08103>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0020_10
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'18:24:28.5331',prefd[0]+'18:24:28.6947'])
+kvec0   = [ 0.89255,-0.25877, 0.36931]
+dkvec0  = ABS([-0.04326,-0.03356, 0.08103])
+elam0   = [12.12192,3.070042]
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+jj      = 16L
+tt0     = REFORM(tds_unix[jj,*])
+bf00    = REFORM(filter_bf.(jj).(0))
+bf01    = REFORM(filter_bf.(jj).(1))
+bf02    = REFORM(filter_bf.(jj).(2))
+lf00    = lf_str.(jj)
+hf00    = hf_str.(jj)
+suffx0  = '_filt_'+filters_tg.(jj).(0)
+suffx1  = '_filt_'+filters_tg.(jj).(1)
+suffx2  = '_filt_'+filters_tg.(jj).(2)
+
+dummy0  = {X:tt0,Y:bf00}
+dummy1  = {X:tt0,Y:bf01}
+dummy2  = {X:tt0,Y:bf02}
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lf00[0],hf00[0]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx0[0],     $
+               STATS=stats_040600_0003_0015_1
+;-----------------------------------------------------------------------------------------
+; => For   3 Hz < f <  15 Hz  at  2000-04-06/18:30:59.901 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 366-543 (178 vectors)
+;Plot Range: 18:31:00.0962-18:31:00.1906
+;The eigenvalues ratios are:
+;       33.053307       2.2667540
+;The Minimum Variance eigenvector is:
+; <-0.91317, 0.01891, 0.40714> +/- <-0.01516, 0.05653,-0.03664>
+;
+;Plot Index Range: 542-954 (413 vectors)
+;Plot Range: 18:31:00.1901-18:31:00.4098
+;The eigenvalues ratios are:
+;       17.101735       8.1112204
+;The Minimum Variance eigenvector is:
+; <-0.85987,-0.47382, 0.19005> +/- <-0.02752, 0.02665,-0.05806>
+;
+;Plot Index Range: 1245-1501 (257 vectors)
+;Plot Range: 18:31:00.5650-18:31:00.7015
+;The eigenvalues ratios are:
+;       23.932365       2.4592647
+;The Minimum Variance eigenvector is:
+; < 0.93252,-0.34921,-0.09201> +/- <-0.02206,-0.04469,-0.05393>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0003_0015_1
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'18:31:00.0962',prefd[0]+'18:31:00.1906'])
+tr1     = time_double([prefd[0]+'18:31:00.1900',prefd[0]+'18:31:00.4098'])
+tr2     = time_double([prefd[0]+'18:31:00.5650',prefd[0]+'18:31:00.7015'])
+kvec0   = [-0.91317, 0.01891, 0.40714]
+kvec1   = [-0.85987,-0.47382, 0.19005]
+kvec2   = [ 0.93252,-0.34921,-0.09201]
+dkvec0  = ABS([-0.01516, 0.05653,-0.03664])
+dkvec1  = ABS([-0.02752, 0.02665,-0.05806])
+dkvec2  = ABS([-0.02206,-0.04469,-0.05393])
+elam0   = [33.05331,2.266754]
+elam1   = [17.10173,8.111220]
+elam2   = [23.93237,2.459265]
+
+
+
+vector_mv_plot,DATE=date,MYMAG=dummy1,FCUTOFF=[lf00[1],hf00[1]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx1[0],     $
+               STATS=stats_040600_0150_0250
+;-----------------------------------------------------------------------------------------
+; => For 150 Hz < f < 250 Hz  at  2000-04-06/18:30:59.901 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 869-1179 (311 vectors)
+;Plot Range: 18:31:00.3645-18:31:00.5298
+;The eigenvalues ratios are:
+;       23.480923       3.6466310
+;The Minimum Variance eigenvector is:
+; < 0.08217,-0.10812, 0.99074> +/- <-0.06465, 0.01723, 0.00724>
+;
+;Plot Index Range: 917-945 (29 vectors)
+;Plot Range: 18:31:00.3901-18:31:00.4050
+;The eigenvalues ratios are:
+;       54.247059       3.6430312
+;The Minimum Variance eigenvector is:
+; < 0.03035,-0.12132, 0.99215> +/- < 0.07801,-0.01967,-0.00479>
+;
+;Plot Index Range: 945-978 (34 vectors)
+;Plot Range: 18:31:00.4050-18:31:00.4226
+;The eigenvalues ratios are:
+;       81.740223       2.7919110
+;The Minimum Variance eigenvector is:
+; <-0.16011,-0.25917, 0.95247> +/- < 0.06355,-0.00965, 0.00806>
+;
+;Plot Index Range: 985-1046 (62 vectors)
+;Plot Range: 18:31:00.4263-18:31:00.4589
+;The eigenvalues ratios are:
+;       57.728523       3.7093474
+;The Minimum Variance eigenvector is:
+; < 0.04354,-0.12402, 0.99132> +/- < 0.06159,-0.01612,-0.00472>
+;
+;Plot Index Range: 1047-1102 (56 vectors)
+;Plot Range: 18:31:00.4594-18:31:00.4887
+;The eigenvalues ratios are:
+;       98.671460       3.6888010
+;The Minimum Variance eigenvector is:
+; < 0.22582,-0.03121, 0.97367> +/- <-0.04665, 0.01406, 0.01127>
+;
+;Plot Index Range: 1103-1160 (58 vectors)
+;Plot Range: 18:31:00.4893-18:31:00.5197
+;The eigenvalues ratios are:
+;       100.76562       2.6586491
+;The Minimum Variance eigenvector is:
+; < 0.17030, 0.08188, 0.98198> +/- <-0.00916, 0.05012,-0.00259>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0150_0250
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'18:31:00.3644',prefd[0]+'18:31:00.5298'])
+tr1     = time_double([prefd[0]+'18:31:00.3900',prefd[0]+'18:31:00.4050'])
+tr2     = time_double([prefd[0]+'18:31:00.4050',prefd[0]+'18:31:00.4226'])
+tr3     = time_double([prefd[0]+'18:31:00.4263',prefd[0]+'18:31:00.4588'])
+tr4     = time_double([prefd[0]+'18:31:00.4594',prefd[0]+'18:31:00.4887'])
+tr5     = time_double([prefd[0]+'18:31:00.4892',prefd[0]+'18:31:00.5196'])
+kvec0   = [ 0.08217,-0.10812, 0.99074]
+kvec1   = [ 0.03035,-0.12132, 0.99215]
+kvec2   = [-0.16011,-0.25917, 0.95247]
+kvec3   = [ 0.04354,-0.12402, 0.99132]
+kvec4   = [ 0.22582,-0.03121, 0.97367]
+kvec5   = [ 0.17030, 0.08188, 0.98198]
+dkvec0  = ABS([-0.06465, 0.01723, 0.00724])
+dkvec1  = ABS([ 0.07801,-0.01967,-0.00479])
+dkvec2  = ABS([ 0.06355,-0.00965, 0.00806])
+dkvec3  = ABS([ 0.06159,-0.01612,-0.00472])
+dkvec4  = ABS([-0.04665, 0.01406, 0.01127])
+dkvec5  = ABS([-0.00916, 0.05012,-0.00259])
+elam0   = [23.48092,3.646631]
+elam1   = [54.24706,3.643031]
+elam2   = [81.74023,2.791911]
+elam3   = [57.72852,3.709347]
+elam4   = [98.67146,3.688801]
+elam5   = [100.7656,2.658649]
+
+
+
+vector_mv_plot,DATE=date,MYMAG=dummy2,FCUTOFF=[lf00[2],hf00[2]],  $
+               SAT='W',COORD='GSE',FIELD='B',SUFFX=suffx2[0],     $
+               STATS=stats_040600_0250_0300
+;-----------------------------------------------------------------------------------------
+; => For 250 Hz < f < 300 Hz  at  2000-04-06/18:30:59.901 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 43-67 (25 vectors)
+;Plot Range: 18:30:59.9239-18:30:59.9367
+;The eigenvalues ratios are:
+;       22.724665       3.2881780
+;The Minimum Variance eigenvector is:
+; < 0.78486, 0.00923,-0.61961> +/- <-0.06940, 0.07224,-0.08683>
+;
+;Plot Index Range: 409-433 (25 vectors)
+;Plot Range: 18:31:00.1191-18:31:00.1319
+;The eigenvalues ratios are:
+;       13.114955       1.6019454
+;The Minimum Variance eigenvector is:
+; < 0.34285, 0.79731, 0.49674> +/- < 0.11792,-0.11728, 0.10686>
+;
+;Plot Index Range: 756-785 (30 vectors)
+;Plot Range: 18:31:00.3042-18:31:00.3197
+;The eigenvalues ratios are:
+;       28.078401       11.067108
+;The Minimum Variance eigenvector is:
+; < 0.95171,-0.04651,-0.30345> +/- <-0.01582,-0.09626,-0.03488>
+;
+;Plot Index Range: 786-824 (39 vectors)
+;Plot Range: 18:31:00.3202-18:31:00.3405
+;The eigenvalues ratios are:
+;       24.780376       8.3419241
+;The Minimum Variance eigenvector is:
+; < 0.96224, 0.25624,-0.09186> +/- < 0.02799,-0.09930, 0.01624>
+;
+;Plot Index Range: 900-943 (44 vectors)
+;Plot Range: 18:31:00.3810-18:31:00.4039
+;The eigenvalues ratios are:
+;       15.605713       6.4300895
+;The Minimum Variance eigenvector is:
+; <-0.28476, 0.60689,-0.74202> +/- <-0.09879, 0.04391, 0.07383>
+;
+;Plot Index Range: 949-1001 (53 vectors)
+;Plot Range: 18:31:00.4071-18:31:00.4349
+;The eigenvalues ratios are:
+;       112.34776       5.1068998
+;The Minimum Variance eigenvector is:
+; < 0.82952,-0.41914, 0.36909> +/- < 0.00710,-0.02136,-0.04022>
+;
+;Plot Index Range: 1004-1031 (28 vectors)
+;Plot Range: 18:31:00.4365-18:31:00.4509
+;The eigenvalues ratios are:
+;       17.089389       4.4320892
+;The Minimum Variance eigenvector is:
+; <-0.95846, 0.26665,-0.10121> +/- < 0.03192, 0.06770,-0.12388>
+;
+;Plot Index Range: 1032-1080 (49 vectors)
+;Plot Range: 18:31:00.4514-18:31:00.4770
+;The eigenvalues ratios are:
+;       12.247803       4.4303695
+;The Minimum Variance eigenvector is:
+; < 0.84984,-0.32235, 0.41698> +/- < 0.01784,-0.09724,-0.11153>
+;
+;Plot Index Range: 1110-1144 (35 vectors)
+;Plot Range: 18:31:00.4930-18:31:00.5111
+;The eigenvalues ratios are:
+;       20.150636       2.1054576
+;The Minimum Variance eigenvector is:
+; < 0.89066,-0.45389, 0.02657> +/- <-0.03148,-0.06847,-0.11454>
+;
+;Plot Index Range: 1170-1198 (29 vectors)
+;Plot Range: 18:31:00.5250-18:31:00.5399
+;The eigenvalues ratios are:
+;       113.10818       12.087985
+;The Minimum Variance eigenvector is:
+; < 0.89394,-0.21047,-0.39570> +/- <-0.02137,-0.03662,-0.02880>
+;
+;Plot Index Range: 1210-1235 (26 vectors)
+;Plot Range: 18:31:00.5463-18:31:00.5597
+;The eigenvalues ratios are:
+;       30.304935       3.9796349
+;The Minimum Variance eigenvector is:
+; < 0.76171,-0.25330, 0.59636> +/- < 0.02035,-0.08839,-0.06354>
+;
+;Plot Index Range: 1285-1310 (26 vectors)
+;Plot Range: 18:31:00.5863-18:31:00.5997
+;The eigenvalues ratios are:
+;       150.98045       1.9605694
+;The Minimum Variance eigenvector is:
+; <-0.35966, 0.60634,-0.70922> +/- <-0.03720, 0.01824, 0.03446>
+;
+;Plot Index Range: 1405-1438 (34 vectors)
+;Plot Range: 18:31:00.6503-18:31:00.6679
+;The eigenvalues ratios are:
+;       53.524439       5.2841520
+;The Minimum Variance eigenvector is:
+; <-0.90203, 0.21698,-0.37317> +/- < 0.02276, 0.07019,-0.01420>
+;
+;Plot Index Range: 1482-1518 (37 vectors)
+;Plot Range: 18:31:00.6914-18:31:00.7106
+;The eigenvalues ratios are:
+;       11.021628       2.0452456
+;The Minimum Variance eigenvector is:
+; < 0.84410, 0.05210, 0.53365> +/- <-0.03235, 0.18105, 0.03350>
+;
+;Plot Index Range: 1534-1562 (29 vectors)
+;Plot Range: 18:31:00.7191-18:31:00.7341
+;The eigenvalues ratios are:
+;       11.658910       4.5972766
+;The Minimum Variance eigenvector is:
+; < 0.48477,-0.39758, 0.77906> +/- < 0.09830, 0.14453, 0.01259>
+;
+;Plot Index Range: 1583-1623 (41 vectors)
+;Plot Range: 18:31:00.7453-18:31:00.7666
+;The eigenvalues ratios are:
+;       21.701747       1.9057092
+;The Minimum Variance eigenvector is:
+; < 0.88599, 0.30514, 0.34915> +/- <-0.05962, 0.07159, 0.08871>
+;
+;Plot Index Range: 1626-1655 (30 vectors)
+;Plot Range: 18:31:00.7682-18:31:00.7837
+;The eigenvalues ratios are:
+;       63.102206       1.6342963
+;The Minimum Variance eigenvector is:
+; < 0.63707, 0.37493, 0.67348> +/- <-0.00872,-0.06851, 0.04638>
+;
+;Plot Index Range: 1661-1685 (25 vectors)
+;Plot Range: 18:31:00.7869-18:31:00.7997
+;The eigenvalues ratios are:
+;       37.190362       1.8611481
+;The Minimum Variance eigenvector is:
+; <-0.28260, 0.41634,-0.86418> +/- <-0.00984,-0.10144,-0.04565>
+;
+;-----------------------------------------------------------------------------------------
+struct0 = stats_040600_0250_0300
+
+prefd   = '2000-04-06/'
+tr0     = time_double([prefd[0]+'18:30:59.9239',prefd[0]+'18:30:59.9367'])
+tr1     = time_double([prefd[0]+'18:31:00.1191',prefd[0]+'18:31:00.1319'])
+tr2     = time_double([prefd[0]+'18:31:00.3042',prefd[0]+'18:31:00.3196'])
+tr3     = time_double([prefd[0]+'18:31:00.3202',prefd[0]+'18:31:00.3404'])
+tr4     = time_double([prefd[0]+'18:31:00.3810',prefd[0]+'18:31:00.4039'])
+tr5     = time_double([prefd[0]+'18:31:00.4071',prefd[0]+'18:31:00.4348'])
+tr6     = time_double([prefd[0]+'18:31:00.4364',prefd[0]+'18:31:00.4508'])
+tr7     = time_double([prefd[0]+'18:31:00.4514',prefd[0]+'18:31:00.4770'])
+tr8     = time_double([prefd[0]+'18:31:00.4930',prefd[0]+'18:31:00.5111'])
+tr9     = time_double([prefd[0]+'18:31:00.5250',prefd[0]+'18:31:00.5399'])
+tr10     = time_double([prefd[0]+'18:31:00.5463',prefd[0]+'18:31:00.5596'])
+tr11     = time_double([prefd[0]+'18:31:00.5863',prefd[0]+'18:31:00.5996'])
+tr12     = time_double([prefd[0]+'18:31:00.6503',prefd[0]+'18:31:00.6679'])
+tr13     = time_double([prefd[0]+'18:31:00.6914',prefd[0]+'18:31:00.7106'])
+tr14     = time_double([prefd[0]+'18:31:00.7191',prefd[0]+'18:31:00.7340'])
+tr15     = time_double([prefd[0]+'18:31:00.7452',prefd[0]+'18:31:00.7666'])
+tr16     = time_double([prefd[0]+'18:31:00.7682',prefd[0]+'18:31:00.7836'])
+tr17     = time_double([prefd[0]+'18:31:00.7868',prefd[0]+'18:31:00.7996'])
+kvec0   = [ 0.78486, 0.00923,-0.61961]
+kvec1   = [ 0.34285, 0.79731, 0.49674]
+kvec2   = [ 0.95171,-0.04651,-0.30345]
+kvec3   = [ 0.96224, 0.25624,-0.09186]
+kvec4   = [-0.28476, 0.60689,-0.74202]
+kvec5   = [ 0.82952,-0.41914, 0.36909]
+kvec6   = [-0.95846, 0.26665,-0.10121]
+kvec7   = [ 0.84984,-0.32235, 0.41698]
+kvec8   = [ 0.89066,-0.45389, 0.02657]
+kvec9   = [ 0.89394,-0.21047,-0.39570]
+kvec10   = [ 0.76171,-0.25330, 0.59636]
+kvec11   = [-0.35966, 0.60634,-0.70922]
+kvec12   = [-0.90203, 0.21698,-0.37317]
+kvec13   = [ 0.84410, 0.05210, 0.53365]
+kvec14   = [ 0.48477,-0.39758, 0.77906]
+kvec15   = [ 0.88599, 0.30514, 0.34915]
+kvec16   = [ 0.63707, 0.37493, 0.67348]
+kvec17   = [-0.28260, 0.41634,-0.86418]
+dkvec0  = ABS([-0.06940, 0.07224,-0.08683])
+dkvec1  = ABS([ 0.11792,-0.11728, 0.10686])
+dkvec2  = ABS([-0.01582,-0.09626,-0.03488])
+dkvec3  = ABS([ 0.02799,-0.09930, 0.01624])
+dkvec4  = ABS([-0.09879, 0.04391, 0.07383])
+dkvec5  = ABS([ 0.00710,-0.02136,-0.04022])
+dkvec6  = ABS([ 0.03192, 0.06770,-0.12388])
+dkvec7  = ABS([ 0.01784,-0.09724,-0.11153])
+dkvec8  = ABS([-0.03148,-0.06847,-0.11454])
+dkvec9  = ABS([-0.02137,-0.03662,-0.02880])
+dkvec10  = ABS([ 0.02035,-0.08839,-0.06354])
+dkvec11  = ABS([-0.03720, 0.01824, 0.03446])
+dkvec12  = ABS([ 0.02276, 0.07019,-0.01420])
+dkvec13  = ABS([-0.03235, 0.18105, 0.03350])
+dkvec14  = ABS([ 0.09830, 0.14453, 0.01259])
+dkvec15  = ABS([-0.05962, 0.07159, 0.08871])
+dkvec16  = ABS([-0.00872,-0.06851, 0.04638])
+dkvec17  = ABS([-0.00984,-0.10144,-0.04565])
+elam0   = [22.72466,3.288178]
+elam1   = [13.11496,1.601945]
+elam2   = [28.07840,11.06711]
+elam3   = [24.78038,8.341924]
+elam4   = [15.60571,6.430089]
+elam5   = [112.3478,5.106900]
+elam6   = [17.08939,4.432089]
+elam7   = [12.24780,4.430369]
+elam8   = [20.15063,2.105458]
+elam9   = [113.1082,12.08799]
+elam10   = [30.30494,3.979635]
+elam11   = [150.9805,1.960569]
+elam12   = [53.52444,5.284152]
+elam13   = [11.02163,2.045246]
+elam14   = [11.65891,4.597277]
+elam15   = [21.70175,1.905709]
+elam16   = [63.10221,1.634296]
+elam17   = [37.19036,1.861148]
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+nplots  = N_TAGS(struct0)
+tr_ss   = STRARR(nplots)
+kv_ss   = STRARR(nplots)
+dkv_ss  = STRARR(nplots)
+eig_ss  = STRARR(nplots)
+pr_str  = ',prefd[0]+'
+tr_pre  = '     = time_double([prefd[0]+'
+dv_0s   = '])'
+kv_0s   = ']'
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  tr_0p = 'tr'+STRTRIM(j,2L)                                            & $
+  tr_00 = time_string(struct0.(j).TRANGE,PREC=4)                        & $
+  tr_01 = STRMID(tr_00[*],11L)                                          & $
+  test  = tr_0p[0]+tr_pre[0]+"'"+tr_01[0]+"'"+pr_str[0]+"'"+tr_01[1]+"'"+dv_0s[0]  & $
+  tr_ss[j] = test[0]
+
+kvform = '(f8.5,",",f8.5,",",f8.5)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  kv_0p = 'kvec'+STRTRIM(j,2L)+'   = ['                                 & $
+  kv_00 = struct0.(j).MVA.EIGENVECTORS[*,0]                             & $
+  kv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = kv_0p[0]+kv_01+kv_0s[0]                                       & $
+  kv_ss[j] = test[0]
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  dv_0p = 'dkvec'+STRTRIM(j,2L)+'  = ABS(['                             & $
+  dv_00 = struct0.(j).MVA.DMIN_VEC                                      & $
+  dv_01 = STRING(FORMAT=kvform,dv_00)                                   & $
+  test  = dv_0p[0]+dv_01+dv_0s[0]                                       & $
+  dkv_ss[j] = test[0]
+
+eform = '(g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  eg_0p = 'elam'+STRTRIM(j,2L)+'   = ['                                 & $
+  eg_mx = struct0.(j).MVA.EIGENVALUES[0]                                & $
+  eg_md = struct0.(j).MVA.EIGENVALUES[1]                                & $
+  eg_mn = struct0.(j).MVA.EIGENVALUES[2]                                & $
+  er_00 = FLOAT([eg_md/eg_mn,eg_mx/eg_md])                              & $
+  er_01 = STRCOMPRESS(STRING(FORMAT=eform,er_00),/REMOVE_ALL)           & $
+  test  = eg_0p[0]+er_01+kv_0s[0]                                       & $
+  eig_ss[j] = test[0]
+
+
+PRINT, TRANSPOSE(tr_ss)
+PRINT, TRANSPOSE(kv_ss)
+PRINT, TRANSPOSE(dkv_ss)
+PRINT, TRANSPOSE(eig_ss)
+
+
+prefd   = '2000-04-06/'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,300 @@
+item3a       = 'EVENT_START_SCET_R8'   ;     The true SCET for the start of the event (UR8)
+scetA        = 0d0
+item3b       = 'EVENT_CENTER_SCET_R8'  ;     The true SCET for the center of the event (UR8)
+scetB        = 0d0
+item3c       = 'EVENT_END_SCET_R8'     ;     The true SCET for the end of the event (UR8)
+scetC        = 0d0
+item3d       = 'EVENT_TRUE_SCET_R8'    ;     The true SCET for the start of the event (UR8)
+scetD        = 0d0
+
+item5a       = 'DPU_Clock_R4'          ;     Datation DPU clock (seconds)
+DPUclka      = 0d0
+item5b       = 'DPU_CLOCK_START_R4'    ;     DPU clock at start of event - (may be negative)
+DPUclkb      = 0d0
+item5c       = 'DPU_CLOCK_CENTER_R4'   ;     DPU clock at center of event - (may be negative)
+DPUclkc      = 0d0
+item5d       = 'DPU_CLOCK_END_R4'      ;     DPU clock at end of event - (may be negative)
+DPUclkd      = 0d0
+
+item8a       = 'SUN_ANGLE_START_R4'    ;     Sun angle at event start - (may be negative)
+sunangst     = 0d0
+item8b       = 'SUN_ANGLE_CENTER_R4'   ;     Sun angle at event center - (may be negative)
+sunangcn     = 0d0
+item8c       = 'SUN_ANGLE_END_R4'      ;     Sun angle at event end - (may be negative)
+sunangen     = 0d0
+item8d       = 'SUN_ANGLE_R4'          ;     Datation sun angle - best accuracy 0.1 degree
+sunangr4     = 0d0
+item8e       = 'SUN_ANGLE'             ;     Dummy value of the 4096 sun counter @ event start
+sunang       = 0d0
+  PRINTF,gunit,date_stringA[0],scetA[0],scetB[0],scetC[0],scetD[0],$
+         spinur8a[0],spinur8b[0],spinur8c[0],                      $
+         DPUclka[0],DPUclkb[0],DPUclkc[0],DPUclkd[0],              $
+         MAJdpu[0],evnum[0],source[0],rxfili4[0],rxspdi4[0],       $
+         spinrate[0],spinphase[0],spinatt[0],                      $
+         sunangst[0],sunangcn[0],sunangen[0],sunangr4[0],sunang[0],$
+         rxfilr4[0],rxspdr4[0],FORMAT=myformat2                  & $
+
+
+
+ldate    = '19980826'
+tdate    = '1998-08-26'
+item1    = 'wi_lz_wav_'+ldate[0]+'_v*.dat'
+channel  = 0                        ; => Stream Channel [item = TDSS]
+event_n  = 10488L                   ; => Event # [item = EVENT_NUMBER]
+majframe = 615                      ; => Maj. Frame [item = DPU_MAJOR_FRAME]
+
+dpuc_sta = 2866.234619140625d0      ; => DPU Clock [item = DPU_CLOCK_START_R4]
+dpuc_cen = 2866.780761718750d0      ; => DPU Clock [item = DPU_CLOCK_CENTER_R4]
+dpuc_end = 2867.326904296875d0      ; => DPU Clock [item = DPU_CLOCK_END_R4]
+dpuc_dat = 2867.883056640625d0      ; => DPU Clock [item = DPU_CLOCK_R4]
+
+scet_sta = 6081.2780605740740612d0  ; => UR8 at beginning [item = EVENT_START_SCET_R8]
+scet_cen = 6081.2780668950617837d0  ; => UR8 [item = EVENT_CENTER_SCET_R8]
+scet_end = 6081.2780732160493926d0  ; => UR8 [item = EVENT_END_SCET_R8]
+scet_dat = 6081.2780605740740612d0  ; => UR8 [item = EVENT_TRUE_SCET_R8]
+
+
+; => HK UR8 and DPU times for Major Frame 615 on 1998-08-26 near 06:40 UT
+ur8hk    = 6081.2775387268520717d0
+dpuhk    = 2821.108398437500d0
+
+; => Calculate difference between datation DPU Clock and HK DPU Clock (seconds)
+diff_dpu    = (dpuc_dat[0] - dpuhk[0])
+; => Convert to UR8
+diffdpu_ur8 = diff_dpu[0]/864d2
+; => Shift HK UR8 by difference
+shft_hkur8  = ur8hk[0] + diffdpu_ur8[0]
+; => Find difference between this UR8 time and SCET UR8 time
+diff_ur8    = (shft_hkur8[0] - scet_dat[0])
+PRINT,';', diffdpu_ur8[0], shft_hkur8[0], diff_ur8[0], FORMAT='(a1,3d25.16)'
+;       0.0005413733588325    6081.2780801002109001       0.0000195261363842
+
+
+; => added UR8 difference to original DPU clock time
+cor_dpu     = dpuc_dat[0] + diff_ur8[0]*864d2
+dpu_diff    = cor_dpu[0] - dpuc_dat[0]
+PRINT,';', cor_dpu[0], dpu_diff[0], FORMAT='(a1,2d20.12)'
+;   2869.570114824222      1.687058183597
+
+
+yy       = 0L           ; -[LONG] YYYY (year)
+mon      = 0L           ; -[LONG] MM (month) 
+day      = 0L           ; -[LONG] DD (day)
+hh       = 0L           ; -[LONG] HH
+mm       = 0L           ; -[LONG] MM (minute)
+ss       = 0L           ; -[LONG] SS
+ms       = 0L           ; -[LONG] MS (milliseconds => xxx)
+ok       = tm_ur8_to_ymd(shft_hkur8[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => "Corrected" SCET at Start
+;  1998-08-26/06:40:26.120
+
+ok       = tm_ur8_to_ymd(ur8hk[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => SCET HK
+;  1998-08-26/06:39:39.346
+
+ok       = tm_ur8_to_ymd(scet_sta[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => SCET Start [item = EVENT_CENTER_SCET_R8]
+;  1998-08-26/06:40:24.433
+
+ok       = tm_ur8_to_ymd(scet_cen[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => SCET Center [item = EVENT_CENTER_SCET_R8]
+;  1998-08-26/06:40:24.979
+
+ok       = tm_ur8_to_ymd(scet_end[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => SCET End [item = EVENT_END_SCET_R8]
+;  1998-08-26/06:40:25.525
+
+ok       = tm_ur8_to_ymd(scet_dat[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, $
+            FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+; => SCET Datation [item = EVENT_TRUE_SCET_R8]
+;  1998-08-26/06:40:24.433
+
+
+
+sam_rate = 1875d0                ; => Sample Rate [item = RX_SPEED_R4]
+sunclock = 1809d0                ; => Sun Tick [item = SUN_ANGLE]
+sunangr4 = 158.994140625000d0    ; => Sun Angle (deg) [item = SUN_ANGLE_R4]
+sunangst = -32.327507019043d0    ; => Sun Angle (deg) [item = SUN_ANGLE_START_R4]
+sunangcn = 31.059488296509d0     ; => Sun Angle (deg) [item = SUN_ANGLE_CENTER_R4]
+sunangen = 94.446487426758d0     ; => Sun Angle (deg) [item = SUN_ANGLE_END_R4]
+spinrate = 2.025717496872d0      ; => Spin Rate (rad/s) [item = WIND_SPIN_RATE_R4]
+;
+; => Paul's Note in TDSBDAT.FOR, Lines 1515-1522
+;
+;     on 16 nov 1999 it was found that the sunclock is read 1024
+;     samples after the end of the event, plus about 10.6 msec or
+;     about 14 spin clock counts for message passing time
+;
+
+dspnrate  = spinrate[0]*18d1/!DPI     ; => Degrees per second
+delta_ang = dspnrate[0]/sam_rate[0]   ; => Degrees per sample
+; => The angle rotated during one TDS event
+delangtds = delta_ang[0]*2048d0
+PRINT,';', dspnrate[0], delta_ang[0], delangtds[0], FORMAT='(a1,3d20.12)'
+;    116.065063056571      0.061901366964    126.773999541257
+
+; => calculate # of spin clock counts for 10.6 ms
+spclkshft = dspnrate[0]*10.6d-3*(4096d0/36d1)
+shft_sunc = sunclock[0] - spclkshft[0]
+IF (shft_sunc[0] LT 0)    THEN shft_sunc += 4096d0
+IF (shft_sunc[0] GT 4096) THEN shft_sunc -= 4096d0
+PRINT,';', spclkshft[0], shft_sunc[0], FORMAT='(a1,2d20.12)'
+;     13.997962449347   1795.002037550653
+
+;-----------------------------------------------------------------------------------------
+; => My method
+;
+;     Static SC Coords = +X // sun direction
+;                      = +Z // +Z-Axis of SC Coordinates
+;                      = +Y // (Z x X)
+;-----------------------------------------------------------------------------------------
+; => Calculate the angle ticks of the fluxgate Mag. boom from sun direction in SC Coords
+sun_end0  = shft_sunc[0] - 1024d0*(delta_ang[0]*4096d0/36d1)
+sun_sta0  = shft_sunc[0] - (1024d0 + 2048d0)*(delta_ang[0]*4096d0/36d1)
+PRINT,';', sun_sta0[0], sun_end0[0], FORMAT='(a1,2d20.12)'
+;   -368.607554620141   1073.798840160388
+IF (sun_end0[0] LT 0)    THEN sun_end0 += 4096d0
+IF (sun_end0[0] GT 4096) THEN sun_end0 -= 4096d0
+IF (sun_sta0[0] LT 0)    THEN sun_sta0 += 4096d0
+IF (sun_sta0[0] GT 4096) THEN sun_sta0 -= 4096d0
+PRINT,';', sun_sta0[0], sun_end0[0], FORMAT='(a1,2d20.12)'
+; => Tick angle of Mag. boom from sun direction in Static SC Coords at start and end
+;   3727.392445379859   1073.798840160388
+
+sun_end0x = sun_end0[0] + 45d0*(4096d0/36d1)
+sun_sta0x = sun_sta0[0] + 45d0*(4096d0/36d1)
+PRINT,';', sun_sta0x[0], sun_end0x[0], FORMAT='(a1,2d20.12)'
+; => Tick angle of +Ex from sun direction in Static SC Coords at start and end
+;   4239.392445379859   1585.798840160388
+IF (sun_end0x[0] LT 0)    THEN sun_end0x += 4096d0
+IF (sun_end0x[0] GT 4096) THEN sun_end0x -= 4096d0
+IF (sun_sta0x[0] LT 0)    THEN sun_sta0x += 4096d0
+IF (sun_sta0x[0] GT 4096) THEN sun_sta0x -= 4096d0
+PRINT,';', sun_sta0x[0], sun_end0x[0], FORMAT='(a1,2d20.12)'
+; => Tick angle of +Ex from sun direction in Static SC Coords at start and end
+;    143.392445379859   1585.798840160388
+
+
+sun_end1  = sun_end0[0]*36d1/4096d0
+sun_sta1  = sun_sta0[0]*36d1/4096d0
+sun_end1x = sun_end0x[0]*36d1/4096d0
+sun_sta1x = sun_sta0x[0]*36d1/4096d0
+PRINT,';', sun_sta1[0], sun_end1[0], FORMAT='(a1,2d20.12)'
+; => Angle of Mag. boom from sun direction in Static SC Coords at start and end
+;    327.602851644714     94.376851185972
+PRINT,';', sun_sta1x[0], sun_end1x[0], FORMAT='(a1,2d20.12)'
+; => Angle of +Ex from sun direction in Static SC Coords at start and end
+;     12.602851644714    139.376851185972
+IF (sun_end1[0]  LT -18d1) THEN sun_end1  += 36d1
+IF (sun_end1[0]  GT  18d1) THEN sun_end1  -= 36d1
+IF (sun_end1x[0] LT -18d1) THEN sun_end1x += 36d1
+IF (sun_end1x[0] GT  18d1) THEN sun_end1x -= 36d1
+IF (sun_sta1[0]  LT -18d1) THEN sun_sta1  += 36d1
+IF (sun_sta1[0]  GT  18d1) THEN sun_sta1  -= 36d1
+IF (sun_sta1x[0] LT -18d1) THEN sun_sta1x += 36d1
+IF (sun_sta1x[0] GT  18d1) THEN sun_sta1x -= 36d1
+PRINT,';', sun_sta1[0], sun_end1[0], FORMAT='(a1,2d20.12)'
+; => Angle of Mag. boom from sun direction in Static SC Coords at start and end
+;    -32.397148355286     94.376851185972
+PRINT,';', sun_sta1x[0], sun_end1x[0], FORMAT='(a1,2d20.12)'
+; => Angle of +Ex from sun direction in Static SC Coords at start and end
+;     12.602851644714    139.376851185972
+
+PRINT,';', -1d0*(sun_sta1x[0] - sun_end1x[0]), ABS(sun_sta1x[0] - sun_end1x[0])/dspnrate[0], FORMAT='(a1,2d20.12)'
+;    126.773999541257      1.092266666667
+
+sun_sta2  = sun_sta1[0] + 45d0
+sun_end2  = sun_end1[0] + 45d0
+PRINT,';', sun_sta2[0], sun_end2[0], FORMAT='(a1,2d20.12)'
+; => Angle of +Ex from sun direction in Static SC Coords at start and end
+;     12.602851644714    139.376851185972
+
+PRINT,';', -1d0*sun_sta2[0], -1d0*sun_end2[0], FORMAT='(a1,2d20.12)'
+; => Angle of +Ex from sun direction in GSE Coords at start and end
+;    -12.602851644714   -139.376851185972
+
+PRINT,';', -1d0*sun_sta2[0] + 36d1, -1d0*sun_end2[0] + 36d1, FORMAT='(a1,2d20.12)'
+; => Angle of +Ex from sun direction in GSE Coords at start and end
+;    347.397148355286    220.623148814028
+; => Note:  Paul's values = 347.4 - 220.6 deg
+
+; => Correct Sun Angles using "corrected SCET"
+delta_sunc = dpu_diff[0]*dspnrate[0]
+; => Wind spins in a "negative" sense in GSE coords
+sun_start  = (-1d0*sun_sta2[0] + 36d1) - delta_sunc[0]
+sun_end    = (-1d0*sun_end2[0] + 36d1) - delta_sunc[0]
+PRINT,';', sun_start[0], sun_end[0], FORMAT='(a1,2d20.12)'
+;    151.588633895949     24.814634354692
+; => Corrected angle of +Ex from sun direction in GSE Coords at start and end
+IF (sun_end[0]   LT -18d1) THEN sun_end   += 36d1
+IF (sun_end[0]   GT  18d1) THEN sun_end   -= 36d1
+IF (sun_start[0] LT -18d1) THEN sun_start += 36d1
+IF (sun_start[0] GT  18d1) THEN sun_start -= 36d1
+PRINT,';', sun_start[0], sun_end[0], FORMAT='(a1,2d20.12)'
+; => Corrected angle of +Ex from sun direction in GSE Coords at start and end
+;    151.588633895949     24.814634354692
+
+
+;-----------------------------------------------------------------------------------------
+; => Paul's Method
+;-----------------------------------------------------------------------------------------
+; => Calculate the angle of the fluxgate Mag. boom from sun direction in Static SC Coords
+end_ang0  = shft_sunc[0]*36d1/4096d0
+PRINT,';', end_ang0[0], FORMAT='(a1,d20.12)'
+;    157.763850956600
+
+; => constrain:  -180 < end_ang0 < +180
+IF (end_ang0[0] LT -18d1) THEN end_ang0 += 36d1
+IF (end_ang0[0] GT  18d1) THEN end_ang0 -= 36d1
+PRINT,';', end_ang0[0], FORMAT='(a1,d20.12)'
+;    157.763850956600
+
+; => Add on the 1024 samples to correct angle + 2048 samples during event
+sta_ang0  = end_ang0[0] + (2048d0 + 1024d0)*delta_ang[0]
+end_ang0 += 1024d0*delta_ang[0]
+PRINT,';', sta_ang0[0], end_ang0[0], FORMAT='(a1,2d20.12)'
+; => Angle of +Ex from sun direction at start and end
+;    347.924850268487    221.150850727229
+; => Note:  Paul's values = 347.4 - 220.6 deg
+
+PRINT,';', (end_ang0[0] - sta_ang0[0]), ABS(end_ang0[0] - sta_ang0[0])/dspnrate[0], FORMAT='(a1,2d20.12)'
+;   -126.773999541257      1.092266666667
+
+; => constrain angles to:  -180 < angle < +180
+IF (sta_ang0[0] LT -18d1) THEN sta_ang0 += 36d1
+IF (sta_ang0[0] GT  18d1) THEN sta_ang0 -= 36d1
+IF (end_ang0[0] LT -18d1) THEN end_ang0 += 36d1
+IF (end_ang0[0] GT  18d1) THEN end_ang0 -= 36d1
+PRINT,';', sta_ang0[0], end_ang0[0], FORMAT='(a1,2d20.12)'
+; => [Angles of Mag. boom with respect to sun direction in Static SC coordinates]
+;      Start Angle          End Angle
+;         (deg)              (deg)
+;    -12.075149731513   -138.849149272771
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

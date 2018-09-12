@@ -1,0 +1,1178 @@
+;-----------------------------------------------------------------------------------------
+; => Look at the angle of wave normal angles to shock normal near shock front
+;-----------------------------------------------------------------------------------------
+xr       = [0d0,9d1]
+nb       = 7
+suffxall = 'All Freqs]'
+suffxlhw = 'f < f!Dlh!N'+']'
+suffxwhi = 'f > f!Dlh!N'+']'
+
+xttl8a   = '!7h!3'+'!Dkn!N'+' [RH08, '+suffxall[0]
+xttl8l   = '!7h!3'+'!Dkn!N'+' [RH08, '+suffxlhw[0]
+xttl8w   = '!7h!3'+'!Dkn!N'+' [RH08, '+suffxwhi[0]
+ttle8    = 'Angle between Wave Normal Vector and Shock Normal Vector [RH08, near ramp]'
+xttl9a   = '!7h!3'+'!Dkn!N'+' [RH09, '+suffxall[0]
+xttl9l   = '!7h!3'+'!Dkn!N'+' [RH09, '+suffxlhw[0]
+xttl9w   = '!7h!3'+'!Dkn!N'+' [RH09, '+suffxwhi[0]
+ttle9    = 'Angle between Wave Normal Vector and Shock Normal Vector [RH09, near ramp]'
+c        = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+ckm      = (c*1d-3)
+
+
+date     = '121097'
+tdate    = '1997-12-10'
+tramp    = '1997-12-10/04:33:14.664'
+vshn     = 391.2                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test0    = tdss_lhw_stats_read(DATE=date)
+evn0     = test0.EVENT_N
+scet0    = test0.SCET_SE[*,0]
+freql0   = test0.FREQ_LOW_HIGH[*,0]
+freqh0   = test0.FREQ_LOW_HIGH[*,1]
+thkbl0   = test0.THETA_KB[*,0]
+thkbh0   = test0.THETA_KB[*,1]
+thkvl0   = test0.THETA_KV[*,0]
+thkvh0   = test0.THETA_KV[*,1]
+avg_lfk0 = (test0.K_ST_LOWF_MP + test0.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk0 = (test0.K_ST_HIGHF_MP + test0.K_EN_HIGHF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+wce0     = (test0.WCE_SE[*,0] + test0.WCE_SE[*,1])/2d0
+wpe0     = (test0.WPE_SE[*,0] + test0.WPE_SE[*,1])/2d0
+wlh0     = (test0.WLH_SE[*,0] + test0.WLH_SE[*,1])/2d0
+kvec0    = test0.KVEC
+gnorm80  = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+gnorm90  = [-0.971, 0.094,-0.218]   ; => Using RH08 from JCK's site
+thkn80   = ACOS(my_dot_prod(kvec0,gnorm80,/NOM))*18d1/!DPI
+thkn90   = ACOS(my_dot_prod(kvec0,gnorm90,/NOM))*18d1/!DPI
+; => Calculate rest frame frequencies from wave number estimates
+fac0l    = wce0*ABS(COS(thkbl0*!DPI/18d1))
+fac0h    = wce0*ABS(COS(thkbh0*!DPI/18d1))
+fac1lm   = (wpe0/(ckm*avg_lfk0[*,0]))^2
+fac1lp   = (wpe0/(ckm*avg_lfk0[*,1]))^2
+fac1hm   = (wpe0/(ckm*avg_hfk0[*,0]))^2
+fac1hp   = (wpe0/(ckm*avg_hfk0[*,1]))^2
+fr_lfkm0 = fac0l/(1d0 + fac1lm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from low  freq. end of bandpass]
+fr_lfkp0 = fac0l/(1d0 + fac1lp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from low  freq. end of bandpass]
+fr_hfkm0 = fac0h/(1d0 + fac1hm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from high freq. end of bandpass]
+fr_hfkp0 = fac0h/(1d0 + fac1hp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from high freq. end of bandpass]
+goodlhwm = WHERE(fr_lfkm0 LE wlh0 AND fr_hfkm0 LE wlh0,gdlwm)
+goodwhim = WHERE(fr_lfkm0 GT wlh0 AND fr_hfkm0 GT wlh0,gdwhm)
+goodlhwp = WHERE(fr_lfkp0 LE wlh0 AND fr_hfkp0 LE wlh0,gdlwp)
+goodwhip = WHERE(fr_lfkp0 GT wlh0 AND fr_hfkp0 GT wlh0,gdwhp)
+PRINT,'; ',gdlwm,gdwhm,gdlwp,gdwhp,'   For '+tdate[0]
+;           11           0           2          19   For 1997-12-10
+
+WSET,0
+xdat     = thkn80 < (18d1 - thkn80)
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8a+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+WSET,1
+xdat     = thkn90 < (18d1 - thkn90)
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9a+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+
+WSET,0
+gels     = [goodlhwm,goodlhwp]
+gels     = gels[UNIQ(gels,SORT(gels))]
+xdat     = thkn80[gels] < (18d1 - thkn80[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8l+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+popen,'theta_kn_RH08_'+tdate[0]+'_1st-1_events_frest-LE-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8l+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+WSET,1
+xdat     = thkn90[gels] < (18d1 - thkn90[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9l+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+popen,'theta_kn_RH09_'+tdate[0]+'_1st-1_events_frest-LE-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9l+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+pclose
+
+WSET,0
+gels     = [goodwhim,goodwhip]
+gels     = gels[UNIQ(gels,SORT(gels))]
+xdat     = thkn80[gels] < (18d1 - thkn80[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+popen,'theta_kn_RH08_'+tdate[0]+'_1st-1_events_frest-GT-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+WSET,1
+xdat     = thkn90[gels] < (18d1 - thkn80[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9w+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+popen,'theta_kn_RH09_'+tdate[0]+'_1st-1_events_frest-GT-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+
+
+date     = '082698'
+tdate    = '1998-08-26'
+tramp    = '1998-08-26/06:40:24.972'
+vshn     = 687.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test1    = tdss_lhw_stats_read(DATE=date)
+evn1     = test1.EVENT_N
+good1    = array_where(evn1,evn1[0],/N_UNIQ)
+good     = good1[*,0]
+scet1    = test1.SCET_SE[good,0]
+freql1   = test1.FREQ_LOW_HIGH[good,0]
+freqh1   = test1.FREQ_LOW_HIGH[good,1]
+thkbl1   = test1.THETA_KB[good,0]
+thkbh1   = test1.THETA_KB[good,1]
+thkvl1   = test1.THETA_KV[good,0]
+thkvh1   = test1.THETA_KV[good,1]
+avg_lfk1 = (test1.K_ST_LOWF_MP[good,*] + test1.K_EN_LOWF_MP[good,*])/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk1 = (test1.K_ST_highF_MP[good,*] + test1.K_EN_highF_MP[good,*])/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+wce1     = (test1.WCE_SE[good,0] + test1.WCE_SE[good,1])/2d0
+wpe1     = (test1.WPE_SE[good,0] + test1.WPE_SE[good,1])/2d0
+wlh1     = (test1.WLH_SE[good,0] + test1.WLH_SE[good,1])/2d0
+kvec1    = test1.KVEC[good,*]
+gnorm81  = [-0.655,0.040,-0.754]   ; => Using RH08 from JCK's site
+gnorm91  = [-0.822,0.138,-0.553]   ; => Using RH09 from JCK's site
+thkn81   = ACOS(my_dot_prod(kvec1,gnorm81,/NOM))*18d1/!DPI
+thkn91   = ACOS(my_dot_prod(kvec1,gnorm91,/NOM))*18d1/!DPI
+; => Calculate rest frame frequencies from wave number estimates
+fac1l    = wce1*ABS(COS(thkbl1*!DPI/18d1))
+fac1h    = wce1*ABS(COS(thkbh1*!DPI/18d1))
+fac1lm   = (wpe1/(ckm*avg_lfk1[*,0]))^2
+fac1lp   = (wpe1/(ckm*avg_lfk1[*,1]))^2
+fac1hm   = (wpe1/(ckm*avg_hfk1[*,0]))^2
+fac1hp   = (wpe1/(ckm*avg_hfk1[*,1]))^2
+fr_lfkm1 = fac1l/(1d0 + fac1lm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from low  freq. end of bandpass]
+fr_lfkp1 = fac1l/(1d0 + fac1lp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from low  freq. end of bandpass]
+fr_hfkm1 = fac1h/(1d0 + fac1hm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from high freq. end of bandpass]
+fr_hfkp1 = fac1h/(1d0 + fac1hp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from high freq. end of bandpass]
+goodlhwm = WHERE(fr_lfkm1 LE wlh1 AND fr_hfkm1 LE wlh1,gdlwm)
+goodwhim = WHERE(fr_lfkm1 GT wlh1 AND fr_hfkm1 GT wlh1,gdwhm)
+goodlhwp = WHERE(fr_lfkp1 LE wlh1 AND fr_hfkp1 LE wlh1,gdlwp)
+goodwhip = WHERE(fr_lfkp1 GT wlh1 AND fr_hfkp1 GT wlh1,gdwhp)
+PRINT,'; ',gdlwm,gdwhm,gdlwp,gdwhp,'   For '+tdate[0]
+;           23           0          10          21   For 1998-08-26
+
+WSET,0
+xdat     = thkn81 < (18d1 - thkn81)
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8a+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+WSET,1
+xdat     = thkn91 < (18d1 - thkn91)
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9a+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+
+WSET,0
+gels     = [goodlhwm,goodlhwp]
+gels     = gels[UNIQ(gels,SORT(gels))]
+xdat     = thkn81[gels] < (18d1 - thkn81[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8l+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+popen,'theta_kn_RH08_'+tdate[0]+'_1st-1_events_frest-LE-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8l+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+WSET,1
+xdat     = thkn91[gels] < (18d1 - thkn91[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9l+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+popen,'theta_kn_RH09_'+tdate[0]+'_1st-1_events_frest-LE-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9l+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+pclose
+
+WSET,0
+gels     = [goodwhim,goodwhip]
+gels     = gels[UNIQ(gels,SORT(gels))]
+xdat     = thkn81[gels] < (18d1 - thkn81[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+popen,'theta_kn_RH08_'+tdate[0]+'_1st-1_events_frest-GT-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+WSET,1
+xdat     = thkn91[gels] < (18d1 - thkn91[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9w+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+popen,'theta_kn_RH09_'+tdate[0]+'_1st-1_events_frest-GT-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+
+
+date     = '092498'
+tdate    = '1998-09-24'
+tramp    = '1998-09-24/23:20:37.374'
+vshn     = 772.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test2    = tdss_lhw_stats_read(DATE=date)
+evn2     = test2.EVENT_N
+good2    = array_where(evn2,evn2[0],/N_UNIQ)
+good     = good2[*,0]
+scet2    = test2.SCET_SE[good,0]
+freql2   = test2.FREQ_LOW_HIGH[good,0]
+freqh2   = test2.FREQ_LOW_HIGH[good,1]
+thkbl2   = test2.THETA_KB[good,0]
+thkbh2   = test2.THETA_KB[good,1]
+thkvl2   = test2.THETA_KV[good,0]
+thkvh2   = test2.THETA_KV[good,1]
+avg_lfk2 = (test2.K_ST_LOWF_MP[good,*] + test2.K_EN_LOWF_MP[good,*])/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk2 = (test2.K_ST_highF_MP[good,*] + test2.K_EN_highF_MP[good,*])/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+wce2     = (test2.WCE_SE[good,0] + test2.WCE_SE[good,1])/2d0
+wpe2     = (test2.WPE_SE[good,0] + test2.WPE_SE[good,1])/2d0
+wlh2     = (test2.WLH_SE[good,0] + test2.WLH_SE[good,1])/2d0
+kvec2    = test2.KVEC[good,*]
+gnorm82  = [-0.914,-0.220,-0.341]   ; => Using RH08 from JCK's site
+gnorm92  = [-0.939,-0.175,-0.296]   ; => Using RH09 from JCK's site
+thkn82   = ACOS(my_dot_prod(kvec2,gnorm82,/NOM))*18d1/!DPI
+thkn92   = ACOS(my_dot_prod(kvec2,gnorm92,/NOM))*18d1/!DPI
+; => Calculate rest frame frequencies from wave number estimates
+fac2l    = wce2*ABS(COS(thkbl2*!DPI/18d1))
+fac2h    = wce2*ABS(COS(thkbh2*!DPI/18d1))
+fac1lm   = (wpe2/(ckm*avg_lfk2[*,0]))^2
+fac1lp   = (wpe2/(ckm*avg_lfk2[*,1]))^2
+fac1hm   = (wpe2/(ckm*avg_hfk2[*,0]))^2
+fac1hp   = (wpe2/(ckm*avg_hfk2[*,1]))^2
+fr_lfkm2 = fac2l/(1d0 + fac1lm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from low  freq. end of bandpass]
+fr_lfkp2 = fac2l/(1d0 + fac1lp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from low  freq. end of bandpass]
+fr_hfkm2 = fac2h/(1d0 + fac1hm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from high freq. end of bandpass]
+fr_hfkp2 = fac2h/(1d0 + fac1hp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from high freq. end of bandpass]
+goodlhwm = WHERE(fr_lfkm2 LE wlh2 AND fr_hfkm2 LE wlh2,gdlwm)
+goodwhim = WHERE(fr_lfkm2 GT wlh2 AND fr_hfkm2 GT wlh2,gdwhm)
+goodlhwp = WHERE(fr_lfkp2 LE wlh2 AND fr_hfkp2 LE wlh2,gdlwp)
+goodwhip = WHERE(fr_lfkp2 GT wlh2 AND fr_hfkp2 GT wlh2,gdwhp)
+PRINT,'; ',gdlwm,gdwhm,gdlwp,gdwhp,'   For '+tdate[0]
+;            7           0           0           3   For 1998-09-24
+
+WSET,0
+xdat     = thkn82 < (18d1 - thkn82)
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8a+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+WSET,1
+xdat     = thkn92 < (18d1 - thkn92)
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9a+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+
+WSET,0
+gels     = [goodlhwm,goodlhwp]
+gels     = gels[UNIQ(gels,SORT(gels))]
+xdat     = thkn82[gels] < (18d1 - thkn82[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8l+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+popen,'theta_kn_RH08_'+tdate[0]+'_1st-1_events_frest-LE-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8l+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+WSET,1
+xdat     = thkn92[gels] < (18d1 - thkn92[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9l+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+popen,'theta_kn_RH09_'+tdate[0]+'_1st-1_events_frest-LE-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9l+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+pclose
+
+WSET,0
+gels     = [goodwhim,goodwhip]
+gels     = gels[UNIQ(gels,SORT(gels))]
+xdat     = thkn82[gels] < (18d1 - thkn82[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+popen,'theta_kn_RH08_'+tdate[0]+'_1st-1_events_frest-GT-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+WSET,1
+xdat     = thkn92[gels] < (18d1 - thkn92[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9w+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+popen,'theta_kn_RH09_'+tdate[0]+'_1st-1_events_frest-GT-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+
+
+date     = '021100'
+tdate    = '2000-02-11'
+tramp    = '2000-02-11/23:33:55.319'
+vshn     = 641.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test3    = tdss_lhw_stats_read(DATE=date)
+evn3     = test3.EVENT_N
+unq      = UNIQ(evn3,SORT(evn3))
+un_evn3  = evn3[unq]
+good3    = array_where(evn3,un_evn3[0:1],/N_UNIQ)
+good     = good3[*,0]
+scet3    = test3.SCET_SE[good,0]
+freql3   = test3.FREQ_LOW_HIGH[good,0]
+freqh3   = test3.FREQ_LOW_HIGH[good,1]
+thkbl3   = test3.THETA_KB[good,0]
+thkbh3   = test3.THETA_KB[good,1]
+thkvl3   = test3.THETA_KV[good,0]
+thkvh3   = test3.THETA_KV[good,1]
+avg_lfk3 = (test3.K_ST_LOWF_MP[good,*] + test3.K_EN_LOWF_MP[good,*])/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk3 = (test3.K_ST_highF_MP[good,*] + test3.K_EN_highF_MP[good,*])/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+wce3     = (test3.WCE_SE[good,0] + test3.WCE_SE[good,1])/2d0
+wpe3     = (test3.WPE_SE[good,0] + test3.WPE_SE[good,1])/2d0
+wlh3     = (test3.WLH_SE[good,0] + test3.WLH_SE[good,1])/2d0
+kvec3    = test3.KVEC[good,*]
+gnorm83  = [-0.865,-0.452,0.218]   ; => Using RH08 from JCK's site
+gnorm93  = [-0.930,-0.367,-0.028]   ; => Using RH09 from JCK's site
+thkn83   = ACOS(my_dot_prod(kvec3,gnorm83,/NOM))*18d1/!DPI
+thkn93   = ACOS(my_dot_prod(kvec3,gnorm93,/NOM))*18d1/!DPI
+; => Calculate rest frame frequencies from wave number estimates
+fac3l    = wce3*ABS(COS(thkbl3*!DPI/18d1))
+fac3h    = wce3*ABS(COS(thkbh3*!DPI/18d1))
+fac1lm   = (wpe3/(ckm*avg_lfk3[*,0]))^2
+fac1lp   = (wpe3/(ckm*avg_lfk3[*,1]))^2
+fac1hm   = (wpe3/(ckm*avg_hfk3[*,0]))^2
+fac1hp   = (wpe3/(ckm*avg_hfk3[*,1]))^2
+fr_lfkm3 = fac3l/(1d0 + fac1lm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from low  freq. end of bandpass]
+fr_lfkp3 = fac3l/(1d0 + fac1lp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from low  freq. end of bandpass]
+fr_hfkm3 = fac3h/(1d0 + fac1hm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from high freq. end of bandpass]
+fr_hfkp3 = fac3h/(1d0 + fac1hp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from high freq. end of bandpass]
+goodlhwm = WHERE(fr_lfkm3 LE wlh3 AND fr_hfkm3 LE wlh3,gdlwm)
+goodwhim = WHERE(fr_lfkm3 GT wlh3 AND fr_hfkm3 GT wlh3,gdwhm)
+goodlhwp = WHERE(fr_lfkp3 LE wlh3 AND fr_hfkp3 LE wlh3,gdlwp)
+goodwhip = WHERE(fr_lfkp3 GT wlh3 AND fr_hfkp3 GT wlh3,gdwhp)
+PRINT,'; ',gdlwm,gdwhm,gdlwp,gdwhp,'   For '+tdate[0]
+;           12           2           1          26   For 2000-02-11
+
+WSET,0
+xdat     = thkn83 < (18d1 - thkn83)
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8a+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+WSET,1
+xdat     = thkn93 < (18d1 - thkn93)
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9a+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+
+WSET,0
+gels     = [goodlhwm,goodlhwp]
+gels     = gels[UNIQ(gels,SORT(gels))]
+xdat     = thkn83[gels] < (18d1 - thkn83[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8l+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+popen,'theta_kn_RH08_'+tdate[0]+'_1st-2_events_frest-LE-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8l+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+WSET,1
+xdat     = thkn93[gels] < (18d1 - thkn93[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9l+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+popen,'theta_kn_RH09_'+tdate[0]+'_1st-2_events_frest-LE-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9l+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+pclose
+
+WSET,0
+gels     = [goodwhim,goodwhip]
+gels     = gels[UNIQ(gels,SORT(gels))]
+xdat     = thkn83[gels] < (18d1 - thkn83[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+popen,'theta_kn_RH08_'+tdate[0]+'_1st-2_events_frest-GT-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+WSET,1
+xdat     = thkn93[gels] < (18d1 - thkn93[gels])
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl9w+' For '+tdate[0],TTLE=ttle9,DRANGE=xr
+popen,'theta_kn_RH09_'+tdate[0]+'_1st-2_events_frest-GT-flh',/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl8w+' For '+tdate[0],TTLE=ttle8,DRANGE=xr
+pclose
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+c        = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+kB       = 1.380658d-23      ; -Boltzmann Constant (J/K)
+epo      = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo      = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me       = 9.1093897d-31     ; -Electron mass (kg)
+mp       = 1.6726231d-27     ; -Proton mass (kg)
+qq       = 1.60217733d-19    ; => Fundamental charge (C)
+
+date     = '121097'
+tramp    = '1997-12-10/04:33:14.664'
+vshn     = 391.2                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test0    = tdss_lhw_stats_read(DATE=date)
+evn0     = test0.EVENT_N
+scet0    = test0.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t0   = time_double(scet0) - time_double(tramp)
+dist_0   = del_t0*vshn[0]
+avg_lfk0 = (test0.K_ST_LOWF_MP + test0.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk0 = (test0.K_ST_highF_MP + test0.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql0   = test0.FREQ_LOW_HIGH[*,0]
+freqh0   = test0.FREQ_LOW_HIGH[*,1]
+pkamp0   = test0.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp0 = test0.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+thkbl0   = test0.THETA_KB[*,0]
+thkbh0   = test0.THETA_KB[*,1]
+thkvl0   = test0.THETA_KV[*,0]
+thkvh0   = test0.THETA_KV[*,1]
+wce0     = (test0.WCE_SE[*,0] + test0.WCE_SE[*,1])/2d0
+wpe0     = (test0.WPE_SE[*,0] + test0.WPE_SE[*,1])/2d0
+wlh0     = (test0.WLH_SE[*,0] + test0.WLH_SE[*,1])/2d0
+vte0     = (test0.VTE_SE[*,0] + test0.VTE_SE[*,1])/2d0
+rhoe0    = (test0.RHO_VTCE_SE[*,0] + test0.RHO_VTCE_SE[*,1])/2d0
+vsw0     = (test0.VSW_ST + test0.VSW_EN)/2d0
+vdr0     = (test0.VDRIFT_ST + test0.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf0    = (test0.MAGF_ST + test0.MAGF_EN)/2d0
+dens0    = (test0.NE_SE[*,0] + test0.NE_SE[*,1])/2d0
+bmag0    = SQRT(TOTAL(magf0^2,2L,/NAN))
+betapa0  = (test0.BETA_PARCE_SE[*,0] + test0.BETA_PARCE_SE[*,1])/2d0
+teavg0   = (test0.TE_AVG_SE[*,0] + test0.TE_AVG_SE[*,1])/2d0
+tiavg0   = (test0.TI_AVG_SE[*,0] + test0.TI_AVG_SE[*,1])/2d0
+tecavg0  = (test0.TEC_SE[*,0] + test0.TEC_SE[*,1])/2d0
+tehavg0  = (test0.TEH_SE[*,0] + test0.TEH_SE[*,1])/2d0
+tparc0   = (test0.TPAR_EC_SE[*,0] + test0.TPAR_EC_SE[*,1])/2d0
+tperc0   = (test0.TPER_EC_SE[*,0] + test0.TPER_EC_SE[*,1])/2d0
+tparh0   = (test0.TPAR_EH_SE[*,0] + test0.TPAR_EH_SE[*,1])/2d0
+tperh0   = (test0.TPER_EH_SE[*,0] + test0.TPER_EH_SE[*,1])/2d0
+qmag0    = (test0.QMAG_SE[*,0] + test0.QMAG_SE[*,1])/2d0
+kvec0    = test0.KVEC
+gnorm80  = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+gnorm90  = [-0.971, 0.094,-0.218]   ; => Using RH08 from JCK's site
+thkn80   = ACOS(my_dot_prod(kvec0,gnorm80,/NOM))*18d1/!DPI
+thkn90   = ACOS(my_dot_prod(kvec0,gnorm90,/NOM))*18d1/!DPI
+
+date     = '082698'
+tramp    = '1998-08-26/06:40:24.972'
+vshn     = 687.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test1    = tdss_lhw_stats_read(DATE=date)
+evn1     = test1.EVENT_N
+scet1    = test1.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t1   = time_double(scet1) - time_double(tramp)
+dist_1   = del_t1*vshn[0]
+avg_lfk1 = (test1.K_ST_LOWF_MP + test1.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk1 = (test1.K_ST_highF_MP + test1.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql1   = test1.FREQ_LOW_HIGH[*,0]
+freqh1   = test1.FREQ_LOW_HIGH[*,1]
+thkbl1   = test1.THETA_KB[*,0]
+thkbh1   = test1.THETA_KB[*,1]
+thkvl1   = test1.THETA_KV[*,0]
+thkvh1   = test1.THETA_KV[*,1]
+pkamp1   = test1.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp1 = test1.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce1     = (test1.WCE_SE[*,0] + test1.WCE_SE[*,1])/2d0
+wpe1     = (test1.WPE_SE[*,0] + test1.WPE_SE[*,1])/2d0
+wlh1     = (test1.WLH_SE[*,0] + test1.WLH_SE[*,1])/2d0
+vte1     = (test1.VTE_SE[*,0] + test1.VTE_SE[*,1])/2d0
+rhoe1    = (test1.RHO_VTCE_SE[*,0] + test1.RHO_VTCE_SE[*,1])/2d0
+vsw1     = (test1.VSW_ST + test1.VSW_EN)/2d0
+vdr1     = (test1.VDRIFT_ST + test1.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf1    = (test1.MAGF_ST + test1.MAGF_EN)/2d0
+dens1    = (test1.NE_SE[*,0] + test1.NE_SE[*,1])/2d0
+bmag1    = SQRT(TOTAL(magf1^2,2L,/NAN))
+betapa1  = (test1.BETA_PARCE_SE[*,0] + test1.BETA_PARCE_SE[*,1])/2d0
+teavg1   = (test1.TE_AVG_SE[*,0] + test1.TE_AVG_SE[*,1])/2d0
+tiavg1   = (test1.TI_AVG_SE[*,0] + test1.TI_AVG_SE[*,1])/2d0
+tecavg1  = (test1.TEC_SE[*,0] + test1.TEC_SE[*,1])/2d0
+tehavg1  = (test1.TEH_SE[*,0] + test1.TEH_SE[*,1])/2d0
+tparc1   = (test1.TPAR_EC_SE[*,0] + test1.TPAR_EC_SE[*,1])/2d0
+tperc1   = (test1.TPER_EC_SE[*,0] + test1.TPER_EC_SE[*,1])/2d0
+tparh1   = (test1.TPAR_EH_SE[*,0] + test1.TPAR_EH_SE[*,1])/2d0
+tperh1   = (test1.TPER_EH_SE[*,0] + test1.TPER_EH_SE[*,1])/2d0
+qmag1    = (test1.QMAG_SE[*,0] + test1.QMAG_SE[*,1])/2d0
+kvec1    = test1.KVEC
+gnorm81  = [-0.655,0.040,-0.754]   ; => Using RH08 from JCK's site
+gnorm91  = [-0.822,0.138,-0.553]   ; => Using RH09 from JCK's site
+thkn81   = ACOS(my_dot_prod(kvec1,gnorm81,/NOM))*18d1/!DPI
+thkn91   = ACOS(my_dot_prod(kvec1,gnorm91,/NOM))*18d1/!DPI
+
+date     = '092498'
+tramp    = '1998-09-24/23:20:37.374'
+vshn     = 772.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test2    = tdss_lhw_stats_read(DATE=date)
+evn2     = test2.EVENT_N
+scet2    = test2.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t2   = time_double(scet2) - time_double(tramp)
+dist_2   = del_t2*vshn[0]
+avg_lfk2 = (test2.K_ST_LOWF_MP + test2.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk2 = (test2.K_ST_highF_MP + test2.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql2   = test2.FREQ_LOW_HIGH[*,0]
+freqh2   = test2.FREQ_LOW_HIGH[*,1]
+thkbl2   = test2.THETA_KB[*,0]
+thkbh2   = test2.THETA_KB[*,1]
+thkvl2   = test2.THETA_KV[*,0]
+thkvh2   = test2.THETA_KV[*,1]
+pkamp2   = test2.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp2 = test2.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce2     = (test2.WCE_SE[*,0] + test2.WCE_SE[*,1])/2d0
+wpe2     = (test2.WPE_SE[*,0] + test2.WPE_SE[*,1])/2d0
+wlh2     = (test2.WLH_SE[*,0] + test2.WLH_SE[*,1])/2d0
+vte2     = (test2.VTE_SE[*,0] + test2.VTE_SE[*,1])/2d0
+rhoe2    = (test2.RHO_VTCE_SE[*,0] + test2.RHO_VTCE_SE[*,1])/2d0
+vsw2     = (test2.VSW_ST + test2.VSW_EN)/2d0
+vdr2     = (test2.VDRIFT_ST + test2.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf2    = (test2.MAGF_ST + test2.MAGF_EN)/2d0
+dens2    = (test2.NE_SE[*,0] + test2.NE_SE[*,1])/2d0
+bmag2    = SQRT(TOTAL(magf2^2,2L,/NAN))
+betapa2  = (test2.BETA_PARCE_SE[*,0] + test2.BETA_PARCE_SE[*,1])/2d0
+teavg2   = (test2.TE_AVG_SE[*,0] + test2.TE_AVG_SE[*,1])/2d0
+tiavg2   = (test2.TI_AVG_SE[*,0] + test2.TI_AVG_SE[*,1])/2d0
+tecavg2  = (test2.TEC_SE[*,0] + test2.TEC_SE[*,1])/2d0
+tehavg2  = (test2.TEH_SE[*,0] + test2.TEH_SE[*,1])/2d0
+tparc2   = (test2.TPAR_EC_SE[*,0] + test2.TPAR_EC_SE[*,1])/2d0
+tperc2   = (test2.TPER_EC_SE[*,0] + test2.TPER_EC_SE[*,1])/2d0
+tparh2   = (test2.TPAR_EH_SE[*,0] + test2.TPAR_EH_SE[*,1])/2d0
+tperh2   = (test2.TPER_EH_SE[*,0] + test2.TPER_EH_SE[*,1])/2d0
+qmag2    = (test2.QMAG_SE[*,0] + test2.QMAG_SE[*,1])/2d0
+kvec2    = test2.KVEC
+gnorm82  = [-0.914,-0.220,-0.341]   ; => Using RH08 from JCK's site
+gnorm92  = [-0.939,-0.175,-0.296]   ; => Using RH09 from JCK's site
+thkn82   = ACOS(my_dot_prod(kvec2,gnorm82,/NOM))*18d1/!DPI
+thkn92   = ACOS(my_dot_prod(kvec2,gnorm92,/NOM))*18d1/!DPI
+
+date     = '021100'
+tramp    = '2000-02-11/23:33:55.319'
+vshn     = 641.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test3    = tdss_lhw_stats_read(DATE=date)
+evn3     = test3.EVENT_N
+scet3    = test3.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t3   = time_double(scet3) - time_double(tramp)
+dist_3   = del_t3*vshn[0]
+avg_lfk3 = (test3.K_ST_LOWF_MP + test3.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk3 = (test3.K_ST_highF_MP + test3.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql3   = test3.FREQ_LOW_HIGH[*,0]
+freqh3   = test3.FREQ_LOW_HIGH[*,1]
+thkbl3   = test3.THETA_KB[*,0]
+thkbh3   = test3.THETA_KB[*,1]
+thkvl3   = test3.THETA_KV[*,0]
+thkvh3   = test3.THETA_KV[*,1]
+pkamp3   = test3.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp3 = test3.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce3     = (test3.WCE_SE[*,0] + test3.WCE_SE[*,1])/2d0
+wpe3     = (test3.WPE_SE[*,0] + test3.WPE_SE[*,1])/2d0
+wlh3     = (test3.WLH_SE[*,0] + test3.WLH_SE[*,1])/2d0
+vte3     = (test3.VTE_SE[*,0] + test3.VTE_SE[*,1])/2d0
+rhoe3    = (test3.RHO_VTCE_SE[*,0] + test3.RHO_VTCE_SE[*,1])/2d0
+vsw3     = (test3.VSW_ST + test3.VSW_EN)/2d0
+vdr3     = (test3.VDRIFT_ST + test3.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf3    = (test3.MAGF_ST + test3.MAGF_EN)/2d0
+dens3    = (test3.NE_SE[*,0] + test3.NE_SE[*,1])/2d0
+bmag3    = SQRT(TOTAL(magf3^2,2L,/NAN))
+betapa3  = (test3.BETA_PARCE_SE[*,0] + test3.BETA_PARCE_SE[*,1])/3d0
+teavg3   = (test3.TE_AVG_SE[*,0] + test3.TE_AVG_SE[*,1])/3d0
+tiavg3   = (test3.TI_AVG_SE[*,0] + test3.TI_AVG_SE[*,1])/3d0
+tecavg3  = (test3.TEC_SE[*,0] + test3.TEC_SE[*,1])/3d0
+tehavg3  = (test3.TEH_SE[*,0] + test3.TEH_SE[*,1])/3d0
+tparc3   = (test3.TPAR_EC_SE[*,0] + test3.TPAR_EC_SE[*,1])/3d0
+tperc3   = (test3.TPER_EC_SE[*,0] + test3.TPER_EC_SE[*,1])/3d0
+tparh3   = (test3.TPAR_EH_SE[*,0] + test3.TPAR_EH_SE[*,1])/3d0
+tperh3   = (test3.TPER_EH_SE[*,0] + test3.TPER_EH_SE[*,1])/3d0
+qmag3    = (test3.QMAG_SE[*,0] + test3.QMAG_SE[*,1])/3d0
+kvec3    = test3.KVEC
+gnorm83  = [-0.865,-0.452,0.218]   ; => Using RH08 from JCK's site
+gnorm93  = [-0.930,-0.367,-0.028]   ; => Using RH09 from JCK's site
+thkn83   = ACOS(my_dot_prod(kvec3,gnorm83,/NOM))*18d1/!DPI
+thkn93   = ACOS(my_dot_prod(kvec3,gnorm93,/NOM))*18d1/!DPI
+
+;-----------------------------------------------------------------------------------------
+; => Combine terms
+;-----------------------------------------------------------------------------------------
+evns     = [evn0,evn1,evn2,evn3]
+scets    = [scet0,scet1,scet2,scet3]
+scete    = [test0.SCET_SE[*,1],test1.SCET_SE[*,1],test2.SCET_SE[*,1],test3.SCET_SE[*,1]]
+kvecs    = [kvec0,kvec1,kvec2,kvec3]
+kvecx    = [test0.KVEC[*,0],test1.KVEC[*,0],test2.KVEC[*,0],test3.KVEC[*,0]]
+kvecy    = [test0.KVEC[*,1],test1.KVEC[*,1],test2.KVEC[*,1],test3.KVEC[*,1]]
+kvecz    = [test0.KVEC[*,2],test1.KVEC[*,2],test2.KVEC[*,2],test3.KVEC[*,2]]
+pkamps   = [pkamp0,pkamp1,pkamp2,pkamp3]/2d0      ; => change from Peak-to-Peak to Peak
+filtamp  = [ftpkamp0,ftpkamp1,ftpkamp2,ftpkamp3]  ; => Filtered amplitudes
+dist_r   = [dist_0,dist_1,dist_2,dist_3]          ; => normal distance from shock ramp (km)
+
+thkbl    = [thkbl0,thkbl1,thkbl2,thkbl3]          ; => Theta_kB (deg) [low  freq. end of bandpass]
+thkvl    = [thkvl0,thkvl1,thkvl2,thkvl3]          ; => Theta_kV (deg) [low  freq. end of bandpass]
+thkbh    = [thkbh0,thkbh1,thkbh2,thkbh3]          ; => Theta_kB (deg) [high freq. end of bandpass]
+thkvh    = [thkvh0,thkvh1,thkvh2,thkvh3]          ; => Theta_kV (deg) [high freq. end of bandpass]
+vsw      = [vsw0,vsw1,vsw2,vsw3]                  ; => PL solar wind velocity (km/s) [GSE]
+vmag     = SQRT(TOTAL(vsw^2,2L,/NAN))
+vdrft    = [vdr0,vdr1,vdr2,vdr3]                  ; => (Vsw - Ve) (km/s) [SC-Frame]
+vdrmg    = SQRT(TOTAL(vdrft^2,2L,/NAN))
+freql    = [freql0,freql1,freql2,freql3]          ; => (Hz) low  freq. end of bandpass
+freqh    = [freqh0,freqh1,freqh2,freqh3]          ; => (Hz) high freq. end of bandpass
+wce      = [wce0,wce1,wce2,wce3]                  ; => Electron cyclotron frequency (rad/s)
+wcp      = wce*me/mp                              ; => Proton   cyclotron frequency (rad/s)
+wpe      = [wpe0,wpe1,wpe2,wpe3]                  ; => Electron plasma    frequency (rad/s)
+wlh      = [wlh0,wlh1,wlh2,wlh3]                  ; => ES lower hybrid resonance frequency (rad/s)
+vte      = [vte0,vte1,vte2,vte3]                  ; => Electron thermal speed (km/s)
+rhoe     = [rhoe0,rhoe1,rhoe2,rhoe3]              ; => Electron thermal gyroradius (km)
+rhop     = rhoe*SQRT(mp/me)                       ; => Proton thermal gyroradius (km)
+avg_lfk  = [avg_lfk0,avg_lfk1,avg_lfk2,avg_lfk3]  ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk  = [avg_hfk0,avg_hfk1,avg_hfk2,avg_hfk3]  ; => [Avg. |k| from high freq. end of bandpass]
+dens     = [dens0,dens1,dens2,dens3]              ; => Electron density [cm^(-3)] from TNR
+magf     = [magf0,magf1,magf2,magf3]
+bmag     = [bmag0,bmag1,bmag2,bmag3]              ; => Magnitude of the B-field (nT)
+
+beta_pac = [betapa0,betapa1,betapa2,betapa3]      ; => core para. electron beta
+teavg    = [teavg0,teavg1,teavg2,teavg3]          ; => EL electron avg. temp (eV)
+tiavg    = [tiavg0,tiavg1,tiavg2,tiavg3]          ; => PL ion avg. temp (eV)
+tecavg   = [tecavg0,tecavg1,tecavg2,tecavg3]      ; => core avg.  temp (eV)
+tehavg   = [tehavg0,tehavg1,tehavg2,tehavg3]      ; => halo avg.  temp (eV)
+tparc    = [tparc0,tparc1,tparc2,tparc3]          ; => core para. temp (eV)
+tperc    = [tperc0,tperc1,tperc2,tperc3]          ; => core perp. temp (eV)
+tparh    = [tparh0,tparh1,tparh2,tparh3]          ; => halo para. temp (eV)
+tperh    = [tperh0,tperh1,tperh2,tperh3]          ; => halo perp. temp (eV)
+qmag     = [qmag0,qmag1,qmag2,qmag3]              ; => heat flux magnitude [eV km/s cm^(-3)]
+
+; => Calc. temperature ratios
+te_tiav  = teavg/tiavg
+tanis_c  = tperc/tparc
+tanis_h  = tperh/tparh
+thc_par  = tparh/tparc
+thc_per  = tperh/tperc
+tehc_avg = tehavg/tecavg
+
+; => Estimate current density [nA m^(-2)]
+;     1d3 => converts speed to   [m/s]
+;     1d6 => converts density to [m^(-3)]
+;     1d9 => converts units to [nA m^(-2)] from [A m^(-2)]
+jdrft    = qq*(vdrmg*1d3)*(dens*1d6)*1d9
+
+; => Normalize the drift speed by the ion thermal speed
+vdrvti   = vdrmg/(vte*SQRT(me/mp)*1d-3)
+
+; => Normalize the wave number by the electron inertial length
+kcwpelfm = avg_lfk[*,0]*c*1d-3/wpe
+kcwpelfp = avg_lfk[*,1]*c*1d-3/wpe
+kcwpehfm = avg_hfk[*,0]*c*1d-3/wpe
+kcwpehfp = avg_hfk[*,1]*c*1d-3/wpe
+
+; => Normalize the wave number by the electron thermal gyroradius
+krhoelfm = avg_lfk[*,0]*rhoe
+krhoelfp = avg_lfk[*,1]*rhoe
+krhoehfm = avg_hfk[*,0]*rhoe
+krhoehfp = avg_hfk[*,1]*rhoe
+;---------------------------------------------------------------------
+; => Wave number estimates from:
+;
+; => Calculations of Eq. 4 from Coroniti et al., [1982]
+;  Coroniti, F. V., C. F. Kennel, F. L. Scarf, and E. J. Smith (1982),
+;    Whistler mode turbulence in the disturbed solar wind, J. Geophys.
+;    Res., 87, 6029–6044, doi:10.1029/JA087iA08p06029.
+;---------------------------------------------------------------------
+; => Separate by plus and minus sign
+avg_lfkm = avg_lfk[*,0]  ; => [Avg. |k| (- sign) from low  freq. end of bandpass]
+avg_lfkp = avg_lfk[*,1]  ; => [Avg. |k| (+ sign) from low  freq. end of bandpass]
+avg_hfkm = avg_hfk[*,0]  ; => [Avg. |k| (- sign) from high freq. end of bandpass]
+avg_hfkp = avg_hfk[*,1]  ; => [Avg. |k| (+ sign) from high freq. end of bandpass]
+; => Calculate rest frame frequencies from wave number estimates
+ckm        = (c*1d-3)
+fac0l      = wce*COS((thkbl MOD 9d1)*!DPI/18d1)
+fac0h      = wce*COS((thkbh MOD 9d1)*!DPI/18d1)
+fac1lm     = (wpe/(ckm*avg_lfkm))^2
+fac1lp     = (wpe/(ckm*avg_lfkp))^2
+fac1hm     = (wpe/(ckm*avg_hfkm))^2
+fac1hp     = (wpe/(ckm*avg_hfkp))^2
+frest_lfkm = fac0l/(1d0 + fac1lm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from low  freq. end of bandpass]
+frest_lfkp = fac0l/(1d0 + fac1lp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from low  freq. end of bandpass]
+frest_hfkm = fac0h/(1d0 + fac1hm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from high freq. end of bandpass]
+frest_hfkp = fac0h/(1d0 + fac1hp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from high freq. end of bandpass]
+
+; => Calculate index of refraction
+testlm   = cold_plasma_params_2d(bmag,dens,FREQF=frest_lfkm/(2d0*!DPI),ANGLE=thkb,/ONED)
+testlp   = cold_plasma_params_2d(bmag,dens,FREQF=frest_lfkp/(2d0*!DPI),ANGLE=thkb,/ONED)
+testhm   = cold_plasma_params_2d(bmag,dens,FREQF=frest_hfkm/(2d0*!DPI),ANGLE=thkb,/ONED)
+testhp   = cold_plasma_params_2d(bmag,dens,FREQF=frest_hfkp/(2d0*!DPI),ANGLE=thkb,/ONED)
+indexlm  = testlm.INDEX_REF_1
+alfvinlm = testlm.INDEX_ALFVEN
+bad      = WHERE(indexlm LT 0.,bd)
+IF (bd GT 0) THEN indexlm[bad] = d
+indexlp  = testlp.INDEX_REF_1
+alfvinlp = testlp.INDEX_ALFVEN
+bad      = WHERE(indexlp LT 0.,bd)
+IF (bd GT 0) THEN indexlp[bad] = d
+indexhm  = testhm.INDEX_REF_1
+alfvinhm = testhm.INDEX_ALFVEN
+bad      = WHERE(indexhm LT 0.,bd)
+IF (bd GT 0) THEN indexhm[bad] = d
+indexhp  = testhp.INDEX_REF_1
+alfvinhp = testhp.INDEX_ALFVEN
+bad      = WHERE(indexhp LT 0.,bd)
+IF (bd GT 0) THEN indexhp[bad] = d
+
+f_bnd    = SQRT(me/mp)
+i_bnd    = 1d0
+tempx    = frest_lfkm/wlh
+tempy    = indexlm/alfvinlm
+bad_lm   = WHERE(tempx LT f_bnd[0] AND tempy GT i_bnd[0],bdlm)
+tempx    = frest_lfkp/wlh
+tempy    = indexlp/alfvinlp
+bad_lp   = WHERE(tempx LT f_bnd[0] AND tempy GT i_bnd[0],bdlp)
+tempx    = frest_hfkm/wlh
+tempy    = indexhm/alfvinhm
+bad_hm   = WHERE(tempx LT f_bnd[0] AND tempy GT i_bnd[0],bdhm)
+tempx    = frest_hfkp/wlh
+tempy    = indexhp/alfvinhp
+bad_hp   = WHERE(tempx LT f_bnd[0] AND tempy GT i_bnd[0],bdhp)
+
+PRINT,'; ',bdlm,bdlp,bdhm,bdhp
+;          107           0           4           0
+
+
+bad_evns = [evns[bad_lm],evns[bad_hm]]
+bad_scet = [scets[bad_lm],scets[bad_hm]]
+bad_unix = time_double(bad_scet)
+bad_fscl = [freql[bad_lm],freql[bad_hm]]
+bad_fsch = [freqh[bad_lm],freqh[bad_hm]]
+bad_kvcx = [kvecx[bad_lm],kvecx[bad_hm]]
+bad_kvcy = [kvecy[bad_lm],kvecy[bad_hm]]
+bad_kvcz = [kvecz[bad_lm],kvecz[bad_hm]]
+bad_magf = [magf[bad_lm,*],magf[bad_hm,*]]
+sp       = SORT(bad_unix)
+gun      = N_ELEMENTS(sp)
+bad_unix = bad_unix[sp]
+bad_evns = bad_evns[sp]
+bad_scet = bad_scet[sp]
+bad_fscl = bad_fscl[sp]
+bad_fsch = bad_fsch[sp]
+bad_kvcx = bad_kvcx[sp]
+bad_kvcy = bad_kvcy[sp]
+bad_kvcz = bad_kvcz[sp]
+bad_magf = bad_magf[sp,*]
+
+
+FOR j=0L, gun - 1L DO BEGIN $
+  PRINT, ';   ',STRING(bad_evns[j],FORMAT='(I8.8)'),'   '+bad_scet[j],$
+                bad_fscl[j],bad_fsch[j],bad_kvcx[j],bad_kvcy[j],bad_kvcz[j]
+;----------------------------------------------------------------------------------------------------------
+;   03408599   1997-12-10/04:33:15.605      5.00000      20.0000    -0.919030    -0.117780    -0.376190
+;   03408599   1997-12-10/04:33:15.605      20.0000      100.000    -0.971670    -0.217840   -0.0916700
+;   03408599   1997-12-10/04:33:15.605      30.0000      100.000    -0.883480    0.0238100    -0.467870
+;   03408599   1997-12-10/04:33:15.605      30.0000      100.000    -0.770780    -0.276760    -0.573850
+;   03408599   1997-12-10/04:33:15.605      5.00000      20.0000    -0.939100   -0.0468000    -0.340430
+;   03408599   1997-12-10/04:33:15.605      2.50000      20.0000     0.974060     0.220720   -0.0498800
+;   03408599   1997-12-10/04:33:15.605      5.00000      20.0000    -0.971150    -0.235600   -0.0367800
+;----------------------------------------------------------------------------------------------------------
+;   00010488   1998-08-26/06:40:26.120      7.00000      30.0000     0.892820    0.0390800     0.448720
+;   00010488   1998-08-26/06:40:26.120      7.00000      30.0000    -0.928410    -0.366340    0.0620000
+;   00010488   1998-08-26/06:40:26.120      7.00000      30.0000     0.953860     0.215500     0.209070
+;   00010488   1998-08-26/06:40:26.120      10.0000      30.0000     0.989460   -0.0952000    -0.109150
+;   00010488   1998-08-26/06:40:26.120      7.00000      30.0000     0.885280    -0.110800     0.451670
+;   00010488   1998-08-26/06:40:26.120      7.00000      30.0000     0.903200   -0.0532600     0.425900
+;   00010488   1998-08-26/06:40:26.120      10.0000      30.0000    -0.987570     0.106560     0.115570
+;   00010488   1998-08-26/06:40:26.120      7.00000      30.0000     0.903200   -0.0532600     0.425900
+;   00010488   1998-08-26/06:40:26.120      40.0000      400.000    -0.945710    -0.324430    0.0193300
+;   00010488   1998-08-26/06:40:26.120      40.0000      400.000    -0.953200    -0.302140    0.0106200
+;   00010488   1998-08-26/06:40:26.120      40.0000      400.000    -0.943070    -0.330220    0.0397500
+;   00010488   1998-08-26/06:40:26.120      40.0000      400.000    -0.954880    -0.294400    0.0392400
+;   00010488   1998-08-26/06:40:26.120      60.0000      200.000    -0.970780   -0.0101200     0.239740
+;   00010618   1998-08-26/06:40:54.941      3.00000      30.0000    -0.386810     0.700880    -0.599290
+;   00010618   1998-08-26/06:40:54.941      3.00000      30.0000     0.520860    -0.689920     0.502700
+;   00010684   1998-08-26/06:41:10.001      3.00000      30.0000     0.345920    0.0895300     0.933980
+;   00010684   1998-08-26/06:41:10.001      3.00000      30.0000     0.883320     0.123940    -0.452090
+;   00010684   1998-08-26/06:41:10.001      3.00000      30.0000     0.472220    -0.290150     0.832360
+;   00010684   1998-08-26/06:41:10.001      3.00000      30.0000    -0.587020    -0.348160    -0.730890
+;   00010684   1998-08-26/06:41:10.001      3.00000      30.0000    -0.442330    -0.167700    -0.881030
+;   00010684   1998-08-26/06:41:10.001      3.00000      30.0000     0.489100     0.492460     0.719910
+;----------------------------------------------------------------------------------------------------------
+;   02011249   1998-09-24/23:20:38.842      5.00000      20.0000    -0.930030    0.0577100     0.362910
+;   02011249   1998-09-24/23:20:38.842      100.000      200.000    -0.937720   -0.0901000     0.335510
+;   02011249   1998-09-24/23:20:38.842      3.00000      20.0000     0.982450   -0.0648100    -0.174900
+;   02011723   1998-09-24/23:22:26.632      30.0000      150.000     0.761910    -0.635650    -0.124260
+;   02013165   1998-09-24/23:30:48.542      200.000      400.000     0.763870    -0.105240    -0.636740
+;   02013165   1998-09-24/23:30:48.542      200.000      400.000     0.749220    -0.132050    -0.649020
+;   02013165   1998-09-24/23:30:48.542      200.000      400.000     0.723130    0.0515900    -0.688780
+;   02013165   1998-09-24/23:30:48.542      200.000      400.000     0.734500   -0.0597800    -0.675970
+;   02013165   1998-09-24/23:30:48.542      3.00000      40.0000     0.783360     0.620280    0.0399300
+;   02014864   1998-09-24/23:43:18.951      3.00000      30.0000    -0.590980     0.262560     0.762760
+;   02015299   1998-09-24/23:45:52.184      30.0000      100.000    -0.506220    -0.801330     0.318750
+;   02015299   1998-09-24/23:45:52.184      30.0000      100.000    -0.913430    -0.288410    -0.287170
+;   02015299   1998-09-24/23:45:52.184      10.0000      100.000     0.616310     0.765020     0.186850
+;   02015299   1998-09-24/23:45:52.184      100.000      300.000    -0.954880   -0.0427700    -0.293900
+;   02015299   1998-09-24/23:45:52.184      100.000      300.000     0.953460     0.295490   -0.0599200
+;   02015299   1998-09-24/23:45:52.184      100.000      300.000    -0.899160     0.142060     0.413920
+;   02015304   1998-09-24/23:45:53.379      30.0000      100.000     0.635550     0.494660    -0.592780
+;   02015304   1998-09-24/23:45:53.379      3.00000      30.0000     0.841500     0.427240    -0.330670
+;   02015304   1998-09-24/23:45:53.379      3.00000      30.0000    -0.613950    -0.788480    0.0369800
+;   02015304   1998-09-24/23:45:53.379      3.00000      30.0000    -0.819150    -0.565810    0.0940400
+;   02015304   1998-09-24/23:45:53.379      10.0000      30.0000     0.835060     0.486110    -0.257630
+;   02015304   1998-09-24/23:45:53.379      10.0000      30.0000     0.833700     0.527470    -0.163460
+;   02015304   1998-09-24/23:45:53.379      10.0000      30.0000    -0.669410    -0.735800    -0.102430
+;   02015304   1998-09-24/23:45:53.379      10.0000      30.0000     0.966230     0.237690   -0.0995000
+;   02015304   1998-09-24/23:45:53.379      10.0000      30.0000     0.985630    -0.160330   -0.0531600
+;   02015304   1998-09-24/23:45:53.379      30.0000      100.000     0.947640     0.280120     0.153350
+;   02015304   1998-09-24/23:45:53.379      30.0000      100.000    -0.832950    -0.261010    -0.487930
+;   02015304   1998-09-24/23:45:53.379      30.0000      100.000     0.868840     0.461380     0.179590
+;   02015304   1998-09-24/23:45:53.379      30.0000      100.000     0.789050     0.614180   -0.0134700
+;   02015304   1998-09-24/23:45:53.379      30.0000      100.000     0.859320     0.308610     0.407830
+;   02015304   1998-09-24/23:45:53.379      10.0000      30.0000     0.966230     0.237690   -0.0995000
+;   02015635   1998-09-24/23:48:39.020      3.00000      30.0000    -0.998180    0.0209300   -0.0565300
+;   02015635   1998-09-24/23:48:39.020      3.00000      30.0000    -0.947530    0.0625700    -0.313500
+;   02015635   1998-09-24/23:48:39.020      3.00000      30.0000    -0.699540    -0.703330     0.126410
+;   02015635   1998-09-24/23:48:39.020      10.0000      40.0000     0.930180     0.160240    -0.330290
+;   02015635   1998-09-24/23:48:39.020      10.0000      40.0000     0.474530    -0.388430     0.789900
+;   02015650   1998-09-24/23:48:42.131      3.00000      30.0000    -0.874100    0.0328100    -0.484640
+;   02015691   1998-09-24/23:48:51.622      6.00000      30.0000    -0.943130     0.311900     0.114970
+;   02015691   1998-09-24/23:48:51.622      6.00000      30.0000     0.789470    0.0307900     0.613010
+;   02015691   1998-09-24/23:48:51.622      6.00000      30.0000    -0.916820     0.394460    0.0619500
+;   02015691   1998-09-24/23:48:51.622      6.00000      30.0000    -0.531490     0.423130    -0.733810
+;   02015691   1998-09-24/23:48:51.622      6.00000      30.0000    -0.858050     0.401950     0.319670
+;   02015691   1998-09-24/23:48:51.622      3.00000      30.0000     0.971040   -0.0754600    -0.226680
+;   02015691   1998-09-24/23:48:51.622      3.00000      30.0000     0.783230    -0.530480     0.324270
+;   02015691   1998-09-24/23:48:51.622      3.00000      30.0000     0.805390   -0.0921200     0.585540
+;   02015691   1998-09-24/23:48:51.622      3.00000      30.0000     0.783230    -0.530480     0.324270
+;   02015691   1998-09-24/23:48:51.622      3.00000      30.0000     0.878210    -0.354100     0.321500
+;   02015691   1998-09-24/23:48:51.622      6.00000      30.0000     0.975910    -0.102330     0.192670
+;   02015691   1998-09-24/23:48:51.622      6.00000      30.0000    -0.876080    -0.104770     0.470650
+;   02017428   1998-09-25/00:04:04.545      3.00000      30.0000    -0.977730   -0.0690200     0.198210
+;   02017428   1998-09-25/00:04:04.545      3.00000      30.0000     0.939800     0.283810     0.190320
+;   02017428   1998-09-25/00:04:04.545      7.00000      50.0000     0.952210    0.0525600     0.300900
+;   02017428   1998-09-25/00:04:04.545      7.00000      50.0000     0.852750     0.246330     0.460580
+;   02017428   1998-09-25/00:04:04.545      7.00000      50.0000    -0.949190     0.236150    -0.208040
+;   02017428   1998-09-25/00:04:04.545      7.00000      50.0000    -0.899350    -0.367930     0.236230
+;   02017428   1998-09-25/00:04:04.545      7.00000      50.0000    -0.819770     0.142150    -0.554760
+;   02017428   1998-09-25/00:04:04.545      7.00000      50.0000    -0.991470   -0.0769600     0.105160
+;   02017428   1998-09-25/00:04:04.545      3.00000      30.0000     0.848380     0.241900     0.470900
+;   02017428   1998-09-25/00:04:04.545      3.00000      30.0000    -0.894970    -0.191780    -0.402800
+;   02017428   1998-09-25/00:04:04.545      3.00000      30.0000     0.993160     0.108090   -0.0442500
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000    -0.614460    -0.538760     0.576340
+;   02017555   1998-09-25/00:05:23.432      3.00000      30.0000     0.524670     0.551360    -0.648630
+;   02017555   1998-09-25/00:05:23.432      3.00000      30.0000    -0.755870    -0.649980    0.0786200
+;   02017555   1998-09-25/00:05:23.432      3.00000      30.0000    -0.905140    -0.195790     0.377350
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000     0.743600     0.525640    -0.413240
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000     0.860500     0.319420    -0.396880
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000    -0.890090    -0.413760     0.191160
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000    -0.998500    0.0491600    0.0239500
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000     0.835050     0.467360    -0.290280
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000    -0.772940    -0.612340     0.166150
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000     0.808260     0.547280     0.217260
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000    -0.826160    -0.561790   -0.0428900
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000    -0.814190    -0.541850    -0.208580
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000    -0.859660    -0.458200     0.225930
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000     0.730350    0.0608400     0.680360
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000     0.927610     0.314310    -0.201890
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000    -0.859660    -0.458200     0.225930
+;   02018091   1998-09-25/00:14:50.603      3.00000      30.0000     0.768150     0.620580     0.157590
+;   02018091   1998-09-25/00:14:50.603      3.00000      30.0000     0.766700     0.562900    -0.308710
+;   02018091   1998-09-25/00:14:50.603      3.00000      30.0000     0.743140    -0.331360    -0.581330
+;   02018091   1998-09-25/00:14:50.603      3.00000      30.0000    -0.972990    -0.204950     0.106260
+;   02018091   1998-09-25/00:14:50.603      3.00000      30.0000    -0.828090  -0.00588000    -0.560560
+;----------------------------------------------------------------------------------------------------------
+;   23145474   2000-02-11/23:33:58.351      5.00000      30.0000     0.767850     0.460500    -0.445360
+;----------------------------------------------------------------------------------------------------------
+
+;-----------------------------------------------------------------------------------------
+; => Plot results
+;-----------------------------------------------------------------------------------------
+thkbav     = (thkbl + thkbh)/2d0
+thkvav     = (thkvl + thkvh)/2d0
+xda0       = vmag*COS(thkvav*!DPI/18d1)
+yda0       = frest_lfkm
+yda1       = frest_lfkp
+yda2       = frest_hfkm
+yda3       = frest_hfkp
+
+xran       = [-75d1,75d1]
+yran       = [1d-3,2d2]
+xttl       = '|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+') [km/s]'
+yttl       = 'Rest Frame Frequency [Hz]'+'!C'+'[Red = f!Dsc!N-Low, Blue = f!Dsc!N-High]'
+pstr       = {XRANGE:xran,YRANGE:yran,XSTYLE:1,YSTYLE:1,XTITLE:xttl,YTITLE:yttl,NODATA:1}
+fnam0      = 'Frest-minus-sign_vs_Vsw-Cos-thkv_ylog'
+ttl0       = 'f!Drest!N (- sign) vs. '+'|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+')'
+fnam1      = 'Frest-plus-sign_vs_Vsw-Cos-thkv_ylog'
+ttl1       = 'f!Drest!N (+ sign) vs. '+'|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+')'
+
+
+WSET,0
+  PLOT,xda0,yda0/(2d0*!DPI),_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl0
+    OPLOT,xda0,yda0/(2d0*!DPI),PSYM=5,COLOR=250
+    OPLOT,xda0,yda2/(2d0*!DPI),PSYM=5,COLOR= 50
+
+WSET,1
+  PLOT,xda0,yda0/(2d0*!DPI),_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl1
+    OPLOT,xda0,yda1/(2d0*!DPI),PSYM=1,COLOR=250
+    OPLOT,xda0,yda3/(2d0*!DPI),PSYM=1,COLOR= 50
+
+popen,fnam0[0],/LAND
+  PLOT,xda0,yda0/(2d0*!DPI),_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl0
+    OPLOT,xda0,yda0/(2d0*!DPI),PSYM=5,COLOR=250
+    OPLOT,xda0,yda2/(2d0*!DPI),PSYM=5,COLOR= 50
+pclose
+
+popen,fnam1[0],/LAND
+  PLOT,xda0,yda0/(2d0*!DPI),_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl1
+    OPLOT,xda0,yda1/(2d0*!DPI),PSYM=1,COLOR=250
+    OPLOT,xda0,yda3/(2d0*!DPI),PSYM=1,COLOR= 50
+pclose
+
+
+fnam0      = 'Frest-minus-sign_vs_Vsw-Cos-thkv_ylin'
+ttl0       = 'f!Drest!N (- sign) vs. '+'|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+')'
+fnam1      = 'Frest-plus-sign_vs_Vsw-Cos-thkv_ylin'
+ttl1       = 'f!Drest!N (+ sign) vs. '+'|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+')'
+
+WSET,0
+  PLOT,xda0,yda0/(2d0*!DPI),_EXTRA=pstr,YLOG=0,YMINOR=10,TITLE=ttl0
+    OPLOT,xda0,yda0/(2d0*!DPI),PSYM=5,COLOR=250
+    OPLOT,xda0,yda2/(2d0*!DPI),PSYM=5,COLOR= 50
+
+WSET,1
+  PLOT,xda0,yda0/(2d0*!DPI),_EXTRA=pstr,YLOG=0,YMINOR=10,TITLE=ttl1
+    OPLOT,xda0,yda1/(2d0*!DPI),PSYM=1,COLOR=250
+    OPLOT,xda0,yda3/(2d0*!DPI),PSYM=1,COLOR= 50
+
+popen,fnam0[0],/LAND
+  PLOT,xda0,yda0/(2d0*!DPI),_EXTRA=pstr,YLOG=0,YMINOR=10,TITLE=ttl0
+    OPLOT,xda0,yda0/(2d0*!DPI),PSYM=5,COLOR=250
+    OPLOT,xda0,yda2/(2d0*!DPI),PSYM=5,COLOR= 50
+pclose
+
+popen,fnam1[0],/LAND
+  PLOT,xda0,yda0/(2d0*!DPI),_EXTRA=pstr,YLOG=0,YMINOR=10,TITLE=ttl1
+    OPLOT,xda0,yda1/(2d0*!DPI),PSYM=1,COLOR=250
+    OPLOT,xda0,yda3/(2d0*!DPI),PSYM=1,COLOR= 50
+pclose
+
+;-----------------------------------------------------------------------------------------
+; => Plot f_rest normalized by local cyclotron frequency
+;-----------------------------------------------------------------------------------------
+xran       = [-75d1,75d1]
+yran       = [1d-5,1d0]
+xttl       = '|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+') [km/s]'
+yttl       = 'f!Drest!N'+'/f!Dce!N'+'!C'+'[Red = f!Dsc!N-Low, Blue = f!Dsc!N-High]'
+pstr       = {XRANGE:xran,YRANGE:yran,XSTYLE:1,YSTYLE:1,XTITLE:xttl,YTITLE:yttl,NODATA:1}
+fnam0      = 'Frest_fce-minus-sign_vs_Vsw-Cos-thkv_ylog'
+ttl0       = 'f!Drest!N'+'/f!Dce!N (- sign) vs. '+'|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+')'
+fnam1      = 'Frest_fce-plus-sign_vs_Vsw-Cos-thkv_ylog'
+ttl1       = 'f!Drest!N'+'/f!Dce!N (+ sign) vs. '+'|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+')'
+
+WSET,0
+  PLOT,xda0,yda0/wce,_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl0
+    OPLOT,xda0,yda0/wce,PSYM=5,COLOR=250
+    OPLOT,xda0,yda2/wce,PSYM=5,COLOR= 50
+
+WSET,1
+  PLOT,xda0,yda0/wce,_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl1
+    OPLOT,xda0,yda1/wce,PSYM=1,COLOR=250
+    OPLOT,xda0,yda3/wce,PSYM=1,COLOR= 50
+
+popen,fnam0[0],/LAND
+  PLOT,xda0,yda0/wce,_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl0
+    OPLOT,xda0,yda0/wce,PSYM=5,COLOR=250
+    OPLOT,xda0,yda2/wce,PSYM=5,COLOR= 50
+pclose
+
+popen,fnam1[0],/LAND
+  PLOT,xda0,yda0/wce,_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl1
+    OPLOT,xda0,yda1/wce,PSYM=1,COLOR=250
+    OPLOT,xda0,yda3/wce,PSYM=1,COLOR= 50
+pclose
+;-----------------------------------------------------------------------------------------
+; => Plot f_rest normalized by local lower hybrid frequency
+;-----------------------------------------------------------------------------------------
+xran       = [-75d1,75d1]
+yran       = [1d-4,5d0]
+xttl       = '|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+') [km/s]'
+yttl       = 'f!Drest!N'+'/f!Dlh!N'+'!C'+'[Red = f!Dsc!N-Low, Blue = f!Dsc!N-High]'
+pstr       = {XRANGE:xran,YRANGE:yran,XSTYLE:1,YSTYLE:1,XTITLE:xttl,YTITLE:yttl,NODATA:1}
+fnam0      = 'Frest_flh-minus-sign_vs_Vsw-Cos-thkv_ylog'
+ttl0       = 'f!Drest!N'+'/f!Dlh!N (- sign) vs. '+'|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+')'
+fnam1      = 'Frest_flh-plus-sign_vs_Vsw-Cos-thkv_ylog'
+ttl1       = 'f!Drest!N'+'/f!Dlh!N (+ sign) vs. '+'|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+')'
+
+
+WSET,0
+  PLOT,xda0,yda0/wlh,_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl0
+    OPLOT,xda0,yda0/wlh,PSYM=5,COLOR=250
+    OPLOT,xda0,yda2/wlh,PSYM=5,COLOR= 50
+
+WSET,1
+  PLOT,xda0,yda0/wlh,_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl1
+    OPLOT,xda0,yda1/wlh,PSYM=1,COLOR=250
+    OPLOT,xda0,yda3/wlh,PSYM=1,COLOR= 50
+
+popen,fnam0[0],/LAND
+  PLOT,xda0,yda0/wlh,_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl0
+    OPLOT,xda0,yda0/wlh,PSYM=5,COLOR=250
+    OPLOT,xda0,yda2/wlh,PSYM=5,COLOR= 50
+pclose
+
+popen,fnam1[0],/LAND
+  PLOT,xda0,yda0/wlh,_EXTRA=pstr,YLOG=1,YMINOR=9,TITLE=ttl1
+    OPLOT,xda0,yda1/wlh,PSYM=1,COLOR=250
+    OPLOT,xda0,yda3/wlh,PSYM=1,COLOR= 50
+pclose
+;-----------------------------------------------------------------------------------------
+; => Plot histograms
+;-----------------------------------------------------------------------------------------
+xr   = [0d0,75d1]
+nb   = 11
+xttl = '|V!Dsw!N'+'| Cos(!7h!3'+'!DkV!N'+') [km/s]'
+ttle = 'Magnitude of Solar wind along Wave Vector'
+xdat = xda0
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl,TTLE=ttle,DRANGE=xr
+
+
+; => f_sc normalized by local cyclotron frequency
+xr   = [0d0,1d0]
+nb   = 11
+ttle = 'f!Dsc!N'+'-Low Parameter Results'
+xttl = 'f!Dsc!N'+'/f!Dce!N [Low]'
+fnam = 'Wave_Freq-SC-Low_fce_histogram'
+xdat = (2d0*!DPI*freql)/wce
+
+ttle = 'f!Dsc!N'+'-High Parameter Results'
+xttl = 'f!Dsc!N'+'/f!Dce!N [High]'
+fnam = 'Wave_Freq-SC-High_fce_histogram'
+xdat = (2d0*!DPI*freqh)/wce
+
+; => f_sc normalized by local lower hybrid frequency
+xr   = [0d0,25d0]
+nb   = 11
+xttl = 'f!Dsc!N'+'/f!Dlh!N [Low]'
+ttle = 'f!Dsc!N'+'-Low Parameter Results'
+fnam = 'Wave_Freq-SC-Low_flh_histogram'
+xdat = (2d0*!DPI*freql)/wlh
+
+ttle = 'f!Dsc!N'+'-High Parameter Results'
+xttl = 'f!Dsc!N'+'/f!Dlh!N [High]'
+fnam = 'Wave_Freq-SC-High_flh_histogram'
+xdat = (2d0*!DPI*freqh)/wlh
+
+; => (f_sc - f_rest,-) 
+xdat = (freql - yda0/(2d0*!DPI))
+
+; => f_rest
+xr   = [0d0,2d2]
+nb   = 11
+ttle = 'f!Dsc!N'+'-Low [f!Drest!N (- sign)] Parameter Results'
+xttl = 'f!Drest!N [- sign, Hz]  [from f!Dsc!N'+'-Low]'
+fnam = 'Wave_Freq-rest-minus-sign_from_SCFrame-Low-Freq_histogram'
+xdat = yda0/(2d0*!DPI)
+
+ttle = 'f!Dsc!N'+'-Low [f!Drest!N (+ sign)] Parameter Results'
+xttl = 'f!Drest!N [+ sign, Hz]  [from f!Dsc!N'+'-Low]'
+fnam = 'Wave_Freq-rest-plus-sign_from_SCFrame-Low-Freq_histogram'
+xdat = yda1/(2d0*!DPI)
+
+ttle = 'f!Dsc!N'+'-High [f!Drest!N (- sign)] Parameter Results'
+xttl = 'f!Drest!N [- sign, Hz]  [from f!Dsc!N'+'-High]'
+fnam = 'Wave_Freq-rest-minus-sign_from_SCFrame-High-Freq_histogram'
+xdat = yda2/(2d0*!DPI)
+
+ttle = 'f!Dsc!N'+'-High [f!Drest!N (+ sign)] Parameter Results'
+xttl = 'f!Drest!N [+ sign, Hz]  [from f!Dsc!N'+'-High]'
+fnam = 'Wave_Freq-rest-plus-sign_from_SCFrame-High-Freq_histogram'
+xdat = yda3/(2d0*!DPI)
+
+; => normalize by local cyclotron frequency
+xr   = [0d0,5d-1]
+nb   = 8
+ttle = 'f!Dsc!N'+'-Low [f!Drest!N (- sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dce!N [- sign]  [from f!Dsc!N'+'-Low]'
+fnam = 'Wave_Freq-rest_fce-minus-sign_from_SCFrame-Low-Freq_histogram'
+xdat = yda0/wce
+
+ttle = 'f!Dsc!N'+'-Low [f!Drest!N (+ sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dce!N [+ sign]  [from f!Dsc!N'+'-Low]'
+fnam = 'Wave_Freq-rest_fce-plus-sign_from_SCFrame-Low-Freq_histogram'
+xdat = yda1/wce
+
+ttle = 'f!Dsc!N'+'-High [f!Drest!N (- sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dce!N [- sign]  [from f!Dsc!N'+'-High]'
+fnam = 'Wave_Freq-rest_fce-minus-sign_from_SCFrame-High-Freq_histogram'
+xdat = yda2/wce
+
+ttle = 'f!Dsc!N'+'-High [f!Drest!N (+ sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dce!N [+ sign]  [from f!Dsc!N'+'-High]'
+fnam = 'Wave_Freq-rest_fce-plus-sign_from_SCFrame-High-Freq_histogram'
+xdat = yda3/wce
+
+; => normalize by local lower hybrid frequency
+xr   = [0d0,15d0]
+nb   = 11
+ttle = 'f!Dsc!N'+'-Low [f!Drest!N (- sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dlh!N [- sign]  [from f!Dsc!N'+'-Low]'
+fnam = 'Wave_Freq-rest_flh-minus-sign_from_SCFrame-Low-Freq_histogram'
+xdat = yda0/wlh
+
+ttle = 'f!Dsc!N'+'-Low [f!Drest!N (+ sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dlh!N [+ sign]  [from f!Dsc!N'+'-Low]'
+fnam = 'Wave_Freq-rest_flh-plus-sign_from_SCFrame-Low-Freq_histogram'
+xdat = yda1/wlh
+
+ttle = 'f!Dsc!N'+'-High [f!Drest!N (- sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dlh!N [- sign]  [from f!Dsc!N'+'-High]'
+fnam = 'Wave_Freq-rest_flh-minus-sign_from_SCFrame-High-Freq_histogram'
+xdat = yda2/wlh
+
+ttle = 'f!Dsc!N'+'-High [f!Drest!N (+ sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dlh!N [+ sign]  [from f!Dsc!N'+'-High]'
+fnam = 'Wave_Freq-rest_flh-plus-sign_from_SCFrame-High-Freq_histogram'
+xdat = yda3/wlh
+
+xr   = [0d0,10d0]
+nb   = 11
+ttle = 'f!Dsc!N'+'-Low [f!Drest!N (- sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dlh!N [- sign]  [from f!Dsc!N'+'-Low]'
+fnam = 'Wave_Freq-rest_flh-minus-sign_from_SCFrame-Low-Freq_histogram_2nd'
+xdat = yda0/wlh
+
+ttle = 'f!Dsc!N'+'-Low [f!Drest!N (+ sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dlh!N [+ sign]  [from f!Dsc!N'+'-Low]'
+fnam = 'Wave_Freq-rest_flh-plus-sign_from_SCFrame-Low-Freq_histogram_2nd'
+xdat = yda1/wlh
+
+ttle = 'f!Dsc!N'+'-High [f!Drest!N (- sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dlh!N [- sign]  [from f!Dsc!N'+'-High]'
+fnam = 'Wave_Freq-rest_flh-minus-sign_from_SCFrame-High-Freq_histogram_2nd'
+xdat = yda2/wlh
+
+ttle = 'f!Dsc!N'+'-High [f!Drest!N (+ sign)] Parameter Results'
+xttl = 'f!Drest!N'+'/f!Dlh!N [+ sign]  [from f!Dsc!N'+'-High]'
+fnam = 'Wave_Freq-rest_flh-plus-sign_from_SCFrame-High-Freq_histogram_2nd'
+xdat = yda3/wlh
+
+
+
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl,TTLE=ttle,DRANGE=xr
+popen,fnam[0],/LAND
+  my_histogram_plot,xdat,NBINS=nb,XTTL=xttl,TTLE=ttle,DRANGE=xr
+pclose
+
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => 
+;-----------------------------------------------------------------------------------------
+f_bnd    = SQRT(me/mp)
+i_bnd    = 1d0
+tempx    = frest_lfkm/wlh
+tempy    = indexlm/alfvinlm
+bad_lm   = WHERE(tempx LT f_bnd[0] AND tempy GT i_bnd[0],bdlm)
+tempx    = frest_lfkp/wlh
+tempy    = indexlp/alfvinlp
+bad_lp   = WHERE(tempx LT f_bnd[0] AND tempy GT i_bnd[0],bdlp)
+tempx    = frest_hfkm/wlh
+tempy    = indexhm/alfvinhm
+bad_hm   = WHERE(tempx LT f_bnd[0] AND tempy GT i_bnd[0],bdhm)
+tempx    = frest_hfkp/wlh
+tempy    = indexhp/alfvinhp
+bad_hp   = WHERE(tempx LT f_bnd[0] AND tempy GT i_bnd[0],bdhp)
+
+PRINT,'; ',bdlm,bdlp,bdhm,bdhp
+;          107           0           4           0
+
+bad_evns = [evns[bad_lm],evns[bad_hm]]
+bad_scet = [scets[bad_lm],scets[bad_hm]]
+bad_unix = time_double(bad_scet)
+bad_fscl = [freql[bad_lm],freql[bad_hm]]
+bad_fsch = [freqh[bad_lm],freqh[bad_hm]]
+bad_kvcx = [kvecx[bad_lm],kvecx[bad_hm]]
+bad_kvcy = [kvecy[bad_lm],kvecy[bad_hm]]
+bad_kvcz = [kvecz[bad_lm],kvecz[bad_hm]]
+bad_magf = [magf[bad_lm,*],magf[bad_hm,*]]
+sp       = SORT(bad_unix)
+gun      = N_ELEMENTS(sp)
+bad_unix = bad_unix[sp]
+bad_evns = bad_evns[sp]
+bad_scet = bad_scet[sp]
+bad_fscl = bad_fscl[sp]
+bad_fsch = bad_fsch[sp]
+bad_kvcx = bad_kvcx[sp]
+bad_kvcy = bad_kvcy[sp]
+bad_kvcz = bad_kvcz[sp]
+bad_magf = bad_magf[sp,*]
+
+unq      = UNIQ(bad_evns,SORT(bad_evns))    ; => Find unique elements of Event #'s
+gnq      = N_ELEMENTS(unq)
+PRINT,'; ', gun, gnq
+;          111          17
+unq_evns = bad_evns[unq]
+
+
+;----------------------------------------------------------------------------------------------------------
+;   03408599   1997-12-10/04:33:15.605      5.00000      20.0000    -0.919030    -0.117780    -0.376190
+;----------------------------------------------------------------------------------------------------------
+;   00010488   1998-08-26/06:40:26.120      7.00000      30.0000     0.892820    0.0390800     0.448720
+;   00010618   1998-08-26/06:40:54.941      3.00000      30.0000    -0.386810     0.700880    -0.599290
+;   00010684   1998-08-26/06:41:10.001      3.00000      30.0000     0.345920    0.0895300     0.933980
+;----------------------------------------------------------------------------------------------------------
+;   02011249   1998-09-24/23:20:38.842      5.00000      20.0000    -0.930030    0.0577100     0.362910
+;   02011723   1998-09-24/23:22:26.632      30.0000      150.000     0.761910    -0.635650    -0.124260
+;   02013165   1998-09-24/23:30:48.542      200.000      400.000     0.763870    -0.105240    -0.636740
+;   02014864   1998-09-24/23:43:18.951      3.00000      30.0000    -0.590980     0.262560     0.762760
+;   02015299   1998-09-24/23:45:52.184      30.0000      100.000    -0.506220    -0.801330     0.318750
+;   02015304   1998-09-24/23:45:53.379      30.0000      100.000     0.635550     0.494660    -0.592780
+;   02015635   1998-09-24/23:48:39.020      3.00000      30.0000    -0.998180    0.0209300   -0.0565300
+;   02015650   1998-09-24/23:48:42.131      3.00000      30.0000    -0.874100    0.0328100    -0.484640
+;   02015691   1998-09-24/23:48:51.622      6.00000      30.0000    -0.943130     0.311900     0.114970
+;   02017428   1998-09-25/00:04:04.545      3.00000      30.0000    -0.977730   -0.0690200     0.198210
+;   02017555   1998-09-25/00:05:23.432      40.0000      200.000    -0.614460    -0.538760     0.576340
+;   02018091   1998-09-25/00:14:50.603      3.00000      30.0000     0.768150     0.620580     0.157590
+;----------------------------------------------------------------------------------------------------------
+;   23145474   2000-02-11/23:33:58.351      5.00000      30.0000     0.767850     0.460500    -0.445360
+;----------------------------------------------------------------------------------------------------------
+

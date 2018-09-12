@@ -1,0 +1,799 @@
+PRO wind_antenna_stuff
+
+;-----------------------------------------------------------------------------------------
+; => define date
+;-----------------------------------------------------------------------------------------
+date         = '082698'
+ldate        = '19980826'
+tdate        = '1998-08-26'
+item1        = 'wi_lz_wav_'+ldate[0]+'_v*.dat'
+
+;-----------------------------------------------------------------------------------------
+; => define relevant items
+;-----------------------------------------------------------------------------------------
+item2        = 'TDSS'
+ch           = 0L
+item3a       = 'EVENT_START_SCET_R8'   ;     The true SCET for the start of the event (UR8)
+scetA        = 0d0
+item3b       = 'EVENT_CENTER_SCET_R8'  ;     The true SCET for the center of the event (UR8)
+scetB        = 0d0
+item3c       = 'EVENT_END_SCET_R8'     ;     The true SCET for the end of the event (UR8)
+scetC        = 0d0
+item3d       = 'EVENT_TRUE_SCET_R8'    ;     The true SCET for the start of the event (UR8)
+scetD        = 0d0
+date_stringA = ''                      ;     e.g. '25-AUG-1998, 21:39:35.056'
+item4a       = 'WIND_SPIN_SCET_R8'     ;     (N) Times to match WIND SPIN phase values (UR8)
+spinur8a     = 0d0
+item4b       = 'WIND_MFI_SCET_R8'      ;     (N) Time values to match various MFI values (UR8)
+spinur8b     = 0d0
+item4c       = 'WIND_ATT_SCET_R8'      ;     (N) Time values to match WIND ATTitude values (UR8)
+spinur8c     = 0d0
+item5a       = 'DPU_Clock_R4'          ;     Datation DPU clock (seconds)
+DPUclka      = 0d0
+item5b       = 'DPU_CLOCK_START_R4'    ;     DPU clock at start of event - (may be negative)
+DPUclkb      = 0d0
+item5c       = 'DPU_CLOCK_CENTER_R4'   ;     DPU clock at center of event - (may be negative)
+DPUclkc      = 0d0
+item5d       = 'DPU_CLOCK_END_R4'      ;     DPU clock at end of event - (may be negative)
+DPUclkd      = 0d0
+item6a       = 'DPU_MAJOR_FRAME'       ;     DPU major frame at start of measurement
+MAJdpu       = 0L
+item6b       = 'EVENT_NUMBER'          ;     ON BOARD EVENT COUNTER 
+evnum        = 0L
+item6c       = 'SOURCE'                ;     Source antenna translations
+source       = 0L
+item6d       = 'RX_FILTER'             ;     Event's low pass filter selection (3dB point)
+rxfili4      = 0L
+item6e       = 'RX_SPEED'              ;     Event's speed selection
+rxspdi4      = 0L
+item7a       = 'WIND_SPIN_RATE_R4'     ;     (N) WIND average spin rate (from KP) (rad/sec)
+spinrate     = 0d0
+item7b       = 'WIND_SPIN_PHASE_R4'    ;     (N) WIND body spin phase angle (from KP) (rads)
+spinphase    = 0d0
+item7c       = 'WIND_ATT_SPIN_RATE_R4' ;     (N) WIND body spin rate from FDF/O&A (rpm)
+spinatt      = 0d0
+item8a       = 'SUN_ANGLE_START_R4'    ;     Sun angle at event start - (may be negative)
+sunangst     = 0d0
+item8b       = 'SUN_ANGLE_CENTER_R4'   ;     Sun angle at event center - (may be negative)
+sunangcn     = 0d0
+item8c       = 'SUN_ANGLE_END_R4'      ;     Sun angle at event end - (may be negative)
+sunangen     = 0d0
+item8d       = 'SUN_ANGLE_R4'          ;     Datation sun angle - best accuracy 0.1 degree
+sunangr4     = 0d0
+item8e       = 'SUN_ANGLE'             ;     Dummy value of the 4096 sun counter @ event start
+sunang       = 0d0
+item9a       = 'RX_FILTER_R4'          ;     Event's low pass (3dB) filter selection (Hertz)
+rxfilr4      = 0d0
+item9b       = 'RX_SPEED_R4'           ;     Event's sampling speed (samples/second)
+rxspdr4      = 0d0
+
+my_return    = 0L
+myformat2    = '(a26,7d24.16,4d20.12,5I,3d20.12,5d20.12,2d20.12)'
+
+;-----------------------------------------------------------------------------------------
+; => open channel and file
+;-----------------------------------------------------------------------------------------
+ok      = w_channel_open(ch,item1)
+outfile = 'wi_tds_tdss_spins_'+date+'_3.txt'
+OPENW,gunit,OUTFILE,/GET_LUN
+;-----------------------------------------------------------------------------------------
+; => write to file
+;-----------------------------------------------------------------------------------------
+FOR i=0L, 10000L DO BEGIN                                       $
+  ierror = w_event(ch,item2)                                  & $
+  IF (ierror EQ 82) THEN GOTO,JUMP_FREE ELSE                    $
+  ok = w_item_r8(ch,item3a,scetA,    1,my_return)             & $
+  ok = w_item_r8(ch,item3b,scetB,    1,my_return)             & $
+  ok = w_item_r8(ch,item3c,scetC,    1,my_return)             & $
+  ok = w_item_r8(ch,item3d,scetD,    1,my_return)             & $
+  ok = w_ur8_to_string(scetA,date_stringA)                    & $
+  ok = w_item_r8(ch,item4a,spinur8a, 1,my_return)             & $
+  ok = w_item_r8(ch,item4b,spinur8b, 1,my_return)             & $
+  ok = w_item_r8(ch,item4c,spinur8c, 1,my_return)             & $
+  ok = w_item_r4(ch,item5a,DPUclka,  1,my_return)             & $
+  ok = w_item_r4(ch,item5b,DPUclkb,  1,my_return)             & $
+  ok = w_item_r4(ch,item5c,DPUclkc,  1,my_return)             & $
+  ok = w_item_r4(ch,item5d,DPUclkd,  1,my_return)             & $
+  ok = w_item_i4(ch,item6a,MAJdpu,   1,my_return)             & $
+  ok = w_item_i4(ch,item6b,evnum,    1,my_return)             & $
+  ok = w_item_i4(ch,item6c,source,   1,my_return)             & $
+  ok = w_item_i4(ch,item6d,rxfili4,  1,my_return)             & $
+  ok = w_item_i4(ch,item6e,rxspdi4,  1,my_return)             & $
+  ok = w_item_R4(ch,item7a,spinrate, 1,my_return)             & $
+  ok = w_item_R4(ch,item7b,spinphase,1,my_return)             & $
+  ok = w_item_R4(ch,item7c,spinatt,  1,my_return)             & $
+  ok = w_item_R4(ch,item8a,sunangst, 1,my_return)             & $
+  ok = w_item_R4(ch,item8b,sunangcn, 1,my_return)             & $
+  ok = w_item_R4(ch,item8c,sunangen, 1,my_return)             & $
+  ok = w_item_R4(ch,item8d,sunangr4, 1,my_return)             & $
+  ok = w_item_R4(ch,item8e,sunang  , 1,my_return)             & $
+  ok = w_item_R4(ch,item9a,rxfilr4,  1,my_return)             & $
+  ok = w_item_R4(ch,item9b,rxspdr4,  1,my_return)             & $
+  PRINTF,gunit,date_stringA[0],scetA[0],scetB[0],scetC[0],scetD[0],$
+         spinur8a[0],spinur8b[0],spinur8c[0],                      $
+         DPUclka[0],DPUclkb[0],DPUclkc[0],DPUclkd[0],              $
+         MAJdpu[0],evnum[0],source[0],rxfili4[0],rxspdi4[0],       $
+         spinrate[0],spinphase[0],spinatt[0],                      $
+         sunangst[0],sunangcn[0],sunangen[0],sunangr4[0],sunang[0],$
+         rxfilr4[0],rxspdr4[0],FORMAT=myformat2                  & $
+ENDFOR                                                           & $
+JUMP_FREE:
+;-----------------------------------------------------------------------------------------
+; => close channel and file
+;-----------------------------------------------------------------------------------------
+FREE_LUN,gunit
+ok      = w_channel_close(ch)
+
+RETURN
+END
+
+
+
+
+
+; SOURCE => Source antenna translations
+;            1 = ExAC
+;            2 = EyAC
+;            3 = EzAC
+;            4 = ExDC
+;            5 = EyDC
+;            6 = EzDC
+;            7 = Bx
+;            8 = By
+;            9 = Bz
+; RX_FILTER => Event's low pass filter selection (3dB point)
+;            0 = 50,000 Hz
+;            1 = 12,500 Hz
+;            2 = 3,125 Hz
+;            3 = 781 Hz
+;            4 = 195 Hz
+;            5 = 49 Hz
+; RX_SPEED => Event's speed selection
+;            0 = 120,000 S/s
+;            1 = 30,000 S/s
+;            2 = 7,500 S/s
+;            3 = 1,875 S/s
+;            4 = 468 S/s
+;            5 = 117 S/s
+
+
+
+;-----------------------------------------------------------------------------------------
+; => try to see if wind antenna angles are correct for Event # 10488 on 1998-08-26
+;-----------------------------------------------------------------------------------------
+
+date         = '082698'
+ldate        = '19980826'
+tdate        = '1998-08-26'
+item1        = 'wi_lz_wav_'+ldate[0]+'_v*.dat'
+
+item2        = 'TDSS'
+ch           = 0L
+item3a       = 'EVENT_START_SCET_R8'   ;     The true SCET for the start of the event (UR8)
+scetA        = 0d0
+item3b       = 'EVENT_CENTER_SCET_R8'  ;     The true SCET for the center of the event (UR8)
+scetB        = 0d0
+item3c       = 'EVENT_END_SCET_R8'     ;     The true SCET for the end of the event (UR8)
+scetC        = 0d0
+item3d       = 'EVENT_TRUE_SCET_R8'    ;     The true SCET for the start of the event (UR8)
+scetD        = 0d0
+date_stringA = ''                      ;     e.g. '25-AUG-1998, 21:39:35.056'
+item4a       = 'WIND_SPIN_SCET_R8'     ;     (N) Times to match WIND SPIN phase values (UR8)
+spinur8a     = 0d0
+item4b       = 'WIND_MFI_SCET_R8'      ;     (N) Time values to match various MFI values (UR8)
+spinur8b     = 0d0
+item4c       = 'WIND_ATT_SCET_R8'      ;     (N) Time values to match WIND ATTitude values (UR8)
+spinur8c     = 0d0
+item5a       = 'DPU_Clock_R4'          ;     Datation DPU clock (seconds)
+DPUclka      = 0d0
+item5b       = 'DPU_CLOCK_START_R4'    ;     DPU clock at start of event - (may be negative)
+DPUclkb      = 0d0
+item5c       = 'DPU_CLOCK_CENTER_R4'   ;     DPU clock at center of event - (may be negative)
+DPUclkc      = 0d0
+item5d       = 'DPU_CLOCK_END_R4'      ;     DPU clock at end of event - (may be negative)
+DPUclkd      = 0d0
+item6a       = 'DPU_MAJOR_FRAME'       ;     DPU major frame at start of measurement
+MAJdpu       = 0L
+item6b       = 'EVENT_NUMBER'          ;     ON BOARD EVENT COUNTER 
+evnum        = 0L
+item6c       = 'SOURCE'                ;     Source antenna translations
+source       = 0L
+item6d       = 'RX_FILTER'             ;     Event's low pass filter selection (3dB point)
+rxfili4      = 0L
+item6e       = 'RX_SPEED'              ;     Event's speed selection
+rxspdi4      = 0L
+item7a       = 'WIND_SPIN_RATE_R4'     ;     (N) WIND average spin rate (from KP) (rad/sec)
+spinrate     = 0d0
+item7b       = 'WIND_SPIN_PHASE_R4'    ;     (N) WIND body spin phase angle (from KP) (rads)
+spinphase    = 0d0
+item7c       = 'WIND_ATT_SPIN_RATE_R4' ;     (N) WIND body spin rate from FDF/O&A (rpm)
+spinatt      = 0d0
+item8a       = 'SUN_ANGLE_START_R4'    ;     Sun angle at event start - (may be negative)
+sunangst     = 0d0
+item8b       = 'SUN_ANGLE_CENTER_R4'   ;     Sun angle at event center - (may be negative)
+sunangcn     = 0d0
+item8c       = 'SUN_ANGLE_END_R4'      ;     Sun angle at event end - (may be negative)
+sunangen     = 0d0
+item8d       = 'SUN_ANGLE_R4'          ;     Datation sun angle - best accuracy 0.1 degree
+sunangr4     = 0d0
+item8e       = 'SUN_ANGLE'             ;     Dummy value of the 4096 sun counter @ event start
+sunang       = 0d0
+item9a       = 'RX_FILTER_R4'          ;     Event's low pass (3dB) filter selection (Hertz)
+rxfilr4      = 0d0
+item9b       = 'RX_SPEED_R4'           ;     Event's sampling speed (samples/second)
+rxspdr4      = 0d0
+
+
+my_return    = 0L
+myformat2    = '(a26,7d24.16,4d20.12,5I,3d20.12,5d20.12,2d20.12)'
+
+ok      = w_channel_open(ch,item1)
+outfile = 'wi_tds_tdss_spins_'+date+'_3.txt'
+OPENW,gunit,OUTFILE,/GET_LUN
+
+
+FOR i=0L, 10000L DO BEGIN                                       $
+  ierror = w_event(ch,item2)                                  & $
+  IF (ierror EQ 82) THEN GOTO,JUMP_FREE ELSE                    $
+  ok = w_item_r8(ch,item3a,scetA,    1,my_return)             & $
+  ok = w_item_r8(ch,item3b,scetB,    1,my_return)             & $
+  ok = w_item_r8(ch,item3c,scetC,    1,my_return)             & $
+  ok = w_item_r8(ch,item3d,scetD,    1,my_return)             & $
+  ok = w_ur8_to_string(scetA,date_stringA)                    & $
+  ok = w_item_r8(ch,item4a,spinur8a, 1,my_return)             & $
+  ok = w_item_r8(ch,item4b,spinur8b, 1,my_return)             & $
+  ok = w_item_r8(ch,item4c,spinur8c, 1,my_return)             & $
+  ok = w_item_r4(ch,item5a,DPUclka,  1,my_return)             & $
+  ok = w_item_r4(ch,item5b,DPUclkb,  1,my_return)             & $
+  ok = w_item_r4(ch,item5c,DPUclkc,  1,my_return)             & $
+  ok = w_item_r4(ch,item5d,DPUclkd,  1,my_return)             & $
+  ok = w_item_i4(ch,item6a,MAJdpu,   1,my_return)             & $
+  ok = w_item_i4(ch,item6b,evnum,    1,my_return)             & $
+  ok = w_item_i4(ch,item6c,source,   1,my_return)             & $
+  ok = w_item_i4(ch,item6d,rxfili4,  1,my_return)             & $
+  ok = w_item_i4(ch,item6e,rxspdi4,  1,my_return)             & $
+  ok = w_item_R4(ch,item7a,spinrate, 1,my_return)             & $
+  ok = w_item_R4(ch,item7b,spinphase,1,my_return)             & $
+  ok = w_item_R4(ch,item7c,spinatt,  1,my_return)             & $
+  ok = w_item_R4(ch,item8a,sunangst, 1,my_return)             & $
+  ok = w_item_R4(ch,item8b,sunangcn, 1,my_return)             & $
+  ok = w_item_R4(ch,item8c,sunangen, 1,my_return)             & $
+  ok = w_item_R4(ch,item8d,sunangr4, 1,my_return)             & $
+  ok = w_item_R4(ch,item8e,sunang  , 1,my_return)             & $
+  ok = w_item_R4(ch,item9a,rxfilr4,  1,my_return)             & $
+  ok = w_item_R4(ch,item9b,rxspdr4,  1,my_return)             & $
+  PRINTF,gunit,date_stringA[0],scetA[0],scetB[0],scetC[0],scetD[0],$
+         spinur8a[0],spinur8b[0],spinur8c[0],                      $
+         DPUclka[0],DPUclkb[0],DPUclkc[0],DPUclkd[0],              $
+         MAJdpu[0],evnum[0],source[0],rxfili4[0],rxspdi4[0],       $
+         spinrate[0],spinphase[0],spinatt[0],                      $
+         sunangst[0],sunangcn[0],sunangen[0],sunangr4[0],sunang[0],$
+         rxfilr4[0],rxspdr4[0],FORMAT=myformat2                  & $
+ENDFOR                                                           & $
+JUMP_FREE:
+FREE_LUN,gunit
+ok      = w_channel_close(ch)
+
+
+
+
+
+
+
+date = '082698'
+stda = STRMID(date,0L,1L)
+mdir = FILE_EXPAND_PATH('IDL_stuff/WI_TDS/HK_WTDS/'+date)
+file = FILE_SEARCH(mdir,'/wi_tds_tdss_spins_*.txt')
+gpss = WHERE(STRPOS(file,'_tdss_') GE 0,gss)
+
+;myformat2    = '(a26,7d24.16,4d20.12,5I,3d20.12,5d20.12,2d20.12)'
+gfile = file[gpss]   ; => Fix TDSS file
+temp  = read_gen_ascii(gfile)
+temp  = STRMID(temp[*],1) ; => get rid of leading space
+nr    = N_ELEMENTS(temp)
+test  = STRSPLIT(temp[0],' ',/EXTRACT)
+nc    = N_ELEMENTS(test) - 1L
+; => split up values
+tels  = STRARR(nr,nc)
+FOR j=0L, nr - 1L DO BEGIN $
+  test  = STRSPLIT(temp[j],' ',/EXTRACT) & $
+  test0 = test[0]+' '+test[1] & $
+  test1 = [test0,test[2:nc]] & $
+  tels[j,*] = test1
+
+
+scets0       = tels[*,0]               ;     e.g. '25-AUG-1998, 21:39:35.056'
+ur8_st       = DOUBLE(tels[*,1])       ;     The true SCET for the start of the event (UR8)
+ur8_cn       = DOUBLE(tels[*,2])       ;     The true SCET for the center of the event (UR8)
+ur8_en       = DOUBLE(tels[*,3])       ;     The true SCET for the end of the event (UR8)
+ur8_tr       = DOUBLE(tels[*,4])       ;     The true SCET for the start of the event (UR8)
+spinph_ur8   = DOUBLE(tels[*,5])       ;     (N) Times to match WIND SPIN phase values (UR8)
+mfi_ur8      = DOUBLE(tels[*,6])       ;     (N) Time values to match various MFI values (UR8)
+att_ur8      = DOUBLE(tels[*,7])       ;     (N) Time values to match WIND ATTitude values (UR8)
+dpuclk       = DOUBLE(tels[*,8])       ;     Datation DPU clock (seconds)
+dpuclk_st    = DOUBLE(tels[*,9])       ;     DPU clock at start of event - (may be negative)
+dpuclk_cn    = DOUBLE(tels[*,10])      ;     DPU clock at center of event - (may be negative)
+dpuclk_en    = DOUBLE(tels[*,11])      ;     DPU clock at end of event - (may be negative)
+dpuMJFR      = LONG(tels[*,12])        ;     DPU major frame at start of measurement
+ev_numb      = LONG(tels[*,13])        ;     ON BOARD EVENT COUNTER
+ev_source    = LONG(tels[*,14])        ;     Source antenna translations
+rx_filt      = LONG(tels[*,15])        ;     Event's low pass filter selection (3dB point)
+rx_speed     = LONG(tels[*,16])        ;     Event's speed selection
+wispinrate   = DOUBLE(tels[*,17])      ;     (N) WIND average spin rate (from KP) (rad/sec)
+wispinphase  = DOUBLE(tels[*,18])      ;     (N) WIND body spin phase angle (from KP) (rads)
+wiattsprate  = DOUBLE(tels[*,19])      ;     (N) WIND body spin rate from FDF/O&A (rpm)
+sunang_st    = DOUBLE(tels[*,20])      ;     Sun angle at event start - (may be negative)
+sunang_cn    = DOUBLE(tels[*,21])      ;     Sun angle at event center - (may be negative)
+sunang_en    = DOUBLE(tels[*,22])      ;     Sun angle at event end - (may be negative)
+sunang_r4    = DOUBLE(tels[*,23])      ;     Datation sun angle - best accuracy 0.1 degree
+sunang       = DOUBLE(tels[*,24])      ;     Dummy value of the 4096 sun counter @ event start
+rx_filt_r4   = DOUBLE(tels[*,25])      ;     Event's low pass (3dB) filter selection (Hertz)
+rx_speed_r4  = DOUBLE(tels[*,26])      ;     Event's sampling speed (samples/second)
+
+scet_ur8_st   = ur8_to_scet_string(ur8_st)  ; => e.g. 'YYYY/MM/DD HH:MM:SS.sss UT'
+scet_ur8_cn   = ur8_to_scet_string(ur8_cn)  ; => e.g. 'YYYY/MM/DD HH:MM:SS.sss UT'
+scet_ur8_en   = ur8_to_scet_string(ur8_en)  ; => e.g. 'YYYY/MM/DD HH:MM:SS.sss UT'
+scet_ur8_tr   = ur8_to_scet_string(ur8_tr)  ; => e.g. 'YYYY/MM/DD HH:MM:SS.sss UT'
+scet_spin_ur8 = ur8_to_scet_string(spinph_ur8)  ; => e.g. 'YYYY/MM/DD HH:MM:SS.sss UT'
+scet_wmfi_ur8 = ur8_to_scet_string(mfi_ur8)     ; => e.g. 'YYYY/MM/DD HH:MM:SS.sss UT'
+scet_watt_ur8 = ur8_to_scet_string(att_ur8)     ; => e.g. 'YYYY/MM/DD HH:MM:SS.sss UT'
+
+; => Convert to Unix times
+unix_ur8_st   = time_double(scet_ur8_st)
+unix_ur8_cn   = time_double(scet_ur8_cn)
+unix_ur8_en   = time_double(scet_ur8_en)
+unix_ur8_tr   = time_double(scet_ur8_tr)
+unix_spin_ur8 = time_double(scet_spin_ur8)
+unix_wmfi_ur8 = time_double(scet_wmfi_ur8)
+unix_watt_ur8 = time_double(scet_watt_ur8)
+
+good_evn      = WHERE(ev_numb EQ 10488L,gdev)
+PRINT, ';', gdev
+;           4
+;-----------------------------------------------------------------------------------------
+; => Determine which channels/fields are being used
+;-----------------------------------------------------------------------------------------
+ant_source    = ['ExAC','EyAC','EzAC','ExDC','EyDC','EzDC','Bx','By','Bz']
+ant_source_in = LINDGEN(9)
+gev_source    = ev_source[good_evn]
+good          = array_where(gev_source,ant_source_in+1L,/N_UNIQ)
+gev_source_s  = ant_source[good[*,1]]
+PRINT, ';', gev_source
+;           4           7           8           9
+PRINT, ';', gev_source_s
+; ExDC Bx By Bz
+
+;-----------------------------------------------------------------------------------------
+; => Determine soft low pass filter sample rate and sample rate
+;-----------------------------------------------------------------------------------------
+rxfil_vals    = [5d4,125d2,3125d0,781d0,195d0,49d0]
+rxspd_vals    = [12d4,3d4,75d2,1875d0,468d0,117d0]
+rx_ind        = LINDGEN(6)
+grx_filt      = rx_filt[good_evn]
+grx_speed     = rx_speed[good_evn]
+good          = array_where(grx_filt,rx_ind,/N_UNIQ)
+grx_filt_v    = rxfil_vals[good[*,1]]
+good          = array_where(grx_speed,rx_ind,/N_UNIQ)
+grx_speed_v   = rxspd_vals[good[*,1]]
+PRINT, ';', grx_filt
+;           3           3           3           3
+PRINT, ';', grx_speed
+;           3           3           3           3
+
+PRINT, ';', grx_filt_v
+;       781.00000       781.00000       781.00000       781.00000
+PRINT, ';', grx_speed_v
+;       1875.0000       1875.0000       1875.0000       1875.0000
+
+;-----------------------------------------------------------------------------------------
+; => Determine DPU clock times
+;-----------------------------------------------------------------------------------------
+gdpuclk      = dpuclk[good_evn]        ;     Datation DPU clock (seconds)
+gdpuclk_st   = dpuclk_st[good_evn]     ;     DPU clock at start of event - (may be negative)
+gdpuclk_cn   = dpuclk_cn[good_evn]     ;     DPU clock at center of event - (may be negative)
+gdpuclk_en   = dpuclk_en[good_evn]     ;     DPU clock at end of event - (may be negative)
+
+PRINT, ';', gdpuclk[0], gdpuclk_st[0], gdpuclk_cn[0], gdpuclk_en[0], FORMAT='(a1,4d20.12)'
+;   2867.883056640625   2866.234619140625   2866.780761718750   2867.326904296875
+PRINT, ';', gdpuclk_en[0] - gdpuclk_st[0], gdpuclk[0] - gdpuclk_en[0], FORMAT='(a1,2d20.12)'
+;      1.092285156250      0.556152343750
+
+
+jj = 11
+PRINT,';', sunang[jj], sunang[jj]/4096d0*36d1, sunang_r4[jj], sunang_st[jj], sunang_cn[jj], sunang_en[jj]
+;       1809.0000       158.99414       158.99414      -32.327507       31.059488       94.446487
+
+PRINT,';', wispinrate[jj], wispinphase[jj], wiattsprate[jj]
+;       2.0257175      0.14293969       19.344999
+
+PRINT,';', wispinrate[jj]*18d1/!DPI, wispinphase[jj]*18d1/!DPI, wiattsprate[jj]*36d1/6d1
+;       116.06506       8.1898408       116.07000
+
+PRINT,';', 18d1/(!DPI*rx_speed_r4[jj]), wispinrate[jj]*18d1/(!DPI*rx_speed_r4[jj])*3072d0
+;     0.030557749       190.16100
+
+PRINT,';', (ur8_st[jj] - spinph_ur8[jj])*864d2, (ur8_st[jj] - att_ur8[jj])*864d2
+;      -46.906400       24.433600
+
+PRINT,';', interp(wispinphase,spinph_ur8,ur8_st[jj]), interp(wispinphase,spinph_ur8*864d2,ur8_st[jj]*864d2), FORMAT='(a1,2d20.12)'
+;      0.265779490745      0.265779490777
+
+t_phase      = interp(wispinphase,spinph_ur8,ur8_st[jj])
+PRINT,';', t_phase, t_phase*18d1/!DPI, FORMAT='(a1,2d20.12)'
+;      0.265779490745     15.228043100843
+
+
+
+
+PRINT,';  '+scet_ur8_st[jj]+'  '+scet_ur8_cn[jj]+'  '+scet_ur8_en[jj]+'  '+scet_ur8_tr[jj]
+;  1998/08/26 06:40:24.433 UT  1998/08/26 06:40:24.979 UT  1998/08/26 06:40:25.525 UT  1998/08/26 06:40:24.433 UT
+
+PRINT,';  '+scet_spin_ur8[jj]+'  '+scet_wmfi_ur8[jj]+'  '+scet_watt_ur8[jj]
+;  1998/08/26 06:41:11.339 UT  1998/08/26 06:40:25.012 UT  1998/08/26 06:39:59.999 UT
+
+
+
+test = -36d1*(sunang[jj] - 14d0)/4096d0 - 45d0
+PRINT,';', test[0]
+;      -202.76367
+IF (test[0] LT -18d1) THEN end_angle = test + 36d1
+IF (test[0] GT  18d1) THEN end_angle = test - 36d1
+PRINT,';', end_angle[0]
+;       157.23633
+del_ang   = wispinrate[jj]*18d1/(!DPI*rx_speed_r4[jj])
+st_angle  = end_angle + 3072d0*del_ang
+end_angle = end_angle + 1024d0*del_ang
+
+PRINT,';', del_ang[0], 3072d0*del_ang[0], 1024d0*del_ang[0], st_angle[0], end_angle[0]
+;     0.061901367       190.16100       63.387000       347.39733       220.62333
+
+
+; => HK UR8 and DPU times for Major Frame 615
+ur8hk = 6081.2775387268520717d0
+dpuhk = 2821.108398437500d0
+
+ur80  = 6081.2780605740740612d0
+dpu0  = 2867.883056640625d0
+
+
+diff_dpu = (dpu0[0] - dpuhk[0])
+PRINT,';', diff_dpu[0], FORMAT='(a1,d20.12)'
+;     46.774658203125
+
+; => Convert to UR8
+diffdpu_ur8 = diff_dpu[0]/864d2
+; => Shift HK UR8 by difference
+shft_hkur8  = ur8hk[0] + diffdpu_ur8[0]
+; => Find difference between this UR8 time and SCET UR8 time
+diff_ur8    = (shft_hkur8[0] - ur80[0])
+PRINT,';', diffdpu_ur8[0], shft_hkur8[0], diff_ur8[0], FORMAT='(a1,3d25.16)'
+;       0.0005413733588325    6081.2780801002109001       0.0000195261363842
+
+; => added UR8 difference to original DPU clock time
+ndpu0       = dpu0[0] + diff_ur8[0]*864d2
+dpu_diff    = ndpu0[0] - dpu0[0]
+PRINT,';', ndpu0[0], dpu_diff[0], FORMAT='(a1,2d20.12)'
+;   2869.570114824222      1.687058183597
+
+yy       = 0L           ; -[LONG] YYYY (year)
+mon      = 0L           ; -[LONG] MM (month) 
+day      = 0L           ; -[LONG] DD (day)
+hh       = 0L           ; -[LONG] HH
+mm       = 0L           ; -[LONG] MM (minute)
+ss       = 0L           ; -[LONG] SS
+ms       = 0L           ; -[LONG] MS (milliseconds => xxx)
+ok       = tm_ur8_to_ymd(shft_hkur8[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+;  1998-08-26/06:40:26.120
+PRINT,';  ', ss*1d0 + ms*1d-3 - dpu_diff[0]
+;         24.432942
+
+ok       = tm_ur8_to_ymd(ur8hk[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+;  1998-08-26/06:39:39.346
+
+ok       = tm_ur8_to_ymd(ur80[0],yy,mon,day,hh,mm,ss,ms)
+PRINT,';  ',yy[0],'-',mon[0],'-',day[0],'/',hh,':',mm,':',ss,'.',ms, FORMAT='(a3,I4.4,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I2.2,a1,I3.3)'
+;  1998-08-26/06:40:24.433
+PRINT,';  ', ss*1d0 + ms*1d-3 + dpu_diff[0]
+;         26.120058
+
+ur8_new  = 0d0
+ur8_old  = 0d0
+yy       = 1998L           ; -[LONG] YYYY (year)
+mon      =   08L           ; -[LONG] MM (month) 
+day      =   26L           ; -[LONG] DD (day)
+hh       =   06L           ; -[LONG] HH
+mm       =   40L           ; -[LONG] MM (minute)
+ss       =   24L           ; -[LONG] SS
+ms       =  433L           ; -[LONG] MS (milliseconds => xxx)
+ok       = tm_ur8_from_ymd(ur8_old,yy,mon,day,hh,mm,ss,ms)
+PRINT,';',ur8_old[0],FORMAT='(a1,d25.16)'
+;    6081.2780605671296144
+
+yy       = 1998L           ; -[LONG] YYYY (year)
+mon      =   08L           ; -[LONG] MM (month) 
+day      =   26L           ; -[LONG] DD (day)
+hh       =   06L           ; -[LONG] HH
+mm       =   40L           ; -[LONG] MM (minute)
+ss       =   26L           ; -[LONG] SS
+ms       =  120L           ; -[LONG] MS (milliseconds => xxx)
+ok       = tm_ur8_from_ymd(ur8_new,yy,mon,day,hh,mm,ss,ms)
+PRINT,';',ur8_new[0],FORMAT='(a1,d25.16)'
+;    6081.2780800925929725
+
+diff_ur8 = (ur8_new[0] - ur8_old[0])
+PRINT,';',diff_ur8[0],FORMAT='(a1,d25.16)'
+;       0.0000195254633581
+
+
+
+ur8_new = 6081.2780800925929725d0
+dpu_new = 2869.570114824222d0
+
+ur8_hk  = 6081.2775387268520717d0
+dpu_hk  = 2821.108398437500d0
+
+dpu_diff  = (dpu_new[0] - dpu_hk[0])
+shift_ur8 = ur8_hk[0] + dpu_diff[0]/864d2
+; => Find difference between this UR8 time and SCET UR8 time
+diff_ur8    = (shft_hkur8[0] - ur8_new[0])
+PRINT,';', diffdpu_ur8[0], shft_hkur8[0], diff_ur8[0], FORMAT='(a1,3d25.16)'
+;       0.0005413733588325    6081.2780801002109001       0.0000000076179276
+
+; => added UR8 difference to original DPU clock time
+ndpu0       = dpu_new[0] + diff_ur8[0]*864d2
+dpu_diff    = ndpu0[0] - dpu_new[0]
+PRINT,';', ndpu0[0], dpu_diff[0], diff_ur8[0]*864d2, FORMAT='(a1,2d20.12,d25.16)'
+;   2869.570773013168      0.000658188947       0.0006581889465451
+
+PRINT,';', ndpu0[0] + dpu_diff[0], ndpu0[0] - dpu_diff[0], FORMAT='(a1,2d20.12)'
+;   2869.571431202115   2869.570114824222
+
+
+;-----------------------------------------------------------------------------------------
+; -Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+
+
+
+
+date  = '082698'
+stda  = STRMID(date,0L,1L)
+mdir  = FILE_EXPAND_PATH('IDL_stuff/WI_TDS/HK_WTDS/'+date)
+file  = FILE_SEARCH(mdir,'/wi_tds_hk_'+date[0]+'.txt')
+gpss  = WHERE(STRPOS(file,'wi_tds_hk_') GE 0,gss)
+gfile = file[gpss]   ; => Fix TDSS file
+temp  = read_gen_ascii(gfile)
+temp  = STRMID(temp[*],1) ; => get rid of leading space
+nr    = N_ELEMENTS(temp)
+test  = STRSPLIT(temp[0],' ',/EXTRACT)
+nc    = N_ELEMENTS(test) - 1L
+; => split up values
+tels  = STRARR(nr,nc)
+FOR j=0L, nr - 1L DO BEGIN $
+  test  = STRSPLIT(temp[j],' ',/EXTRACT) & $
+  test0 = test[0]+' '+test[1] & $
+  test1 = [test0,test[2:nc]] & $
+  tels[j,*] = test1
+
+scets0       = tels[*,0]               ;     e.g. '25-AUG-1998, 21:39:35.056'
+ur8_hk       = DOUBLE(tels[*,1])       ;     The HK SCET for the current Major Frame (UR8)
+minframe     = LONG(tels[*,2])         ;     Minor frame #
+majframe     = LONG(tels[*,3])         ;     Major frame #
+dpuclk_hk    = DOUBLE(tels[*,4])       ;     Datation DPU clock (seconds)
+
+; => # of major frames in file
+num_mjfr     = MAX(majframe,/NAN) - MIN(majframe,/NAN) + 1L
+ind_mjfr     = LINDGEN(num_mjfr) + MIN(majframe,/NAN)
+; => Find overlapping elements of major frame
+good         = array_where(ind_mjfr,majframe,/N_UNIQ)
+dpu_test     = REPLICATE(d,num_mjfr)
+ur8_test     = REPLICATE(d,num_mjfr)
+minf_test    = REPLICATE(-1,num_mjfr)
+majf_test    = REPLICATE(-1,num_mjfr)
+dpu_test[good[*,0]]  = dpuclk_hk
+ur8_test[good[*,0]]  = ur8_hk
+minf_test[good[*,0]] = minframe
+majf_test[good[*,0]] = majframe
+; => My estimate at the roll over time of the DPU Clock
+dpuroll      = 5366.691124061162d0    ; -07/16/2008 Estimate (384 pts)
+roll_els     = WHERE(dpu_test LT 1d2,gdrl)
+fact         = FLTARR(num_mjfr)
+factmj       = LONARR(num_mjfr)
+cc           = 0L
+bb           = 0L
+FOR j=0L, gdrl DO BEGIN                                                   $
+  dnel = bb[0]                                                          & $
+  IF (j EQ gdrl) THEN upel = num_mjfr - 1L ELSE upel = roll_els[j] - 1L & $
+  IF (upel GT num_mjfr - 1L) THEN upel = num_mjfr - 1L                  & $
+  fact[dnel:upel] += dpuroll[0]*DOUBLE(j)                               & $
+  factmj[dnel:upel] += j                                                & $
+  bb   = upel[0] + 1L
+
+; => Find ranges of Major Frame values associated with each factor
+mjra  = LONARR(gdrl,2)
+FOR j=0L, gdrl - 1L DO BEGIN                                                   $
+  good_f = WHERE(factmj EQ j AND majf_test GE 0,gdf)                         & $
+  IF (gdf GT 0) THEN mjra[j,*] = [MIN(majf_test[good_f],/NAN),MAX(majf_test[good_f],/NAN)]
+
+diff0 = 0
+FOR j=0L, gdrl - 1L DO BEGIN                                                   $
+  diff0 = (mjra[j,1] - mjra[j,0]) > diff0
+
+PRINT,';', diff0
+;          58
+
+
+dpu_test2 = dpu_test + fact
+ndpu      = N_ELEMENTS(dpu_test2)
+x         = LINDGEN(ndpu-1L)
+y         = x + 1
+diff_dpu_test = dpu_test2[y] - dpu_test2[x]
+diff_ur8_test = (ur8_test[y] - ur8_test[x])*864d2
+PRINT,';', minmax(diff_dpu_test), FORMAT='(a1,2d20.12)'
+;     91.996547698975     92.004348754883
+PRINT,';', minmax(diff_ur8_test), FORMAT='(a1,2d25.16)'
+;      91.9989999616518617      92.0000000536674634
+
+
+
+; 26-AUG-1998, 06:40:24.434   6081.2780605740740612   6081.2780668950617837   6081.2780732160493926   6081.2780605740740612   6081.2786034722222439   6081.2780672685184982   6081.2777777777778283   2867.883056640625   2866.234619140625   2866.780761718750   2867.326904296875         615       10488           4           3           3      2.025717496872      0.142939686775     19.344999313354    -32.327507019043     31.059488296509     94.446487426758    158.994140625000   1809.000000000000    781.000000000000   1875.000000000000
+; 26-AUG-1998, 06:40:24.434   6081.2780605740740612   6081.2780668950617837   6081.2780732160493926   6081.2780605740740612   6081.2786034722222439   6081.2780672685184982   6081.2777777777778283   2867.883056640625   2866.234619140625   2866.780761718750   2867.326904296875         615       10488           7           3           3      2.025717496872      0.142939686775     19.344999313354    -32.327507019043     31.059488296509     94.446487426758    158.994140625000   1809.000000000000    781.000000000000   1875.000000000000
+; 26-AUG-1998, 06:40:24.434   6081.2780605740740612   6081.2780668950617837   6081.2780732160493926   6081.2780605740740612   6081.2786034722222439   6081.2780672685184982   6081.2777777777778283   2867.883056640625   2866.234619140625   2866.780761718750   2867.326904296875         615       10488           8           3           3      2.025717496872      0.142939686775     19.344999313354    -32.327507019043     31.059488296509     94.446487426758    158.994140625000   1809.000000000000    781.000000000000   1875.000000000000
+; 26-AUG-1998, 06:40:24.434   6081.2780605740740612   6081.2780668950617837   6081.2780732160493926   6081.2780605740740612   6081.2786034722222439   6081.2780672685184982   6081.2777777777778283   2867.883056640625   2866.234619140625   2866.780761718750   2867.326904296875         615       10488           9           3           3      2.025717496872      0.142939686775     19.344999313354    -32.327507019043     31.059488296509     94.446487426758    158.994140625000   1809.000000000000    781.000000000000   1875.000000000000
+
+
+; 26-AUG-1998, 06:40:24.434   6081.2780605740740612   6081.2780668950617837   6081.2780732160493926   6081.2780605740740612   6081.2786034722222439   6081.2780672685184982   6081.2777777777778283   2867.883056640625   2866.234619140625   2866.780761718750   2867.326904296875         615       10488           4           3           3      2.025717496872      0.142939686775     19.344999313354    -32.327507019043     31.059488296509     94.446487426758    158.994140625000   1809.000000000000    781.000000000000   1875.000000000000
+
+;        SCET                       UR8                    DPU                  [rad/s]             [rads]              [rpms]              [start]             [center]             [end]              [deg]              [ticks]
+; 26-AUG-1998, 06:40:24.434   6081.2780605740740612   2867.883056640625      2.025717496872      0.142939686775     19.344999313354    -32.327507019043     31.059488296509     94.446487426758    158.994140625000   1809.000000000000
+
+
+;  => SUNCLOCK = sunang
+;  => SPINRATE = wispinrate
+;
+;     on 16 nov 1999 it was found that the sunclock is read 1024
+;     samples after the end of the event, plus about 10.6 msec or
+;     about 14 spin clock counts for message passing time
+;
+;     print*,'spinrate,sunclock,sps',spinrate,sunclock,sps
+;      END_ANGLE =  -360.*(SUNCLOCK-14.)/4096. - 45. ; ANGLE SUN TO +EX AT END
+;      IF(END_ANGLE.LT.-180.) END_ANGLE = END_ANGLE + 360.
+;      IF(END_ANGLE.GT.180.)  END_ANGLE = END_ANGLE - 360.
+;      DANG = SPINRATE*360./SPS/TWOPI
+;      ST_ANGLE = END_ANGLE + 3072.*DANG   ; ANGLE SUN TO +EX AT START 16nov99
+;      END_ANGLE = END_ANGLE + 1024.*DANG
+;     print*,'start angle, end angle, dang',st_angle,end_angle,dang
+
+
+;-----------------------------------------------------------------------------------------
+; => Lines 1515 to 1522 of TDSBDAT.FOR
+;-----------------------------------------------------------------------------------------
+;     print*,'spinrate,sunclock,sps',spinrate,sunclock,sps
+      END_ANGLE =  -360.*(SUNCLOCK-14.)/4096. - 45. ; ANGLE SUN TO +EX AT END
+      IF(END_ANGLE.LT.-180.) END_ANGLE = END_ANGLE + 360.
+      IF(END_ANGLE.GT.180.)  END_ANGLE = END_ANGLE - 360.
+      DANG = SPINRATE*360./SPS/TWOPI
+      ST_ANGLE = END_ANGLE + 3072.*DANG   ; ANGLE SUN TO +EX AT START 16nov99
+      END_ANGLE = END_ANGLE + 1024.*DANG
+;     print*,'start angle, end angle, dang',st_angle,end_angle,dang
+
+;-----------------------------------------------------------------------------------------
+; => Lines 843 to 848 of TDSBDAT.FOR
+;-----------------------------------------------------------------------------------------
+      END_ANGLE =  -360.*(SUNCLOCK-14.)/4096. - 45. ; ANGLE SUN TO +EX AT END
+      IF(END_ANGLE.LT.-180.) END_ANGLE = END_ANGLE + 360.
+      IF(END_ANGLE.GT.180.)  END_ANGLE = END_ANGLE - 360.
+      DANG = SPINRATE*360./SPS/TWOPI
+      ST_ANGLE = END_ANGLE + 3072.*DANG  ; ANGLE SUN TO +EX AT START 16nov99
+      END_ANGLE = END_ANGLE + 1024.*DANG
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Wind Notes
+;-----------------------------------------------------------------------------------------
+
+; SOURCE => Source antenna translations
+;            1 = ExAC
+;            2 = EyAC
+;            3 = EzAC
+;            4 = ExDC
+;            5 = EyDC
+;            6 = EzDC
+;            7 = Bx
+;            8 = By
+;            9 = Bz
+;
+; RX_FILTER => Event's low pass filter selection (3dB point)
+;            0 = 50,000 Hz
+;            1 = 12,500 Hz
+;            2 = 3,125 Hz
+;            3 = 781 Hz
+;            4 = 195 Hz
+;            5 = 49 Hz
+; RX_SPEED => Event's speed selection
+;            0 = 120,000 S/s
+;            1 = 30,000 S/s
+;            2 = 7,500 S/s
+;            3 = 1,875 S/s
+;            4 = 468 S/s
+;            5 = 117 S/s
+
+
+;      (N) = NEAREST:
+;                       The WIND/WAVES SCET falls between two successive CDF file
+;                     Epoch values.  The BGSEc value associated with the Epoch value
+;                     closest to the WIND/WAVES SCET is returned.
+;
+
+; => DPU Clock Frequency [Hz]
+;      Designed:  50,000.00/16.  [Date:  1995-10-13]
+;      Measured:  50,018.80/16.  [Date:  1995-10-13]
+;
+; => DPU Clock Period [seconds]
+;      Designed:  16./50,000.00  [Date:  1995-10-13]
+;      Measured:  16./50,018.80  [Date:  1995-10-13]
+;
+;
+; => X-Antenna [wire] effective length [meters]
+;      Theory:  43.50  [Date:  1995-08-16]  {from items_global.db; SSL Mac Distribution}
+;  Calculated:  41.10  [Date:  1996-11-09]  {Paul's TDSDAT.FOR and TDSBDAT.FOR}
+;      Actual: 100.00  [Date:  1995-08-16]  {Tip to Tip length of design}
+;
+; => Y-Antenna [wire] effective length [meters]
+;      Theory:   4.68  [Date:  1995-08-16]  {from items_global.db; SSL Mac Distribution}
+;  Calculated:   3.79  [Date:  1996-11-09]  {Paul's TDSDAT.FOR and TDSBDAT.FOR}
+;      Actual:  15.00  [Date:  1995-08-16]  {Tip to Tip length of design}
+;
+; => Z-Antenna [stacer] effective length [meters]
+;      Theory:   2.17  [Date:  1995-08-16]  {from items_global.db; SSL Mac Distribution}
+;      Theory:   2.82  [Date:  1997-04-22]  {from items_global.db; SSL Mac Distribution}
+;  Calculated:   2.17  [Date:  1996-11-09]  {Paul's TDSDAT.FOR and TDSBDAT.FOR}
+;      Actual:  10.60  [Date:  1995-08-16]  {Tip to Tip length of design}
+;      Actual:  12.36  [Date:  1997-04-22]  {Tip to Tip length of design}
+;
+;
+; STICS2DEGREES_R4 = Conversion factor - Spin 4096 tics to degrees (360/4096)
+;       Value:  0.087890625
+; SUN_ANGLE        = Sun angle (count 4096 from sun) [1993-10-30]
+; SUN_ANGLE_R4     = Sun angle (degrees) [1996-03-29]
+;       Value:  SUN_ANGLE*STICS2DEGREES_R4
+; MAG_ANGLE        = Magnetic azimuth (count4096 from 0 crossing)
+; MAG_ANGLE_R4     = Magnetic azimuth (degrees from 0 crossing)
+;       Value:  MAG_ANGLE*STICS2DEGREES_R4
+;
+;
+; WIND_MFI_SCET_R8      = (N) Time values to match various MFI values (UR8)
+; WIND_ATT_SCET_R8      = (N) Time values to match WIND ATTitude values (UR8)
+; WIND_ATT_SPIN_RATE_R4 = (N) WIND body spin rate from FDF/O&A (rpm)
+; WIND_SPIN_SCET_R8     = (N) Times to match WIND SPIN phase values (UR8)
+; WIND_SPIN_PHASE_R4    = (N) WIND body spin phase angle (from KP) (rads)
+; WIND_SPIN_RATE_R4     = (N) WIND average spin rate (from KP) (rad/sec)
+; WIND_SPIN_JITTER_R4   = (N) WIND standard deviation of spin rate (rad/sec)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

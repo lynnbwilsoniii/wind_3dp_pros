@@ -1,0 +1,1009 @@
+;-----------------------------------------------------------------------------------------
+; => Stats
+;-----------------------------------------------------------------------------------------
+evn_gd      = [05881617L,27520153L]    ; => Event #s of 2 examples in paper
+
+epo         = 8.854187817d-12          ; => Permittivity of free space (F/m)
+muo         = 4d0*!DPI*1d-7            ; => Permeability of free space (N/A^2 or H/m)
+me          = 9.1093897d-31            ; => Electron mass (kg)
+mp          = 1.6726231d-27            ; => Proton mass (kg)
+qq          = 1.60217733d-19           ; => Fundamental charge (C)
+wcefac      = qq*1d-9/me               ; => factor for electron cyclotron frequency [rad s^(-1) nT^(-1)]
+wcpfac      = qq*1d-9/mp               ; => factor for proton cyclotron frequency [rad s^(-1) nT^(-1)]
+wpefac      = SQRT(1d6*qq^2/(me*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+wppfac      = SQRT(1d6*qq^2/(mp*epo))  ; => factor for electron plasma frequency [rad s^(-1) cm^(-3/2)]
+; => Estimate the equitorial cyclotron frequency
+R_E         = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E        = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor  = mu_E/R_E^3
+lshell      = 15.
+l_string    = STRTRIM(STRING(lshell[0],FORMAT='(f12.1)'),2L)
+
+; => Get only:
+;     1)  whistlers
+;     2)  in outer magnetosphere
+;     3)  complete TDS samples [i.e. all components]
+;     4)  L ≤ 15
+test_wh_mg  = all_stats_all_waves_read(/NO_INCOMP,WAVET='Whistlers',REGION='outermg',LSHELL=lshell[0])
+
+all_evns_mg = test_wh_mg.EVENT_N
+wscets_mg   = STRTRIM(test_wh_mg.SCETS,2)
+wavetype_mg = STRLOWCASE(STRTRIM(test_wh_mg.WAVE_TYPE,2))
+rectype_mg  = STRLOWCASE(STRTRIM(test_wh_mg.REC_TYPE,2))
+nall_mg     = N_ELEMENTS(wscets_mg)
+wunix_mg    = time_double(wscets_mg)            ; => TDS Unix Times
+w_rad_mg    = test_wh_mg.WIND_RAD_DIST          ; => Wind SC Radial Dist. (Re)
+w_lsh_mg    = test_wh_mg.WIND_L_SHELL           ; => Wind SC L-Shell (Re)
+w_mlt_mg    = test_wh_mg.WIND_MLT               ; => Wind SC MLT (hours)
+frq_low_mg  = test_wh_mg.FREQ_LOW*(2d0*!DPI)    ; => Convert to rad/s
+frq_high_mg = test_wh_mg.FREQ_HIGH*(2d0*!DPI)   ; => Convert to rad/s
+ae_ind_mg   = test_wh_mg.AE_INDEX               ; => 1 min. Avg. AE-Index [nT]
+
+; => Define the WAVES AC RMS and Peak Field Amplitudes
+alle_rms_mg = test_wh_mg.E_RMS
+allb_rms_mg = test_wh_mg.B_RMS
+whe_pk_mg   = test_wh_mg.EMAG_PK
+whb_pk_mg   = test_wh_mg.BMAG_PK
+; => Define the GSE DC B-fields
+bmag_all_mg = test_wh_mg.B_MAG
+gse_magf_mg = test_wh_mg.WI_B3_GSE
+ugsemagf_mg = gse_magf_mg/( SQRT(TOTAL(gse_magf_mg^2,2,/NAN)) # REPLICATE(1d0,nall_mg) )
+; => Define MVA Eigenvalues
+evalmin_mg  = test_wh_mg.EIG_VALS[*,0]
+evalmid_mg  = test_wh_mg.EIG_VALS[*,1]
+evalmax_mg  = test_wh_mg.EIG_VALS[*,2]
+emidmin_mg  = evalmid_mg/evalmin_mg
+; => Define Wave Vector Directions [GSE]
+kxgse_mg    = test_wh_mg.MIN_EIG_VEC[*,0]
+kygse_mg    = test_wh_mg.MIN_EIG_VEC[*,1]
+kzgse_mg    = test_wh_mg.MIN_EIG_VEC[*,2]
+kgse_mg     = [[kxgse_mg],[kygse_mg],[kzgse_mg]]
+; => Define Theta_kB
+kdotb_mg    = my_dot_prod(ugsemagf_mg,kgse_mg,/NOM)
+thetakB_mg  = ACOS(kdotb_mg)*18d1/!DPI
+thetakB_mgs = thetakB_mg < (18d1 - thetakB_mg)  ; => Supplemental angle
+; => Define the local ion density estimates
+nipl_all_mg = test_wh_mg.N_PL                   ; => Ion density from PL [cm^(-3)]
+niph_all_mg = test_wh_mg.N_PH                   ; => Ion density from PH [cm^(-3)]
+; => Define the relevant frequencies
+wavefreq_mg = (frq_low_mg + frq_high_mg)/2d0    ; => Avg. Wave Frequency [rad/s]
+delta_f_mg  = (frq_high_mg - frq_low_mg)        ; => Width of Freq. Peak [rad/s]
+deltaf_f_mg = delta_f_mg/wavefreq_mg            ; => ∆f/favg
+wce_all_mg  = wcefac[0]*bmag_all_mg             ; => Local electron cyclotron frequency [rad/s]
+wpe_pl_mg   = wpefac[0]*SQRT(nipl_all_mg)       ; => Local electron plasma frequency [rad/s, PL estimates]
+wpe_ph_mg   = wpefac[0]*SQRT(niph_all_mg)       ; => Local electron plasma frequency [rad/s, PH estimates]
+; => Estimate the dipole B-field at the equator dependent upon the L-shell
+;   => then estimate the equitorial cyclotron frequency
+bmag_eq_mg  = magnfactor[0]/(w_lsh_mg)^3
+wce_eq_mg   = wcefac[0]*bmag_eq_mg*1d9
+; => Ratio of local electron plasma to local cyclotron frequency
+test_pl_mg  = wpe_pl_mg/wce_all_mg
+test_ph_mg  = wpe_ph_mg/wce_all_mg
+; => Ratio of local to equatorial electron cyclotron frequency
+wcerat_mg   = wce_all_mg/wce_eq_mg
+; => Ratio of Avg. Wave Freq. to local and equatorial electron cyclotron frequency
+wavg_fce_mg = wavefreq_mg/wce_all_mg
+wavg_feq_mg = wavefreq_mg/wce_eq_mg
+deltafeq_mg = delta_f_mg/wce_eq_mg              ; => ∆f/fce-equitorial
+deltafce_mg = delta_f_mg/wce_all_mg             ; => ∆f/fce-local
+; => Define the SC positions
+pos_xgsm_mg = test_wh_mg.GSM_POS[*,0]
+pos_ygsm_mg = test_wh_mg.GSM_POS[*,1]
+pos_zgsm_mg = test_wh_mg.GSM_POS[*,2]
+pos_wgsm_mg = [[pos_xgsm_mg],[pos_ygsm_mg],[pos_zgsm_mg]]
+pos_ugsm_mg = pos_wgsm_mg/(SQRT(TOTAL(pos_wgsm_mg^2,2,/NAN)) # REPLICATE(1d0,nall_mg))
+; => Calculate SM Coordinates
+coord_trans_wrapper,wunix_mg,pos_wgsm_mg,data_out,/GSM,/TO_SM
+pos_wsm_mg  = data_out
+pos_usm_mg  = pos_wsm_mg/(SQRT(TOTAL(pos_wsm_mg^2,2,/NAN)) # REPLICATE(1d0,nall_mg))
+gsm_lat_mg  = ATAN(pos_ugsm_mg[*,2]/SQRT(pos_ugsm_mg[*,0]^2 + pos_ugsm_mg[*,1]^2))*18d1/!DPI
+sm_lat_mg   = ATAN(pos_usm_mg[*,2]/SQRT(pos_usm_mg[*,0]^2 + pos_usm_mg[*,1]^2))*18d1/!DPI
+; => Define temperature estimates from EESA Low and High
+tavg_el_mg  = test_wh_mg.TAVG_EL
+tavg_eh_mg  = test_wh_mg.TAVG_EH
+; => Define temperature anisotropy estimates from EESA Low and High
+tanis_el_mg = test_wh_mg.TANIS_EL
+tanis_eh_mg = test_wh_mg.TANIS_EH
+; => Define elements with ONLY TDSS with 3 B-fields and emid/emin ≥ 5.0
+test_b2_mg  = ((allb_rms_mg[*,0] GT 0.) AND (allb_rms_mg[*,1] GT 0.) AND (allb_rms_mg[*,2] GT 0.))
+test_s2_mg  = (rectype_mg EQ 'tdss') AND test_b2_mg AND (emidmin_mg GE 5d0)
+good_s2_mg  = WHERE(test_s2_mg,gds2_mg)
+strgds2_mg  = STRING(gds2_mg,FORMAT='(I3.3)')
+
+
+; => Get only:
+;     1)  whistlers
+;     2)  in radiation belts
+;     3)  complete TDS samples [i.e. all components]
+;     4)  L ≤ 15
+test_wh_rd = all_stats_all_waves_read(/NO_INCOMP,WAVET='Whistlers',REGION='radbelt',LSHELL=lshell[0])
+
+all_evns_rd = test_wh_rd.EVENT_N
+wscets_rd   = STRTRIM(test_wh_rd.SCETS,2)
+wavetype_rd = STRLOWCASE(STRTRIM(test_wh_rd.WAVE_TYPE,2))
+rectype_rd  = STRLOWCASE(STRTRIM(test_wh_rd.REC_TYPE,2))
+nall_rd     = N_ELEMENTS(wscets_rd)
+wunix_rd    = time_double(wscets_rd)            ; => TDS Unix Times
+w_rad_rd    = test_wh_rd.WIND_RAD_DIST          ; => Wind SC Radial Dist. (Re)
+w_lsh_rd    = test_wh_rd.WIND_L_SHELL           ; => Wind SC L-Shell (Re)
+w_mlt_rd    = test_wh_rd.WIND_MLT               ; => Wind SC MLT (hours)
+frq_low_rd  = test_wh_rd.FREQ_LOW*(2d0*!DPI)    ; => Convert to rad/s
+frq_high_rd = test_wh_rd.FREQ_HIGH*(2d0*!DPI)   ; => Convert to rad/s
+ae_ind_rd   = test_wh_rd.AE_INDEX               ; => 1 min. Avg. AE-Index [nT]
+
+; => Define the WAVES AC RMS and Peak Field Amplitudes
+alle_rms_rd = test_wh_rd.E_RMS
+allb_rms_rd = test_wh_rd.B_RMS
+whe_pk_rd   = test_wh_rd.EMAG_PK
+whb_pk_rd   = test_wh_rd.BMAG_PK
+; => Define the GSE DC B-fields
+bmag_all_rd = test_wh_rd.B_MAG
+gse_magf_rd = test_wh_rd.WI_B3_GSE
+ugsemagf_rd = gse_magf_rd/( SQRT(TOTAL(gse_magf_rd^2,2,/NAN)) # REPLICATE(1d0,nall_rd) )
+; => Define MVA Eigenvalues
+evalmin_rd  = test_wh_rd.EIG_VALS[*,0]
+evalmid_rd  = test_wh_rd.EIG_VALS[*,1]
+evalmax_rd  = test_wh_rd.EIG_VALS[*,2]
+emidmin_rd  = evalmid_rd/evalmin_rd
+; => Define Wave Vector Directions [GSE]
+kxgse_rd    = test_wh_rd.MIN_EIG_VEC[*,0]
+kygse_rd    = test_wh_rd.MIN_EIG_VEC[*,1]
+kzgse_rd    = test_wh_rd.MIN_EIG_VEC[*,2]
+kgse_rd     = [[kxgse_rd],[kygse_rd],[kzgse_rd]]
+; => Define Theta_kB
+kdotb_rd    = my_dot_prod(ugsemagf_rd,kgse_rd,/NOM)
+thetakB_rd  = ACOS(kdotb_rd)*18d1/!DPI
+thetakB_rds = thetakB_rd < (18d1 - thetakB_rd)  ; => Supplemental angle
+; => Define the local ion density estimates
+nipl_all_rd = test_wh_rd.N_PL                   ; => Ion density from PL [cm^(-3)]
+niph_all_rd = test_wh_rd.N_PH                   ; => Ion density from PH [cm^(-3)]
+; => Define the relevant frequencies
+wavefreq_rd = (frq_low_rd + frq_high_rd)/2d0    ; => Avg. Wave Frequency [rad/s]
+delta_f_rd  = (frq_high_rd - frq_low_rd)        ; => Width of Freq. Peak [rad/s]
+deltaf_f_rd = delta_f_rd/wavefreq_rd            ; => ∆f/favg
+wce_all_rd  = wcefac[0]*bmag_all_rd             ; => Local electron cyclotron frequency [rad/s]
+wpe_pl_rd   = wpefac[0]*SQRT(nipl_all_rd)       ; => Local electron plasma frequency [rad/s, PL estimates]
+wpe_ph_rd   = wpefac[0]*SQRT(niph_all_rd)       ; => Local electron plasma frequency [rad/s, PH estimates]
+; => Estimate the dipole B-field at the equator dependent upon the L-shell
+;   => then estimate the equitorial cyclotron frequency
+bmag_eq_rd  = magnfactor[0]/(w_lsh_rd)^3
+wce_eq_rd   = wcefac[0]*bmag_eq_rd*1d9
+; => Ratio of local electron plasma to local cyclotron frequency
+test_pl_rd  = wpe_pl_rd/wce_all_rd
+test_ph_rd  = wpe_ph_rd/wce_all_rd
+; => Ratio of local to equatorial electron cyclotron frequency
+wcerat_rd   = wce_all_rd/wce_eq_rd
+; => Ratio of Avg. Wave Freq. to local and equatorial electron cyclotron frequency
+wavg_fce_rd = wavefreq_rd/wce_all_rd
+wavg_feq_rd = wavefreq_rd/wce_eq_rd
+deltafeq_rd = delta_f_rd/wce_eq_rd              ; => ∆f/fce-equitorial
+deltafce_rd = delta_f_rd/wce_all_rd             ; => ∆f/fce-local
+; => Define the Wind SC GSM positions
+pos_xgsm_rd = test_wh_rd.GSM_POS[*,0]
+pos_ygsm_rd = test_wh_rd.GSM_POS[*,1]
+pos_zgsm_rd = test_wh_rd.GSM_POS[*,2]
+pos_wgsm_rd = [[pos_xgsm_rd],[pos_ygsm_rd],[pos_zgsm_rd]]
+pos_ugsm_rd = pos_wgsm_rd/(SQRT(TOTAL(pos_wgsm_rd^2,2,/NAN)) # REPLICATE(1d0,nall_rd))
+; => Calculate SM Coordinates
+coord_trans_wrapper,wunix_rd,pos_wgsm_rd,data_out,/GSM,/TO_SM
+pos_wsm_rd  = data_out
+pos_usm_rd  = pos_wsm_rd/(SQRT(TOTAL(pos_wsm_rd^2,2,/NAN)) # REPLICATE(1d0,nall_rd))
+gsm_lat_rd  = ATAN(pos_ugsm_rd[*,2]/SQRT(pos_ugsm_rd[*,0]^2 + pos_ugsm_rd[*,1]^2))*18d1/!DPI
+sm_lat_rd   = ATAN(pos_usm_rd[*,2]/SQRT(pos_usm_rd[*,0]^2 + pos_usm_rd[*,1]^2))*18d1/!DPI
+; => Define temperature estimates from EESA Low and High
+tavg_el_rd  = test_wh_rd.TAVG_EL
+tavg_eh_rd  = test_wh_rd.TAVG_EH
+; => Define temperature anisotropy estimates from EESA Low and High
+tanis_el_rd = test_wh_rd.TANIS_EL
+tanis_eh_rd = test_wh_rd.TANIS_EH
+; => Define elements with ONLY TDSS with 3 B-fields and emid/emin ≥ 5.0
+test_b2_rd  = ((allb_rms_rd[*,0] GT 0.) AND (allb_rms_rd[*,1] GT 0.) AND (allb_rms_rd[*,2] GT 0.))
+test_s2_rd  = (rectype_rd EQ 'tdss') AND test_b2_rd AND (emidmin_rd GE 5d0)
+good_s2_rd  = WHERE(test_s2_rd,gds2_rd)
+strgds2_rd  = STRING(gds2_rd,FORMAT='(I3.3)')
+
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+;; => Print stats
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+HELP, WHERE(wavg_feq_mg LE 0.5,geqmg05), WHERE(wavg_feq_rd LE 0.5,geqrd05)
+;  <Expression>    LONG      = Array[23]
+;  <Expression>    LONG      = Array[208]
+
+
+PRINT,''
+PRINT,';  ', geqmg05, nall_mg, geqrd05, nall_rd
+PRINT,';  ', 1d0*geqmg05/(1d0*nall_mg), 1d0*geqrd05/(1d0*nall_rd)
+;            23          30         208         217
+;        0.76666667      0.95852535
+
+
+; => Ratio of local to equatorial electron cyclotron frequency
+HELP, WHERE(wcerat_mg LE 2.0,geqmg20), WHERE(wcerat_mg LE 1.5,geqmg15), WHERE(wcerat_mg LE 1.0,geqmg10), $
+      WHERE(wcerat_rd LE 2.0,geqrd20), WHERE(wcerat_rd LE 1.5,geqrd15), WHERE(wcerat_rd LE 1.0,geqrd10)
+;  <Expression>    LONG      = Array[19]
+;  <Expression>    LONG      = Array[15]
+;  <Expression>    LONG      = Array[14]
+;  <Expression>    LONG      = Array[196]
+;  <Expression>    LONG      = Array[154]
+;  <Expression>    LONG      = Array[111]
+
+PRINT,''
+PRINT,';  ', geqmg20, geqmg15, geqmg10, nall_mg
+PRINT,';  ', 1d0*geqmg20/(1d0*nall_mg), 1d0*geqmg15/(1d0*nall_mg), 1d0*geqmg10/(1d0*nall_mg)
+;            19          15          14          30
+;        0.63333333      0.50000000      0.46666667
+PRINT,';  ', geqrd20, geqrd15, geqrd10, nall_rd
+PRINT,';  ', 1d0*geqrd20/(1d0*nall_rd), 1d0*geqrd15/(1d0*nall_rd), 1d0*geqrd10/(1d0*nall_rd)
+;           196         154         111         217
+;        0.90322581      0.70967742      0.51152074
+
+
+HELP, WHERE(tanis_el_mg GE 1.,gtlmg10), WHERE(tanis_eh_mg GE 1.,gthmg10), $
+      WHERE(tanis_el_rd GE 1.,gtlrd10), WHERE(tanis_eh_rd GE 1.,gthrd10)
+;  <Expression>    LONG      = Array[13]
+;  <Expression>    LONG      = Array[25]
+;  <Expression>    LONG      = Array[163]
+;  <Expression>    LONG      = Array[214]
+
+PRINT,''
+PRINT,';  ', gtlmg10, gthmg10, gtlrd10, gthrd10
+PRINT,';------------------------------------------------------------------'
+PRINT,';                        [% of T_anisotropy > 1.0]'
+PRINT,';               Magnetosphere                 Radiation Belts'
+PRINT,';            EL              EH              EL              EH'
+PRINT,';=================================================================='
+PRINT,';  ', 1d0*gtlmg10/(1d0*nall_mg), 1d0*gthmg10/(1d0*nall_mg), $
+             1d0*gtlrd10/(1d0*nall_rd), 1d0*gthrd10/(1d0*nall_rd)
+PRINT,';------------------------------------------------------------------'
+PRINT,''
+;            13          25         163         214
+;------------------------------------------------------------------
+;                        [% of T_anisotropy > 1.0]
+;               Magnetosphere                 Radiation Belts
+;            EL              EH              EL              EH
+;==================================================================
+;        0.43333333      0.83333333      0.75115207      0.98617512
+;------------------------------------------------------------------
+
+
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+;; => Plot correlation between theta_kB and lambda_GSM? [TDSS]
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+WINDOW,0,RETAIN=2
+
+extra      = '['+strgds2_rd[0]+' Rad. Belts = !9V!3, '+strgds2_mg[0]+' Magneto = *'+']'
+xttl       = '!7h!3'+'!DkB!N (deg) '+extra[0]
+yttl       = '!7k!3'+'!DGSM,SM!N (deg) [GSM-Red, SM-Blue]'
+ttepref    = 'TDSS !7k!3'+'!DGSM,SM!N vs. !7h!3'+'!DkB!N [TDSS, nT] Whistler Statistics (L < '+l_string[0]+')'
+xra        = [0e0,9e1]
+yra        = [-7e1,7e1]
+pstr       = {XMINOR:10,YMINOR:10,XSTYLE:1,YSTYLE:1,XRANGE:xra,YRANGE:yra,$
+              XTITLE:xttl,YTITLE:yttl,NODATA:1,TITLE:ttepref}
+suffx      = '_Radiation-Belts-diamonds_and_Magnetosphere-stars_Emid-min-5'
+pref       = 'Wind-GSM_and_SM-Latitude_Theta-kB_TDSS-nT-FIXED_L'+l_string[0]
+
+
+!P.MULTI   = 0
+  PLOT,thetakb_mg[good_s2_mg],gsm_lat_mg[good_s2_mg],_EXTRA=pstr
+    OPLOT,thetakb_mg[good_s2_mg],gsm_lat_mg[good_s2_mg],PSYM=2,COLOR=250L
+    OPLOT,thetakb_mg[good_s2_mg],sm_lat_mg[good_s2_mg], PSYM=2,COLOR= 50L
+    OPLOT,thetakb_rd[good_s2_rd],gsm_lat_rd[good_s2_rd],PSYM=4,COLOR=250L
+    OPLOT,thetakb_rd[good_s2_rd],sm_lat_rd[good_s2_rd], PSYM=4,COLOR= 50L
+popen,pref[0]+suffx[0],/LAND
+  PLOT,thetakb_mg[good_s2_mg],gsm_lat_mg[good_s2_mg],_EXTRA=pstr
+    OPLOT,thetakb_mg[good_s2_mg],gsm_lat_mg[good_s2_mg],PSYM=2,COLOR=250L
+    OPLOT,thetakb_mg[good_s2_mg],sm_lat_mg[good_s2_mg], PSYM=2,COLOR= 50L
+    OPLOT,thetakb_rd[good_s2_rd],gsm_lat_rd[good_s2_rd],PSYM=4,COLOR=250L
+    OPLOT,thetakb_rd[good_s2_rd],sm_lat_rd[good_s2_rd], PSYM=4,COLOR= 50L
+pclose
+
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+;; => Plot Peak Amp. vs. AE-Index
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+WINDOW,0,RETAIN=2
+
+extra    = '['+strgds2_rd[0]+' Rad. Belts = Red *, '+strgds2_mg[0]+' Magneto = Blue *'+']'
+ttle     = 'Peak Whistler Amplitude vs. AE-Index '+extra[0]
+xttl     = 'AE-Index [1min Avg., nT]'
+yttle    = 'Peak Whistler Amplitude (mV/m)'
+yttlb    = 'Peak Whistler Amplitude (nT)'
+yran0    = [1e-1,4e2]
+yran1    = [1e-2,1e1]
+xra      = [0d0,1.3e3]
+fname    = 'TDS-ALL_FIXED-SCETs_whistler_amp_vs_AE-Index-1min_2'
+pstr     = {TITLE:ttle,XTITLE:xttl,YTITLE:yttl,YSTYLE:1,XSTYLE:1,YLOG:1,$
+            XRANGE:xra,NODATA:1,XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+
+xdat_mg  = ae_ind_mg
+ydat0_mg = whe_pk_mg
+ydat1_mg = whb_pk_mg
+xdat_rd  = ae_ind_rd
+ydat0_rd = whe_pk_rd
+ydat1_rd = whb_pk_rd
+
+
+WSET,0
+WSHOW,0
+  !P.MULTI = [0,1,2]
+  PLOT,xdat_mg,ydat0_mg,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat_mg,ydat0_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat0_rd,PSYM=2,COLOR= 50
+  PLOT,xdat_mg,ydat1_mg,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat_mg,ydat1_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat1_rd,PSYM=2,COLOR= 50
+!P.MULTI = 0
+
+popen,fname[0],/LAND
+  !P.MULTI = [0,1,2]
+  PLOT,xdat_mg,ydat0_mg,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat_mg,ydat0_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat0_rd,PSYM=4,COLOR= 50
+  PLOT,xdat_mg,ydat1_mg,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat_mg,ydat1_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat1_rd,PSYM=4,COLOR= 50
+pclose
+!P.MULTI = 0
+
+
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+;; => Plot Amp. vs. f/fce
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+WINDOW,0,RETAIN=2
+
+extra    = '['+strgds2_rd[0]+' Rad. Belts = !9V!3, '+strgds2_mg[0]+' Magneto = *'+']'
+ttle     = 'Amplitude vs. f/f!Dce!N  '+extra[0]
+xttl     = 'f/f!Dce!N [local cyclotron frequency]'
+yttle    = 'Peak Whistler Amplitude (mV/m)'
+yttlb    = 'Peak Whistler Amplitude (nT)'
+xdat_mg  = wavg_fce_mg
+ydat0_mg = whe_pk_mg
+ydat1_mg = whb_pk_mg
+xdat_rd  = wavg_fce_rd
+ydat0_rd = whe_pk_rd
+ydat1_rd = whb_pk_rd
+
+fname    = 'Peak-Amplitude_vs_f-fce-local_log-scale_FIXED-SCETs'
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:1,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+yran0    = [1e-1,350e0]
+yran1    = [1e-2,1e1]
+
+fname    = 'Peak-Amplitude_vs_f-fce-local_lin-scale_FIXED-SCETs'
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:0,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+yran0    = [1e-1,330e0]
+yran1    = [1e-2,6e0]
+
+
+WSET,0
+WSHOW,0
+  !P.MULTI = [0,1,2]
+  PLOT,xdat_mg,ydat0_mg,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat_mg,ydat0_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat0_rd,PSYM=4,COLOR= 50
+  PLOT,xdat_mg,ydat1_mg,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat_mg,ydat1_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat1_rd,PSYM=4,COLOR= 50
+!P.MULTI = 0
+
+popen,fname[0],/LAND
+  !P.MULTI = [0,1,2]
+  PLOT,xdat_mg,ydat0_mg,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat_mg,ydat0_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat0_rd,PSYM=4,COLOR= 50
+  PLOT,xdat_mg,ydat1_mg,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat_mg,ydat1_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat1_rd,PSYM=4,COLOR= 50
+pclose
+!P.MULTI = 0
+
+extra    = '['+strgds2_rd[0]+' Rad. Belts = !9V!3, '+strgds2_mg[0]+' Magneto = *'+']'
+ttle     = 'Amplitude vs. f/f!Dce!N  '+extra[0]
+xttl     = 'f/f!Dce!N [equatorial cyclotron frequency]'
+yttle    = 'Peak Whistler Amplitude (mV/m)'
+yttlb    = 'Peak Whistler Amplitude (nT)'
+xdat_mg  = wavg_feq_mg
+ydat0_mg = whe_pk_mg
+ydat1_mg = whb_pk_mg
+xdat_rd  = wavg_feq_rd
+ydat0_rd = whe_pk_rd
+ydat1_rd = whb_pk_rd
+
+fname    = 'Peak-Amplitude_vs_f-fce-equatorial_log-scale_FIXED-SCETs'
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:1,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+yran0    = [1e-1,350e0]
+yran1    = [1e-2,1e1]
+popen,fname[0],/LAND
+  !P.MULTI = [0,1,2]
+  PLOT,xdat_mg,ydat0_mg,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat_mg,ydat0_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat0_rd,PSYM=4,COLOR= 50
+  PLOT,xdat_mg,ydat1_mg,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat_mg,ydat1_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat1_rd,PSYM=4,COLOR= 50
+pclose
+!P.MULTI = 0
+
+fname    = 'Peak-Amplitude_vs_f-fce-equatorial_lin-scale_FIXED-SCETs'
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:0,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+yran0    = [1e-1,330e0]
+yran1    = [1e-2,6e0]
+popen,fname[0],/LAND
+  !P.MULTI = [0,1,2]
+  PLOT,xdat_mg,ydat0_mg,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat_mg,ydat0_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat0_rd,PSYM=4,COLOR= 50
+  PLOT,xdat_mg,ydat1_mg,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat_mg,ydat1_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat1_rd,PSYM=4,COLOR= 50
+pclose
+!P.MULTI = 0
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+;; => Plot Amp. vs. MLT
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+WINDOW,0,RETAIN=2
+
+extra    = '['+strgds2_rd[0]+' Rad. Belts = !9V!3, '+strgds2_mg[0]+' Magneto = *'+']'
+ttle     = 'Amplitude vs. MLT  '+extra[0]
+xttl     = 'MLT [hours]'
+yttle    = 'Peak Whistler Amplitude (mV/m)'
+yttlb    = 'Peak Whistler Amplitude (nT)'
+xdat_mg  = w_mlt_mg
+ydat0_mg = whe_pk_mg
+ydat1_mg = whb_pk_mg
+xdat_rd  = w_mlt_rd
+ydat0_rd = whe_pk_rd
+ydat1_rd = whb_pk_rd
+
+fname    = 'Peak-Amplitude_vs_MLT_log-scale_FIXED-SCETs'
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:1,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+yran0    = [1e-1,350e0]
+yran1    = [1e-2,1e1]
+
+fname    = 'Peak-Amplitude_vs_MLT_lin-scale_FIXED-SCETs'
+pstr     = {TITLE:ttle,XTITLE:xttl,XSTYLE:1,YSTYLE:1,YLOG:0,$
+            XTICKLEN:0.04,YTICKLEN:0.04,YMINOR:9L}
+yran0    = [1e-1,330e0]
+yran1    = [1e-2,6e0]
+
+
+WSET,0
+WSHOW,0
+  !P.MULTI = [0,1,2]
+  PLOT,xdat_mg,ydat0_mg,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat_mg,ydat0_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat0_rd,PSYM=4,COLOR= 50
+  PLOT,xdat_mg,ydat1_mg,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat_mg,ydat1_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat1_rd,PSYM=4,COLOR= 50
+!P.MULTI = 0
+
+popen,fname[0],/LAND
+  !P.MULTI = [0,1,2]
+  PLOT,xdat_mg,ydat0_mg,/NODATA,_EXTRA=pstr,YTITLE=yttle,YRANGE=yran0
+    OPLOT,xdat_mg,ydat0_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat0_rd,PSYM=4,COLOR= 50
+  PLOT,xdat_mg,ydat1_mg,/NODATA,_EXTRA=pstr,YTITLE=yttlb,YRANGE=yran1
+    OPLOT,xdat_mg,ydat1_mg,PSYM=2,COLOR=250
+    OPLOT,xdat_rd,ydat1_rd,PSYM=4,COLOR= 50
+pclose
+!P.MULTI = 0
+
+
+
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+;; => Plot hodograms
+;;@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+WINDOW,0,RETAIN=2
+
+pref       = 'Whistler_TDS-ALL-FIXED-SCETs_L'+l_string[0]+'_'
+suffxmg    = '_Magnetosphere_histogram'
+suffxrd    = '_Radiation-Belts_histogram'
+ttl_mg     = 'Magnetosphere ONLY'
+ttl_rd     = 'Radiation Belts'
+ttlmg      = 'TDS ['+ttl_mg[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+ttlrd      = 'TDS ['+ttl_rd[0]+'] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+
+;-------------------------------------
+; => SM Latitude histograms
+;-------------------------------------
+;   Outer Magnetosphere
+xttl       = '!7k!3'+'!DSM!N (deg)'
+ttle       = ttlmg
+midstr     = 'SM-Latitude'
+dra0       = [-9e1,9e1]
+nbins      = 10L
+xdat       = sm_lat_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+xdat       = sm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+; => 2nd set of angle ranges
+;   Outer Magnetosphere
+midstr     = 'SM-Latitude-2nd'
+dra0       = [-5e1,5e1]
+nbins      = 9L
+xdat       = sm_lat_mg
+ttle       = ttlmg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+xdat       = sm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+; => 3rd set of angle ranges
+;   Outer Magnetosphere
+midstr     = 'SM-Latitude-3rd'
+dra0       = [-3e1,3e1]
+nbins      = 7L
+xdat       = sm_lat_mg
+ttle       = ttlmg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+xdat       = sm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => GSM Latitude histograms
+;-------------------------------------
+;   Outer Magnetosphere
+xttl       = '!7k!3'+'!DGSM!N (deg)'
+ttle       = ttlmg
+midstr     = 'GSM-Latitude'
+dra0       = [-9e1,9e1]
+nbins      = 10L
+xdat       = gsm_lat_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+xdat       = gsm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+; => 2nd set of angle ranges
+;   Outer Magnetosphere
+midstr     = 'GSM-Latitude-2nd'
+dra0       = [-5e1,5e1]
+nbins      = 9L
+xdat       = gsm_lat_mg
+ttle       = ttlmg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+xdat       = gsm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+; => 3rd set of angle ranges
+;   Outer Magnetosphere
+midstr     = 'GSM-Latitude-3rd'
+dra0       = [-3e1,3e1]
+nbins      = 7L
+xdat       = gsm_lat_mg
+ttle       = ttlmg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+xdat       = gsm_lat_rd
+ttle       = ttlrd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => f/fce [equatorial]
+;-------------------------------------
+midstr     = 'f-fce-eq'
+dra0       = [0.,1.]
+nbins      = 11L
+xttl       = 'f/f!Dce!N [f!Dce!N = equatorial]'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = wavg_feq_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = wavg_feq_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => f/fce [local]
+;-------------------------------------
+midstr     = 'f-fce-local'
+dra0       = [0.,1.]
+nbins      = 11L
+xttl       = 'f/f!Dce!N [f!Dce!N = local]'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = wavg_fce_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = wavg_fce_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => Radial Distance histograms
+;-------------------------------------
+midstr     = 'Radial-Dist'
+dra0       = [0e0,lshell[0]]
+nbins      = 11L
+xttl       = 'Radial Distance (R!DE!N)'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = w_rad_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = w_rad_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => L-Shell histograms
+;-------------------------------------
+midstr     = 'LShell'
+dra0       = [0e0,lshell[0]]
+nbins      = 11L
+xttl       = 'L-Shell (R!DE!N)'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = w_lsh_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = w_lsh_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => MLT histograms
+;-------------------------------------
+midstr     = 'MLT'
+dra0       = [0e0,24d0]
+nbins      = 9L
+xttl       = 'MLT (hours)'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = w_mlt_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = w_mlt_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => <Teh>/<Tec> [EH/EL] histograms
+;-------------------------------------
+midstr     = 'Te-EH_Te-EL'
+dra0       = [1e0,22d0]
+nbins      = 8L
+xttl       = 'T!Deh!N'+'/T!Dec!N [EH/EL]'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = tavg_eh_mg/tavg_el_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = tavg_eh_rd/tavg_el_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => Look at ∆favg
+;-------------------------------------
+midstr     = 'delta-favg'
+dra0       = [0e0,2d3]
+nbins      = 11L
+xttl       = '!7D!3'+'f (Hz)'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = delta_f_mg/(2d0*!DPI)
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = delta_f_rd/(2d0*!DPI)
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => Look at ∆f/favg
+;-------------------------------------
+midstr     = 'deltaf-favg'
+dra0       = [0e0,2d0]
+nbins      = 11L
+xttl       = '!7D!3'+'f/f!Davg!N'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = deltaf_f_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = deltaf_f_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => Look at ∆f/fce-equitorial
+;-------------------------------------
+midstr     = 'deltaf-fce-equitorial'
+dra0       = [0e0,1d0]
+nbins      = 11L
+xttl       = '!7D!3'+'f/f!Dce!N [f!Dce!N = equitorial]'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = deltafeq_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = deltafeq_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => Look at ∆f/fce-local
+;-------------------------------------
+midstr     = 'deltaf-fce-local'
+dra0       = [0e0,1d0]
+nbins      = 11L
+xttl       = '!7D!3'+'f/f!Dce!N [f!Dce!N = local]'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = deltafce_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = deltafce_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => Theta-kB histograms
+;-------------------------------------
+midstr     = 'Theta-kB'
+dra0       = [0e0,9e1]
+nbins      = 10L
+xttl       = '!7h!3'+'!DkB!N (deg)'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = thetakB_mgs[good_s2_mg]
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = thetakB_rds[good_s2_rd]
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;   Both Regions
+pref       = 'Whistler_TDS-ALL-FIXED-SCETs_L'+l_string[0]+'_'
+suffx      = '_Magnetosphere_and_Radiation-Belts_histogram'
+midstr     = 'Theta-kB'
+dra0       = [0e0,9e1]
+nbins      = 10L
+xttl       = '!7h!3'+'!DkB!N (deg)'
+ttle       = 'TDS [Both Regions] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+xdat       = [thetakB_rds[good_s2_rd],thetakB_mgs[good_s2_mg]]
+fname      = pref[0]+midstr[0]+suffx[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+pref       = 'Whistler_TDS-ALL-FIXED-SCETs_L'+l_string[0]+'_'
+suffx      = '_Magnetosphere_and_Radiation-Belts_histogram_2nd-Range'
+dra0       = [0e0,6e1]
+nbins      = 7L
+xttl       = '!7h!3'+'!DkB!N (deg)'
+ttle       = 'TDS [Both Regions] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+xdat       = [thetakB_rds[good_s2_rd],thetakB_mgs[good_s2_mg]]
+fname      = pref[0]+midstr[0]+suffx[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+pref       = 'Whistler_TDS-ALL-FIXED-SCETs_L'+l_string[0]+'_'
+suffx      = '_Magnetosphere_and_Radiation-Belts_histogram_3rd-Range'
+dra0       = [2e1,6e1]
+nbins      = 5L
+xttl       = '!7h!3'+'!DkB!N (deg)'
+ttle       = 'TDS [Both Regions] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+xdat       = [thetakB_rds[good_s2_rd],thetakB_mgs[good_s2_mg]]
+fname      = pref[0]+midstr[0]+suffx[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+pref       = 'Whistler_TDS-ALL-FIXED-SCETs_L'+l_string[0]+'_'
+suffx      = '_Magnetosphere_and_Radiation-Belts_histogram_4th-Range'
+dra0       = [0e0,2e1]
+nbins      = 5L
+xttl       = '!7h!3'+'!DkB!N (deg)'
+ttle       = 'TDS [Both Regions] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+xdat       = [thetakB_rds[good_s2_rd],thetakB_mgs[good_s2_mg]]
+fname      = pref[0]+midstr[0]+suffx[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+;-------------------------------------
+; => Look at AE-Index
+;-------------------------------------
+midstr     = 'AE-Index'
+dra0       = [0e0,13d2]
+nbins      = 9L
+xttl       = 'AE-Index [1 Min. Avg., nT]'
+;   Outer Magnetosphere
+ttle       = ttlmg
+xdat       = ae_ind_mg
+fname      = pref[0]+midstr[0]+suffxmg[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+;   Radiation Belts
+ttle       = ttlrd
+xdat       = ae_ind_rd
+fname      = pref[0]+midstr[0]+suffxrd[0]
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+popen,fname,/LAND
+  my_histogram_plot,xdat,drange=dra0,xttl=xttl,ttle=ttle,nbins=nbins
+pclose
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

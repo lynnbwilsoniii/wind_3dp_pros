@@ -1,0 +1,880 @@
+;-----------------------------------------------------------------------------------------
+; -Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+ma     = 4d0*(mp + me)     ; -Alpha-Particle mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+mm     = [-1d0,0d0,1d0]    ; -[Normal Cyclotron, Landau, Anomalous Cyclotron]
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+pressc = 1.60217646d-13    ; => Conversion from eV/cm^3 to J/m^3 (or Pascals)
+picops = pressc*1d12       ; => Conversion from eV/cm^3 to pJ/m^3 (or pPa)
+
+fpeden = (2d0*!DPI)^2*epo*me/qq^2*1d-6  ; => Conversion from fpe to density 1/cm^3
+
+wpefac = SQRT(1d6*qq^2/me/epo)
+wppfac = SQRT(1d6*qq^2/mp/epo)
+wcifac = qq*1d-9/mp
+wcefac = qq*1d-9/me
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+sh_mit     = read_shocks_jck_database()
+mit_dates  = sh_mit.SDATES                 ; => 'MMDDYY'
+shocks     = sh_mit.SHOCK
+header     = sh_mit.HEADER
+ymdb_ra    = header.DATE_TIME              ; => ['YYYY-MM-DD/HH:MM:SS.sss']
+mts        = my_time_string(ymdb_ra,STR=1,FORM=1)
+unix_ra    = mts.UNIX
+
+a_thetabn  = shocks.THETA_BN               ; => Shock normal angles (deg)
+a_dthetabn = shocks.D_THETA_BN             ; => Uncertainty (deg)
+a_vshn     = shocks.VSH_N                  ; => Shock normal velocity (SC-Frame) [km/s]
+a_dvshn    = shocks.D_VSH_N                ; => Uncertainty [km/s]
+a_ushn     = shocks.USH_N                  ; => Shock normal velocity (Shock-Frame) [km/s]
+a_dushn    = shocks.D_USH_N                ; => Uncertainty [km/s]
+a_compr    = shocks.COMPRESSION            ; => Shock compression ratio
+a_dcompr   = shocks.D_COMPRESSION          ; => Uncertainty
+
+a_shnorms  = shocks.SH_NORM                ; => Shock normal vectors (GSE)
+a_dshnorms = shocks.D_SH_NORM              ; => Uncertainty (GSE)
+a_magf_up  = header.MAGF[*,*,0]            ; => Upstream B-field (nT)
+a_dmagf_up = header.D_MAGF[*,*,0]          ; => Uncertainty (nT)
+a_magf_dn  = header.MAGF[*,*,1]            ; => Downstream B-field (nT)
+a_dmagf_dn = header.D_MAGF[*,*,1]          ; => Uncertainty (nT)
+
+bmag_up    = SQRT(TOTAL(a_magf_up^2,2L,/NAN))
+dbmag_up   = SQRT(TOTAL(a_dmagf_up^2,2L,/NAN))
+bmag_dn    = SQRT(TOTAL(a_magf_dn^2,2L,/NAN))
+dbmag_dn   = SQRT(TOTAL(a_dmagf_dn^2,2L,/NAN))
+;-----------------------------------------------------------------------------------------
+; => Elements of relevant shocks
+;-----------------------------------------------------------------------------------------
+x          = [38L,58L,59L,92L,95L]
+PRINT, header.METHOD[x]
+;  RH08 RH09 RH09 RH08 RH08
+;-----------------------------------------------------------------------------------------
+; => MFI and 3DP data [Avg. upstream/downstream]
+;     => 10 min. up and down, -30 s from ramp upstream and +180 s from ramp downstream
+;-----------------------------------------------------------------------------------------
+;  => For 12/10/1997
+magf_u  = [  1.917, -6.693, -1.578]
+magf_d  = [  2.361,-14.138, -6.626]
+bmag_ud = [  7.218, 15.985]
+tiav_ud = [  6.219, 14.302]
+Niav_ud = [ 11.181, 28.816]
+teav_ud = [ 17.664, 18.469]
+tec_ud  = [ 14.901, 16.636]
+teh_ud  = [ 86.508,124.416]
+teparud = [ 17.183, 17.595]
+tepacud = [ 14.148, 15.417]
+tepahud = [ 89.038,138.250]
+teperud = [ 17.905, 18.907]
+tepecud = [ 15.277, 17.246]
+tepehud = [ 85.243,117.499]
+vsw_up  = [-293.129,6.851,-1.439]
+vsw_dn  = [-365.250,11.601,-36.620]
+
+;  => For 08/26/1998
+magf_u  = [  0.244,  6.492, -1.289]
+magf_d  = [-12.256,  6.196, 12.414]
+bmag_ud = [  6.972, 19.726]
+tiav_ud = [ 23.705, 74.272]
+Niav_ud = [  6.683, 15.670]
+teav_ud = [ 24.393, 55.819]
+tec_ud  = [ 19.339, 48.374]
+teh_ud  = [230.806,292.564]
+teparud = [ 25.928, 60.453]
+tepacud = [ 19.583, 52.724]
+tepahud = [264.341,305.803]
+teperud = [ 23.626, 53.502]
+tepecud = [ 19.216, 46.199]
+tepehud = [214.039,285.944]
+vsw_up  = [-484.565,6.580,10.997]
+vsw_dn  = [-648.070,10.635,-182.219]
+
+;  => For 09/24/1998
+magf_u  = [ -7.054, 12.116,  2.493]
+magf_d  = [-15.425, 33.756, 15.545]
+bmag_ud = [ 14.415, 40.594]
+tiav_ud = [ 26.579, 79.217]
+Niav_ud = [  8.397, 18.961]
+teav_ud = [ 22.959, 48.983]
+tec_ud  = [ 17.325, 40.533]
+teh_ud  = [ 92.814,174.494]
+teparud = [ 29.615, 49.849]
+tepacud = [ 19.624, 43.608]
+tepahud = [100.807,134.918]
+teperud = [ 19.631, 48.551]
+tepecud = [ 16.175, 38.996]
+tepehud = [ 88.818,194.282]
+vsw_up  = [-449.733,41.122,34.701]
+vsw_dn  = [-650.533,-32.149,-60.749]
+
+;  => For 02/11/2000
+magf_u  = [  2.492, -6.318, -1.760]
+magf_d  = [ 10.254,-20.441,  0.143]
+bmag_ud = [  7.071, 23.128]
+tiav_ud = [ 16.525, 36.357]
+Niav_ud = [  5.309, 18.329]
+teav_ud = [ 32.829, 40.159]
+tec_ud  = [ 20.269, 34.494]
+teh_ud  = [163.269,205.350]
+teparud = [ 46.865, 37.414]
+tepacud = [ 25.997, 32.703]
+tepahud = [260.320,162.626]
+teperud = [ 25.811, 41.531]
+tepecud = [ 17.405, 35.389]
+tepehud = [114.743,226.712]
+vsw_up  = [-446.427,-9.395,-3.779]
+vsw_dn  = [-601.957,-98.637,41.182]
+
+;  => For 04/06/2000
+magf_u  = [  3.223, -6.627, -0.586]
+magf_d  = [  6.324,-25.725, -6.278]
+bmag_ud = [  7.564, 27.720]
+tiav_ud = [  8.693, 57.296]
+Niav_ud = [  8.618, 34.037]
+teav_ud = [ 12.163, 37.532]
+tec_ud  = [ 10.843, 35.598]
+teh_ud  = [132.839,182.534]
+teparud = [ 15.448, 35.297]
+tepacud = [ 13.414, 33.924]
+tepahud = [173.804,133.784]
+teperud = [ 10.521, 38.649]
+tepecud = [  9.558, 36.435]
+tepehud = [112.357,206.909]
+vsw_up  = [-383.478,3.628,-23.375]
+vsw_dn  = [-576.468,-20.963,-67.683]
+
+
+; => Temperature anisotropies
+tanis_ud    = teperud/teparud
+tanic_ud    = tepecud/tepacud
+tanih_ud    = tepehud/tepahud
+
+thc_para_ud = tepahud/tepacud
+thc_perp_ud = tepehud/tepecud
+;-----------------------------------------------------------------------------------------
+; => SWE proton nonlinear moment fits
+;-----------------------------------------------------------------------------------------
+
+; => 1997-12-10
+;    Ben's Notes:  Do not trust alpha parameters
+
+; => SWE Start SCETs
+scet_s   = '1997-12-10/'+['04:28:43','04:30:19','04:31:55','04:33:31','04:34:55']
+unix_s   = time_double(scet_s)
+; => SWE proton densities [m^(-3)]
+dens_pro = [9.10,9.79,8.24,27.60,26.40]*1d6
+; => SWE proton thermal speeds [m/s]
+vthiperp = [24.4,21.5,20.1,37.7,35.2]*1d3
+vthipara = [25.8,27.9,28.2,27.3,28.0]*1d3
+; => SWE proton bulk velocities [m/s]
+vsw_swe  = [[-288.4,  14.1,  -5.7],[-292.5,  12.7,  -5.2],[-290.3,  14.3,  -9.8],$
+            [-359.3,  20.1, -36.9],[-354.3,  19.0, -37.2]]*1d3
+
+
+; => 1998-08-26
+;    Ben's Notes:  Do not trust alpha parameters
+; => SWE Start SCETs
+scet_s   = '1998-08-26/'+['06:36:42','06:38:22','06:40:01','06:41:40','06:43:13']
+unix_s   = time_double(scet_s)
+; => SWE proton densities [m^(-3)]
+dens_pro = [6.71,6.76,18.60,12.70,14.40]*1d6
+; => SWE proton thermal speeds [m/s]
+vthiperp = [42.8,45.7,92.7,117.7,101.3]*1d3
+vthipara = [67.3,46.2,68.2,103.6,79.1]*1d3
+; => SWE proton bulk velocities [m/s]
+vsw_swe  = [[-469.3,  19.4,   4.6],[-467.1,  15.2,  -4.6],[-601.0,  18.8,-136.1],$
+            [-605.7,  33.0,-179.4],[-603.9,  32.4,-158.0]]*1d3
+
+; => 1998-09-24
+;    Ben's Notes:  Do not trust the middle distribution alpha particle parameters and
+;                    be wary of the last two results
+; => SWE Start SCETs
+scet_s   = '1998-09-24/'+['23:15:55','23:17:35','23:19:15','23:20:55','23:22:29']
+unix_s   = time_double(scet_s)
+; => SWE proton densities [m^(-3)]
+dens_pro = [7.74,8.38,6.64,19.10,17.50]*1d6
+; => SWE proton thermal speeds [m/s]
+vthiperp = [53.3,61.9,56.7,127.6,124.0]*1d3
+vthipara = [41.0,39.2,40.9,116.8,124.7]*1d3
+; => SWE proton bulk velocities [m/s]
+vsw_swe  = [[-440.3,  38.7,  28.2],[-431.4,  40.3,  36.7],[-425.8,  45.2,  49.7],$
+            [-651.2,   6.8, -63.9],[-648.1, -12.5, -62.4]]*1d3
+
+; => 2000-02-11
+;    Ben's Notes:  Do not trust the middle distribution alpha particle parameters but
+;                    the rest seem fine
+; => SWE Start SCETs
+scet_s   = '2000-02-11/'+['23:29:34','23:31:13','23:32:52','23:34:31','23:36:07']
+unix_s   = time_double(scet_s)
+; => SWE proton densities [m^(-3)]
+dens_pro = [5.08,5.93,7.06,15.80,16.80]*1d6
+; => SWE proton thermal speeds [m/s]
+vthiperp = [34.0,33.4,41.9,63.2,57.4]*1d3
+vthipara = [45.1,34.5,51.1,50.4,60.8]*1d3
+; => SWE proton bulk velocities [m/s]
+vsw_swe  = [[-443.9,   7.8, -19.3],[-433.0,   0.9,   0.0],[-456.9,  -4.3, -12.5],$
+            [-598.2, -82.1,  30.1],[-591.6, -76.3,  21.2]]*1d3
+
+; => 2000-04-06
+;    Ben's Notes:  Do not trust alpha parameters
+; => SWE Start SCETs
+scet_s   = '2000-04-06/'+['16:28:43','16:30:22','16:32:01','16:33:40','16:35:19']
+unix_s   = time_double(scet_s)
+; => SWE proton densities [m^(-3)]
+dens_pro = [9.17,9.41,21.60,23.40,19.20]*1d6
+; => SWE proton thermal speeds [m/s]
+vthiperp = [24.1,22.8,69.0,71.1,76.6]*1d3
+vthipara = [21.4,23.0,78.0,85.7,99.1]*1d3
+; => SWE proton bulk velocities [m/s]
+vsw_swe  = [[-371.7,  23.6, -41.2],[-377.4,  15.9, -28.9],[-534.6, -23.5, -42.2],$
+            [-541.2, -13.3, -69.3],[-544.5,   6.6, -57.8]]*1d3
+
+
+
+; => SWE proton temperature estimates
+tipara = vthipara^2*mp/(2d0*kB*k_ev)
+tiperp = vthiperp^2*mp/(2d0*kB*k_ev)
+PRINT, tipara, tiperp
+; => For 1997-12-10
+;       3.4744491       4.0630761       4.1509242       3.8901992       4.0922544
+;       3.1076078       2.4128120       2.1088160       7.4187252       6.4674326
+; => For 1998-08-26
+;       23.641593       11.141163       24.278132       56.022962       32.658747
+;       9.5616774       10.901317       44.854499       72.310184       53.563073
+; => For 1998-09-24
+;       8.7743364       8.0208190       8.7315876       71.208572       81.166992
+;       14.828628       19.999903       16.780801       84.986101       80.258296
+; => For 2000-02-11
+;       10.616946       6.2127626       13.629764       13.258905       19.295397
+;       6.0339874       5.8229028       9.1637798       20.848784       17.197700
+; => For 2000-04-06
+;       2.3904194       2.7612278       31.756730       38.336122       51.261801
+;       3.0316612       2.7134151       24.851050       26.386741       30.626974
+
+PRINT,';  ', tiperp/tipara
+; => For 1997-12-10
+;        0.89441743      0.59383874      0.50803530       1.9070297       1.5804082
+; => For 1998-08-26
+;        0.40444303      0.97847211       1.8475267       1.2907241       1.6400835
+; => For 1998-09-24
+;         1.6900000       2.4934988       1.9218500       1.1934813      0.98880461
+; => For 2000-02-11
+;        0.56833549      0.93724856      0.67233590       1.5724363      0.89128513
+; => For 2000-04-06
+;         1.2682550      0.98268424      0.78254438      0.68829968      0.59746191
+
+
+tiparup = (tipara[0] + tipara[1])/2d0
+tiperup = (tiperp[0] + tiperp[1])/2d0
+tipardn = (tipara[3] + tipara[4])/2d0
+tiperdn = (tiperp[3] + tiperp[4])/2d0
+PRINT, tiparup, tipardn
+PRINT, tiperup, tiperdn
+PRINT, tiperdn/tiperup, tipardn/tiparup
+;---------------------------------
+; => Tpara1, Tpara2
+;---------------------------------
+; => For 1997-12-10
+;       3.7687626       3.9912268
+; => For 1998-08-26
+;       17.391378       44.340854
+; => For 1998-09-24
+;       8.3975777       76.187782
+; => For 2000-02-11
+;       8.4148544       16.277151
+; => For 2000-04-06
+;       2.5758236       44.798962
+
+;---------------------------------
+; => Tperp1, Tperp2
+;---------------------------------
+; => For 1997-12-10
+;       2.7602099       6.9430789
+; => For 1998-08-26
+;       10.231497       62.936629
+; => For 1998-09-24
+;       17.414265       82.622199
+; => For 2000-02-11
+;       5.9284451       19.023242
+; => For 2000-04-06
+;       2.8725381       28.506857
+
+;---------------------------------
+; => Tperp2/Tperp1, Tpara2/Tpara1
+;---------------------------------
+; => For 1997-12-10
+;       2.5154170       1.0590284
+; => For 1998-08-26
+;       6.1512627       2.5495883
+; => For 1998-09-24
+;       4.7445124       9.0725903
+; => For 2000-02-11
+;       3.2088080       1.9343354
+; => For 2000-04-06
+;       9.9239265       17.392092
+
+;-----------------------------------------------------------------------------------------
+; => Load WAVES Denstiy estimates
+;-----------------------------------------------------------------------------------------
+; => Use SWE estimates for initial guesses for T_perp and T_para
+tpara0 = 11.141163d0       ; => (eV)
+tperp0 = 10.901317d0       ; => (eV)
+tpara1 = 24.278132d0 ; => (eV)
+tperp1 = 44.854499d0 ; => (eV)
+tpara2 = 56.022962d0 ; => (eV)
+tperp2 = 72.310184d0 ; => (eV)
+; => Convert to Joules
+tpar0k = tpara0*k_ev*kB
+tper0k = tperp0*k_ev*kB
+tpar1k = tpara1*k_ev*kB
+tpar2k = tpara2*k_ev*kB
+tper1k = tperp1*k_ev*kB
+tper2k = tperp2*k_ev*kB
+
+
+date  = '082698'
+test  = waves_fpe_ascii_read(DATE=date)
+wunix = test.UNIX          ; => Unix times
+wdens = test.DENSITY       ; => cm^(-3)
+weine = test.E_INERT_L     ; => m
+wfuh  = test.F_PE          ; => Hz
+;-----------------------------------------------------------------------------------------
+; => Load 3DP Distributions into TPLOT
+;-----------------------------------------------------------------------------------------
+date              = '082698'
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+
+mfiles = FILE_SEARCH(mdir,'*.sav')
+RESTORE,mfiles[1]
+
+j0 = 58L
+j1 = 59L
+j2 = 60L
+
+phb0 = aphb[j0]
+phb1 = aphb[j1]
+phb2 = aphb[j2]
+
+tad0    = phb0
+tad1    = phb1
+tad2    = phb2
+add_df2d_to_ph,tad0,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=3
+add_df2d_to_ph,tad1,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=3
+add_df2d_to_ph,tad2,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=3
+; => Force Y-Axis range
+;dfra      = [1e-13,1.5e-9]
+dfra      = [1e-14,4.5e-9]
+def_lim   = contour_3dp_plot_limits(tad0,VLIM=vlim,NGRID=ngrid,DFRA=dfra)
+lim20     = def_lim.CUTS       ; => For cuts of the DF
+str_element,lim20,'POSITION',/DELETE
+str_element,lim20,'XRANGE',[-vlim[0],vlim[0]],/ADD_REPLACE
+str_element,lim20,'TITLE',def_lim.PLOT_LIMS.TITLE,/ADD_REPLACE
+str_element,lim20,'XMINOR',11,/ADD_REPLACE
+
+def_lim   = contour_3dp_plot_limits(tad1,VLIM=vlim,NGRID=ngrid,DFRA=dfra)
+lim21     = def_lim.CUTS       ; => For cuts of the DF
+str_element,lim21,'POSITION',/DELETE
+str_element,lim21,'XRANGE',[-vlim[0],vlim[0]],/ADD_REPLACE
+str_element,lim21,'TITLE',def_lim.PLOT_LIMS.TITLE,/ADD_REPLACE
+str_element,lim21,'XMINOR',11,/ADD_REPLACE
+
+def_lim   = contour_3dp_plot_limits(tad2,VLIM=vlim,NGRID=ngrid,DFRA=dfra)
+lim22     = def_lim.CUTS       ; => For cuts of the DF
+str_element,lim22,'POSITION',/DELETE
+str_element,lim22,'XRANGE',[-vlim[0],vlim[0]],/ADD_REPLACE
+str_element,lim22,'TITLE',def_lim.PLOT_LIMS.TITLE,/ADD_REPLACE
+str_element,lim22,'XMINOR',11,/ADD_REPLACE
+
+; => Try NOT using method which I thought "normalized" the DFs
+dfpara0  = tad0.DF_SMOOTH[*,50]/!DPI
+dfperp0  = REFORM(tad0.DF_SMOOTH[50,*])/!DPI
+dfpara1  = tad1.DF_SMOOTH[*,50]/!DPI
+dfperp1  = REFORM(tad1.DF_SMOOTH[50,*])/!DPI
+dfpara2  = tad2.DF_SMOOTH[*,50]/!DPI
+dfperp2  = REFORM(tad2.DF_SMOOTH[50,*])/!DPI
+
+mxamppa0 = MAX(dfpara0,/NAN,lmxa0)
+mxamppe0 = MAX(dfperp0,/NAN,lmxe0)
+mxamppa1 = MAX(dfpara1,/NAN,lmxa1)
+mxamppe1 = MAX(dfperp1,/NAN,lmxe1)
+mxamppa2 = MAX(dfpara2,/NAN,lmxa2)
+mxamppe2 = MAX(dfperp2,/NAN,lmxe2)
+
+PRINT,'; ', MAX(ABS([dfpara0,dfperp0]),/NAN), MAX(ABS([dfpara1,dfperp1]),/NAN), $
+            MAX(ABS([dfpara2,dfperp2]),/NAN)
+;    5.2556453e-10   1.9708466e-09   4.3506360e-09
+
+
+;-----------------------------------------------------------------------------------------
+; => From PHB particle distributions
+;-----------------------------------------------------------------------------------------
+
+PRINT, tad0.VX2D[lmxa0], tad1.VX2D[lmxa1], tad2.VX2D[lmxa2]
+; => Parallel drift speeds [km/s]
+;        0.000  => For 06:40:21 UT PHB DF
+;      140.000  => For 06:40:24 UT PHB DF
+;      140.000  => For 06:40:27 UT PHB DF
+
+PRINT, tad0.VY2D[lmxe0], tad1.VY2D[lmxe1], tad2.VY2D[lmxe2]
+; => Perpendicular drift speeds [km/s]
+;      -93.000  => For 06:40:21 UT PHB DF
+;     -187.000  => For 06:40:24 UT PHB DF
+;      -93.000  => For 06:40:27 UT PHB DF
+
+phbts = aphb[58:60].TIME
+phbte = aphb[58:60].END_TIME
+; => Estimate electron density from WAVES TNR
+denss = interp(wdens,wunix,phbts,/NO_EXTRAP)
+dense = interp(wdens,wunix,phbte,/NO_EXTRAP)
+denav = (denss + dense)/2d0
+PRINT, denss, dense, denav
+;       8.5383863       10.626878       18.733863
+;       10.626792       18.733777       24.288636
+;       9.5825889       14.680327       21.511250
+
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+
+dat     = phb0
+eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,EX_VEC=sunv,EX_VN=sunn,VCIRC=7d2,/ONE_C,/SM_CUTS,DFRA=[1e-13,1.5e-9]
+
+; => Exponents
+ngrid     = 20L
+vlim      = 25e2
+nn        = 1000L
+; => Dummy velocities (km/s)
+velpar    = DINDGEN(nn)*(2d0*vlim[0])/(nn - 1L) - vlim[0]
+velper    = DINDGEN(nn)*(2d0*vlim[0])/(nn - 1L) - vlim[0]
+;-----------------------------------------------------------------------------------------
+; => Approximate the FWHM speeds for parallel and perpendicular and try not to
+;      include beam-like or UV contamination effects.
+;      [speeds are in m/s]
+;-----------------------------------------------------------------------------------------
+; => PHB at 06:40:21 UT
+vpar0 = 375d3
+vper0 = 325d3
+; => PHB at 06:40:24 UT
+vpar1 = 425d3
+vper1 = 800d3
+; => PHB at 06:40:27 UT
+vpar2 = 525d3
+vper2 = 650d3
+; => Estimates of FWHM speeds from DF plots [m/s]
+vpar  = [vpar0,vpar1,vpar2]
+vper  = [vper0,vper1,vper2]
+;-----------------------------------------------------------------------------------------
+; => know that FWHM = 2*SQRT(2*ALOG(2))*Sigma
+;      where sigma = standard deviation
+;
+;   RMS = SQRT(MEAN()^2 + STDDEV()^2)
+;
+;  => STDDEV() = SQRT(RMS^2 - MEAN()^2)
+;
+;   And RMS speed is = SQRT(2 kB Ts/Ms)
+;      MEAN speed is = SQRT(8 kB Ts/(Pi Ms))
+;-----------------------------------------------------------------------------------------
+vthpar = vpar/(2d0*SQRT(2d0*ALOG(2d0)))
+vthper = vper/(2d0*SQRT(2d0*ALOG(2d0)))
+
+; => Density estimates from WAVES [m^(-3)]
+ni_0   = 9.5825889d6
+ni_1   = 170d6
+ni_2   = 425d6
+;ni_1   = 14.680327d6
+;ni_2   = 21.511250d6
+
+; => parallel drift speeds [m/s]
+vpardr0   =  25d3
+vpardr1   =  35d3
+vpardr2   =  25d3
+; => Perpendicular drift speeds [m/s]
+vperdr0   =  -75d3
+vperdr1   =    0d3
+vperdr2   = -100d3
+
+; => [f_v] = s^3 km^(-3) cm^(-3)
+f_bimx0 = bimaxwellian_df(ni_0[0],vthpar[0],vthper[0],VDRIFT_PAR=vpardr0,$
+                          VDRIFT_PER=vperdr0,VARR=velpar*1d3)
+f_vpar0 = f_bimx0[*,nn/2L]
+f_vper0 = REFORM(f_bimx0[nn/2L,*])
+
+f_bimx1 = bimaxwellian_df(ni_1[0],vthpar[1],vthper[1],VDRIFT_PAR=vpardr1,$
+                          VDRIFT_PER=vperdr1,VARR=velpar*1d3)
+f_vpar1 = f_bimx1[*,nn/2L]
+f_vper1 = REFORM(f_bimx1[nn/2L,*])
+
+f_bimx2 = bimaxwellian_df(ni_2[0],vthpar[2],vthper[2],VDRIFT_PAR=vpardr2,$
+                          VDRIFT_PER=vperdr2,VARR=velpar*1d3)
+f_vpar2 = f_bimx2[*,nn/2L]
+f_vper2 = REFORM(f_bimx2[nn/2L,*])
+
+
+WINDOW,1,XSIZE=800,YSIZE=800,RETAIN=2
+WSET,1
+!P.MULTI = 0
+PLOT,[0.0,1.0],[0.0,1.0],/NODATA,_EXTRA=lim20
+  OPLOT,tad0.VX2D,dfpara0,COLOR=250,PSYM=1
+  OPLOT,tad0.VY2D,dfperp0,COLOR=50,PSYM=2
+  OPLOT,velpar,f_vpar0, COLOR=250,LINESTYLE=0
+  OPLOT,velper,f_vper0, COLOR= 50,LINESTYLE=0
+
+
+WINDOW,2,XSIZE=800,YSIZE=800,RETAIN=2
+WSET,2
+!P.MULTI = 0
+PLOT,[0.0,1.0],[0.0,1.0],/NODATA,_EXTRA=lim21
+  OPLOT,tad1.VX2D,dfpara1,COLOR=250,PSYM=1
+  OPLOT,tad1.VY2D,dfperp1,COLOR=50,PSYM=2
+  OPLOT,velpar,f_vpar1, COLOR=250,LINESTYLE=1
+  OPLOT,velper,f_vper1, COLOR= 50,LINESTYLE=2
+
+
+WINDOW,3,XSIZE=800,YSIZE=800,RETAIN=2
+WSET,3
+!P.MULTI = 0
+PLOT,[0.0,1.0],[0.0,1.0],/NODATA,_EXTRA=lim22
+  OPLOT,tad2.VX2D,dfpara2,COLOR=250,PSYM=1
+  OPLOT,tad2.VY2D,dfperp2,COLOR=50,PSYM=2
+  OPLOT,velpar,f_vpar2, COLOR=250,LINESTYLE=1
+  OPLOT,velper,f_vper2, COLOR= 50,LINESTYLE=2
+
+
+; => Check to see how far off densities are
+PRINT,'; ', ni_0*1d-6/denav[0], ni_1*1d-6/denav[1], ni_2*1d-6/denav[2]
+;        1.0000000       11.580123       19.757104    => Ni correction from PHB
+
+; => Estimate temperatures
+tpara = (mp/2d0*vthpar^2)/(k_ev*kB)
+tperp = (mp/2d0*vthper^2)/(k_ev*kB)
+PRINT, tpara, tperp, tperp/tpara
+
+; => Rough estimates of the parallel and perpendicular temperatures (eV) from the
+;      cuts of the distribution functions
+;       132.37125       170.02351       259.44764
+;       99.425513       602.43624       397.70205
+;      0.75111111       3.5432526       1.5328798
+
+PRINT,'; ', tpara[2]/tpara[1], tpara[2]/tpara[0], tpara[1]/tpara[0]
+;        1.5259516       1.9600000       1.2844444
+
+PRINT,'; ', tperp[2]/tperp[1], tperp[2]/tperp[0], tperp[1]/tperp[0]
+;       0.66015625       4.0000000       6.0591716
+
+
+fname0 = 'DF_Fit_PHB_1998-08-26_064021'
+fname1 = 'DF_Fit_PHB_1998-08-26_064024'
+fname2 = 'DF_Fit_PHB_1998-08-26_064027'
+popen,fname0[0],/PORT
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA,_EXTRA=lim20
+    OPLOT,tad0.VX2D,dfpara0,COLOR=250,PSYM=1
+    OPLOT,tad0.VY2D,dfperp0,COLOR=50,PSYM=2
+    OPLOT,velpar,f_vpar0, COLOR=250,LINESTYLE=0
+    OPLOT,velper,f_vper0, COLOR= 50,LINESTYLE=0
+pclose
+
+
+popen,fname1[0],/PORT
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA,_EXTRA=lim21
+    OPLOT,tad1.VX2D,dfpara1,COLOR=250,PSYM=1
+    OPLOT,tad1.VY2D,dfperp1,COLOR=50,PSYM=2
+    OPLOT,velpar,f_vpar1, COLOR=250,LINESTYLE=1
+    OPLOT,velper,f_vper1, COLOR= 50,LINESTYLE=2
+pclose
+
+popen,fname2[0],/PORT
+  !P.MULTI = 0
+  PLOT,[0.0,1.0],[0.0,1.0],/NODATA,_EXTRA=lim22
+    OPLOT,tad2.VX2D,dfpara2,COLOR=250,PSYM=1
+    OPLOT,tad2.VY2D,dfperp2,COLOR=50,PSYM=2
+    OPLOT,velpar,f_vpar2, COLOR=250,LINESTYLE=1
+    OPLOT,velper,f_vper2, COLOR= 50,LINESTYLE=2
+pclose
+
+; => Mathematica output
+vpar  = {-326.763,-280.083,-233.402,-186.722,-140.041,-93.3608,-46.6804,0.00000,46.6804,93.3608,140.041,186.722,233.402,280.083,326.763,373.443,420.124}
+dfpar = {1.0004863 x 10^(-12),5.6854008 x 10^(-27),1.3887292 x 10^(-11),5.4376682 x 10^(-11),1.3887035 x 10^(-10),2.3717005 x 10^(-10),2.9790674 x 10^(-10),3.0534181 x 10^(-10),2.8526555 x 10^(-10),2.7520786 x 10^(-10),2.3187554 x 10^(-10),1.6145961 x 10^(-10),7.8728499 x 10^(-11),3.1987544 x 10^(-11),1.0292745 x 10^(-11),1.9395499 x 10^(-12),2.6924221 x 10^(-13)}
+
+
+vper  = {0.00000,0.00000,-233.402,-186.722,-140.041,-93.3608,-46.6804,0.00000,46.6804,93.3608,140.041,186.722,233.402,280.083,326.763,373.443,0.00000}
+dfper = {0.0000000 x 10^(0),0.0000000 x 10^(0),1.7204038 x 10^(-10),2.6549304 x 10^(-10),4.2112183 x 10^(-10),5.2556453 x 10^(-10),4.6963096 x 10^(-10),3.0534181 x 10^(-10),1.8361187 x 10^(-10),1.1493185 x 10^(-10),5.8383474 x 10^(-11),3.0445232 x 10^(-11),1.0428171 x 10^(-11),3.6441866 x 10^(-12),1.9253229 x 10^(-12),1.2285037 x 10^(-26),0.0000000 x 10^(0)}
+
+
+;-----------------------------------------------------------------------------------------
+; ** Old **
+;-----------------------------------------------------------------------------------------
+j0 = 58L
+j1 = 59L
+j2 = 60L
+
+phb0 = aphb[j0]
+phb1 = aphb[j1]
+phb2 = aphb[j2]
+
+tad0    = phb0
+tad1    = phb1
+tad2    = phb2
+add_df2d_to_ph,tad0,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=3
+add_df2d_to_ph,tad1,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=3
+add_df2d_to_ph,tad2,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=3
+; => Force Y-Axis range
+dfra      = [1e-13,1.5e-9]
+def_lim   = contour_3dp_plot_limits(tad0,VLIM=vlim,NGRID=ngrid,DFRA=dfra)
+lim20     = def_lim.CUTS       ; => For cuts of the DF
+str_element,lim20,'POSITION',/DELETE
+str_element,lim20,'XRANGE',[-vlim[0],vlim[0]],/ADD_REPLACE
+str_element,lim20,'TITLE',def_lim.PLOT_LIMS.TITLE,/ADD_REPLACE
+str_element,lim20,'XMINOR',11,/ADD_REPLACE
+
+def_lim   = contour_3dp_plot_limits(tad1,VLIM=vlim,NGRID=ngrid,DFRA=dfra)
+lim21     = def_lim.CUTS       ; => For cuts of the DF
+str_element,lim21,'POSITION',/DELETE
+str_element,lim21,'XRANGE',[-vlim[0],vlim[0]],/ADD_REPLACE
+str_element,lim21,'TITLE',def_lim.PLOT_LIMS.TITLE,/ADD_REPLACE
+str_element,lim21,'XMINOR',11,/ADD_REPLACE
+
+def_lim   = contour_3dp_plot_limits(tad2,VLIM=vlim,NGRID=ngrid,DFRA=dfra)
+lim22     = def_lim.CUTS       ; => For cuts of the DF
+str_element,lim22,'POSITION',/DELETE
+str_element,lim22,'XRANGE',[-vlim[0],vlim[0]],/ADD_REPLACE
+str_element,lim22,'TITLE',def_lim.PLOT_LIMS.TITLE,/ADD_REPLACE
+str_element,lim22,'XMINOR',11,/ADD_REPLACE
+
+dfpara0  = SMOOTH(tad0.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp0  = SMOOTH(tad0.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+dfpara1  = SMOOTH(tad1.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp1  = SMOOTH(tad1.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+dfpara2  = SMOOTH(tad2.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp2  = SMOOTH(tad2.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+
+mxamppa0 = MAX(dfpara0,/NAN,lmxa0)
+mxamppe0 = MAX(dfperp0,/NAN,lmxe0)
+mxamppa1 = MAX(dfpara1,/NAN,lmxa1)
+mxamppe1 = MAX(dfperp1,/NAN,lmxe1)
+mxamppa2 = MAX(dfpara2,/NAN,lmxa2)
+mxamppe2 = MAX(dfperp2,/NAN,lmxe2)
+
+;-----------------------------------------------------------------------------------------
+; => From PHB particle distributions
+;-----------------------------------------------------------------------------------------
+
+PRINT, tad0.VX2D[lmxa0], tad1.VX2D[lmxa1], tad2.VX2D[lmxa2]
+; => Parallel drift speeds [km/s]
+;      50.0000  => For 06:40:21 UT PHB DF
+;      100.000  => For 06:40:24 UT PHB DF
+;      100.000  => For 06:40:27 UT PHB DF
+
+PRINT, tad0.VY2D[lmxe0], tad1.VY2D[lmxe1], tad2.VY2D[lmxe2]
+; => Perpendicular drift speeds [km/s]
+;     -100.000  => For 06:40:21 UT PHB DF
+;     -200.000  => For 06:40:24 UT PHB DF
+;     -100.000  => For 06:40:27 UT PHB DF
+
+phbts = aphb[58:60].TIME
+phbte = aphb[58:60].END_TIME
+; => Estimate electron density from WAVES TNR
+denss = interp(wdens,wunix,phbts,/NO_EXTRAP)
+dense = interp(wdens,wunix,phbte,/NO_EXTRAP)
+PRINT, denss, dense, (denss + dense)/2d0
+;       8.5383863       10.626878       18.733863
+;       10.626792       18.733777       24.288636
+;       9.5825889       14.680327       21.511250
+
+ngrid   = 20L
+vlim    = 25e2
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+
+dat     = phb0
+eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,EX_VEC=sunv,EX_VN=sunn,VCIRC=7d2,/ONE_C,/SM_CUTS,DFRA=[1e-13,1.5e-9]
+
+; => Exponents
+ngrid     = 20L
+vlim      = 25e2
+nn        = 1000L
+; => Dummy velocities (km/s)
+velpar    = DINDGEN(nn)*(2d0*vlim[0])/(nn - 1L) - vlim[0]
+velper    = DINDGEN(nn)*(2d0*vlim[0])/(nn - 1L) - vlim[0]
+;-----------------------------------------------------------------------------------------
+; => Approximate the FWHM speeds for parallel and perpendicular and try not to
+;      include beam-like or UV contamination effects.
+;      [speeds are in m/s]
+;-----------------------------------------------------------------------------------------
+; => PHB at 06:40:21 UT
+vpar0 = 450d3
+vper0 = 400d3
+; => PHB at 06:40:24 UT
+vpar1 = 550d3
+vper1 = 900d3
+; => PHB at 06:40:27 UT
+vpar2 = 550d3
+vper2 = 700d3
+; => Estimates of FWHM speeds from DF plots [m/s]
+vpar  = [vpar0,vpar1,vpar2]
+vper  = [vper0,vper1,vper2]
+;-----------------------------------------------------------------------------------------
+; => know that FWHM = 2*SQRT(2*ALOG(2))*Sigma
+;      where sigma = standard deviation
+;
+;   RMS = SQRT(MEAN()^2 + STDDEV()^2)
+;
+;  => STDDEV() = SQRT(RMS^2 - MEAN()^2)
+;
+;   And RMS speed is = SQRT(2 kB Ts/Ms)
+;      MEAN speed is = SQRT(8 kB Ts/(Pi Ms))
+;-----------------------------------------------------------------------------------------
+vthpar = vpar/(2d0*SQRT(2d0*ALOG(2d0)))
+vthper = vper/(2d0*SQRT(2d0*ALOG(2d0)))
+
+; => Density estimates from WAVES [m^(-3)]
+ni_0   = 9.5825889d6
+ni_1   = 14.680327d6
+ni_2   = 21.511250d6
+
+; => Determine Maxwellian factors
+; => Constants  [s^3 m^(-6)]
+cnstpar0  = SQRT(1d0/!DPI)*ni_0/vthpar[0]
+cnstper0  = SQRT(1d0/!DPI)*ni_0/vthper[0]
+cnstpar1  = SQRT(1d0/!DPI)*ni_1/vthpar[1]
+cnstper1  = SQRT(1d0/!DPI)*ni_1/vthper[1]
+cnstpar2  = SQRT(1d0/!DPI)*ni_2/vthpar[2]
+cnstper2  = SQRT(1d0/!DPI)*ni_2/vthper[2]
+; => Check to see how far off constants are
+ni_0facpa = cnstpar0*1d-3/MAX(dfpara0,/NAN)
+ni_0facpe = cnstper0*1d-3/MAX(dfperp0,/NAN)
+ni_1facpa = cnstpar1*1d-3/MAX(dfpara1,/NAN)
+ni_1facpe = cnstper1*1d-3/MAX(dfperp1,/NAN)
+ni_2facpa = cnstpar2*1d-3/MAX(dfpara2,/NAN)
+ni_2facpe = cnstper2*1d-3/MAX(dfperp2,/NAN)
+
+; => Redefine Constants with new densities  [s^3 km^(-3) cm^(-3)]
+cnstpar01 = SQRT(1d0/!DPI)*(ni_0/(ni_0facpa*vthpar[0]))*1d-3
+cnstper01 = SQRT(1d0/!DPI)*(ni_0/(ni_0facpe*vthper[0]))*1d-3
+cnstpar11 = SQRT(1d0/!DPI)*(ni_1/(ni_1facpa*vthpar[1]))*1d-3
+cnstper11 = SQRT(1d0/!DPI)*(ni_1/(ni_1facpe*vthper[1]))*1d-3
+cnstpar21 = SQRT(1d0/!DPI)*(ni_2/(ni_2facpa*vthpar[2]))*1d-3
+cnstper21 = SQRT(1d0/!DPI)*(ni_2/(ni_2facpe*vthper[2]))*1d-3
+
+; => parallel drift speeds [m/s]
+vpardr0   =  50d3
+vpardr1   = 100d3
+vpardr2   =  50d3
+; => Perpendicular drift speeds [m/s]
+vperdr0   = -100d3
+vperdr1   =  -50d3
+vperdr2   = -100d3
+
+exfacpar0 = EXP(-1d0*((velpar*1d3 - vpardr0)/vthpar[0])^2)
+exfacper0 = EXP(-1d0*((velper*1d3 - vperdr0)/vthper[0])^2)
+exfacpar1 = EXP(-1d0*((velpar*1d3 - vpardr1)/vthpar[1])^2)
+exfacper1 = EXP(-1d0*((velper*1d3 - vperdr1)/vthper[1])^2)
+exfacpar2 = EXP(-1d0*((velpar*1d3 - vpardr2)/vthpar[2])^2)
+exfacper2 = EXP(-1d0*((velper*1d3 - vperdr2)/vthper[2])^2)
+; => [f_v] = s^3 km^(-3) cm^(-3)
+f_vpar0 = cnstpar01*exfacpar0
+f_vper0 = cnstper01*exfacper0
+f_vpar1 = cnstpar11*exfacpar1
+f_vper1 = cnstper11*exfacper1
+f_vpar2 = cnstpar21*exfacpar2
+f_vper2 = cnstper21*exfacper2
+
+WINDOW,1,XSIZE=800,YSIZE=800,RETAIN=2
+WSET,1
+!P.MULTI = 0
+PLOT,[0.0,1.0],[0.0,1.0],/NODATA,_EXTRA=lim20
+  OPLOT,tad0.VX2D,dfpara0,COLOR=250,PSYM=1
+  OPLOT,tad0.VY2D,dfperp0,COLOR=50,PSYM=2
+  OPLOT,velpar,f_vpar0, COLOR=250,LINESTYLE=0
+  OPLOT,velper,f_vper0, COLOR= 50,LINESTYLE=0
+
+
+WINDOW,2,XSIZE=800,YSIZE=800,RETAIN=2
+WSET,2
+!P.MULTI = 0
+PLOT,[0.0,1.0],[0.0,1.0],/NODATA,_EXTRA=lim20
+  OPLOT,tad1.VX2D,dfpara1,COLOR=250,PSYM=1
+  OPLOT,tad1.VY2D,dfperp1,COLOR=50,PSYM=2
+  OPLOT,velpar,f_vpar1, COLOR=250,LINESTYLE=1
+  OPLOT,velper,f_vper1, COLOR= 50,LINESTYLE=2
+
+WINDOW,3,XSIZE=800,YSIZE=800,RETAIN=2
+WSET,3
+!P.MULTI = 0
+PLOT,[0.0,1.0],[0.0,1.0],/NODATA,_EXTRA=lim20
+  OPLOT,tad2.VX2D,dfpara2,COLOR=250,PSYM=1
+  OPLOT,tad2.VY2D,dfperp2,COLOR=50,PSYM=2
+  OPLOT,velpar,f_vpar2, COLOR=250,LINESTYLE=1
+  OPLOT,velper,f_vper2, COLOR= 50,LINESTYLE=2
+
+
+; => Check to see how far off constants are
+PRINT,'; ', ni_0/(ni_0facpa), ni_0/(ni_0facpe)
+;      0.030964624     0.026679343    => Ni correction from PHB for 06:40:21 UT DF
+PRINT,'; ', ni_1/(ni_1facpa), ni_1/(ni_1facpe)
+;       0.26807017      0.27538542    => Ni correction from PHB for 06:40:24 UT DF
+PRINT,'; ', ni_2/(ni_2facpa), ni_2/(ni_2facpe)
+;       0.50168970      0.67126885    => Ni correction from PHB for 06:40:27 UT DF
+
+
+; => Estimate temperatures
+tpara = (mp/2d0*vthpar^2)/(k_ev*kB)
+tperp = (mp/2d0*vthper^2)/(k_ev*kB)
+PRINT, tpara, tperp, tperp/tpara
+;-----------------------------------------------------------------------------------------
+; => Rough estimates of the parallel and perpendicular temperatures (eV) from the
+;      cuts of the distribution functions
+;       190.61459       284.74526       284.74526
+;       150.60906       762.45837       461.24025
+;      0.79012346       2.6776860       1.6198347
+;-----------------------------------------------------------------------------------------
+
+
+;cnstpar0  = SQRT(mp/(2d0*!DPI*tpar0k))*ni_0
+;cnstper0  = SQRT(mp/(2d0*!DPI*tper0k))*ni_0
+;cnstpar1  = SQRT(mp/(2d0*!DPI*tpar1k))*ni_1
+;cnstper1  = SQRT(mp/(2d0*!DPI*tper1k))*ni_1
+;cnstpar2  = SQRT(mp/(2d0*!DPI*tpar2k))*ni_2
+;cnstper2  = SQRT(mp/(2d0*!DPI*tper2k))*ni_2
+
+;cnstpar01 = SQRT(mp/(2d0*!DPI*tpar0k))*(ni_0/ni_0facpa)*1d-3
+;cnstper01 = SQRT(mp/(2d0*!DPI*tper0k))*(ni_0/ni_0facpe)*1d-3
+;cnstpar11 = SQRT(mp/(2d0*!DPI*tpar1k))*(ni_1/ni_1facpa)*1d-3
+;cnstper11 = SQRT(mp/(2d0*!DPI*tper1k))*(ni_1/ni_1facpe)*1d-3
+;cnstpar21 = SQRT(mp/(2d0*!DPI*tpar2k))*(ni_2/ni_2facpa)*1d-3
+;cnstper21 = SQRT(mp/(2d0*!DPI*tper2k))*(ni_2/ni_2facpe)*1d-3
+
+;exfacpar0 = EXP(-mp/2d0*((velpar*1d3 - vpardr0)^2/tpar0k))
+;exfacper0 = EXP(-mp/2d0*((velper*1d3 - vperdr0)^2/tper0k))
+;exfacpar1 = EXP(-mp/2d0*((velpar*1d3 - vpardr1)^2/tpar1k))
+;exfacper1 = EXP(-mp/2d0*((velper*1d3 - vperdr1)^2/tper1k))
+;exfacpar2 = EXP(-mp/2d0*((velpar*1d3 - vpardr2)^2/tpar2k))
+;exfacper2 = EXP(-mp/2d0*((velper*1d3 - vperdr2)^2/tper2k))
+
+; => cheat and use MAX(dfpara,/NAN) as cnstpar0
+;f_vpar0 = MAX(dfpara0,/NAN)*exfacpar0
+;f_vper0 = MAX(dfperp0,/NAN)*exfacper0
+

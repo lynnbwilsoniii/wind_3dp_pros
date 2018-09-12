@@ -1,0 +1,682 @@
+;-----------------------------------------------------------------------------------------
+; -Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+ma     = 4d0*(mp + me)     ; -Alpha-Particle mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+mm     = [-1d0,0d0,1d0]    ; -[Normal Cyclotron, Landau, Anomalous Cyclotron]
+mass_e = 0.5109906d6       ; -Electron mass in eV/c^2
+mass_p = mp*c^2/qq         ; -Proton mass in eV/c^2
+u_mass = mass_e/c2         ; -Electron mass [eV/(km/s)^2]
+p_mass = mass_p/c2         ; -Proton mass [eV/(km/s)^2]
+pressc = 1.60217646d-13    ; => Conversion from eV/cm^3 to J/m^3 (or Pascals)
+picops = pressc*1d12       ; => Conversion from eV/cm^3 to pJ/m^3 (or pPa)
+;-----------------------------------------------------------------------------------------
+; => Dates and time ranges
+;-----------------------------------------------------------------------------------------
+date = '021100'
+t    = ['2000-02-11/22:33:00','2000-02-12/00:33:00']
+tramp = '2000-02-11/23:33:55.319'
+tr3   = time_double(t)
+tura  = time_double(tramp)
+
+mydate = my_str_date(DATE=date)
+sdate  = mydate.S_DATE[0]  ; -('MMDDYY')
+ldate  = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate  = mydate.TDATE[0]   ; => 'YYYY-MM-DD'
+;-----------------------------------------------------------------------------------------
+; => Load MFI data
+;-----------------------------------------------------------------------------------------
+htr_mfi2tplot,DATE=date
+get_data,'WIND_B3_HTR(GSE,nT)',DATA=temporary_mfi
+magf_htr = temporary_mfi
+str_element,magf_htr,'R',REPLICATE(1L,N_ELEMENTS(magf_htr.X)),/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+gnorm      = [-0.865,-0.452,0.218]   ; => Using RH08 from JCK's site
+dgnorm     = [ 0.017, 0.030,0.214]
+;-----------------------------------------------------------------------------------------
+; => Get TDS data
+;-----------------------------------------------------------------------------------------
+; => Get TDSS data
+my_tdss    = get_wind_tds_data(DATE=date,FIXFILE=1,/TDSS)
+x          = LINDGEN(N_ELEMENTS(my_tdss.SCET))
+IF (sdate[0] EQ '021100') THEN gels = [x[0L:11L],x[15L:34L]]
+; => Get ONLY whistler TDSS
+IF (gels[0] NE -1) THEN scetss  = my_tdss.SCET[gels[*]]             ELSE scetss  = ''
+IF (gels[0] NE -1) THEN fieldss = REFORM(my_tdss.EFIELD[gels[*],*]) ELSE fieldss = dumbf
+IF (gels[0] NE -1) THEN timess  = REFORM(my_tdss.TIME[gels[*],*])   ELSE timess  = dumbd
+IF (gels[0] NE -1) THEN evnums  = my_tdss.EVENT_N[gels[*]]          ELSE evnums  = -1
+IF (gels[0] NE -1) THEN atypes  = my_tdss.A_TYPE[gels[*]]           ELSE atypes  = ''
+IF (gels[0] NE -1) THEN sangss  = my_tdss.S_ANG[gels[*]]            ELSE sangss  = 0.
+IF (gels[0] NE -1) THEN eangss  = my_tdss.E_ANG[gels[*]]            ELSE eangss  = 0.
+
+ascets     = scetss
+; => STRMID(scet,0,2)+STRMID(scet,3,2)+'-'+STRMID(scet,6,2)+'x'+STRMID(scet,9,3)
+ascets2    = string_replace_char(string_replace_char(ascets,'/','-'),' ','_')
+ascets2    = STRMID(ascets2[*],0L,23L)  ; => Remove the _UT
+fdates     = STRMID(ascets2[*],0L,11L)
+fscets     = STRMID(ascets2[*],11L)
+fscets     = STRMID(fscets[*],0,2)+STRMID(fscets[*],3,2)+'-'+$
+             STRMID(fscets[*],6,2)+'x'+STRMID(fscets[*],9,3)
+fn_scets   = fdates[*]+fscets[*]
+
+afields    = fieldss
+atimes     = timess
+aevnum     = evnums
+aatype     = atypes
+asangs     = sangss
+aeangs     = eangss
+; => Eliminate bad elements
+bad        = WHERE(ascets EQ '',bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (gd GT 0) THEN ascets  = ascets[good]
+IF (gd GT 0) THEN afields = afields[good,*]
+IF (gd GT 0) THEN atimes  = atimes[good,*]
+IF (gd GT 0) THEN aevnum  = aevnum[good]
+IF (gd GT 0) THEN aatype  = aatype[good]
+IF (gd GT 0) THEN asangs  = asangs[good]
+IF (gd GT 0) THEN aeangs  = aeangs[good]
+; => sort elements
+mts        = my_time_string(ascets,STR=1,FORM=1,PREC=3,/NOMSSG)
+ascets     = mts.DATE_TIME
+aunix      = mts.UNIX
+sp         = SORT(aunix)
+ascets     = ascets[sp]
+aunix      = aunix[sp]
+afields    = afields[sp,*]
+atimes     = atimes[sp,*]
+aevnum     = aevnum[sp]
+aatype     = aatype[sp]
+asangs     = asangs[sp]
+aeangs     = aeangs[sp]
+;-----------------------------------------------------------------------------------------
+; => define fields
+;-----------------------------------------------------------------------------------------
+nsams   = N_ELEMENTS(REFORM(my_tdss.TIME[0,*]))
+efxyz   = DBLARR(N_ELEMENTS(UNIQ(ascets,SORT(ascets))),nsams,3L)  ; => Dummy array of E-fields (mV/m)
+bfxyz   = DBLARR(N_ELEMENTS(UNIQ(ascets,SORT(ascets))),nsams,3L)  ; => Dummy array of B-fields (nT)
+unqel   = UNIQ(aevnum,SORT(aevnum))
+n_uq    = N_ELEMENTS(unqel) - 1L
+tempevn = aevnum[unqel]
+n_avgs  = N_ELEMENTS(aevnum)/N_ELEMENTS(unqel) - 1L
+
+jj      = 0L
+FOR j=0L, n_uq DO BEGIN                                                    $
+  t_evn   = tempevn[j]                                                   & $
+  ggd     = WHERE(t_evn[0] EQ aevnum)                                    & $
+  t_types = STRMID(aatype[ggd],0L,2L)                                    & $
+  t_field = afields[ggd,*]                                               & $
+  FOR k=0L, n_avgs DO BEGIN                                                $
+    t_type = STRMID(t_types[k],0L,2L)                                    & $
+    IF (t_type EQ 'EX') THEN efxyz[j,*,0] = t_field[k,*]                 & $
+    IF (t_type EQ 'EY') THEN efxyz[j,*,1] = t_field[k,*]                 & $
+    IF (t_type EQ 'EZ') THEN efxyz[j,*,2] = t_field[k,*]                 & $
+    IF (t_type EQ 'BX') THEN bfxyz[j,*,0] = t_field[k,*]                 & $
+    IF (t_type EQ 'BY') THEN bfxyz[j,*,1] = t_field[k,*]                 & $
+    IF (t_type EQ 'BZ') THEN bfxyz[j,*,2] = t_field[k,*]                 & $
+  ENDFOR                                                                 & $
+  jj += 1L
+
+FOR j=0L, n_uq DO BEGIN                                                    $
+  jstr  = 'T'+STRTRIM(j,2)                                               & $
+  str_element,waves_ef,jstr,REFORM(efxyz[j,*,*]),/ADD_REPLACE            & $
+  str_element,waves_bf,jstr,REFORM(bfxyz[j,*,*]),/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => find unique elements of fields
+;-----------------------------------------------------------------------------------------
+unqel   = UNIQ(ascets,SORT(ascets))
+nscets  = REFORM(ascets[unqel])
+nunix   = REFORM(aunix[unqel])
+nsangs  = REFORM(asangs[unqel])
+neangs  = REFORM(aeangs[unqel])
+nevnm   = REFORM(aevnum[unqel])
+natype  = aatype[unqel]
+fn_scet = fn_scets[unqel]
+ntimes  = REFORM(atimes[unqel,*],N_ELEMENTS(unqel),nsams)
+n_uq    = N_ELEMENTS(unqel) - 1L
+;-----------------------------------------------------------------------------------------
+; => interpolate angles
+;-----------------------------------------------------------------------------------------
+nangsi = DBLARR(nsams,n_uq+1L)
+FOR k=0L, n_uq DO BEGIN                                              $
+  kstr  = 'T'+STRTRIM(k,2)                                         & $
+  tt0         = REFORM(ntimes[k,*])*1d-3 + nunix[k]                & $
+  tts0        = [MIN(tt0,/NAN),MAX(tt0,/NAN)]                      & $
+  temp0       = interp([nsangs[k],neangs[k]],tts0,tt0,/NO_EXTRAP)  & $
+  str_element,tds_unx,kstr,tt0,/ADD_REPLACE                        & $
+  nangsi[*,k] = temp0
+
+san_str    = STRTRIM(STRING(FORMAT='(f15.1)',nsangs),2)
+ean_str    = STRTRIM(STRING(FORMAT='(f15.1)',neangs),2)
+ang_str    = san_str[*]+'!Uo!N'+'-'+ean_str[*]+'!Uo!N'
+fang_str   = '+E!Dx!N Angle to Sun:  '+ang_str[*]
+;-----------------------------------------------------------------------------------------
+; => filter fields
+;-----------------------------------------------------------------------------------------
+lfc1  = [7d0,5d0,6d1,12d1]                   ; => For 2000-02-11/23:33:56.491 UT
+hfc1  = [2d1,3d1,2d2, 2d2]                   ; => For 2000-02-11/23:33:56.491 UT
+lfc2  = [7d0,5d0,6d1,12d1]                   ; => For 2000-02-11/23:33:58.351 UT
+hfc2  = [2d1,3d1,2d2, 2d2]                   ; => For 2000-02-11/23:33:58.351 UT
+lfc3  = [3d0,3d0,3d1]                        ; => For 2000-02-11/23:34:00.731 UT
+hfc3  = [2d1,3d1,2d2]                        ; => For 2000-02-11/23:34:00.731 UT
+lfc4  = [5d1]                                ; => For 2000-02-11/23:34:27.503 UT
+hfc4  = [25d1]                               ; => For 2000-02-11/23:34:27.503 UT
+lfc5  = [4d1]                                ; => For 2000-02-11/23:34:29.065 UT
+hfc5  = [25d1]                               ; => For 2000-02-11/23:34:29.065 UT
+lfc6  = [6d1]                                ; => For 2000-02-12/00:14:21.709 UT
+hfc6  = [15d1]                               ; => For 2000-02-12/00:14:21.709 UT
+lfc7  = [36d0]                               ; => For 2000-02-12/00:26:17.217 UT
+hfc7  = [10d1]                               ; => For 2000-02-12/00:26:17.217 UT
+lfc8  = [30d0]                               ; => For 2000-02-12/00:27:19.142 UT
+hfc8  = [10d1]                               ; => For 2000-02-12/00:27:19.142 UT
+
+tags  = ['t1','t2','t3','t4','t5','t6','t7','t8']
+
+lf_str = CREATE_STRUCT(tags,lfc1,lfc2,lfc3,lfc4,lfc5,lfc6,lfc7,lfc8)
+hf_str = CREATE_STRUCT(tags,hfc1,hfc2,hfc3,hfc4,hfc5,hfc6,hfc7,hfc8)
+
+DELVAR,filter_sf0,filter_ef0,filter_bf0,filter_sf,filter_ef,filter_bf
+jj     = 0L
+FOR j=0L, n_uq DO BEGIN                                                             $
+  evln  = (MAX(ntimes[j,*],/NAN) - MIN(ntimes[j,*],/NAN))*1d-3                    & $
+  tsam  = (nsams - 1L)/evln                                                       & $
+  jstr  = 'T'+STRTRIM(j,2)                                                        & $
+  lfc0  = lf_str.(j)                                                              & $
+  hfc0  = hf_str.(j)                                                              & $
+  n_fr  = N_ELEMENTS(lfc0) - 1L                                                   & $
+  t_ef  = REFORM(waves_ef.(j))                                                    & $
+  t_bf  = REFORM(waves_bf.(j))                                                    & $
+  FOR k=0L, n_fr DO BEGIN                                                           $
+    kstr  = 'T'+STRTRIM(k,2)                                                      & $
+    flow  = lfc0[k]                                                               & $
+    fhigh = hfc0[k]                                                               & $
+    filte = vector_bandpass(t_ef,tsam[0],flow[0],fhigh[0],/MIDF)                  & $
+    filtb = vector_bandpass(t_bf,tsam[0],flow[0],fhigh[0],/MIDF)                  & $
+    str_element,filter_ef0,kstr,filte,/ADD_REPLACE                                & $
+    str_element,filter_bf0,kstr,filtb,/ADD_REPLACE                                & $
+    vec_ef = REFORM(filte)*1d-3                                                   & $
+    vec_bf = REFORM(filtb)*1d-9                                                   & $
+    poy_sf = my_crossp_2(vec_ef,vec_bf,/NOM)/muo*1d6                              & $
+    str_element,filter_sf0,kstr,poy_sf,/ADD_REPLACE                               & $
+  ENDFOR                                                                          & $
+  str_element,filter_sf,jstr,filter_sf0,/ADD_REPLACE                              & $
+  str_element,filter_ef,jstr,filter_ef0,/ADD_REPLACE                              & $
+  str_element,filter_bf,jstr,filter_bf0,/ADD_REPLACE                              & $
+  FOR k=0L, n_fr DO BEGIN                                                           $
+    kstr  = 'T'+STRTRIM(k,2)                                                      & $
+    str_element,filter_ef0,kstr,/DELETE                                           & $
+    str_element,filter_bf0,kstr,/DELETE                                           & $
+    str_element,filter_sf0,kstr,/DELETE                                           & $
+  ENDFOR                                                                          & $
+ENDFOR                                                                            & $
+jj += 1L
+
+DELVAR,filter_sf0,filter_ef0,filter_bf0,vec_ef,vec_bf,filte,filtb,poy_sf,t_ef,b_ef
+
+; => [erg cm^(-2) s^(-1) = 10^(-3) W m^(-2)]
+; => [milliergs cm^(-2) s^(-1) = 10^(-6) W m^(-2)]
+;-----------------------------------------------------------------------------------------
+; => rotate fields into GSE and FAC Coordinates [use Shock Norm. Vec. as second vector]
+;-----------------------------------------------------------------------------------------
+unx_t0     = ntimes*1d-3 + (nunix # REPLICATE(1d0,2048L))
+t_mag0     = tds_bfield(unx_t0,nsangs,neangs,B3SMAG=magf_3s,HTRMAG=magf_htr,DATE=date,/NOCURR)
+b3s_gse    = t_mag0.G3MAG                ; => [# of TDSF, # of points, 3L]
+htr_gse    = t_mag0.GHTR
+; => Change the following line when HTR MFI is available...
+mag_gse    = htr_gse
+sun_dir    = gnorm
+
+jj     = 0L
+FOR j=0L, n_uq DO BEGIN                                                     $
+  jstr    = 'T'+STRTRIM(j,2)                                              & $
+  unx0    = REFORM(unx_t0[j,*])                                           & $
+  g_magf  = REFORM(mag_gse[j,*,*])                                        & $
+  angles  = REFORM(nangsi[*,j])                                           & $
+  filter_ef0 = filter_ef.(j)                                              & $
+  filter_bf0 = filter_bf.(j)                                              & $
+  filter_sf0 = filter_sf.(j)                                              & $
+  n_fr       = N_ELEMENTS(lf_str.(j)) - 1L                                & $
+  FOR k=0L, n_fr DO BEGIN                                                   $
+    kstr    = 'T'+STRTRIM(k,2)                                            & $
+    vec_ef  = REFORM(filter_ef0.(k))*1d0                                  & $
+    vec_bf  = REFORM(filter_bf0.(k))*1d0                                  & $
+    vec_sf  = REFORM(filter_sf0.(k))*1d0                                  & $
+    rot_efg = DBLARR(nsams,3L)                                            & $
+    rot_bfg = DBLARR(nsams,3L)                                            & $
+    rot_sfg = DBLARR(nsams,3L)                                            & $
+    rot_ef  = DBLARR(nsams,3L)                                            & $
+    rot_bf  = DBLARR(nsams,3L)                                            & $
+    rot_sf  = DBLARR(nsams,3L)                                            & $
+    FOR i=0L, nsams - 1L DO BEGIN                                           $
+      rotm0 = TRANSPOSE(eulermat(0d0,angles[i],180d0,/DEG))               & $
+      t_eef = REFORM(rotm0 ## REFORM(vec_ef[i,*]))                        & $
+      t_ebf = REFORM(rotm0 ## REFORM(vec_bf[i,*]))                        & $
+      t_esf = REFORM(rotm0 ## REFORM(vec_sf[i,*]))                        & $
+      rot_efg[i,*] = t_eef                                                & $
+      rot_bfg[i,*] = t_ebf                                                & $
+      rot_sfg[i,*] = t_esf                                                & $
+      magf  = REFORM(g_magf[i,*])                                         & $
+      rotm0 = rot_mat(magf,sun_dir)                                       & $
+      t_eef = REFORM(rotm0 ## REFORM(vec_ef[i,*]))                        & $
+      t_ebf = REFORM(rotm0 ## REFORM(vec_bf[i,*]))                        & $
+      t_esf = REFORM(rotm0 ## REFORM(vec_sf[i,*]))                        & $
+      rot_ef[i,*] = t_eef                                                 & $
+      rot_bf[i,*] = t_ebf                                                 & $
+      rot_sf[i,*] = t_esf                                                 & $
+    ENDFOR                                                                & $
+    str_element,rotated_gse_ef0,kstr,rot_efg,/ADD_REPLACE                 & $
+    str_element,rotated_gse_bf0,kstr,rot_bfg,/ADD_REPLACE                 & $
+    str_element,rotated_gse_sf0,kstr,rot_sfg,/ADD_REPLACE                 & $
+    str_element,rotated_fac_ef0,kstr,rot_ef,/ADD_REPLACE                  & $
+    str_element,rotated_fac_bf0,kstr,rot_bf,/ADD_REPLACE                  & $
+    str_element,rotated_fac_sf0,kstr,rot_sf,/ADD_REPLACE                  & $
+  ENDFOR                                                                  & $
+  str_element,rotated_gse_ef,jstr,rotated_gse_ef0,/ADD_REPLACE            & $
+  str_element,rotated_gse_bf,jstr,rotated_gse_bf0,/ADD_REPLACE            & $
+  str_element,rotated_gse_sf,jstr,rotated_gse_sf0,/ADD_REPLACE            & $
+  str_element,rotated_fac_ef,jstr,rotated_fac_ef0,/ADD_REPLACE            & $
+  str_element,rotated_fac_bf,jstr,rotated_fac_bf0,/ADD_REPLACE            & $
+  str_element,rotated_fac_sf,jstr,rotated_fac_sf0,/ADD_REPLACE            & $
+  FOR k=0L, n_fr DO BEGIN                                                   $
+    kstr    = 'T'+STRTRIM(k,2)                                            & $
+    str_element,rotated_gse_ef0,kstr,/DELETE                              & $
+    str_element,rotated_gse_bf0,kstr,/DELETE                              & $
+    str_element,rotated_gse_sf0,kstr,/DELETE                              & $
+    str_element,rotated_fac_ef0,kstr,/DELETE                              & $
+    str_element,rotated_fac_bf0,kstr,/DELETE                              & $
+    str_element,rotated_fac_sf0,kstr,/DELETE                              & $
+  ENDFOR                                                                  & $
+ENDFOR                                                                            & $
+jj += 1L
+
+;      rotm0 = eulermat(0d0,angles[i],180d0,/DEG)                          & $
+DELVAR,filter_sf0,filter_ef0,filter_bf0
+DELVAR,rotated_gse_ef0,rotated_gse_bf0,rotated_gse_sf0,rot_efg,rot_bfg,rot_sfg
+DELVAR,rot_ef,rot_bf,rot_sf,vec_ef,vec_bf,vec_sf,t_eef,t_ebf,t_esf
+
+; => *_gse_*  =  fields rotated into GSE Coordinates
+; => *_fac_*  =  fields rotated into FACs
+;-----------------------------------------------------------------------------------------
+; => create structures of start/end times to over plot on waveforms
+;-----------------------------------------------------------------------------------------
+tags      = ['t0','t1','t2','t3','t4','t5','t6','t7','t8','t9','t10','t11','t12','t13',$
+             't14','t15','t16','t17','t18','t19','t20','t21','t22','t23','t24']
+prefd     = '2000-02-11/'
+
+
+jj        = 0L
+; => For  7 Hz < f < 20 Hz  at  2000-02-11/23:33:56.4910
+tr0       = time_double([prefd[0]+'23:33:57.1945',prefd[0]+'23:33:57.3091'])
+tr_str_00 = CREATE_STRUCT(tags[0L:0L],tr0)
+
+; => For  5 Hz < f < 30 Hz  at  2000-02-11/23:33:56.4910
+tr0       = time_double([prefd[0]+'23:33:56.7417',prefd[0]+'23:33:56.8809'])
+tr1       = time_double([prefd[0]+'23:33:57.3230',prefd[0]+'23:33:57.4574'])
+tr_str_01 = CREATE_STRUCT(tags[0L:1L],tr0,tr1)
+
+; => For  60 Hz < f < 200 Hz  at  2000-02-11/23:33:56.4910
+tr0       = time_double([prefd[0]+'23:33:56.9038',prefd[0]+'23:33:56.9438'])
+tr1       = time_double([prefd[0]+'23:33:56.9838',prefd[0]+'23:33:57.0238'])
+tr2       = time_double([prefd[0]+'23:33:57.0979',prefd[0]+'23:33:57.1267'])
+tr3       = time_double([prefd[0]+'23:33:57.1582',prefd[0]+'23:33:57.1886'])
+tr4       = time_double([prefd[0]+'23:33:57.3267',prefd[0]+'23:33:57.3598'])
+tr_str_02 = CREATE_STRUCT(tags[0L:4L],tr0,tr1,tr2,tr3,tr4)
+
+; => For  120 Hz < f < 200 Hz  at  2000-02-11/23:33:56.4910
+tr0       = time_double([prefd[0]+'23:33:57.0542',prefd[0]+'23:33:57.0755'])
+tr1       = time_double([prefd[0]+'23:33:57.1529',prefd[0]+'23:33:57.1715'])
+tr2       = time_double([prefd[0]+'23:33:57.2073',prefd[0]+'23:33:57.2345'])
+tr3       = time_double([prefd[0]+'23:33:57.2563',prefd[0]+'23:33:57.2713'])
+tr4       = time_double([prefd[0]+'23:33:57.3438',prefd[0]+'23:33:57.3662'])
+tr_str_03 = CREATE_STRUCT(tags[0L:4L],tr0,tr1,tr2,tr3,tr4)
+tr_str_0  = CREATE_STRUCT(['T0','T1','T2','T3'],tr_str_00,tr_str_01,tr_str_02,tr_str_03)
+
+
+jj        = 1L
+; => For  7 Hz < f < 20 Hz  at  2000-02-11/23:33:58.3510
+tr0       = time_double([prefd[0]+'23:33:58.3510',prefd[0]+'23:33:58.7995'])
+tr1       = time_double([prefd[0]+'23:33:59.0454',prefd[0]+'23:33:59.2998'])
+tr_str_10 = CREATE_STRUCT(tags[0L:1L],tr0,tr1)
+
+; => For  5 Hz < f < 30 Hz  at  2000-02-11/23:33:58.3510
+tr0       = time_double([prefd[0]+'23:33:58.4870',prefd[0]+'23:33:58.7590'])
+tr_str_11 = CREATE_STRUCT(tags[0L:0L],tr0)
+
+; => For  60 Hz < f < 200 Hz  at  2000-02-11/23:33:58.3510
+tr0       = time_double([prefd[0]+'23:33:58.4497',prefd[0]+'23:33:58.4806'])
+tr1       = time_double([prefd[0]+'23:33:58.8801',prefd[0]+'23:33:58.9169'])
+tr2       = time_double([prefd[0]+'23:33:58.9201',prefd[0]+'23:33:58.9841'])
+tr3       = time_double([prefd[0]+'23:33:58.9979',prefd[0]+'23:33:59.0395'])
+tr4       = time_double([prefd[0]+'23:33:59.0737',prefd[0]+'23:33:59.1334'])
+tr5       = time_double([prefd[0]+'23:33:59.3734',prefd[0]+'23:33:59.4086'])
+tr_str_12 = CREATE_STRUCT(tags[0L:5L],tr0,tr1,tr2,tr3,tr4,tr5)
+
+; => For  120 Hz < f < 200 Hz  at  2000-02-11/23:33:58.3510
+tr0       = time_double([prefd[0]+'23:33:58.4038',prefd[0]+'23:33:58.5046'])
+tr1       = time_double([prefd[0]+'23:33:58.8374',prefd[0]+'23:33:58.9051'])
+tr2       = time_double([prefd[0]+'23:33:58.9051',prefd[0]+'23:33:58.9542'])
+tr3       = time_double([prefd[0]+'23:33:58.9665',prefd[0]+'23:33:58.9862'])
+tr4       = time_double([prefd[0]+'23:33:58.9953',prefd[0]+'23:33:59.0299'])
+tr5       = time_double([prefd[0]+'23:33:59.0721',prefd[0]+'23:33:59.1889'])
+tr_str_13 = CREATE_STRUCT(tags[0L:5L],tr0,tr1,tr2,tr3,tr4,tr5)
+tr_str_1  = CREATE_STRUCT(['T0','T1','T2','T3'],tr_str_10,tr_str_11,tr_str_12,tr_str_13)
+
+
+jj      = 2L
+; => For  3 Hz < f < 20 Hz  at  2000-02-11/23:34:00.731 UT
+tr0     = time_double([prefd[0]+'23:34:01.5369',prefd[0]+'23:34:01.7321'])
+tr_str_20  = CREATE_STRUCT(tags[0L:0L],tr0)
+
+; => For  3 Hz < f < 30 Hz  at  2000-02-11/23:34:00.731 UT
+tr0     = time_double([prefd[0]+'23:34:00.8238',prefd[0]+'23:34:00.8990'])
+tr_str_21  = CREATE_STRUCT(tags[0L:0L],tr0)
+
+; => For  30 Hz < f < 200 Hz  at  2000-02-11/23:34:00.731 UT
+tr0     = time_double([prefd[0]+'23:34:00.7918',prefd[0]+'23:34:00.8126'])
+tr1     = time_double([prefd[0]+'23:34:00.8595',prefd[0]+'23:34:00.8942'])
+tr2     = time_double([prefd[0]+'23:34:01.0473',prefd[0]+'23:34:01.0761'])
+tr3     = time_double([prefd[0]+'23:34:01.0915',prefd[0]+'23:34:01.1118'])
+tr4     = time_double([prefd[0]+'23:34:01.1305',prefd[0]+'23:34:01.1561'])
+tr5     = time_double([prefd[0]+'23:34:01.1790',prefd[0]+'23:34:01.2057'])
+tr6     = time_double([prefd[0]+'23:34:01.2398',prefd[0]+'23:34:01.2627'])
+tr7     = time_double([prefd[0]+'23:34:01.2723',prefd[0]+'23:34:01.3022'])
+tr8     = time_double([prefd[0]+'23:34:01.3267',prefd[0]+'23:34:01.3998'])
+tr9     = time_double([prefd[0]+'23:34:01.4990',prefd[0]+'23:34:01.5422'])
+tr10    = time_double([prefd[0]+'23:34:01.6494',prefd[0]+'23:34:01.6974'])
+tr11    = time_double([prefd[0]+'23:34:01.7219',prefd[0]+'23:34:01.7449'])
+tr12    = time_double([prefd[0]+'23:34:01.7550',prefd[0]+'23:34:01.7838'])
+tr13    = time_double([prefd[0]+'23:34:01.7881',prefd[0]+'23:34:01.8179'])
+tr_str_22  = CREATE_STRUCT(tags[0L:13L],tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,$
+                           tr10,tr11,tr12,tr13)
+tr_str_2   = CREATE_STRUCT(['T0','T1','T2'],tr_str_20,tr_str_21,tr_str_22)
+
+
+jj      = 3L
+; => For  50 Hz < f < 250 Hz  at  2000-02-11/23:34:27.503 UT
+tr0     = time_double([prefd[0]+'23:34:27.5110',prefd[0]+'23:34:27.5766'])
+tr1     = time_double([prefd[0]+'23:34:27.6262',prefd[0]+'23:34:27.6630'])
+tr2     = time_double([prefd[0]+'23:34:27.7190',prefd[0]+'23:34:27.7590'])
+tr3     = time_double([prefd[0]+'23:34:27.7659',prefd[0]+'23:34:27.7878'])
+tr4     = time_double([prefd[0]+'23:34:27.7883',prefd[0]+'23:34:27.8486'])
+tr5     = time_double([prefd[0]+'23:34:27.8859',prefd[0]+'23:34:27.9094'])
+tr6     = time_double([prefd[0]+'23:34:27.9259',prefd[0]+'23:34:27.9606'])
+tr7     = time_double([prefd[0]+'23:34:27.9606',prefd[0]+'23:34:27.9910'])
+tr8     = time_double([prefd[0]+'23:34:28.0614',prefd[0]+'23:34:28.0977'])
+tr9     = time_double([prefd[0]+'23:34:28.1286',prefd[0]+'23:34:28.1542'])
+tr10    = time_double([prefd[0]+'23:34:28.1638',prefd[0]+'23:34:28.1889'])
+tr11    = time_double([prefd[0]+'23:34:28.1894',prefd[0]+'23:34:28.2545'])
+tr12    = time_double([prefd[0]+'23:34:28.2625',prefd[0]+'23:34:28.2966'])
+tr13    = time_double([prefd[0]+'23:34:28.3345',prefd[0]+'23:34:28.3782'])
+tr14    = time_double([prefd[0]+'23:34:28.3899',prefd[0]+'23:34:28.4118'])
+tr15    = time_double([prefd[0]+'23:34:28.4123',prefd[0]+'23:34:28.4422'])
+tr16    = time_double([prefd[0]+'23:34:28.4449',prefd[0]+'23:34:28.4769'])
+tr17    = time_double([prefd[0]+'23:34:28.4822',prefd[0]+'23:34:28.5147'])
+tr18    = time_double([prefd[0]+'23:34:28.5153',prefd[0]+'23:34:28.5350'])
+tr19    = time_double([prefd[0]+'23:34:28.5462',prefd[0]+'23:34:28.5686'])
+tr_str_30  = CREATE_STRUCT(tags[0L:19L],tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,$
+                           tr10,tr11,tr12,tr13,tr14,tr15,tr16,tr17,tr18,tr19)
+tr_str_3   = CREATE_STRUCT(['T0'],tr_str_30)
+
+
+jj      = 4L
+; => For  40 Hz < f < 250 Hz  at  2000-02-11/23:34:29.065 UT
+tr0     = time_double([prefd[0]+'23:34:29.1530',prefd[0]+'23:34:29.2170'])
+tr1     = time_double([prefd[0]+'23:34:29.2170',prefd[0]+'23:34:29.2682'])
+tr2     = time_double([prefd[0]+'23:34:29.2682',prefd[0]+'23:34:29.3434'])
+tr3     = time_double([prefd[0]+'23:34:29.3637',prefd[0]+'23:34:29.4442'])
+tr4     = time_double([prefd[0]+'23:34:29.4634',prefd[0]+'23:34:29.5194'])
+tr5     = time_double([prefd[0]+'23:34:29.5402',prefd[0]+'23:34:29.5866'])
+tr6     = time_double([prefd[0]+'23:34:29.5973',prefd[0]+'23:34:29.6549'])
+tr7     = time_double([prefd[0]+'23:34:29.6554',prefd[0]+'23:34:29.7013'])
+tr8     = time_double([prefd[0]+'23:34:29.7445',prefd[0]+'23:34:29.7781'])
+tr9     = time_double([prefd[0]+'23:34:29.7962',prefd[0]+'23:34:29.8437'])
+tr10    = time_double([prefd[0]+'23:34:29.8490',prefd[0]+'23:34:29.8890'])
+tr11    = time_double([prefd[0]+'23:34:29.8890',prefd[0]+'23:34:29.9317'])
+tr12    = time_double([prefd[0]+'23:34:29.9610',prefd[0]+'23:34:29.9887'])
+tr13    = time_double([prefd[0]+'23:34:30.0250',prefd[0]+'23:34:30.0527'])
+tr14    = time_double([prefd[0]+'23:34:30.0666',prefd[0]+'23:34:30.1045'])
+tr15    = time_double([prefd[0]+'23:34:30.1103',prefd[0]+'23:34:30.1535'])
+tr_str_40  = CREATE_STRUCT(tags[0L:15L],tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,$
+                           tr10,tr11,tr12,tr13,tr14,tr15)
+tr_str_4   = CREATE_STRUCT(['T0'],tr_str_40)
+
+
+jj      = 5L
+; => For  60 Hz < f < 150 Hz  at  2000-02-12/00:14:21.709 UT
+prefd   = '2000-02-12/'
+tr0     = time_double([prefd[0]+'00:14:21.7090',prefd[0]+'00:14:21.7458'])
+tr1     = time_double([prefd[0]+'00:14:21.7618',prefd[0]+'00:14:21.8114'])
+tr2     = time_double([prefd[0]+'00:14:21.8231',prefd[0]+'00:14:21.9218'])
+tr3     = time_double([prefd[0]+'00:14:21.9218',prefd[0]+'00:14:21.9890'])
+tr4     = time_double([prefd[0]+'00:14:21.9890',prefd[0]+'00:14:22.0311'])
+tr5     = time_double([prefd[0]+'00:14:22.0450',prefd[0]+'00:14:22.0850'])
+tr6     = time_double([prefd[0]+'00:14:22.1175',prefd[0]+'00:14:22.1906'])
+tr7     = time_double([prefd[0]+'00:14:22.2786',prefd[0]+'00:14:22.3469'])
+tr8     = time_double([prefd[0]+'00:14:22.3474',prefd[0]+'00:14:22.4146'])
+tr9     = time_double([prefd[0]+'00:14:22.4151',prefd[0]+'00:14:22.4466'])
+tr10    = time_double([prefd[0]+'00:14:22.4594',prefd[0]+'00:14:22.4941'])
+tr11    = time_double([prefd[0]+'00:14:22.4946',prefd[0]+'00:14:22.5410'])
+tr12    = time_double([prefd[0]+'00:14:22.5538',prefd[0]+'00:14:22.6546'])
+tr13    = time_double([prefd[0]+'00:14:22.6631',prefd[0]+'00:14:22.7346'])
+tr_str_50  = CREATE_STRUCT(tags[0L:13L],tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,$
+                           tr10,tr11,tr12,tr13)
+tr_str_5   = CREATE_STRUCT(['T0'],tr_str_50)
+
+
+jj      = 6L
+; => For  36 Hz < f < 100 Hz  at  2000-02-12/00:26:17.217 UT
+tr0     = time_double([prefd[0]+'00:26:17.2325',prefd[0]+'00:26:17.2970'])
+tr1     = time_double([prefd[0]+'00:26:17.7898',prefd[0]+'00:26:17.8586'])
+tr2     = time_double([prefd[0]+'00:26:17.8591',prefd[0]+'00:26:17.9290'])
+tr_str_60  = CREATE_STRUCT(tags[0L:2L],tr0,tr1,tr2)
+tr_str_6   = CREATE_STRUCT(['T0'],tr_str_60)
+
+
+jj      = 7L
+; => For  30 Hz < f < 100 Hz  at  2000-02-12/00:27:19.142 UT
+tr0     = time_double([prefd[0]+'00:27:19.1980',prefd[0]+'00:27:19.2524'])
+tr1     = time_double([prefd[0]+'00:27:19.2716',prefd[0]+'00:27:19.3452'])
+tr2     = time_double([prefd[0]+'00:27:19.4561',prefd[0]+'00:27:19.4972'])
+tr3     = time_double([prefd[0]+'00:27:19.5116',prefd[0]+'00:27:19.5671'])
+tr4     = time_double([prefd[0]+'00:27:19.5676',prefd[0]+'00:27:19.6348'])
+tr5     = time_double([prefd[0]+'00:27:19.7340',prefd[0]+'00:27:19.8513'])
+tr6     = time_double([prefd[0]+'00:27:19.8604',prefd[0]+'00:27:19.9276'])
+tr7     = time_double([prefd[0]+'00:27:19.9281',prefd[0]+'00:27:20.0156'])
+tr8     = time_double([prefd[0]+'00:27:20.0460',prefd[0]+'00:27:20.1164'])
+tr9     = time_double([prefd[0]+'00:27:20.1223',prefd[0]+'00:27:20.1596'])
+tr10    = time_double([prefd[0]+'00:27:20.1969',prefd[0]+'00:27:20.2337'])
+tr_str_70  = CREATE_STRUCT(tags[0L:10L],tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,$
+                           tr10)
+tr_str_7   = CREATE_STRUCT(['T0'],tr_str_70)
+
+
+tags      = ['t0','t1','t2','t3','t4','t5','t6','t7']
+tr_str    = CREATE_STRUCT(tags,tr_str_0,tr_str_1,tr_str_2,tr_str_3,tr_str_4,tr_str_5,$
+                          tr_str_6,tr_str_7)
+;-----------------------------------------------------------------------------------------
+; => Plot waveforms in GSE Coordinates with time ranges over plotted
+;-----------------------------------------------------------------------------------------
+wi,1
+!P.MULTI = [0,1,3]
+
+yttlsws   = ['S!Dx!N (!7l!3'+'W/m!U2!N'+')','S!Dy!N (!7l!3'+'W/m!U2!N'+')',$
+             'S!Dz!N (!7l!3'+'W/m!U2!N'+')']
+yttlbws   = ['B!Dx!N (nT)','B!Dy!N (nT)','B!Dz!N (nT)']
+yttlews   = ['E!Dx!N (mV/m)','E!Dy!N (mV/m)','E!Dz!N (mV/m)']
+
+xtntm     = ['0','200','400','600','800','1000']
+xtvtm     = [0e0,2e2,4e2,6e2,8e2,1e3]
+xtstm     = N_ELEMENTS(xtvtm) - 1L
+xtt1      = 'Time (ms)'
+exstr_s   = {XSTYLE:1,YSTYLE:1,NODATA:1,XTICKNAME:xtntm,XTICKV:xtvtm,$
+             XTICKS:xtstm,XTITLE:xtt1,XMINOR:10,XTICKLEN:0.04}
+
+ffw_prefx = 'FIXED_WAVES-Coords_filtered_'
+colors    = [250,150,50]
+!P.CHARSIZE = 1.5
+!P.MULTI    = [0,1,3]
+
+ffr_prefx = 'FIXED_GSE_filtered_'
+fur_prefx = 'FIXED_GSE_unfiltered_'
+; => Plot rotated and filtered fields 
+
+; =>  i = abcissa for each TDSS event
+; =>  k = abcissa for each frequency range for filters
+; =>  m = " " filter string labels
+; =>  j = " " field components of TDSS events
+; =>  p = " " time ranges of 
+
+
+jj        = 0L
+FOR i=0L, n_uq DO BEGIN                                                         $
+  lfc0       = lf_str.(i)                                                     & $
+  hfc0       = hf_str.(i)                                                     & $
+  fwl_str    = STRTRIM(STRING(FORMAT='(f15.1)',lfc0),2)                       & $
+  fwh_str    = STRTRIM(STRING(FORMAT='(f15.1)',hfc0),2)                       & $
+  fil_str    = fwl_str[*]+'-'+fwh_str[*]+'Hz_'                                & $
+  fil_st2    = STRARR(N_ELEMENTS(fil_str))                                    & $
+  n_fr       = N_ELEMENTS(lfc0) - 1L                                          & $
+  tpstr      = exstr_s                                                        & $
+  FOR m=0L, n_fr DO fil_st2[m] = STRMID(fil_str[m],0L,STRLEN(fil_str[m])-1L)  & $
+  FOR k=0L, n_fr DO BEGIN                                                       $
+    tras0    = tr_str.(i).(k)                                                 & $
+    IF (SIZE(tras0,/TYPE) NE 8L) THEN GOTO,JUMP_FREE                          & $
+    n_tras   = N_TAGS(tras0)                                                  & $
+    ms_times = REFORM(ntimes[i,*])                                            & $
+    ew_field = rotated_gse_ef.(i).(k)                                         & $
+    bw_field = rotated_gse_bf.(i).(k)                                         & $
+    yra_bw   = [-1e0*MAX(ABS(bw_field),/NAN),MAX(ABS(bw_field),/NAN)]         & $
+    yra_ew   = [-1e0*MAX(ABS(ew_field),/NAN),MAX(ABS(ew_field),/NAN)]         & $
+    fname0   = ffr_prefx[0]+fn_scet[i]+'_B-GSE_'+fil_str[k]                   & $
+    str_element,tpstr,'YRANGE',yra_bw,/ADD_REPLACE                            & $
+    FOR p=0L, n_tras - 1L DO BEGIN                                                $
+      tras1    = tras0.(p)                                                      & $
+      ntrasuff = file_name_times(tras1,prec=4)                                  & $
+      ltrasuff = 'TRA-'+ntrasuff.F_TIME[0]+'-'+ntrasuff.F_TIME[1]               & $
+      mstraln  = (tras1 - nunix[i])*1d3                                         & $
+      popen,fname0+ltrasuff[0],/LAND                                            & $
+        FOR j=0L, 2L DO BEGIN                                                     $
+          IF (j EQ 0) THEN ttle = 'Magnetic Field [GSE-Coords] at: '+nscets[i]  & $
+          IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]      & $
+          IF (j EQ 2) THEN ttle = ''                                            & $
+          str_element,tpstr,'TITLE' ,ttle      ,/ADD_REPLACE                    & $
+          str_element,tpstr,'YTITLE',yttlbws[j],/ADD_REPLACE                    & $
+          PLOT,ms_times,bw_field[*,j],_EXTRA=tpstr                              & $
+            OPLOT,ms_times,bw_field[*,j],COLOR=colors[j]                        & $
+            OPLOT,[mstraln[0],mstraln[0]],tpstr.YRANGE,COLOR=50,LINESTYLE=3L    & $
+            OPLOT,[mstraln[1],mstraln[1]],tpstr.YRANGE,COLOR=50,LINESTYLE=3L    & $
+        ENDFOR                                                                  & $
+      pclose                                                                    & $
+    ENDFOR                                                                    & $
+    fname0   = ffr_prefx[0]+fn_scet[i]+'_E-GSE_'+fil_str[k]                   & $
+    str_element,tpstr,'YRANGE',yra_ew,/ADD_REPLACE                            & $
+    FOR p=0L, n_tras - 1L DO BEGIN                                                $
+      tras1    = tras0.(p)                                                      & $
+      ntrasuff = file_name_times(tras1,prec=4)                                  & $
+      ltrasuff = 'TRA-'+ntrasuff.F_TIME[0]+'-'+ntrasuff.F_TIME[1]               & $
+      mstraln  = (tras1 - nunix[i])*1d3                                         & $
+      popen,fname0+ltrasuff[0],/LAND                                            & $
+        FOR j=0L, 2L DO BEGIN                                                     $
+          IF (j EQ 0) THEN ttle = 'Electric Field [GSE-Coords] at: '+nscets[i]  & $
+          IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]      & $
+          IF (j EQ 2) THEN ttle = ''                                            & $
+          str_element,tpstr,'TITLE' ,ttle      ,/ADD_REPLACE                    & $
+          str_element,tpstr,'YTITLE',yttlews[j],/ADD_REPLACE                    & $
+          PLOT,ms_times,ew_field[*,j],_EXTRA=tpstr                              & $
+            OPLOT,ms_times,ew_field[*,j],COLOR=colors[j]                        & $
+            OPLOT,[mstraln[0],mstraln[0]],tpstr.YRANGE,COLOR=50,LINESTYLE=3L    & $
+            OPLOT,[mstraln[1],mstraln[1]],tpstr.YRANGE,COLOR=50,LINESTYLE=3L    & $
+        ENDFOR                                                                  & $
+      pclose                                                                    & $
+    ENDFOR                                                                    & $
+  JUMP_FREE:                                                                  & $
+  jj += 1L
+
+
+jj        = 0L
+FOR i=0L, n_uq DO BEGIN                                                         $
+  lfc0       = lf_str.(i)                                                     & $
+  hfc0       = hf_str.(i)                                                     & $
+  fwl_str    = STRTRIM(STRING(FORMAT='(f15.1)',lfc0),2)                       & $
+  fwh_str    = STRTRIM(STRING(FORMAT='(f15.1)',hfc0),2)                       & $
+  fil_str    = fwl_str[*]+'-'+fwh_str[*]+'Hz_'                                & $
+  fil_st2    = STRARR(N_ELEMENTS(fil_str))                                    & $
+  n_fr       = N_ELEMENTS(lfc0) - 1L                                          & $
+  tpstr      = exstr_s                                                        & $
+  unfilbf    = REFORM(bfxyz[i,*,*])                                           & $
+  unfilef    = REFORM(bfxyz[i,*,*])                                           & $
+  FOR m=0L, n_fr DO fil_st2[m] = STRMID(fil_str[m],0L,STRLEN(fil_str[m])-1L)  & $
+  FOR k=0L, n_fr DO BEGIN                                                       $
+    tras0    = tr_str.(i).(k)                                                 & $
+    IF (SIZE(tras0,/TYPE) NE 8L) THEN GOTO,JUMP_FREE                          & $
+    n_tras   = N_TAGS(tras0)                                                  & $
+    ms_times = REFORM(ntimes[i,*])                                            & $
+    bw_field = unfilbf                                                        & $
+    ew_field = unfilef                                                        & $
+    yra_bw   = [-1e0*MAX(ABS(bw_field),/NAN),MAX(ABS(bw_field),/NAN)]         & $
+    yra_ew   = [-1e0*MAX(ABS(ew_field),/NAN),MAX(ABS(ew_field),/NAN)]         & $
+    fname0   = fur_prefx[0]+fn_scet[i]+'_B-GSE_'+fil_str[k]                   & $
+    str_element,tpstr,'YRANGE',yra_bw,/ADD_REPLACE                            & $
+    FOR p=0L, n_tras - 1L DO BEGIN                                                $
+      tras1    = tras0.(p)                                                      & $
+      ntrasuff = file_name_times(tras1,prec=4)                                  & $
+      ltrasuff = 'TRA-'+ntrasuff.F_TIME[0]+'-'+ntrasuff.F_TIME[1]               & $
+      mstraln  = (tras1 - nunix[i])*1d3                                         & $
+      popen,fname0+ltrasuff[0],/LAND                                            & $
+        FOR j=0L, 2L DO BEGIN                                                     $
+          IF (j EQ 0) THEN ttle = 'Magnetic Field [GSE-Coords] at: '+nscets[i]  & $
+          IF (j EQ 1) THEN ttle = 'Unfiltered:  '+fang_str[i]                   & $
+          IF (j EQ 2) THEN ttle = ' '                                           & $
+          str_element,tpstr,'TITLE' ,ttle      ,/ADD_REPLACE                    & $
+          str_element,tpstr,'YTITLE',yttlbws[j],/ADD_REPLACE                    & $
+          PLOT,ms_times,bw_field[*,j],_EXTRA=tpstr                              & $
+            OPLOT,ms_times,bw_field[*,j],COLOR=colors[j]                        & $
+            OPLOT,[mstraln[0],mstraln[0]],tpstr.YRANGE,COLOR=50,LINESTYLE=3L    & $
+            OPLOT,[mstraln[1],mstraln[1]],tpstr.YRANGE,COLOR=50,LINESTYLE=3L    & $
+        ENDFOR                                                                  & $
+      pclose                                                                    & $
+    ENDFOR                                                                    & $
+    fname0   = fur_prefx[0]+fn_scet[i]+'_E-GSE_'+fil_str[k]                   & $
+    str_element,tpstr,'YRANGE',yra_ew,/ADD_REPLACE                            & $
+    FOR p=0L, n_tras - 1L DO BEGIN                                                $
+      tras1    = tras0.(p)                                                      & $
+      ntrasuff = file_name_times(tras1,prec=4)                                  & $
+      ltrasuff = 'TRA-'+ntrasuff.F_TIME[0]+'-'+ntrasuff.F_TIME[1]               & $
+      mstraln  = (tras1 - nunix[i])*1d3                                         & $
+      popen,fname0+ltrasuff[0],/LAND                                            & $
+        FOR j=0L, 2L DO BEGIN                                                     $
+          IF (j EQ 0) THEN ttle = 'Electric Field [GSE-Coords] at: '+nscets[i]  & $
+          IF (j EQ 1) THEN ttle = 'Unfiltered:  '+fang_str[i]                   & $
+          IF (j EQ 2) THEN ttle = ' '                                           & $
+          str_element,tpstr,'TITLE' ,ttle      ,/ADD_REPLACE                    & $
+          str_element,tpstr,'YTITLE',yttlews[j],/ADD_REPLACE                    & $
+          PLOT,ms_times,ew_field[*,j],_EXTRA=tpstr                              & $
+            OPLOT,ms_times,ew_field[*,j],COLOR=colors[j]                        & $
+            OPLOT,[mstraln[0],mstraln[0]],tpstr.YRANGE,COLOR=50,LINESTYLE=3L    & $
+            OPLOT,[mstraln[1],mstraln[1]],tpstr.YRANGE,COLOR=50,LINESTYLE=3L    & $
+        ENDFOR                                                                  & $
+      pclose                                                                    & $
+    ENDFOR                                                                    & $
+  JUMP_FREE:                                                                  & $
+  jj += 1L
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,1664 @@
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables and constants
+;-----------------------------------------------------------------------------------------
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+me         = 9.1093897d-31            ; -Electron mass (kg)
+mp         = 1.6726231d-27            ; -Proton mass (kg)
+qq         = 1.60217733d-19           ; -Fundamental charge (C)
+fcefac     = qq/me/(2d0*!DPI)
+;-----------------------------------------------------------------------------------------
+; => ALL TDS whistlers [Suffix Def:  '' = ALL, 'an' = Anisotropy, 'bm' = Beam/Flattop]
+;-----------------------------------------------------------------------------------------
+aniso_test = whistler_insta_read(FREE_ESOURCE='aniso')
+beam_test  = whistler_insta_read(FREE_ESOURCE='beams')
+temp       = whistler_insta_read()
+;-----------------------------------------------------------------------------------------
+; => Define parameters
+;-----------------------------------------------------------------------------------------
+; => Wave RMS Amplitudes
+rms_mag   = temp.RMS[*,3L]
+rms_magan = aniso_test.RMS[*,3L]
+rms_magbm = beam_test.RMS[*,3L]
+; => Phase Velocities
+Vph_fln   = temp.VPH_FLOW_MN
+Vph_flx   = temp.VPH_FLOW_MX
+Vph_fhn   = temp.VPH_FHIGH_MN
+Vph_fhx   = temp.VPH_FHIGH_MX
+Vph_flnan = aniso_test.VPH_FLOW_MN
+Vph_flxan = aniso_test.VPH_FLOW_MX
+Vph_fhnan = aniso_test.VPH_FHIGH_MN
+Vph_fhxan = aniso_test.VPH_FHIGH_MX
+Vph_flnbm = beam_test.VPH_FLOW_MN
+Vph_flxbm = beam_test.VPH_FLOW_MX
+Vph_fhnbm = beam_test.VPH_FHIGH_MN
+Vph_fhxbm = beam_test.VPH_FHIGH_MX
+; => Define L-Shell and MLT
+w_lsh     = temp.WIND_L_SHELL
+w_mlt     = temp.WIND_MLT
+w_lshan   = aniso_test.WIND_L_SHELL
+w_mltan   = aniso_test.WIND_MLT
+w_lshbm   = beam_test.WIND_L_SHELL
+w_mltbm   = beam_test.WIND_MLT
+; => Define radial distance and invariant latitude
+w_rad     = temp.WIND_RAD_DIST
+w_inv     = temp.WIND_INV_LAT
+w_radan   = aniso_test.WIND_RAD_DIST
+w_invan   = aniso_test.WIND_INV_LAT
+w_radbm   = beam_test.WIND_RAD_DIST
+w_invbm   = beam_test.WIND_INV_LAT
+; => Define temperatures and anisotropies [EL]
+tavgel    = temp.T_AVG_EL
+tparel    = temp.TPARA_EL
+tperel    = temp.TPERP_EL
+taniel    = temp.TANISOTROPY_EL
+tavgelan  = aniso_test.T_AVG_EL
+tparelan  = aniso_test.TPARA_EL
+tperelan  = aniso_test.TPERP_EL
+tanielan  = aniso_test.TANISOTROPY_EL
+tavgelbm  = beam_test.T_AVG_EL
+tparelbm  = beam_test.TPARA_EL
+tperelbm  = beam_test.TPERP_EL
+tanielbm  = beam_test.TANISOTROPY_EL
+; => Define temperatures and anisotropies [EH]
+tavgeh    = temp.T_AVG_EH
+tpareh    = temp.TPARA_EH
+tpereh    = temp.TPERP_EH
+tanieh    = temp.TANISOTROPY_EH
+tavgehan  = aniso_test.T_AVG_EH
+tparehan  = aniso_test.TPARA_EH
+tperehan  = aniso_test.TPERP_EH
+taniehan  = aniso_test.TANISOTROPY_EH
+tavgehbm  = beam_test.T_AVG_EH
+tparehbm  = beam_test.TPARA_EH
+tperehbm  = beam_test.TPERP_EH
+taniehbm  = beam_test.TANISOTROPY_EH
+; => Define frequencies
+bmag_eq   = magnfactor[0]/(w_lsh)^3
+bmag_eqan = magnfactor[0]/(w_lshan)^3
+bmag_eqbm = magnfactor[0]/(w_lshbm)^3
+fce_eq    = fcefac[0]*bmag_eq
+fce_eqan  = fcefac[0]*bmag_eqan
+fce_eqbm  = fcefac[0]*bmag_eqbm
+fce_lc    = fcefac[0]*(temp.WI_B3_MAG*1d-9)
+fce_lcan  = fcefac[0]*(aniso_test.WI_B3_MAG*1d-9)
+fce_lcbm  = fcefac[0]*(beam_test.WI_B3_MAG*1d-9)
+fw_low    = temp.FLOW_PEAK
+fw_high   = temp.FHIGH_PEAK
+fw_lowan  = aniso_test.FLOW_PEAK
+fw_highan = aniso_test.FHIGH_PEAK
+fw_lowbm  = beam_test.FLOW_PEAK
+fw_highbm = beam_test.FHIGH_PEAK
+fw_peak   = (fw_high   + fw_low)/2d0
+fw_peakan = (fw_highan + fw_lowan)/2d0
+fw_peakbm = (fw_highbm + fw_lowbm)/2d0
+del_f     = (fw_high   - fw_low)
+del_fan   = (fw_highan - fw_lowan)
+del_fbm   = (fw_highbm - fw_lowbm)
+delf_f    = del_f/fw_peak
+delf_fan  = del_fan/fw_peakan
+delf_fbm  = del_fbm/fw_peakbm
+
+fpe       = temp.FPE
+fpean     = aniso_test.FPE
+fpebm     = beam_test.FPE
+
+fw_fce    = fw_peak/fce_eq
+fw_fcel   = fw_peak/fce_lc
+fw_fpe    = fw_peak/fpe
+fw_fcean  = fw_peakan/fce_eqan
+fw_fcelan = fw_peak/fce_lcan
+fw_fpean  = fw_peakan/fpean
+fw_fcebm  = fw_peakbm/fce_eqbm
+fw_fcelbm = fw_peak/fce_lcbm
+fw_fpebm  = fw_peakbm/fpebm
+fpe_fce   = fpe/fce_eq
+fpe_fcean = fpean/fce_eqan
+fpe_fcebm = fpebm/fce_eqbm
+; => Define Gendrin Angles
+phi_gen   = temp.GENDRIN_ANG
+phi_genan = aniso_test.GENDRIN_ANG
+phi_genbm = beam_test.GENDRIN_ANG
+
+
+units     = STRTRIM(temp.UNITS,2)
+unitsan   = STRTRIM(aniso_test.UNITS,2)
+unitsbm   = STRTRIM(beam_test.UNITS,2)
+;-----------------------------------------------------------------------------------------
+; => Define separation tests (by finite Vph and L-Shell)
+;-----------------------------------------------------------------------------------------
+test_f    = FINITE(Vph_fln) AND FINITE(Vph_flx) AND FINITE(Vph_fhn) AND FINITE(Vph_fhx)
+;test_l    = (w_lsh LE 20.)
+test_l    = (w_lsh LE 10.)
+test      = test_f AND test_l
+good      = WHERE(test,gd)
+test_fan  = FINITE(Vph_flnan) AND FINITE(Vph_flxan) AND FINITE(Vph_fhnan) AND FINITE(Vph_fhxan)
+;test_lan  = (w_lshan LE 20.)
+test_lan  = (w_lshan LE 10.)
+testan    = test_fan AND test_lan
+goodan    = WHERE(testan,gdan)
+test_fbm  = FINITE(Vph_flnbm) AND FINITE(Vph_flxbm) AND FINITE(Vph_fhnbm) AND FINITE(Vph_fhxbm)
+;test_lbm  = (w_lshbm LE 20.)
+test_lbm  = (w_lshbm LE 10.)
+testbm    = test_fbm AND test_lbm
+goodbm    = WHERE(testbm,gdbm)
+
+rms_mag   = rms_mag[good]
+rms_magan = rms_magan[goodan]
+rms_magbm = rms_magbm[goodbm]
+
+nn        = gd
+units     = units[good]
+w_lsh     = w_lsh[good]
+w_mlt     = w_mlt[good]
+w_rad     = w_rad[good]
+w_inv     = w_inv[good]
+tavgel    = tavgel[good]
+tparel    = tparel[good]
+tperel    = tperel[good]
+taniel    = taniel[good]
+tavgeh    = tavgeh[good]
+tpareh    = tpareh[good]
+tpereh    = tpereh[good]
+tanieh    = tanieh[good]
+bmag_eq   = bmag_eq[good]
+fce_eq    = fce_eq[good]
+fce_lc    = fce_lc[good]
+fpe       = fpe[good]
+fw_low    = fw_low[good]
+fw_high   = fw_high[good]
+fw_peak   = fw_peak[good]
+del_f     = del_f[good]
+delf_f    = delf_f[good]
+fw_fce    = fw_fce[good]
+fw_fcel   = fw_fcel[good]
+fw_fpe    = fw_fpe[good]
+fpe_fce   = fpe_fce[good]
+phi_gen   = phi_gen[good]
+
+nnan      = gdan
+unitsan   = unitsan[goodan]
+w_lshan   = w_lshan[goodan]
+w_mltan   = w_mltan[goodan]
+w_radan   = w_radan[goodan]
+w_invan   = w_invan[goodan]
+tavgelan  = tavgelan[goodan]
+tparelan  = tparelan[goodan]
+tperelan  = tperelan[goodan]
+tanielan  = tanielan[goodan]
+tavgehan  = tavgehan[goodan]
+tparehan  = tparehan[goodan]
+tperehan  = tperehan[goodan]
+taniehan  = taniehan[goodan]
+bmag_eqan = bmag_eqan[goodan]
+fce_eqan  = fce_eqan[goodan]
+fce_lcan  = fce_lcan[goodan]
+fpean     = fpean[goodan]
+fw_lowan  = fw_lowan[goodan]
+fw_highan = fw_highan[goodan]
+fw_peakan = fw_peakan[goodan]
+del_fan   = del_fan[goodan]
+delf_fan  = delf_fan[goodan]
+fw_fcean  = fw_fcean[goodan]
+fw_fcelan = fw_fcelan[goodan]
+fw_fpean  = fw_fpean[goodan]
+fpe_fcean = fpe_fcean[goodan]
+phi_genan = phi_genan[goodan]
+
+nnbm      = gdbm
+unitsbm   = unitsbm[goodbm]
+w_lshbm   = w_lshbm[goodbm]
+w_mltbm   = w_mltbm[goodbm]
+w_radbm   = w_radbm[goodbm]
+w_invbm   = w_invbm[goodbm]
+tavgelbm  = tavgelbm[goodbm]
+tparelbm  = tparelbm[goodbm]
+tperelbm  = tperelbm[goodbm]
+tanielbm  = tanielbm[goodbm]
+tavgehbm  = tavgehbm[goodbm]
+tparehbm  = tparehbm[goodbm]
+tperehbm  = tperehbm[goodbm]
+taniehbm  = taniehbm[goodbm]
+bmag_eqbm = bmag_eqbm[goodbm]
+fce_eqbm  = fce_eqbm[goodbm]
+fce_lcbm  = fce_lcbm[goodbm]
+fpebm     = fpebm[goodbm]
+fw_lowbm  = fw_lowbm[goodbm]
+fw_highbm = fw_highbm[goodbm]
+fw_peakbm = fw_peakbm[goodbm]
+del_fbm   = del_fbm[goodbm]
+delf_fbm  = delf_fbm[goodbm]
+fw_fcebm  = fw_fcebm[goodbm]
+fw_fcelbm = fw_fcelbm[goodbm]
+fw_fpebm  = fw_fpebm[goodbm]
+fpe_fcebm = fpe_fcebm[goodbm]
+phi_genbm = phi_genbm[goodbm]
+;-----------------------------------------------------------------------------------------
+; => Plot histograms of relevant data
+;-----------------------------------------------------------------------------------------
+;pref       = 'Whistler_TDS-ALL_L20_'
+;ttla       = 'TDS [All] (ALL) Whistler Statistics (L < 20)'
+;ttlani     = 'TDS [Anisotropic] (ALL) Whistler Statistics (L < 20)'
+;ttlbm      = 'TDS [Beam/Flattop] (ALL) Whistler Statistics (L < 20)' 
+pref       = 'Whistler_TDS-ALL_L10_'
+ttla       = 'TDS [All] (ALL) Whistler Statistics (L < 10)'
+ttlani     = 'TDS [Anisotropic] (ALL) Whistler Statistics (L < 10)'
+ttlbm      = 'TDS [Beam/Flattop] (ALL) Whistler Statistics (L < 10)' 
+
+; => <Te> [EL, eV] histograms
+xttl  = 'T!De!N'+' [EL, eV]'
+wset,0
+my_histogram_plot,tavgel,drange=[20.,18e1],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,tavgelan,drange=[20.,18e1],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,tavgelbm,drange=[20.,18e1],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'Te-EL_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,tavgelan,drange=[20.,18e1],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'Te-EL_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,tavgelbm,drange=[20.,18e1],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+; => <Te> [EH, eV] histograms
+xttl  = 'T!De!N'+' [EH, eV]'
+wset,0
+my_histogram_plot,tavgeh,drange=[1e2,25e2],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,tavgehan,drange=[1e2,25e2],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,tavgehbm,drange=[1e2,25e2],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'Te-EH_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,tavgehan,drange=[1e2,25e2],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'Te-EH_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,tavgehbm,drange=[1e2,25e2],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+; => <Teh>/<Tec> [EH/EL] histograms
+xttl  = 'T!Deh!N'+'/T!Dec!N [EH/EL]'
+wset,0
+my_histogram_plot,tavgeh/tavgel,drange=[1e0,22e0],xttl=xttl,ttle=ttla,nbins=8
+wset,1
+my_histogram_plot,tavgehan/tavgelan,drange=[1e0,22e0],xttl=xttl,ttle=ttlani,nbins=8
+wset,2
+my_histogram_plot,tavgehbm/tavgelbm,drange=[1e0,22e0],xttl=xttl,ttle=ttlbm,nbins=8
+
+fname = pref[0]+'Te-EH_Te-EL_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,tavgehan/tavgelan,drange=[1e0,22e0],xttl=xttl,ttle=ttlani,nbins=8
+pclose
+fname = pref[0]+'Te-EH_Te-EL_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,tavgehbm/tavgelbm,drange=[1e0,22e0],xttl=xttl,ttle=ttlbm,nbins=8
+pclose
+
+
+; => ∆f histograms
+xttl  = '!7D!3'+'f (Hz)'
+wset,0
+my_histogram_plot,del_f,drange=[0.,1e3],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,del_fan,drange=[0.,1e3],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,del_fbm,drange=[0.,1e3],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'delta-f_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fan,drange=[0.,1e3],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'delta-f_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fbm,drange=[0.,1e3],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+
+; => ∆f/f histograms
+xttl  = '!7D!3'+'f/f'
+wset,0
+my_histogram_plot,delf_f,drange=[0.,2.],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,delf_fan,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,delf_fbm,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'deltaf-f_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,delf_fan,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'deltaf-f_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,delf_fbm,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+; => f/fce [fce = equitorial cyclotron frequency] histograms
+xttl  = 'f/f!Dce!N [f!Dce!N = equitorial]'
+wset,0
+my_histogram_plot,fw_fce,drange=[0.,1e0],xttl=xttl,ttle=ttla,nbins=8
+wset,1
+my_histogram_plot,fw_fcean,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=8
+wset,2
+my_histogram_plot,fw_fcebm,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=8
+
+fname = pref[0]+'f-fce-eq_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fw_fcean,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=8
+pclose
+fname = pref[0]+'f-fce-eq_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fw_fcebm,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=8
+pclose
+
+; => f/fce [fce = local cyclotron frequency] histograms
+xttl  = 'f/f!Dce!N [f!Dce!N = local]'
+wset,0
+my_histogram_plot,fw_fcel,drange=[0.,1e0],xttl=xttl,ttle=ttla,nbins=8
+wset,1
+my_histogram_plot,fw_fcelan,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=8
+wset,2
+my_histogram_plot,fw_fcelbm,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=8
+
+fname = pref[0]+'f-fce-loc_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fw_fcelan,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=8
+pclose
+fname = pref[0]+'f-fce-loc_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fw_fcelbm,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=8
+pclose
+
+; => f/fpe [fpe = local plasma frequency] histograms
+xttl  = 'f/f!Dpe!N [Local Plasma Frequency]'
+wset,0
+my_histogram_plot,fw_fpe,drange=[0.,.1],xttl=xttl,ttle=ttla,nbins=6
+wset,1
+my_histogram_plot,fw_fpean,drange=[0.,.1],xttl=xttl,ttle=ttlani,nbins=6
+wset,2
+my_histogram_plot,fw_fpebm,drange=[0.,.1],xttl=xttl,ttle=ttlbm,nbins=6
+
+fname = pref[0]+'f-fpe_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fw_fpean,drange=[0.,.1],xttl=xttl,ttle=ttlani,nbins=6
+pclose
+fname = pref[0]+'f-fpe_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fw_fpebm,drange=[0.,.1],xttl=xttl,ttle=ttlbm,nbins=6
+pclose
+
+; => fpe/fce [fpe = local plasma frequency, fce = equitorial cyclotron frequency] histograms
+xttl  = 'f!Dpe!N'+'/f!Dce!N [Local Plasma Freq., Equitorial Cyclo. Freq.]'
+wset,0
+my_histogram_plot,fpe_fce,drange=[0.,4e1],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,fpe_fcean,drange=[0.,4e1],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,fpe_fcebm,drange=[0.,4e1],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'fpe-fce_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fpe_fcean,drange=[0.,4e1],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'fpe-fce_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fpe_fcebm,drange=[0.,4e1],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+; => fpe/fce [fpe = local plasma frequency, fce = local cyclotron frequency] histograms
+xttl  = 'f!Dpe!N'+'/f!Dce!N [Local Plasma Freq., Local Cyclo. Freq.]'
+wset,0
+my_histogram_plot,fpe/fce_lc,drange=[0.,15e0],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,fpean/fce_lcan,drange=[0.,15e0],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,fpebm/fce_lcbm,drange=[0.,15e0],xttl=xttl,ttle=ttlpl,nbins=10
+
+fname = pref[0]+'fpe-fce-Local_Magnetosphere_histogram'
+popen,fname,/LAND
+  my_histogram_plot,pemg/fce_lcmg,drange=[0.,15e0],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'fpe-fce-Local_Plasmasphere_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fpepl/fce_lcpl,drange=[0.,15e0],xttl=xttl,ttle=ttlpl,nbins=10
+pclose
+
+
+; => L-Shell histograms
+xttl       = 'L-Shell (R!DE!N)'
+wset,0
+my_histogram_plot,w_lsh,drange=[0.,10.],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,w_lshan,drange=[0.,10.],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,w_lshbm,drange=[0.,10.],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'LShell_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,w_lshan,drange=[0.,10.],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'LShell_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,w_lshbm,drange=[0.,10.],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+; => MLT histograms
+xttl       = 'MLT (hours)'
+wset,0
+my_histogram_plot,w_mlt,drange=[0.,24.],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,w_mltan,drange=[0.,24.],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,w_mltbm,drange=[0.,24.],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'MLT_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,w_mltan,drange=[0.,24.],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'MLT_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,w_mltbm,drange=[0.,24.],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+; => Invariant Latitude histograms
+xttl       = 'Invariant Latitude (deg)'
+wset,0
+my_histogram_plot,w_inv,drange=[55.,85.],xttl=xttl,ttle=ttla,nbins=7
+wset,1
+my_histogram_plot,w_invan,drange=[55.,85.],xttl=xttl,ttle=ttlani,nbins=7
+wset,2
+my_histogram_plot,w_invbm,drange=[55.,85.],xttl=xttl,ttle=ttlbm,nbins=7
+
+fname = pref[0]+'Inv-Lat_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,w_invan,drange=[55.,85.],xttl=xttl,ttle=ttlani,nbins=7
+pclose
+fname = pref[0]+'Inv-Lat_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,w_invbm,drange=[55.,85.],xttl=xttl,ttle=ttlbm,nbins=7
+pclose
+
+xttl       = '!7f!3'+'!DG!N (deg) [Gendrin Angle]'
+wset,0
+my_histogram_plot,phi_gen,drange=[55.,90.],xttl=xttl,ttle=ttla,nbins=8
+wset,1
+my_histogram_plot,phi_genan,drange=[55.,90.],xttl=xttl,ttle=ttlani,nbins=8
+wset,2
+my_histogram_plot,phi_genbm,drange=[55.,90.],xttl=xttl,ttle=ttlbm,nbins=8
+
+fname = pref[0]+'Gendrin-Angle_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,phi_genan,drange=[55.,90.],xttl=xttl,ttle=ttlani,nbins=8
+pclose
+fname = pref[0]+'Gendrin-Angle_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,phi_genbm,drange=[55.,90.],xttl=xttl,ttle=ttlbm,nbins=8
+pclose
+
+
+
+; => Define separation tests (by units)
+good_nt    = WHERE(STRLOWCASE(units) EQ 'nt',gdnt,COMPLEMENT=good_mv,NCOMPLEMENT=gdmv)
+good_ntan  = WHERE(STRLOWCASE(unitsan) EQ 'nt',gdntan,COMPLEMENT=good_mvan,NCOMPLEMENT=gdmvan)
+good_ntbm  = WHERE(STRLOWCASE(unitsbm) EQ 'nt',gdntbm,COMPLEMENT=good_mvbm,NCOMPLEMENT=gdmvbm)
+PRINT, gdnt, gdmv, gdntan, gdmvan, gdntbm, gdmvbm
+; => For L < 10
+;          44         191          43         174           1          17
+; => For L < 20
+;          92         200          46         175          46          25
+
+
+xttl       = 'Whistler RMS Mag. (nT)'
+wset,0
+my_histogram_plot,rms_mag[good_nt],drange=[0.,2.],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,rms_magan[good_ntan],drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,rms_magbm[good_ntbm],drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'RMS-Mag-nT_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,rms_magan[good_ntan],drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'RMS-Mag-nT_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,rms_magbm[good_ntbm],drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+
+xttl       = 'Whistler RMS Mag. (mV/m)'
+wset,0
+my_histogram_plot,rms_mag[good_mv],drange=[0.,5e1],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,rms_magan[good_mvan],drange=[0.,5e1],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,rms_magbm[good_mvbm],drange=[0.,5e1],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'RMS-Mag-mVm_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,rms_magan[good_mvan],drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'RMS-Mag-mVm_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,rms_magbm[good_mvbm],drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+;-----------------------------------------------------------------------------------------
+; => ONLY TDSS with 3 B-field components
+;-----------------------------------------------------------------------------------------
+aniso_test = whistler_mv_stats_read(FREE_ESOURCE='aniso')
+beam_test  = whistler_mv_stats_read(FREE_ESOURCE='beams')
+test       = whistler_mv_stats_read()
+
+mdmnrat    = test.MID_EVAL/test.MIN_EVAL
+mdmnratan  = aniso_test.MID_EVAL/aniso_test.MIN_EVAL
+mdmnratbm  = beam_test.MID_EVAL/beam_test.MIN_EVAL
+wlsh_ani   = aniso_test.WIND_LSHELL
+wlsh_beam  = beam_test.WIND_LSHELL
+wlsh       = test.WIND_LSHELL
+
+units      = STRTRIM(test.UNITS,2)
+unitsan    = STRTRIM(aniso_test.UNITS,2)
+unitsbm    = STRTRIM(beam_test.UNITS,2)
+gse_pos    = [[test.X_GSE_POS],[test.Y_GSE_POS],[test.Z_GSE_POS]]
+gsm_pos    = [[test.X_GSM_POS],[test.Y_GSM_POS],[test.Z_GSM_POS]]
+gse_posan  = [[aniso_test.X_GSE_POS],[aniso_test.Y_GSE_POS],[aniso_test.Z_GSE_POS]]
+gsm_posan  = [[aniso_test.X_GSM_POS],[aniso_test.Y_GSM_POS],[aniso_test.Z_GSM_POS]]
+gse_posbm  = [[beam_test.X_GSE_POS],[beam_test.Y_GSE_POS],[beam_test.Z_GSE_POS]]
+gsm_posbm  = [[beam_test.X_GSM_POS],[beam_test.Y_GSM_POS],[beam_test.Z_GSM_POS]]
+mnvc_gse   = [[test.X_MIN_VECT],[test.Y_MIN_VECT],[test.Z_MIN_VECT]]
+mnvc_gsean = [[aniso_test.X_MIN_VECT],[aniso_test.Y_MIN_VECT],[aniso_test.Z_MIN_VECT]]
+mnvc_gsebm = [[beam_test.X_MIN_VECT],[beam_test.Y_MIN_VECT],[beam_test.Z_MIN_VECT]]
+
+
+test_0     = (STRLOWCASE(units)   EQ 'nt') AND (mdmnrat   GE 10.) AND (FINITE(mdmnrat)) $
+              AND (wlsh LE 20.)
+test_1     = (STRLOWCASE(unitsan) EQ 'nt') AND (mdmnratan GE 10.) AND (FINITE(mdmnratan)) $
+              AND (wlsh_ani LE 20.)
+test_2     = (STRLOWCASE(unitsbm) EQ 'nt') AND (mdmnratbm GE 10.) AND (FINITE(mdmnratbm)) $
+              AND (wlsh_beam LE 20.)
+good_nt    = WHERE(test_0,gdnt)
+good_ntan  = WHERE(test_1,gdntan)
+good_ntbm  = WHERE(test_2,gdntbm)
+
+
+
+pref       = 'Whistler_TDSS-nT_L20_'
+ttla       = 'TDSS [All] (nT) Whistler Statistics (L < 20)'
+ttlani     = 'TDSS [Anisotropic] (nT) Whistler Statistics (L < 20)'
+ttlbm      = 'TDSS [Beam/Flattop] (nT) Whistler Statistics (L < 20)' 
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+me         = 9.1093897d-31            ; -Electron mass (kg)
+mp         = 1.6726231d-27            ; -Proton mass (kg)
+qq         = 1.60217733d-19           ; -Fundamental charge (C)
+fcefac     = qq/me/(2d0*!DPI)
+
+unix       = time_double(test.SCETS[good_nt])
+unixan     = time_double(aniso_test.SCETS[good_ntan])
+unixbm     = time_double(beam_test.SCETS[good_ntbm])
+
+wlsh_ani   = wlsh_ani[good_ntan]
+wrad       = test.WIND_RADIAL_DISTANCE[good_nt]
+wradan     = aniso_test.WIND_RADIAL_DISTANCE[good_ntan]
+wradbm     = beam_test.WIND_RADIAL_DISTANCE[good_ntbm]
+
+wlsh_beam  = wlsh_beam[good_ntbm]
+wlsh       = wlsh[good_nt]
+wmlt_ani   = aniso_test.WIND_MLT[good_ntan]
+wmlt_beam  = beam_test.WIND_MLT[good_ntbm]
+wmlt       = test.WIND_MLT[good_nt]
+winv_ani   = aniso_test.WIND_INVARIANT_LATITUDE[good_ntan]
+winv_beam  = beam_test.WIND_INVARIANT_LATITUDE[good_ntbm]
+winv       = test.WIND_INVARIANT_LATITUDE[good_nt]
+bmag_eq    = magnfactor[0]/(wlsh)^3
+bmag_eqan  = magnfactor[0]/(wlsh_ani)^3
+bmag_eqbm  = magnfactor[0]/(wlsh_beam)^3
+
+fce_eq     = fcefac[0]*bmag_eq
+fce_eqan   = fcefac[0]*bmag_eqan
+fce_eqbm   = fcefac[0]*bmag_eqbm
+fce_lc     = test.FCE[good_nt]
+fce_lcan   = aniso_test.FCE[good_ntan]
+fce_lcbm   = beam_test.FCE[good_ntan]
+fpe        = test.FPE[good_nt]
+fpean      = aniso_test.FPE[good_ntan]
+fpebm      = beam_test.FPE[good_ntbm]
+
+fw_low     = test.FLOW_PEAK[good_nt]
+fw_high    = test.FHIGH_PEAK[good_nt]
+anf_low    = aniso_test.FLOW_PEAK[good_ntan]
+anf_high   = aniso_test.FHIGH_PEAK[good_ntan]
+bnf_low    = beam_test.FLOW_PEAK[good_ntbm]
+bnf_high   = beam_test.FHIGH_PEAK[good_ntbm]
+
+fw_peak    = (fw_high + fw_low)/2d0
+fan_peak   = (anf_high + anf_low)/2d0
+fbm_peak   = (bnf_high + bnf_low)/2d0
+
+del_f      = (fw_high - fw_low)
+del_fan    = (anf_high - anf_low)
+del_fbm    = (bnf_high - bnf_low)
+delf_f     = (fw_high - fw_low)/fw_peak
+delf_fan   = (anf_high - anf_low)/fan_peak
+delf_fbm   = (bnf_high - bnf_low)/fbm_peak
+
+fw_fce     = fw_peak/fce_eq
+fan_fce    = fan_peak/fce_eqan
+fbm_fce    = fbm_peak/fce_eqbm
+fw_fcel    = fw_peak/fce_lc
+fan_fcel   = fan_peak/fce_lcan
+fbm_fcel   = fbm_peak/fce_lcbm
+fw_fpe     = fw_peak/fpe
+fan_fpe    = fan_peak/fpean
+fbm_fpe    = fbm_peak/fpebm
+
+fpe_fce    = fpe/fce_lc
+fpe_fcean  = fpean/fce_lcan
+fpe_fcebm  = fpebm/fce_lcbm
+
+wrms_ani   = REFORM(aniso_test.RMS[good_ntan,3L])
+wrms_beam  = REFORM(beam_test.RMS[good_ntbm,3L])
+wrms       = REFORM(test.RMS[good_nt,3L])
+tani_el    = test.TANISOTROPY_EL[good_nt]
+tani_elan  = aniso_test.TANISOTROPY_EL[good_ntan]
+tani_elmb  = beam_test.TANISOTROPY_EL[good_ntbm]
+
+tani_eh    = test.TANISOTROPY_EH[good_nt]
+tani_ehan  = aniso_test.TANISOTROPY_EH[good_ntan]
+tani_ehmb  = beam_test.TANISOTROPY_EH[good_ntbm]
+
+
+theta_res  = ACOS(fw_fce)*18d1/!DPI
+theta_kb   = test.THETA_KB[good_nt]
+thres_an   = ACOS(fan_fce)*18d1/!DPI
+thkb_ani   = aniso_test.THETA_KB[good_ntan]
+thres_bm   = ACOS(fbm_fce)*18d1/!DPI
+thkb_beam  = beam_test.THETA_KB[good_ntbm]
+
+gse_pos    = gse_pos[good_nt,*]
+gsm_pos    = gsm_pos[good_nt,*]
+gse_posan  = gse_posan[good_ntan,*]
+gsm_posan  = gsm_posan[good_ntan,*]
+gse_posbm  = gse_posbm[good_ntbm,*]
+gsm_posbm  = gsm_posbm[good_ntbm,*]
+
+mnvc_gse   = mnvc_gse[good_nt,*]
+mnvc_gsean = mnvc_gsean[good_ntan,*]
+mnvc_gsebm = mnvc_gsebm[good_ntbm,*]
+
+
+; => Rotate GSE k-vector into GSM
+coord_trans_wrapper,unix,mnvc_gse,mnvc_gsm,/TO_GSM,/GSE
+coord_trans_wrapper,unixan,mnvc_gsean,mnvc_gsman,/TO_GSM,/GSE
+coord_trans_wrapper,unixbm,mnvc_gsebm,mnvc_gsmbm,/TO_GSM,/GSE
+
+; => Rotate GSE k-vector into GSM
+;mnvc_gsm   = DBLARR(gdnt,3L)
+;FOR j=0L, gdnt - 1L Do BEGIN                              $
+;  tgse = REFORM(gse_pos[j,*])                           & $
+;  tgsm = REFORM(gsm_pos[j,*])                           & $
+;  rgse_gsm = rot_mat(tgsm,tgse)                         & $
+;  mvcgsm   = REFORM(rgse_gsm ## REFORM(mnvc_gse[j,*]))  & $
+;  mnvc_gsm[j,*] = mvcgsm
+;
+;mnvc_gsman = DBLARR(gdntan,3L)
+;FOR j=0L, gdntan - 1L Do BEGIN                              $
+;  tgse = REFORM(gse_posan[j,*])                           & $
+;  tgsm = REFORM(gsm_posan[j,*])                           & $
+;  rgse_gsm = rot_mat(tgsm,tgse)                           & $
+;  mvcgsm   = REFORM(rgse_gsm ## REFORM(mnvc_gsean[j,*]))  & $
+;  mnvc_gsman[j,*] = mvcgsm
+;
+;mnvc_gsmbm = DBLARR(gdntbm,3L)
+;FOR j=0L, gdntbm - 1L Do BEGIN                              $
+;  tgse = REFORM(gse_posbm[j,*])                           & $
+;  tgsm = REFORM(gsm_posbm[j,*])                           & $
+;  rgse_gsm = rot_mat(tgsm,tgse)                           & $
+;  mvcgsm   = REFORM(rgse_gsm ## REFORM(mnvc_gsebm[j,*]))  & $
+;  mnvc_gsmbm[j,*] = mvcgsm
+
+
+mnvc_xy    = SQRT(mnvc_gse[*,0]^2 + mnvc_gse[*,1]^2)
+zeta_gse   = ATAN(mnvc_gse[*,2],mnvc_xy)*18d1/!DPI
+mnvc_xyan  = SQRT(mnvc_gsean[*,0]^2 + mnvc_gsean[*,1]^2)
+zeta_gsean = ATAN(mnvc_gsean[*,2],mnvc_xyan)*18d1/!DPI
+mnvc_xybm  = SQRT(mnvc_gsebm[*,0]^2 + mnvc_gsebm[*,1]^2)
+zeta_gsebm = ATAN(mnvc_gsebm[*,2],mnvc_xybm)*18d1/!DPI
+
+mnvc_xy    = SQRT(mnvc_gsm[*,0]^2 + mnvc_gsm[*,1]^2)
+zeta_gsm   = ATAN(mnvc_gsm[*,2],mnvc_xy)*18d1/!DPI
+mnvc_xyan  = SQRT(mnvc_gsman[*,0]^2 + mnvc_gsman[*,1]^2)
+zeta_gsman = ATAN(mnvc_gsman[*,2],mnvc_xyan)*18d1/!DPI
+mnvc_xybm  = SQRT(mnvc_gsmbm[*,0]^2 + mnvc_gsmbm[*,1]^2)
+zeta_gsmbm = ATAN(mnvc_gsmbm[*,2],mnvc_xybm)*18d1/!DPI
+
+
+
+xttl       = '!7h!3'+'!Dres!N (deg)'
+wset,0
+my_histogram_plot,theta_res,drange=[0.,90.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,thres_an,drange=[0.,90.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,thres_bm,drange=[0.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'Theta-Res_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,thres_an,drange=[0.,90.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'Theta-Res_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,thres_bm,drange=[0.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+
+xttl       = '!7h!3'+'!DkB!N (deg)'
+wset,0
+my_histogram_plot,theta_kb,drange=[0.,90.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,thkb_ani,drange=[0.,90.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,thkb_beam,drange=[0.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'Theta-kB_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,thkb_ani,drange=[0.,90.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'Theta-kB_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,thkb_beam,drange=[0.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+xttl       = '!7h!3'+'!DkB!N'+'/ !7h!3'+'!Dres!N'
+wset,0
+my_histogram_plot,1d0/(theta_res/theta_kb),drange=[0.,1.2],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,1d0/(thres_an/thkb_ani),drange=[0.,1.2],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,1d0/(thres_bm/thkb_beam),drange=[0.,1.2],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'Theta-Res_Theta-kB_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,1d0/(thres_an/thkb_ani),drange=[0.,1.2],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'Theta-Res_Theta-kB_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,1d0/(thres_bm/thkb_beam),drange=[0.,1.2],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+
+
+xttl  = '!7D!3'+'f (Hz)'
+wset,0
+my_histogram_plot,del_f,drange=[0.,1e3],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,del_fan,drange=[0.,1e3],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,del_fbm,drange=[0.,1e3],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'delta-f_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fan,drange=[0.,1e3],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'delta-f_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fbm,drange=[0.,1e3],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+
+
+xttl  = '!7D!3'+'f/f'
+wset,0
+my_histogram_plot,delf_f,drange=[0.,2.],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,delf_fan,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,delf_fbm,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'deltaf-f_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,delf_fan,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'deltaf-f_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,delf_fbm,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+; => ∆f/fpe histograms
+xttl  = '!7D!3'+'f/f!Dpe!N'
+wset,0
+my_histogram_plot,del_f/fpe,drange=[0.,2.],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,del_fan/fpean,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,del_fbm/fpebm,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'delta-f-fpe_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fan/fpean,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'delta-f-fpe_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fbm/fpebm,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+
+
+; => f/fce [fce = equitorial cyclotron frequency] histograms
+xttl  = 'f/f!Dce!N [f!Dce!N = equitorial]'
+wset,0
+my_histogram_plot,fw_fce,drange=[0.,1e0],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,fan_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,fbm_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'f-fce-eq_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fan_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'f-fce-eq_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fbm_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+; => f/fce [fce = local cyclotron frequency] histograms
+xttl  = 'f/f!Dce!N [f!Dce!N = local]'
+wset,0
+my_histogram_plot,fw_fcel,drange=[0.,1e0],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,fan_fcel,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,fbm_fcel,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'f-fce-loc_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fan_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'f-fce-loc_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fbm_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+
+
+xttl  = 'f/f!Dpe!N [Local Plasma Frequency]'
+wset,0
+my_histogram_plot,fw_fpe,drange=[0.,.1],xttl=xttl,ttle=ttla,nbins=6
+wset,1
+my_histogram_plot,fan_fpe,drange=[0.,.1],xttl=xttl,ttle=ttlani,nbins=6
+wset,2
+my_histogram_plot,fbm_fpe,drange=[0.,.1],xttl=xttl,ttle=ttlbm,nbins=6
+
+fname = pref[0]+'f-fpe_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fan_fpe,drange=[0.,.1],xttl=xttl,ttle=ttlani,nbins=6
+pclose
+fname = pref[0]+'f-fpe_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fbm_fpe,drange=[0.,.1],xttl=xttl,ttle=ttlbm,nbins=6
+pclose
+
+; => fpe/fce [fpe = local plasma frequency, fce = equitorial cyclotron frequency] histograms
+xttl  = 'f!Dpe!N'+'/f!Dce!N [Local Plasma Freq., Equitorial Cyclo. Freq.]'
+wset,0
+my_histogram_plot,fpe_fce,drange=[0.,16e0],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,fpe_fcean,drange=[0.,16e0],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,fpe_fcebm,drange=[0.,16e0],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'fpe-fce_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fpe_fcean,drange=[0.,16e0],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'fpe-fce_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fpe_fcebm,drange=[0.,16e0],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+
+xttl       = '!7k!3'+'!DkGSE!N (deg)'
+wset,0
+my_histogram_plot,zeta_gse,drange=[-90.,90.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,zeta_gsean,drange=[-90.,90.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,zeta_gsebm,drange=[-90.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'lamda-kGSE_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,zeta_gsean,drange=[-90.,90.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'lamda-kGSE_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,zeta_gsebm,drange=[-90.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+xttl       = '!7k!3'+'!DkGSM!N (deg)'
+wset,0
+my_histogram_plot,zeta_gsm,drange=[-90.,90.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,zeta_gsman,drange=[-90.,90.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,zeta_gsmbm,drange=[-90.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'lamda-kGSM_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,zeta_gsman,drange=[-90.,90.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'lamda-kGSM_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,zeta_gsmbm,drange=[-90.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+
+xttl       = 'Radial Distance (R!DE!N)'
+wset,0
+my_histogram_plot,wrad,drange=[0.,20.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,wradan,drange=[0.,20.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,wradbm,drange=[0.,20.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'Rad-Dist_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wradan,drange=[0.,20.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'Rad-Dist_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wradbm,drange=[0.,20.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+
+xttl       = 'L-Shell (R!DE!N)'
+wset,0
+my_histogram_plot,wlsh,drange=[0.,20.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,wlsh_ani,drange=[0.,20.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,wlsh_beam,drange=[0.,20.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'LShell_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wlsh_ani,drange=[0.,20.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'LShell_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wlsh_beam,drange=[0.,20.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+
+xttl       = 'MLT (hours)'
+wset,0
+my_histogram_plot,wmlt,drange=[0.,24.],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,wmlt_ani,drange=[0.,24.],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,wmlt_beam,drange=[0.,24.],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'MLT_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wmlt_ani,drange=[0.,24.],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'MLT_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wmlt_beam,drange=[0.,24.],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+
+xttl       = 'Invariant Latitude (deg)'
+wset,0
+my_histogram_plot,winv,drange=[55.,85.],xttl=xttl,ttle=ttla,nbins=7
+wset,1
+my_histogram_plot,winv_ani,drange=[55.,85.],xttl=xttl,ttle=ttlani,nbins=7
+wset,2
+my_histogram_plot,winv_beam,drange=[55.,85.],xttl=xttl,ttle=ttlbm,nbins=7
+
+fname = pref[0]+'Inv-Lat_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,winv_ani,drange=[55.,85.],xttl=xttl,ttle=ttlani,nbins=7
+pclose
+fname = pref[0]+'Inv-Lat_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,winv_beam,drange=[55.,85.],xttl=xttl,ttle=ttlbm,nbins=7
+pclose
+
+
+xttl       = 'Whistler RMS Mag. (nT)'
+wset,0
+my_histogram_plot,wrms,drange=[0.,2.],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,wrms_ani,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,wrms_beam,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'RMS-Mag_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wrms_ani,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'RMS-Mag_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wrms_beam,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+
+
+xra_t     = [MIN([tani_el,tani_eh],/NAN)/1.1,MAX([tani_el,tani_eh],/NAN)*1.1]
+xra_tan   = [MIN([tani_elan,tani_ehan],/NAN)/1.1,MAX([tani_elan,tani_ehan],/NAN)*1.1]
+xra_tbm   = [MIN([tani_elmb,tani_ehmb],/NAN)/1.1,MAX([tani_elmb,tani_ehmb],/NAN)*1.1]
+yra       = [MIN(wrms,/NAN)/1.1,MAX(wrms,/NAN)*1.1]
+!P.MULTI  = 0
+xttl      = 'T!D!9x!3!N/T!D!9#!3!N!C[EL]'
+yttl      = 'Whistler RMS Mag. (nT)'
+tttl      = 'Whistler [All] RMS-Magnitude (nT) vs. T!D!9x!3!N/T!D!9#!3!N [EL] (L < 20)'
+tttlan    = 'Whistler [Anisotropic] RMS-Magnitude (nT) vs. T!D!9x!3!N/T!D!9#!3!N [EL] (L < 20)'
+tttlbm    = 'Whistler [Beam/Flattop] RMS-Magnitude (nT) vs. T!D!9x!3!N/T!D!9#!3!N [EL] (L < 20)'
+pstr      = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttl,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+pstran    = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttlan,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+pstrbm    = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttlbm,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+
+wset,0
+PLOT,tani_el,wrms,_EXTRA=pstr
+  OPLOT,tani_el,wrms,PSYM=2,COLOR=50
+wset,1
+PLOT,tani_elan,wrms_ani,_EXTRA=pstran
+  OPLOT,tani_elan,wrms_ani,PSYM=2,COLOR=50
+wset,2
+PLOT,tani_elmb,wrms_beam,_EXTRA=pstrbm
+  OPLOT,tani_elmb,wrms_beam,PSYM=2,COLOR=50
+
+
+fname = pref[0]+'RMS-Mag-vs-Tani-EL_anisotropic-edists_xyplot'
+popen,fname,/LAND
+  PLOT,tani_elan,wrms_ani,_EXTRA=pstran
+    OPLOT,tani_elan,wrms_ani,PSYM=2,COLOR=50
+pclose
+fname = pref[0]+'RMS-Mag-vs-Tani-EL_beam-flattop-edists_xyplot'
+popen,fname,/LAND
+  PLOT,tani_elmb,wrms_beam,_EXTRA=pstrbm
+    OPLOT,tani_elmb,wrms_beam,PSYM=2,COLOR=50
+pclose
+
+
+xttl      = 'T!D!9x!3!N/T!D!9#!3!N!C[EH]'
+yttl      = 'Whistler RMS Mag. (nT)'
+tttl      = 'Whistler [All] RMS-Magnitude (nT) vs. T!D!9x!3!N/T!D!9#!3!N [EH] (L < 20)'
+tttlan    = 'Whistler [Anisotropic] RMS-Magnitude (nT) vs. T!D!9x!3!N/T!D!9#!3!N [EH] (L < 20)'
+tttlbm    = 'Whistler [Beam/Flattop] RMS-Magnitude (nT) vs. T!D!9x!3!N/T!D!9#!3!N [EH] (L < 20)'
+pstr      = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttl,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+pstran    = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttlan,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+pstrbm    = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttlbm,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+wset,0
+PLOT,tani_eh,wrms,_EXTRA=pstr
+  OPLOT,tani_eh,wrms,PSYM=2,COLOR=50
+wset,1
+PLOT,tani_ehan,wrms_ani,_EXTRA=pstran
+  OPLOT,tani_ehan,wrms_ani,PSYM=2,COLOR=50
+wset,2
+PLOT,tani_ehmb,wrms_beam,_EXTRA=pstrbm
+  OPLOT,tani_ehmb,wrms_beam,PSYM=2,COLOR=50
+
+
+fname = pref[0]+'RMS-Mag-vs-Tani-EH_anisotropic-edists_xyplot'
+popen,fname,/LAND
+  PLOT,tani_ehan,wrms_ani,_EXTRA=pstran
+    OPLOT,tani_ehan,wrms_ani,PSYM=2,COLOR=50
+pclose
+fname = pref[0]+'RMS-Mag-vs-Tani-EH_beam-flattop-edists_xyplot'
+popen,fname,/LAND
+  PLOT,tani_ehmb,wrms_beam,_EXTRA=pstrbm
+    OPLOT,tani_ehmb,wrms_beam,PSYM=2,COLOR=50
+pclose
+
+
+
+xra_t     = [0.,90.]
+xttl      = '!7h!3'+'!DkB!N (deg)'
+yttl      = 'Whistler RMS Mag. (nT)'
+tttl      = 'Whistler [All] RMS-Magnitude (nT) vs. !7h!3'+'!DkB!N (deg) (L < 20)'
+tttlan    = 'Whistler [Anisotropic] RMS-Magnitude (nT) vs. !7h!3'+'!DkB!N (deg) (L < 20)'
+tttlbm    = 'Whistler [Beam/Flattop] RMS-Magnitude (nT) vs. !7h!3'+'!DkB!N (deg) (L < 20)'
+pstr      = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttl,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+pstran    = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttlan,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+pstrbm    = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttlbm,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+
+wset,0
+PLOT,theta_kb,wrms,_EXTRA=pstr
+  OPLOT,theta_kb,wrms,PSYM=2,COLOR=50
+wset,1
+PLOT,thkb_ani,wrms_ani,_EXTRA=pstran
+  OPLOT,thkb_ani,wrms_ani,PSYM=2,COLOR=50
+wset,2
+PLOT,thkb_beam,wrms_beam,_EXTRA=pstrbm
+  OPLOT,thkb_beam,wrms_beam,PSYM=2,COLOR=50
+
+
+fname = pref[0]+'RMS-Mag-vs-Theta-kB_anisotropic-edists_xyplot'
+popen,fname,/LAND
+  PLOT,thkb_ani,wrms_ani,_EXTRA=pstran
+    OPLOT,thkb_ani,wrms_ani,PSYM=2,COLOR=50
+pclose
+fname = pref[0]+'RMS-Mag-vs-Theta-kB_beam-flattop-edists_xyplot'
+popen,fname,/LAND
+  PLOT,thkb_beam,wrms_beam,_EXTRA=pstrbm
+    OPLOT,thkb_beam,wrms_beam,PSYM=2,COLOR=50
+pclose
+
+
+
+xra_t     = [0.,1.]
+xttl      = '!7D!3 = 1 - Cos(!7h!3'+'!DkB!N'+')'
+yttl      = 'Whistler RMS Mag. (nT)'
+tttl      = 'Whistler [All] RMS-Magnitude (nT) vs. !7D!3 (L < 20)'
+tttlan    = 'Whistler [Anisotropic] RMS-Magnitude (nT) vs. !7D!3 (L < 20)'
+tttlbm    = 'Whistler [Beam/Flattop] RMS-Magnitude (nT) vs. !7D!3 (L < 20)'
+pstr      = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttl,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+pstran    = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttlan,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+pstrbm    = {XSTYLE:1,YSTYLE:1,NODATA:1,TITLE:tttlbm,YMINOR:5,XTICKLEN:0.04,$
+             XTITLE:xttl,YTITLE:yttl,XRANGE:xra_t,YRANGE:yra}
+
+delta     = 1d0 - COS(theta_kb*!DPI/18d1)
+delta_an  = 1d0 - COS(thkb_ani*!DPI/18d1)
+delta_bm  = 1d0 - COS(thkb_beam*!DPI/18d1)
+
+wset,0
+PLOT,delta,wrms,_EXTRA=pstr
+  OPLOT,delta,wrms,PSYM=2,COLOR=50
+wset,1
+PLOT,delta_an,wrms_ani,_EXTRA=pstran
+  OPLOT,delta_an,wrms_ani,PSYM=2,COLOR=50
+wset,2
+PLOT,delta_bm,wrms_beam,_EXTRA=pstrbm
+  OPLOT,delta_bm,wrms_beam,PSYM=2,COLOR=50
+
+
+fname = pref[0]+'RMS-Mag-vs-1-COSTheta-kB_anisotropic-edists_xyplot'
+popen,fname,/LAND
+  PLOT,thkb_ani,wrms_ani,_EXTRA=pstran
+    OPLOT,thkb_ani,wrms_ani,PSYM=2,COLOR=50
+pclose
+fname = pref[0]+'RMS-Mag-vs-1-COSTheta-kB_beam-flattop-edists_xyplot'
+popen,fname,/LAND
+  PLOT,thkb_beam,wrms_beam,_EXTRA=pstrbm
+    OPLOT,thkb_beam,wrms_beam,PSYM=2,COLOR=50
+pclose
+;-----------------------------------------------------------------------------------------
+; => ONLY TDSS
+;-----------------------------------------------------------------------------------------
+aniso_test = whistler_mv_stats_read(FREE_ESOURCE='aniso')
+beam_test  = whistler_mv_stats_read(FREE_ESOURCE='beams')
+test       = whistler_mv_stats_read()
+
+mdmnrat    = test.MID_EVAL/test.MIN_EVAL
+mdmnratan  = aniso_test.MID_EVAL/aniso_test.MIN_EVAL
+mdmnratbm  = beam_test.MID_EVAL/beam_test.MIN_EVAL
+wlsh_ani   = aniso_test.WIND_LSHELL
+wlsh_beam  = beam_test.WIND_LSHELL
+wlsh       = test.WIND_LSHELL
+
+units      = STRTRIM(test.UNITS,2)
+unitsan    = STRTRIM(aniso_test.UNITS,2)
+unitsbm    = STRTRIM(beam_test.UNITS,2)
+gse_pos    = [[test.X_GSE_POS],[test.Y_GSE_POS],[test.Z_GSE_POS]]
+gsm_pos    = [[test.X_GSM_POS],[test.Y_GSM_POS],[test.Z_GSM_POS]]
+gse_posan  = [[aniso_test.X_GSE_POS],[aniso_test.Y_GSE_POS],[aniso_test.Z_GSE_POS]]
+gsm_posan  = [[aniso_test.X_GSM_POS],[aniso_test.Y_GSM_POS],[aniso_test.Z_GSM_POS]]
+gse_posbm  = [[beam_test.X_GSE_POS],[beam_test.Y_GSE_POS],[beam_test.Z_GSE_POS]]
+gsm_posbm  = [[beam_test.X_GSM_POS],[beam_test.Y_GSM_POS],[beam_test.Z_GSM_POS]]
+mnvc_gse   = [[test.X_MIN_VECT],[test.Y_MIN_VECT],[test.Z_MIN_VECT]]
+mnvc_gsean = [[aniso_test.X_MIN_VECT],[aniso_test.Y_MIN_VECT],[aniso_test.Z_MIN_VECT]]
+mnvc_gsebm = [[beam_test.X_MIN_VECT],[beam_test.Y_MIN_VECT],[beam_test.Z_MIN_VECT]]
+
+;lshell = 20.
+;lshell = 15.
+lshell = 10.
+l_string   = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+
+test_0     = (mdmnrat   GE 10.) AND (FINITE(mdmnrat)) AND (wlsh LE lshell)
+test_1     = (mdmnratan GE 10.) AND (FINITE(mdmnratan)) AND (wlsh_ani LE lshell)
+test_2     = (mdmnratbm GE 10.) AND (FINITE(mdmnratbm)) AND (wlsh_beam LE lshell)
+good_tdss  = WHERE(test_0,gdnt)
+good_tdan  = WHERE(test_1,gdntan)
+good_tdbm  = WHERE(test_2,gdntbm)
+print, gdnt, gdntan, gdntbm
+; => For L < 10
+;          22          22           1
+
+pref       = 'Whistler_TDSS-ALL_L'+l_string[0]+'_'
+ttla       = 'TDSS [All] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+ttlani     = 'TDSS [Anisotropic] (ALL) Whistler Statistics (L < '+l_string[0]+')'
+ttlbm      = 'TDSS [Beam/Flattop] (ALL) Whistler Statistics (L < '+l_string[0]+')' 
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+me         = 9.1093897d-31            ; -Electron mass (kg)
+mp         = 1.6726231d-27            ; -Proton mass (kg)
+qq         = 1.60217733d-19           ; -Fundamental charge (C)
+fcefac     = qq/me/(2d0*!DPI)
+
+unix       = time_double(test.SCETS[good_tdss])
+unixan     = time_double(aniso_test.SCETS[good_tdan])
+unixbm     = time_double(beam_test.SCETS[good_tdbm])
+
+wlsh_ani   = wlsh_ani[good_tdan]
+wrad       = test.WIND_RADIAL_DISTANCE[good_tdss]
+wradan     = aniso_test.WIND_RADIAL_DISTANCE[good_tdan]
+wradbm     = beam_test.WIND_RADIAL_DISTANCE[good_tdbm]
+
+wlsh_beam  = wlsh_beam[good_tdbm]
+wlsh       = wlsh[good_tdss]
+wmlt_ani   = aniso_test.WIND_MLT[good_tdan]
+wmlt_beam  = beam_test.WIND_MLT[good_tdbm]
+wmlt       = test.WIND_MLT[good_tdss]
+winv_ani   = aniso_test.WIND_INVARIANT_LATITUDE[good_tdan]
+winv_beam  = beam_test.WIND_INVARIANT_LATITUDE[good_tdbm]
+winv       = test.WIND_INVARIANT_LATITUDE[good_tdss]
+bmag_eq    = magnfactor[0]/(wlsh)^3
+bmag_eqan  = magnfactor[0]/(wlsh_ani)^3
+bmag_eqbm  = magnfactor[0]/(wlsh_beam)^3
+
+fce_eq     = fcefac[0]*bmag_eq
+fce_eqan   = fcefac[0]*bmag_eqan
+fce_eqbm   = fcefac[0]*bmag_eqbm
+fce_lc     = test.FCE[good_tdss]
+fce_lcan   = aniso_test.FCE[good_tdan]
+fce_lcbm   = beam_test.FCE[good_tdan]
+fpe        = test.FPE[good_tdss]
+fpean      = aniso_test.FPE[good_tdan]
+fpebm      = beam_test.FPE[good_tdbm]
+
+fw_low     = test.FLOW_PEAK[good_tdss]
+fw_high    = test.FHIGH_PEAK[good_tdss]
+anf_low    = aniso_test.FLOW_PEAK[good_tdan]
+anf_high   = aniso_test.FHIGH_PEAK[good_tdan]
+bnf_low    = beam_test.FLOW_PEAK[good_tdbm]
+bnf_high   = beam_test.FHIGH_PEAK[good_tdbm]
+
+fw_peak    = (fw_high + fw_low)/2d0
+fan_peak   = (anf_high + anf_low)/2d0
+fbm_peak   = (bnf_high + bnf_low)/2d0
+
+del_f      = (fw_high - fw_low)
+del_fan    = (anf_high - anf_low)
+del_fbm    = (bnf_high - bnf_low)
+delf_f     = (fw_high - fw_low)/fw_peak
+delf_fan   = (anf_high - anf_low)/fan_peak
+delf_fbm   = (bnf_high - bnf_low)/fbm_peak
+
+fw_fce     = fw_peak/fce_eq
+fan_fce    = fan_peak/fce_eqan
+fbm_fce    = fbm_peak/fce_eqbm
+fw_fcel    = fw_peak/fce_lc
+fan_fcel   = fan_peak/fce_lcan
+fbm_fcel   = fbm_peak/fce_lcbm
+fw_fpe     = fw_peak/fpe
+fan_fpe    = fan_peak/fpean
+fbm_fpe    = fbm_peak/fpebm
+
+fpe_fce    = fpe/fce_lc
+fpe_fcean  = fpean/fce_lcan
+fpe_fcebm  = fpebm/fce_lcbm
+
+wrms_ani   = REFORM(aniso_test.RMS[good_tdan,3L])
+wrms_beam  = REFORM(beam_test.RMS[good_tdbm,3L])
+wrms       = REFORM(test.RMS[good_tdss,3L])
+tani_el    = test.TANISOTROPY_EL[good_tdss]
+tani_elan  = aniso_test.TANISOTROPY_EL[good_tdan]
+tani_elmb  = beam_test.TANISOTROPY_EL[good_tdbm]
+
+tani_eh    = test.TANISOTROPY_EH[good_tdss]
+tani_ehan  = aniso_test.TANISOTROPY_EH[good_tdan]
+tani_ehmb  = beam_test.TANISOTROPY_EH[good_tdbm]
+
+
+theta_res  = ACOS(fw_fce)*18d1/!DPI
+theta_kb   = test.THETA_KB[good_tdss]
+thres_an   = ACOS(fan_fce)*18d1/!DPI
+thkb_ani   = aniso_test.THETA_KB[good_tdan]
+thres_bm   = ACOS(fbm_fce)*18d1/!DPI
+thkb_beam  = beam_test.THETA_KB[good_tdbm]
+
+gse_pos    = gse_pos[good_tdss,*]
+gsm_pos    = gsm_pos[good_tdss,*]
+gse_posan  = gse_posan[good_tdan,*]
+gsm_posan  = gsm_posan[good_tdan,*]
+gse_posbm  = gse_posbm[good_tdbm,*]
+gsm_posbm  = gsm_posbm[good_tdbm,*]
+
+mnvc_gse   = mnvc_gse[good_tdss,*]
+mnvc_gsean = mnvc_gsean[good_tdan,*]
+mnvc_gsebm = mnvc_gsebm[good_tdbm,*]
+
+
+; => Rotate GSE k-vector into GSM
+coord_trans_wrapper,unix,mnvc_gse,mnvc_gsm,/TO_GSM,/GSE
+coord_trans_wrapper,unixan,mnvc_gsean,mnvc_gsman,/TO_GSM,/GSE
+coord_trans_wrapper,unixbm,mnvc_gsebm,mnvc_gsmbm,/TO_GSM,/GSE
+
+
+mnvc_xy    = SQRT(mnvc_gse[*,0]^2 + mnvc_gse[*,1]^2)
+zeta_gse   = ATAN(mnvc_gse[*,2],mnvc_xy)*18d1/!DPI
+mnvc_xyan  = SQRT(mnvc_gsean[*,0]^2 + mnvc_gsean[*,1]^2)
+zeta_gsean = ATAN(mnvc_gsean[*,2],mnvc_xyan)*18d1/!DPI
+mnvc_xybm  = SQRT(mnvc_gsebm[*,0]^2 + mnvc_gsebm[*,1]^2)
+zeta_gsebm = ATAN(mnvc_gsebm[*,2],mnvc_xybm)*18d1/!DPI
+
+mnvc_xy    = SQRT(mnvc_gsm[*,0]^2 + mnvc_gsm[*,1]^2)
+zeta_gsm   = ATAN(mnvc_gsm[*,2],mnvc_xy)*18d1/!DPI
+mnvc_xyan  = SQRT(mnvc_gsman[*,0]^2 + mnvc_gsman[*,1]^2)
+zeta_gsman = ATAN(mnvc_gsman[*,2],mnvc_xyan)*18d1/!DPI
+mnvc_xybm  = SQRT(mnvc_gsmbm[*,0]^2 + mnvc_gsmbm[*,1]^2)
+zeta_gsmbm = ATAN(mnvc_gsmbm[*,2],mnvc_xybm)*18d1/!DPI
+
+
+
+xttl       = '!7h!3'+'!Dres!N (deg)'
+wset,0
+my_histogram_plot,theta_res,drange=[0.,90.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,thres_an,drange=[0.,90.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,thres_bm,drange=[0.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'Theta-Res_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,thres_an,drange=[0.,90.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'Theta-Res_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,thres_bm,drange=[0.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+
+xttl       = '!7h!3'+'!DkB!N (deg)'
+wset,0
+my_histogram_plot,theta_kb,drange=[0.,90.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,thkb_ani,drange=[0.,90.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,thkb_beam,drange=[0.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'Theta-kB_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,thkb_ani,drange=[0.,90.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'Theta-kB_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,thkb_beam,drange=[0.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+xttl       = '!7h!3'+'!DkB!N'+'/ !7h!3'+'!Dres!N'
+wset,0
+my_histogram_plot,1d0/(theta_res/theta_kb),drange=[0.,1.2],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,1d0/(thres_an/thkb_ani),drange=[0.,1.2],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,1d0/(thres_bm/thkb_beam),drange=[0.,1.2],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'Theta-Res_Theta-kB_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,1d0/(thres_an/thkb_ani),drange=[0.,1.2],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'Theta-Res_Theta-kB_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,1d0/(thres_bm/thkb_beam),drange=[0.,1.2],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+
+
+xttl  = '!7D!3'+'f (Hz)'
+wset,0
+my_histogram_plot,del_f,drange=[0.,1e3],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,del_fan,drange=[0.,1e3],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,del_fbm,drange=[0.,1e3],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'delta-f_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fan,drange=[0.,1e3],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'delta-f_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fbm,drange=[0.,1e3],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+
+
+xttl  = '!7D!3'+'f/f'
+wset,0
+my_histogram_plot,delf_f,drange=[0.,2.],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,delf_fan,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,delf_fbm,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'deltaf-f_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,delf_fan,drange=[0.,2.],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'deltaf-f_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,delf_fbm,drange=[0.,2.],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+; => ∆f/fpe histograms
+xttl  = '!7D!3'+'f/f!Dpe!N'
+wset,0
+my_histogram_plot,del_f/fpe,drange=[0.,4e-1],xttl=xttl,ttle=ttla,nbins=8
+wset,1
+my_histogram_plot,del_fan/fpean,drange=[0.,4e-1],xttl=xttl,ttle=ttlani,nbins=8
+wset,2
+my_histogram_plot,del_fbm/fpebm,drange=[0.,4e-1],xttl=xttl,ttle=ttlbm,nbins=8
+
+fname = pref[0]+'delta-f-fpe_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fan/fpean,drange=[0.,4e-1],xttl=xttl,ttle=ttlani,nbins=8
+pclose
+fname = pref[0]+'delta-f-fpe_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,del_fbm/fpebm,drange=[0.,4e-1],xttl=xttl,ttle=ttlbm,nbins=8
+pclose
+
+
+
+; => f/fce [fce = equitorial cyclotron frequency] histograms
+xttl  = 'f/f!Dce!N [f!Dce!N = equitorial]'
+wset,0
+my_histogram_plot,fw_fce,drange=[0.,1e0],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,fan_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,fbm_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'f-fce-eq_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fan_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'f-fce-eq_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fbm_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+; => f/fce [fce = local cyclotron frequency] histograms
+xttl  = 'f/f!Dce!N [f!Dce!N = local]'
+wset,0
+my_histogram_plot,fw_fcel,drange=[0.,1e0],xttl=xttl,ttle=ttla,nbins=11
+wset,1
+my_histogram_plot,fan_fcel,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=11
+wset,2
+my_histogram_plot,fbm_fcel,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=11
+
+fname = pref[0]+'f-fce-loc_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fan_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlani,nbins=11
+pclose
+fname = pref[0]+'f-fce-loc_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fbm_fce,drange=[0.,1e0],xttl=xttl,ttle=ttlbm,nbins=11
+pclose
+
+
+
+xttl  = 'f/f!Dpe!N [Local Plasma Frequency]'
+wset,0
+my_histogram_plot,fw_fpe,drange=[0.,.2],xttl=xttl,ttle=ttla,nbins=8
+wset,1
+my_histogram_plot,fan_fpe,drange=[0.,.2],xttl=xttl,ttle=ttlani,nbins=8
+wset,2
+my_histogram_plot,fbm_fpe,drange=[0.,.2],xttl=xttl,ttle=ttlbm,nbins=8
+
+fname = pref[0]+'f-fpe_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fan_fpe,drange=[0.,.2],xttl=xttl,ttle=ttlani,nbins=8
+pclose
+fname = pref[0]+'f-fpe_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fbm_fpe,drange=[0.,.2],xttl=xttl,ttle=ttlbm,nbins=8
+pclose
+
+; => fpe/fce [fpe = local plasma frequency, fce = equitorial cyclotron frequency] histograms
+xttl  = 'f!Dpe!N'+'/f!Dce!N [Local Plasma Freq., Local Cyclo. Freq.]'
+wset,0
+my_histogram_plot,fpe_fce,drange=[0.,16e0],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,fpe_fcean,drange=[0.,16e0],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,fpe_fcebm,drange=[0.,16e0],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'fpe-fce-local_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fpe_fcean,drange=[0.,16e0],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'fpe-fce-local_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,fpe_fcebm,drange=[0.,16e0],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+
+xttl       = '!7k!3'+'!DkGSE!N (deg)'
+wset,0
+my_histogram_plot,zeta_gse,drange=[-90.,90.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,zeta_gsean,drange=[-90.,90.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,zeta_gsebm,drange=[-90.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'lamda-kGSE_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,zeta_gsean,drange=[-90.,90.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'lamda-kGSE_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,zeta_gsebm,drange=[-90.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+xttl       = '!7k!3'+'!DkGSM!N (deg)'
+wset,0
+my_histogram_plot,zeta_gsm,drange=[-90.,90.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,zeta_gsman,drange=[-90.,90.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,zeta_gsmbm,drange=[-90.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'lamda-kGSM_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,zeta_gsman,drange=[-90.,90.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'lamda-kGSM_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,zeta_gsmbm,drange=[-90.,90.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+
+xttl       = 'Radial Distance (R!DE!N)'
+wset,0
+my_histogram_plot,wrad,drange=[0.,20.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,wradan,drange=[0.,20.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,wradbm,drange=[0.,20.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'Rad-Dist_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wradan,drange=[0.,20.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'Rad-Dist_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wradbm,drange=[0.,20.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+
+xttl       = 'L-Shell (R!DE!N)'
+wset,0
+my_histogram_plot,wlsh,drange=[0.,20.],xttl=xttl,ttle=ttla,nbins=10
+wset,1
+my_histogram_plot,wlsh_ani,drange=[0.,20.],xttl=xttl,ttle=ttlani,nbins=10
+wset,2
+my_histogram_plot,wlsh_beam,drange=[0.,20.],xttl=xttl,ttle=ttlbm,nbins=10
+
+fname = pref[0]+'LShell_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wlsh_ani,drange=[0.,20.],xttl=xttl,ttle=ttlani,nbins=10
+pclose
+fname = pref[0]+'LShell_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wlsh_beam,drange=[0.,20.],xttl=xttl,ttle=ttlbm,nbins=10
+pclose
+
+
+xttl       = 'MLT (hours)'
+wset,0
+my_histogram_plot,wmlt,drange=[0.,24.],xttl=xttl,ttle=ttla,nbins=9
+wset,1
+my_histogram_plot,wmlt_ani,drange=[0.,24.],xttl=xttl,ttle=ttlani,nbins=9
+wset,2
+my_histogram_plot,wmlt_beam,drange=[0.,24.],xttl=xttl,ttle=ttlbm,nbins=9
+
+fname = pref[0]+'MLT_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wmlt_ani,drange=[0.,24.],xttl=xttl,ttle=ttlani,nbins=9
+pclose
+fname = pref[0]+'MLT_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,wmlt_beam,drange=[0.,24.],xttl=xttl,ttle=ttlbm,nbins=9
+pclose
+
+
+xttl       = 'Invariant Latitude (deg)'
+wset,0
+my_histogram_plot,winv,drange=[55.,85.],xttl=xttl,ttle=ttla,nbins=7
+wset,1
+my_histogram_plot,winv_ani,drange=[55.,85.],xttl=xttl,ttle=ttlani,nbins=7
+wset,2
+my_histogram_plot,winv_beam,drange=[55.,85.],xttl=xttl,ttle=ttlbm,nbins=7
+
+fname = pref[0]+'Inv-Lat_anisotropic-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,winv_ani,drange=[55.,85.],xttl=xttl,ttle=ttlani,nbins=7
+pclose
+fname = pref[0]+'Inv-Lat_beam-flattop-edists_histogram'
+popen,fname,/LAND
+  my_histogram_plot,winv_beam,drange=[55.,85.],xttl=xttl,ttle=ttlbm,nbins=7
+pclose

@@ -1,0 +1,697 @@
+;-----------------------------------------------------------------------------------------
+; => Plot 2 TDSS examples in FACs  [V2 = +X-GSE direction or Earth-Sun Vector]
+;-----------------------------------------------------------------------------------------
+to          = time_double('1970-01-01/12:00:00.000')
+evn_gd      = [05881617L,27520153L]    ; => Event #s of 2 examples in paper
+vec         = ['para_0','perp_1','perp_2']
+cor_nm      = 'FACs'
+yttles      = 'E'+vec+' [mV/m, '+cor_nm[0]+']'
+;------------------------------------------------
+; => 1998-11-13 Event
+;------------------------------------------------
+date     = '111398'
+test0    = tds_waves_to_facs(DATE=date,FIXFILE=1,TDSS=1,TDSF=0,NPOW=0,MAGNETO=1,PARAX=0)
+j        = WHERE(test0.EVENT_N EQ evn_gd[0],gj)
+scet0    = test0.SCETS[j]
+event0   = test0.EVENT_N[j]
+bf0      = REFORM(test0.BF_FAC[j,*,*])
+ef0      = REFORM(test0.EF_FAC[j,*,*])
+tt0      = REFORM(test0.TIMES[j,*])
+unx0     = tt0*1d-3 + to[0]
+PRINT,';  ', minmax(ABS(ef0))
+PRINT,';  ', minmax(ABS(bf0))
+;      0.0063379351       195.84615
+;     0.00034488853       5.3976732
+
+; => Filter E-fields and B-fields
+freq     = [9d2,22d2]                ; => Frequency range [Hz]
+samra    = (2048L - 1L)/(MAX(tt0,/NAN)*1d-3 - MIN(tt0,/NAN)*1d-3)
+filte0   = vector_bandpass(ef0,samra[0],freq[0],freq[1],/MIDF)
+filtb0   = vector_bandpass(bf0,samra[0],freq[0],freq[1],/MIDF)
+
+yrae0    = [-1d0,1d0]*210d0
+ttle0    = 'TDSS: '+scet0[0]+' UT, Event #: '+STRTRIM(STRING(event0[0],FORMAT='(I8.8)'),2)
+ftimes   = file_name_times(scet0,PREC=3,FORMFN=2)
+; => Define E-field Components (mV/m)
+epara00  = REFORM(filte0[*,2])     ; => Field-Aligned E-field
+eperp10  = REFORM(filte0[*,0])     ; => (B x V2) x B
+eperp20  = REFORM(filte0[*,1])     ; => (B x V2)
+
+fname00  = 'Epara0_FACs_'+ftimes.F_TIME[0]+'_corrected-SCET-SunAngle'
+fname10  = 'Eperp1_FACs_'+ftimes.F_TIME[0]+'_corrected-SCET-SunAngle'
+fname20  = 'Eperp2_FACs_'+ftimes.F_TIME[0]+'_corrected-SCET-SunAngle'
+suffx    = '_Windowed-FFT-Spectra'
+wfname00 = fname00[0]+suffx[0]
+wfname10 = fname10[0]+suffx[0]
+wfname20 = fname20[0]+suffx[0]
+ytv0     = [-2d2,-15d1,-1d2,-5d1,0d0,5d1,1d2,15d1,2d2]
+ytn0     = ['-200','-150','-100','-50','0','50','100','150','200']
+yts0     = N_ELEMENTS(ytv0) - 1L
+tr00     = [MIN(tt0,/NAN),MAX(tt0,/NAN)]
+
+; => Calculate the unfiltered FFT Power Spectra
+width      = 1d0/32d0
+;width      = 1d0/16d0
+;width      = 1d0/8d0
+wsuffx     = '_'+STRTRIM(STRING(width[0]*1d2,FORMAT='(f15.3)'),2)+'-Percent-Window'
+wsuffxtt   = STRMID(wsuffx[0],1L)
+spec_epa00 = floating_fft_power_spec(unx0,ef0[*,2],width[0])
+spec_epe10 = floating_fft_power_spec(unx0,ef0[*,0],width[0])
+spec_epe20 = floating_fft_power_spec(unx0,ef0[*,1],width[0])
+fname000   = wfname00[0]+wsuffx[0]
+fname100   = wfname10[0]+wsuffx[0]
+fname200   = wfname20[0]+wsuffx[0]
+
+para__names = [fname00[0],fname000[0]]
+perp1_names = [fname10[0],fname100[0]]
+perp2_names = [fname20[0],fname200[0]]
+para__fname = fname000[0]
+perp1_fname = fname100[0]
+perp2_fname = fname200[0]
+para__data  = spec_epa00
+perp1_data  = spec_epe10
+perp2_data  = spec_epe20
+specname    = [para__names[1],perp1_names[1],perp2_names[1]]
+timename    = [para__names[0],perp1_names[0],perp2_names[0]]
+
+; => send data to TPLOT
+; E_para
+store_data,para__names[0],DATA={X:unx0,Y:epara00}
+store_data,para__names[1],DATA={X:para__data.TIME,Y:para__data.POWER,V:para__data.FREQ,SPEC:1}
+; E_perp1
+store_data,perp1_names[0],DATA={X:unx0,Y:eperp10}
+store_data,perp1_names[1],DATA={X:perp1_data.TIME,Y:perp1_data.POWER,V:perp1_data.FREQ,SPEC:1}
+; E_perp2
+store_data,perp2_names[0],DATA={X:unx0,Y:eperp20}
+store_data,perp2_names[1],DATA={X:perp2_data.TIME,Y:perp2_data.POWER,V:perp2_data.FREQ,SPEC:1}
+
+nnw      = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+tplot_options,'XMARGIN',[18,18]
+tplot_options,'YMARGIN',[5,5]
+
+; => Set up plot options for time series
+options,timename,'COLORS', 50
+options,timename,'YRANGE', yrae0
+options,timename[0],'YTITLE',yttles[0]
+options,timename[0],'TITLE','E'+vec[0]+' '+ttle0[0]+' ['+wsuffxtt[0]+']'
+options,timename[1],'YTITLE',yttles[1]
+options,timename[1],'TITLE','E'+vec[1]+' '+ttle0[0]+' ['+wsuffxtt[0]+']'
+options,timename[2],'YTITLE',yttles[2]
+options,timename[2],'TITLE','E'+vec[2]+' '+ttle0[0]+' ['+wsuffxtt[0]+']'
+
+; => Set up plot options for spectrograms
+specname = [fname000[0],fname100[0],fname200[0]]
+options,specname,'ZRANGE',[5d-5,1d0]
+options,specname,'YRANGE',[1d1,4d3]
+options,specname,'ZLOG',1
+options,specname,'YLOG',0
+options,specname,'YTITLE','Frequency [Hz]'
+options,specname,'ZTITLE','FFT Wavelet Power [(mV/m)!U2!N'+'/Hz]'
+options,specname,'ZTICKS',4  ; => 5 tick marks
+
+trange = [MIN(unx0,/NAN),MAX(unx0,/NAN)]
+tplot,[fname00[0],fname000[0]],TRANGE=trange
+
+
+
+ex_suffx = '_linear'
+; E_para
+  tplot,para__names,TRANGE=trange
+popen,para__fname[0]+ex_suffx[0],/LAND
+  tplot,para__names,TRANGE=trange
+pclose
+; E_perp1
+  tplot,perp1_names,TRANGE=trange
+popen,perp1_fname[0]+ex_suffx[0],/LAND
+  tplot,perp1_names,TRANGE=trange
+pclose
+; E_perp2
+  tplot,perp2_names,TRANGE=trange
+popen,perp2_fname[0]+ex_suffx[0],/LAND
+  tplot,[perp2_names,TRANGE=trange
+pclose
+
+
+ex_suffx = '_log'
+options,specname,'YLOG',1
+options,specname,'YRANGE',[3d1,4d3]
+; E_para
+  tplot,para__names,TRANGE=trange
+popen,para__fname[0]+ex_suffx[0],/LAND
+  tplot,para__names,TRANGE=trange
+pclose
+; E_perp1
+  tplot,perp1_names,TRANGE=trange
+popen,perp1_fname[0]+ex_suffx[0],/LAND
+  tplot,perp1_names,TRANGE=trange
+pclose
+; E_perp2
+  tplot,perp2_names,TRANGE=trange
+popen,perp2_fname[0]+ex_suffx[0],/LAND
+  tplot,perp2_names,TRANGE=trange
+pclose
+
+
+; => 2nd Axes Range options with log scale
+options,specname,'YLOG',1
+options,specname,'YRANGE',[7d2,4d3]
+ex_suffx = '_log_2nd-YRANGE'
+; E_para
+  tplot,para__names,TRANGE=trange
+popen,para__fname[0]+ex_suffx[0],/LAND
+  tplot,para__names,TRANGE=trange
+pclose
+; E_perp1
+  tplot,perp1_names,TRANGE=trange
+popen,perp1_fname[0]+ex_suffx[0],/LAND
+  tplot,perp1_names,TRANGE=trange
+pclose
+; E_perp2
+  tplot,perp2_names,TRANGE=trange
+popen,perp2_fname[0]+ex_suffx[0],/LAND
+  tplot,perp2_names,TRANGE=trange
+pclose
+
+; => 2nd Axes Range options with linear scale
+options,specname,'YLOG',0
+options,specname,'YRANGE',[7d2,25d2]
+ex_suffx = '_linear_2nd-YRANGE'
+; E_para
+  tplot,para__names,TRANGE=trange
+popen,para__fname[0]+ex_suffx[0],/LAND
+  tplot,para__names,TRANGE=trange
+pclose
+; E_perp1
+  tplot,perp1_names,TRANGE=trange
+popen,perp1_fname[0]+ex_suffx[0],/LAND
+  tplot,perp1_names,TRANGE=trange
+pclose
+; E_perp2
+  tplot,perp2_names,TRANGE=trange
+popen,perp2_fname[0]+ex_suffx[0],/LAND
+  tplot,perp2_names,TRANGE=trange
+pclose
+
+; => Clean up
+store_data,DELETE=tnames()
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+to          = time_double('1970-01-01/12:00:00.000')
+evn_gd      = [05881617L,27520153L]    ; => Event #s of 2 examples in paper
+vec         = ['para_0','perp_1','perp_2']
+cor_nm      = 'FACs'
+yttles      = 'E'+vec+' [mV/m, '+cor_nm[0]+']'
+;------------------------------------------------
+; => 2000-04-10 Event
+;------------------------------------------------
+date     = '040900'
+test1    = tds_waves_to_facs(DATE=date,FIXFILE=1,TDSS=1,TDSF=0,NPOW=0,MAGNETO=1,PARAX=0)
+j        = WHERE(test1.EVENT_N EQ evn_gd[1],gj)
+scet1    = test1.SCETS[j]
+event1   = test1.EVENT_N[j]
+bf1      = REFORM(test1.BF_FAC[j,*,*])
+ef1      = REFORM(test1.EF_FAC[j,*,*])
+tt1      = REFORM(test1.TIMES[j,*])
+unx1     = tt1*1d-3 + to[0]
+PRINT,';  ', minmax(ABS(ef1))
+PRINT,';  ', minmax(ABS(bf1))
+;      0.0018761499       54.847578
+;     1.7110883e-05       1.0475695
+
+; => Filter E-fields and B-fields
+freq     = [8d2,21d2]                ; => Frequency range [Hz]
+samra    = (2048L - 1L)/(MAX(tt1,/NAN)*1d-3 - MIN(tt1,/NAN)*1d-3)
+filte1   = vector_bandpass(ef1,samra[0],freq[0],freq[1],/MIDF)
+filtb1   = vector_bandpass(bf1,samra[0],freq[0],freq[1],/MIDF)
+
+yrae1    = [-1d0,1d0]*6d1
+ttle1    = 'TDSS: '+scet1[0]+' UT, Event #: '+STRTRIM(STRING(event1[0],FORMAT='(I8.8)'),2)
+ftimes   = file_name_times(scet1,PREC=3,FORMFN=2)
+;fname1   = 'E-Fields_FACs_'+ftimes.F_TIME[0]+'_corrected-SCET-SunAngle'
+; => Define E-field Components (mV/m)
+epara01  = REFORM(filte1[*,2])     ; => Field-Aligned E-field
+eperp11  = REFORM(filte1[*,0])     ; => (B x V2) x B
+eperp21  = REFORM(filte1[*,1])     ; => (B x V2)
+
+fname01  = 'Epara0_FACs_'+ftimes.F_TIME[0]+'_corrected-SCET-SunAngle'
+fname11  = 'Eperp1_FACs_'+ftimes.F_TIME[0]+'_corrected-SCET-SunAngle'
+fname21  = 'Eperp2_FACs_'+ftimes.F_TIME[0]+'_corrected-SCET-SunAngle'
+suffx    = '_Windowed-FFT-Spectra'
+wfname01 = fname01[0]+suffx[0]
+wfname11 = fname11[0]+suffx[0]
+wfname21 = fname21[0]+suffx[0]
+
+ytv1     = [-6d1,-4d1,-2d1,0d0,2d1,4d1,6d1]
+ytn1     = ['-60','-40','-20','0','20','40','60']
+yts1     = N_ELEMENTS(ytv1) - 1L
+tr01     = [MIN(tt1,/NAN),MAX(tt1,/NAN)]
+
+; => Calculate the unfiltered FFT Power Spectra
+width      = 1d0/32d0
+;width      = 1d0/16d0
+;width      = 1d0/8d0
+wsuffx     = '_'+STRTRIM(STRING(width[0]*1d2,FORMAT='(f15.3)'),2)+'-Percent-Window'
+wsuffxtt   = STRMID(wsuffx[0],1L)
+spec_epa01 = floating_fft_power_spec(unx1,ef1[*,2],width[0])
+spec_epe11 = floating_fft_power_spec(unx1,ef1[*,0],width[0])
+spec_epe21 = floating_fft_power_spec(unx1,ef1[*,1],width[0])
+fname001   = wfname01[0]+wsuffx[0]
+fname101   = wfname11[0]+wsuffx[0]
+fname201   = wfname21[0]+wsuffx[0]
+
+para__names = [fname01[0],fname001[0]]
+perp1_names = [fname11[0],fname101[0]]
+perp2_names = [fname21[0],fname201[0]]
+para__fname = fname001[0]
+perp1_fname = fname101[0]
+perp2_fname = fname201[0]
+para__data  = spec_epa01
+perp1_data  = spec_epe11
+perp2_data  = spec_epe21
+specname    = [para__names[1],perp1_names[1],perp2_names[1]]
+timename    = [para__names[0],perp1_names[0],perp2_names[0]]
+
+; => send data to TPLOT
+; E_para
+store_data,para__names[0],DATA={X:unx1,Y:epara01}
+store_data,para__names[1],DATA={X:para__data.TIME,Y:para__data.POWER,V:para__data.FREQ,SPEC:1}
+; E_perp1
+store_data,perp1_names[0],DATA={X:unx1,Y:eperp11}
+store_data,perp1_names[1],DATA={X:perp1_data.TIME,Y:perp1_data.POWER,V:perp1_data.FREQ,SPEC:1}
+; E_perp2
+store_data,perp2_names[0],DATA={X:unx1,Y:eperp21}
+store_data,perp2_names[1],DATA={X:perp2_data.TIME,Y:perp2_data.POWER,V:perp2_data.FREQ,SPEC:1}
+
+nnw      = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+tplot_options,'XMARGIN',[18,18]
+tplot_options,'YMARGIN',[5,5]
+
+; => Set up plot options for time series
+options,timename,'COLORS', 50
+options,timename,'YRANGE', yrae1
+options,para__names[0],'YTITLE',yttles[0]
+options,para__names[0],'TITLE','E'+vec[0]+' '+ttle1[0]+' ['+wsuffxtt[0]+']'
+options,perp1_names[0],'YTITLE',yttles[1]
+options,perp1_names[0],'TITLE','E'+vec[1]+' '+ttle1[0]+' ['+wsuffxtt[0]+']'
+options,perp2_names[0],'YTITLE',yttles[2]
+options,perp2_names[0],'TITLE','E'+vec[2]+' '+ttle1[0]+' ['+wsuffxtt[0]+']'
+
+; => Set up plot options for spectrograms
+options,specname,'ZRANGE',[5d-4,2d-1]
+options,specname,'YRANGE',[1d1,4d3]
+options,specname,'ZLOG',1
+options,specname,'YLOG',0
+options,specname,'YTITLE','Frequency [Hz]'
+options,specname,'ZTITLE','FFT Wavelet Power [(mV/m)!U2!N'+'/Hz]'
+options,specname,'ZTICKS',4  ; => 5 tick marks
+
+trange = [MIN(unx1,/NAN),MAX(unx1,/NAN)]
+tplot,para__names,TRANGE=trange
+
+
+ex_suffx = '_linear'
+; E_para
+  tplot,para__names,TRANGE=trange
+popen,para__fname[0]+ex_suffx[0],/LAND
+  tplot,para__names,TRANGE=trange
+pclose
+; E_perp1
+  tplot,perp1_names,TRANGE=trange
+popen,perp1_fname[0]+ex_suffx[0],/LAND
+  tplot,perp1_names,TRANGE=trange
+pclose
+; E_perp2
+  tplot,perp2_names,TRANGE=trange
+popen,perp2_fname[0]+ex_suffx[0],/LAND
+  tplot,perp2_names,TRANGE=trange
+pclose
+
+
+ex_suffx = '_log'
+options,specname,'YLOG',1
+options,specname,'YRANGE',[3d1,4d3]
+; E_para
+  tplot,para__names,TRANGE=trange
+popen,para__fname[0]+ex_suffx[0],/LAND
+  tplot,para__names,TRANGE=trange
+pclose
+; E_perp1
+  tplot,perp1_names,TRANGE=trange
+popen,perp1_fname[0]+ex_suffx[0],/LAND
+  tplot,perp1_names,TRANGE=trange
+pclose
+; E_perp2
+  tplot,perp2_names,TRANGE=trange
+popen,perp2_fname[0]+ex_suffx[0],/LAND
+  tplot,perp2_names,TRANGE=trange
+pclose
+
+
+; => 2nd Axes Range options with log scale
+options,specname,'YLOG',1
+options,specname,'YRANGE',[7d2,4d3]
+ex_suffx = '_log_2nd-YRANGE'
+; E_para
+  tplot,para__names,TRANGE=trange
+popen,para__fname[0]+ex_suffx[0],/LAND
+  tplot,para__names,TRANGE=trange
+pclose
+; E_perp1
+  tplot,perp1_names,TRANGE=trange
+popen,perp1_fname[0]+ex_suffx[0],/LAND
+  tplot,perp1_names,TRANGE=trange
+pclose
+; E_perp2
+  tplot,perp2_names,TRANGE=trange
+popen,perp2_fname[0]+ex_suffx[0],/LAND
+  tplot,perp2_names,TRANGE=trange
+pclose
+
+; => 2nd Axes Range options with linear scale
+options,specname,'YLOG',0
+options,specname,'YRANGE',[7d2,25d2]
+ex_suffx = '_linear_2nd-YRANGE'
+; E_para
+  tplot,para__names,TRANGE=trange
+popen,para__fname[0]+ex_suffx[0],/LAND
+  tplot,para__names,TRANGE=trange
+pclose
+; E_perp1
+  tplot,perp1_names,TRANGE=trange
+popen,perp1_fname[0]+ex_suffx[0],/LAND
+  tplot,perp1_names,TRANGE=trange
+pclose
+; E_perp2
+  tplot,perp2_names,TRANGE=trange
+popen,perp2_fname[0]+ex_suffx[0],/LAND
+  tplot,perp2_names,TRANGE=trange
+pclose
+
+; => Clean up
+store_data,DELETE=tnames()
+;-----------------------------------------------------------------------------------------
+; => Plot 2 TDSS examples in FA-Coordinates with wavelet
+;-----------------------------------------------------------------------------------------
+
+evn_gd   = [05881617L,27520153L]    ; => Event #s of 2 examples in paper
+lim      = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',1.5)
+to       = time_double('1970-01-01/12:00:00.000')
+vec      = ['para_0','perp_1','perp_2']
+cor_nm   = 'FACs'
+yttles   = 'E'+vec+' [mV/m, '+cor_nm[0]+']'
+;------------------------------------------------
+; => 1998-11-13 Event
+;------------------------------------------------
+date     = '111398'
+test0    = tds_waves_to_facs(DATE=date,FIXFILE=1,TDSS=1,TDSF=0,NPOW=0,MAGNETO=1,PARAX=0)
+j        = WHERE(test0.EVENT_N EQ evn_gd[0],gj)
+scet0    = test0.SCETS[j]
+event0   = test0.EVENT_N[j]
+ef0      = REFORM(test0.EF_FAC[j,*,*])
+tt0      = REFORM(test0.TIMES[j,*])
+unx0     = tt0*1d-3 + to[0]
+; => Filter E-fields and B-fields
+freq     = [9d2,22d2]                ; => Frequency range [Hz]
+filt_0   = STRMID(STRING(freq,FORMAT='(f6.1)'),0L,4L)
+filt00   = string_replace_char(filt_0[0],' ','_')
+filt_st  = STRTRIM(filt00[0]+'-'+filt_0[1]+'Hz',2L)
+
+samra    = (2048L - 1L)/(MAX(tt0,/NAN)*1d-3 - MIN(tt0,/NAN)*1d-3)
+filte0   = vector_bandpass(ef0,samra[0],freq[0],freq[1],/MIDF)
+yrae0    = [-1d0,1d0]*170d0
+; => Define E-field Components (mV/m)
+epara00  = REFORM(filte0[*,2])     ; => Field-Aligned E-field
+eperp10  = REFORM(filte0[*,0])     ; => (B x V2) x B
+eperp20  = REFORM(filte0[*,1])     ; => (B x V2)
+
+ttle0    = 'TDSS: '+scet0[0]+' UT, Event #: '+STRTRIM(STRING(event0[0],FORMAT='(I8.8)'),2)
+ftimes   = file_name_times(scet0,PREC=3,FORMFN=2)
+tname00  = 'Epara0_FACs_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]+'_corrected-SCET'
+tname10  = 'Eperp1_FACs_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]+'_corrected-SCET'
+tname20  = 'Eperp2_FACs_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]+'_corrected-SCET'
+
+efname00 = [tname00,tname10,tname20]
+wnamee00 = efname00+'_wavelet'
+
+; => send data to TPLOT
+; E_para
+store_data,efname00[0],DATA={X:unx0,Y:epara00}
+wavelet_to_tplot,unx0,ef0[*,2],NEW_NAME=wnamee00[0]
+; E_perp1
+store_data,efname00[1],DATA={X:unx0,Y:eperp10}
+wavelet_to_tplot,unx0,ef0[*,0],NEW_NAME=wnamee00[1]
+; E_perp2
+store_data,efname00[2],DATA={X:unx0,Y:eperp20}
+wavelet_to_tplot,unx0,ef0[*,1],NEW_NAME=wnamee00[2]
+
+wextrae0 = tnames(efname00+'_wavelet_*')
+; => set TPLOT options
+;   => titles and labels
+  options,efname00,'COLORS', 50
+  options,efname00[0],'YTITLE',yttles[0]
+  options,efname00[0],'TITLE', 'Ex '+ttle0[0]
+  options,efname00[1],'YTITLE',yttles[1]
+  options,efname00[1],'TITLE', 'Ey '+ttle0[0]
+  options,efname00[2],'YTITLE',yttles[2]
+  options,efname00[2],'TITLE', 'Ez '+ttle0[0]
+  options,wnamee00,'ZTICKS',4  ; => 5 tick marks
+  options,wnamee00,'ZTITLE','Morlet Wavelet Power [(mV/m)!U2!N'+'/Hz]'
+; => Axes Range options
+  options,tnames(efname00+'_wavelet*'),'YRANGE',[1d1,4d3]
+  options,wnamee00,'ZRANGE',[1d-3,1d1]
+  options,efname00,'YRANGE',yrae0
+nnw      = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+; => Set up TPLOT times
+tr3 = [MIN(unx0,/NAN),MAX(unx0,/NAN)]
+tplot,[efname00[0],wnamee00[0]],TRANGE=tr3
+
+
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+'_Morlet_wavelet_Unfiltered'  & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+
+; => 2nd Axes Range options with linear scale
+options,tnames(efname00+'_wavelet*'),'YRANGE',[7d2,4d3]
+options,tnames(efname00+'_wavelet*'),'YLOG',0
+
+suffx2 = '_Morlet_wavelet_Unfiltered-2nd_Linear'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+suffx2[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+
+; => 2nd Y-Axis and Time-Axis Range options with linear scale
+options,tnames(efname00+'_wavelet*'),'YRANGE',[7d2,4d3]
+options,tnames(efname00+'_wavelet*'),'YLOG',0
+
+tr3 = [MIN(unx0,/NAN)+1d-1,MIN(unx0,/NAN)+2d-1]
+tplot,[efname00[0],wnamee00[0]],TRANGE=tr3
+
+suffx3 = '_Morlet_wavelet_Unfiltered-2nd_Linear_100-200ms'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+suffx3[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+; => 3rd Y-Axis and Time-Axis Range options with linear scale
+options,tnames(efname00+'_wavelet*'),'YRANGE',[7d2,3d3]
+options,tnames(efname00+'_wavelet*'),'YLOG',0
+
+tr3 = [MIN(unx0,/NAN)+1d-1,MIN(unx0,/NAN)+2d-1]
+tplot,[efname00[0],wnamee00[0]],TRANGE=tr3
+
+suffx4 = '_Morlet_wavelet_Unfiltered-3rd_Linear_100-200ms'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+suffx4[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+; => Clean up
+store_data,DELETE=tnames()
+;------------------------------------------------
+; => 2000-04-10 Event
+;------------------------------------------------
+evn_gd   = [05881617L,27520153L]    ; => Event #s of 2 examples in paper
+lim      = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',1.5)
+to       = time_double('1970-01-01/12:00:00.000')
+vec      = ['para_0','perp_1','perp_2']
+cor_nm   = 'FACs'
+yttles   = 'E'+vec+' [mV/m, '+cor_nm[0]+']'
+
+date     = '040900'
+test0    = tds_waves_to_facs(DATE=date,FIXFILE=1,TDSS=1,TDSF=0,NPOW=0,MAGNETO=1,PARAX=0)
+j        = WHERE(test0.EVENT_N EQ evn_gd[1],gj)
+scet0    = test0.SCETS[j]
+event0   = test0.EVENT_N[j]
+ef0      = REFORM(test0.EF_FAC[j,*,*])
+tt0      = REFORM(test0.TIMES[j,*])
+unx0     = tt0*1d-3 + to[0]
+; => Filter E-fields and B-fields
+freq     = [8d2,21d2]                ; => Frequency range [Hz]
+filt_0   = STRMID(STRING(freq,FORMAT='(f6.1)'),0L,4L)
+filt00   = string_replace_char(filt_0[0],' ','_')
+filt_st  = STRTRIM(filt00[0]+'-'+filt_0[1]+'Hz',2L)
+
+samra    = (2048L - 1L)/(MAX(tt0,/NAN)*1d-3 - MIN(tt0,/NAN)*1d-3)
+filte0   = vector_bandpass(ef0,samra[0],freq[0],freq[1],/MIDF)
+yrae0    = [-1d0,1d0]*6d1
+; => Define E-field Components (mV/m)
+epara00  = REFORM(filte0[*,2])     ; => Field-Aligned E-field
+eperp10  = REFORM(filte0[*,0])     ; => (B x V2) x B
+eperp20  = REFORM(filte0[*,1])     ; => (B x V2)
+
+ttle0    = 'TDSS: '+scet0[0]+' UT, Event #: '+STRTRIM(STRING(event0[0],FORMAT='(I8.8)'),2)
+ftimes   = file_name_times(scet0,PREC=3,FORMFN=2)
+tname00  = 'Epara0_FACs_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]+'_corrected-SCET'
+tname10  = 'Eperp1_FACs_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]+'_corrected-SCET'
+tname20  = 'Eperp2_FACs_'+ftimes.F_TIME[0]+'_Filtered'+filt_st[0]+'_corrected-SCET'
+
+efname00 = [tname00,tname10,tname20]
+wnamee00 = efname00+'_wavelet'
+
+; => send data to TPLOT
+; E_para
+store_data,efname00[0],DATA={X:unx0,Y:epara00}
+wavelet_to_tplot,unx0,ef0[*,2],NEW_NAME=wnamee00[0]
+; E_perp1
+store_data,efname00[1],DATA={X:unx0,Y:eperp10}
+wavelet_to_tplot,unx0,ef0[*,0],NEW_NAME=wnamee00[1]
+; E_perp2
+store_data,efname00[2],DATA={X:unx0,Y:eperp20}
+wavelet_to_tplot,unx0,ef0[*,1],NEW_NAME=wnamee00[2]
+
+wextrae0 = tnames(efname00+'_wavelet_*')
+; => set TPLOT options
+;   => titles and labels
+  options,efname00,'COLORS', 50
+  options,efname00[0],'YTITLE',yttles[0]
+  options,efname00[0],'TITLE', 'Ex '+ttle0[0]
+  options,efname00[1],'YTITLE',yttles[1]
+  options,efname00[1],'TITLE', 'Ey '+ttle0[0]
+  options,efname00[2],'YTITLE',yttles[2]
+  options,efname00[2],'TITLE', 'Ez '+ttle0[0]
+  options,wnamee00,'ZTICKS',4  ; => 5 tick marks
+  options,wnamee00,'ZTITLE','Morlet Wavelet Power [(mV/m)!U2!N'+'/Hz]'
+; => Axes Range options
+  options,tnames(efname00+'_wavelet*'),'YRANGE',[1d1,4d3]
+  options,wnamee00,'ZRANGE',[1d-3,1d0]
+  options,efname00,'YRANGE',yrae0
+nnw      = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+; => Set up TPLOT times
+tr3 = [MIN(unx0,/NAN),MAX(unx0,/NAN)]
+tplot,[efname00[0],wnamee00[0]],TRANGE=tr3
+
+
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+'_Morlet_wavelet_Unfiltered'  & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+
+; => 2nd Axes Range options with linear scale
+options,tnames(efname00+'_wavelet*'),'YRANGE',[7d2,4d3]
+options,tnames(efname00+'_wavelet*'),'YLOG',0
+
+suffx2 = '_Morlet_wavelet_Unfiltered-2nd_Linear'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+suffx2[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+
+; => 2nd Y-Axis and Time-Axis Range options with linear scale
+options,tnames(efname00+'_wavelet*'),'YRANGE',[7d2,4d3]
+options,tnames(efname00+'_wavelet*'),'YLOG',0
+
+tr3 = [MIN(unx0,/NAN)+1d-1,MIN(unx0,/NAN)+2d-1]
+tplot,[efname00[0],wnamee00[0]],TRANGE=tr3
+
+suffx3 = '_Morlet_wavelet_Unfiltered-2nd_Linear_100-200ms'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+suffx3[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+; => 3rd Y-Axis and Time-Axis Range options with linear scale
+options,tnames(efname00+'_wavelet*'),'YRANGE',[7d2,3d3]
+options,tnames(efname00+'_wavelet*'),'YLOG',0
+
+tr3 = [MIN(unx0,/NAN)+1d-1,MIN(unx0,/NAN)+2d-1]
+tplot,[efname00[0],wnamee00[0]],TRANGE=tr3
+
+suffx4 = '_Morlet_wavelet_Unfiltered-3rd_Linear_100-200ms'
+FOR k=0L, 2L DO BEGIN $
+  nna   = [efname00[k],wnamee00[k]]                 & $
+  nno   = tnames(efname00[k]+'_wavelet_*')          & $
+  fname = efname00[k]+suffx4[0]                     & $
+  oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim    & $
+  popen,fname[0],/LAND                              & $
+    oplot_tplot_spec,nna,nno,TRANGE=tr3,LIMITS=lim  & $
+  pclose
+
+; => Clean up
+store_data,DELETE=tnames()
+
+
+
+
+
+
+
+
+
+
+
+
+

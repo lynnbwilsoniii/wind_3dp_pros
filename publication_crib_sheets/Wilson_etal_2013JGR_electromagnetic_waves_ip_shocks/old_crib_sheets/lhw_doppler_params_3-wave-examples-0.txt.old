@@ -1,0 +1,1408 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+c        = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+epo      = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo      = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me       = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp       = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma       = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq       = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB       = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV     = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+
+vae_fac2 = (1d-9^2)/(me[0]*muo[0]*1d6)
+val_fac2 = (1d-9^2)/(mp[0]*muo[0]*1d6)
+; => Define multiplication factor for plasma beta
+beta_fac = 1d6*(kB[0]*K_eV[0])*(2d0*muo[0])
+
+; => Define relative species abundances [electrons]
+nc_ne    = 9d-1              ; => core fraction
+nh_ne    = 1d-1              ; => halo fraction
+ne_ne    = 1d0
+;-----------------------------------------------------------------------------------------
+; => Load Parameters
+;-----------------------------------------------------------------------------------------
+date     = '121097'
+tramp    = '1997-12-10/04:33:14.664'
+vshn     = 391.2                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test0    = tdss_lhw_stats_read(DATE=date)
+evn0     = test0.EVENT_N
+scet0    = test0.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t0   = time_double(scet0) - time_double(tramp)
+dist_0   = del_t0*vshn[0]
+avg_lfk0 = (test0.K_ST_LOWF_MP + test0.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk0 = (test0.K_ST_highF_MP + test0.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql0   = test0.FREQ_LOW_HIGH[*,0]
+freqh0   = test0.FREQ_LOW_HIGH[*,1]
+pkamp0   = test0.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp0 = test0.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+thkbs0   = test0.THETA_KB[*,0]       ; => Theta_kB at start [deg]
+thkbe0   = test0.THETA_KB[*,1]       ; => Theta_kB at end   [deg]
+thkvs0   = test0.THETA_KV[*,0]       ; => Theta_kV at start [deg]
+thkve0   = test0.THETA_KV[*,1]       ; => Theta_kV at end   [deg]
+wce0     = (test0.WCE_SE[*,0] + test0.WCE_SE[*,1])/2d0
+wpe0     = (test0.WPE_SE[*,0] + test0.WPE_SE[*,1])/2d0
+wlh0     = (test0.WLH_SE[*,0] + test0.WLH_SE[*,1])/2d0
+vte0     = (test0.VTE_SE[*,0] + test0.VTE_SE[*,1])/2d0
+rhoe0    = (test0.RHO_VTCE_SE[*,0] + test0.RHO_VTCE_SE[*,1])/2d0
+vsw0     = (test0.VSW_ST + test0.VSW_EN)/2d0
+vdr0     = (test0.VDRIFT_ST + test0.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf0    = (test0.MAGF_ST + test0.MAGF_EN)/2d0
+dens0    = (test0.NE_SE[*,0] + test0.NE_SE[*,1])/2d0
+bmag0    = SQRT(TOTAL(magf0^2,2L,/NAN))
+betapa0  = (test0.BETA_PARCE_SE[*,0] + test0.BETA_PARCE_SE[*,1])/2d0
+teavg0   = (test0.TE_AVG_SE[*,0] + test0.TE_AVG_SE[*,1])/2d0
+tiavg0   = (test0.TI_AVG_SE[*,0] + test0.TI_AVG_SE[*,1])/2d0
+vti0     = SQRT(2d0*tiavg0*K_eV*kB/mp)
+tecavg0  = (test0.TEC_SE[*,0] + test0.TEC_SE[*,1])/2d0
+tehavg0  = (test0.TEH_SE[*,0] + test0.TEH_SE[*,1])/2d0
+tparc0   = (test0.TPAR_EC_SE[*,0] + test0.TPAR_EC_SE[*,1])/2d0
+tperc0   = (test0.TPER_EC_SE[*,0] + test0.TPER_EC_SE[*,1])/2d0
+tparh0   = (test0.TPAR_EH_SE[*,0] + test0.TPAR_EH_SE[*,1])/2d0
+tperh0   = (test0.TPER_EH_SE[*,0] + test0.TPER_EH_SE[*,1])/2d0
+qmag0    = (test0.QMAG_SE[*,0] + test0.QMAG_SE[*,1])/2d0
+kvec0    = test0.KVEC
+eg23_0   = test0.EIG_MID_MIN
+eg12_0   = test0.EIG_MAX_MID
+gnorm80  = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+gnorm90  = [-0.971, 0.094,-0.218]   ; => Using RH08 from JCK's site
+thkn80   = ACOS(my_dot_prod(kvec0,gnorm80,/NOM))*18d1/!DPI
+thkn90   = ACOS(my_dot_prod(kvec0,gnorm90,/NOM))*18d1/!DPI
+thbn80   = REPLICATE(70.9,N_ELEMENTS(evn0))
+thbn90   = REPLICATE(71.9,N_ELEMENTS(evn0))
+
+date     = '082698'
+tramp    = '1998-08-26/06:40:24.972'
+vshn     = 687.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test1    = tdss_lhw_stats_read(DATE=date)
+evn1     = test1.EVENT_N
+scet1    = test1.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t1   = time_double(scet1) - time_double(tramp)
+dist_1   = del_t1*vshn[0]
+avg_lfk1 = (test1.K_ST_LOWF_MP + test1.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk1 = (test1.K_ST_highF_MP + test1.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql1   = test1.FREQ_LOW_HIGH[*,0]
+freqh1   = test1.FREQ_LOW_HIGH[*,1]
+thkbs1   = test1.THETA_KB[*,0]
+thkbe1   = test1.THETA_KB[*,1]
+thkvs1   = test1.THETA_KV[*,0]
+thkve1   = test1.THETA_KV[*,1]
+pkamp1   = test1.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp1 = test1.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce1     = (test1.WCE_SE[*,0] + test1.WCE_SE[*,1])/2d0
+wpe1     = (test1.WPE_SE[*,0] + test1.WPE_SE[*,1])/2d0
+wlh1     = (test1.WLH_SE[*,0] + test1.WLH_SE[*,1])/2d0
+vte1     = (test1.VTE_SE[*,0] + test1.VTE_SE[*,1])/2d0
+rhoe1    = (test1.RHO_VTCE_SE[*,0] + test1.RHO_VTCE_SE[*,1])/2d0
+vsw1     = (test1.VSW_ST + test1.VSW_EN)/2d0
+vdr1     = (test1.VDRIFT_ST + test1.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf1    = (test1.MAGF_ST + test1.MAGF_EN)/2d0
+dens1    = (test1.NE_SE[*,0] + test1.NE_SE[*,1])/2d0
+bmag1    = SQRT(TOTAL(magf1^2,2L,/NAN))
+betapa1  = (test1.BETA_PARCE_SE[*,0] + test1.BETA_PARCE_SE[*,1])/2d0
+teavg1   = (test1.TE_AVG_SE[*,0] + test1.TE_AVG_SE[*,1])/2d0
+tiavg1   = (test1.TI_AVG_SE[*,0] + test1.TI_AVG_SE[*,1])/2d0
+vti1     = SQRT(2d0*tiavg1*K_eV*kB/mp)
+tecavg1  = (test1.TEC_SE[*,0] + test1.TEC_SE[*,1])/2d0
+tehavg1  = (test1.TEH_SE[*,0] + test1.TEH_SE[*,1])/2d0
+tparc1   = (test1.TPAR_EC_SE[*,0] + test1.TPAR_EC_SE[*,1])/2d0
+tperc1   = (test1.TPER_EC_SE[*,0] + test1.TPER_EC_SE[*,1])/2d0
+tparh1   = (test1.TPAR_EH_SE[*,0] + test1.TPAR_EH_SE[*,1])/2d0
+tperh1   = (test1.TPER_EH_SE[*,0] + test1.TPER_EH_SE[*,1])/2d0
+qmag1    = (test1.QMAG_SE[*,0] + test1.QMAG_SE[*,1])/2d0
+kvec1    = test1.KVEC
+eg23_1   = test1.EIG_MID_MIN
+eg12_1   = test1.EIG_MAX_MID
+gnorm81  = [-0.655,0.040,-0.754]   ; => Using RH08 from JCK's site
+gnorm91  = [-0.822,0.138,-0.553]   ; => Using RH09 from JCK's site
+thkn81   = ACOS(my_dot_prod(kvec1,gnorm81,/NOM))*18d1/!DPI
+thkn91   = ACOS(my_dot_prod(kvec1,gnorm91,/NOM))*18d1/!DPI
+thbn81   = REPLICATE(82.2,N_ELEMENTS(evn1))
+thbn91   = REPLICATE(78.7,N_ELEMENTS(evn1))
+
+date     = '092498'
+tramp    = '1998-09-24/23:20:37.374'
+vshn     = 772.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test2    = tdss_lhw_stats_read(DATE=date)
+evn2     = test2.EVENT_N
+scet2    = test2.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t2   = time_double(scet2) - time_double(tramp)
+dist_2   = del_t2*vshn[0]
+avg_lfk2 = (test2.K_ST_LOWF_MP + test2.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk2 = (test2.K_ST_highF_MP + test2.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql2   = test2.FREQ_LOW_HIGH[*,0]
+freqh2   = test2.FREQ_LOW_HIGH[*,1]
+thkbs2   = test2.THETA_KB[*,0]
+thkbe2   = test2.THETA_KB[*,1]
+thkvs2   = test2.THETA_KV[*,0]
+thkve2   = test2.THETA_KV[*,1]
+pkamp2   = test2.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp2 = test2.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce2     = (test2.WCE_SE[*,0] + test2.WCE_SE[*,1])/2d0
+wpe2     = (test2.WPE_SE[*,0] + test2.WPE_SE[*,1])/2d0
+wlh2     = (test2.WLH_SE[*,0] + test2.WLH_SE[*,1])/2d0
+vte2     = (test2.VTE_SE[*,0] + test2.VTE_SE[*,1])/2d0
+rhoe2    = (test2.RHO_VTCE_SE[*,0] + test2.RHO_VTCE_SE[*,1])/2d0
+vsw2     = (test2.VSW_ST + test2.VSW_EN)/2d0
+vdr2     = (test2.VDRIFT_ST + test2.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf2    = (test2.MAGF_ST + test2.MAGF_EN)/2d0
+dens2    = (test2.NE_SE[*,0] + test2.NE_SE[*,1])/2d0
+bmag2    = SQRT(TOTAL(magf2^2,2L,/NAN))
+betapa2  = (test2.BETA_PARCE_SE[*,0] + test2.BETA_PARCE_SE[*,1])/2d0
+teavg2   = (test2.TE_AVG_SE[*,0] + test2.TE_AVG_SE[*,1])/2d0
+tiavg2   = (test2.TI_AVG_SE[*,0] + test2.TI_AVG_SE[*,1])/2d0
+vti2     = SQRT(2d0*tiavg2*K_eV*kB/mp)
+tecavg2  = (test2.TEC_SE[*,0] + test2.TEC_SE[*,1])/2d0
+tehavg2  = (test2.TEH_SE[*,0] + test2.TEH_SE[*,1])/2d0
+tparc2   = (test2.TPAR_EC_SE[*,0] + test2.TPAR_EC_SE[*,1])/2d0
+tperc2   = (test2.TPER_EC_SE[*,0] + test2.TPER_EC_SE[*,1])/2d0
+tparh2   = (test2.TPAR_EH_SE[*,0] + test2.TPAR_EH_SE[*,1])/2d0
+tperh2   = (test2.TPER_EH_SE[*,0] + test2.TPER_EH_SE[*,1])/2d0
+qmag2    = (test2.QMAG_SE[*,0] + test2.QMAG_SE[*,1])/2d0
+kvec2    = test2.KVEC
+eg23_2   = test2.EIG_MID_MIN
+eg12_2   = test2.EIG_MAX_MID
+gnorm82  = [-0.914,-0.220,-0.341]   ; => Using RH08 from JCK's site
+gnorm92  = [-0.939,-0.175,-0.296]   ; => Using RH09 from JCK's site
+thkn82   = ACOS(my_dot_prod(kvec2,gnorm82,/NOM))*18d1/!DPI
+thkn92   = ACOS(my_dot_prod(kvec2,gnorm92,/NOM))*18d1/!DPI
+thbn82   = REPLICATE(82.1,N_ELEMENTS(evn2))
+thbn92   = REPLICATE(78.6,N_ELEMENTS(evn2))
+
+date     = '021100'
+tramp    = '2000-02-11/23:33:55.319'
+vshn     = 641.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test3    = tdss_lhw_stats_read(DATE=date)
+evn3     = test3.EVENT_N
+scet3    = test3.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t3   = time_double(scet3) - time_double(tramp)
+dist_3   = del_t3*vshn[0]
+avg_lfk3 = (test3.K_ST_LOWF_MP + test3.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk3 = (test3.K_ST_highF_MP + test3.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql3   = test3.FREQ_LOW_HIGH[*,0]
+freqh3   = test3.FREQ_LOW_HIGH[*,1]
+thkbs3   = test3.THETA_KB[*,0]
+thkbe3   = test3.THETA_KB[*,1]
+thkvs3   = test3.THETA_KV[*,0]
+thkve3   = test3.THETA_KV[*,1]
+pkamp3   = test3.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp3 = test3.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce3     = (test3.WCE_SE[*,0] + test3.WCE_SE[*,1])/2d0
+wpe3     = (test3.WPE_SE[*,0] + test3.WPE_SE[*,1])/2d0
+wlh3     = (test3.WLH_SE[*,0] + test3.WLH_SE[*,1])/2d0
+vte3     = (test3.VTE_SE[*,0] + test3.VTE_SE[*,1])/2d0
+rhoe3    = (test3.RHO_VTCE_SE[*,0] + test3.RHO_VTCE_SE[*,1])/2d0
+vsw3     = (test3.VSW_ST + test3.VSW_EN)/2d0
+vdr3     = (test3.VDRIFT_ST + test3.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf3    = (test3.MAGF_ST + test3.MAGF_EN)/2d0
+dens3    = (test3.NE_SE[*,0] + test3.NE_SE[*,1])/2d0
+bmag3    = SQRT(TOTAL(magf3^2,2L,/NAN))
+betapa3  = (test3.BETA_PARCE_SE[*,0] + test3.BETA_PARCE_SE[*,1])/2d0
+teavg3   = (test3.TE_AVG_SE[*,0] + test3.TE_AVG_SE[*,1])/2d0
+tiavg3   = (test3.TI_AVG_SE[*,0] + test3.TI_AVG_SE[*,1])/2d0
+vti3     = SQRT(2d0*tiavg3*K_eV*kB/mp)
+tecavg3  = (test3.TEC_SE[*,0] + test3.TEC_SE[*,1])/2d0
+tehavg3  = (test3.TEH_SE[*,0] + test3.TEH_SE[*,1])/2d0
+tparc3   = (test3.TPAR_EC_SE[*,0] + test3.TPAR_EC_SE[*,1])/2d0
+tperc3   = (test3.TPER_EC_SE[*,0] + test3.TPER_EC_SE[*,1])/2d0
+tparh3   = (test3.TPAR_EH_SE[*,0] + test3.TPAR_EH_SE[*,1])/2d0
+tperh3   = (test3.TPER_EH_SE[*,0] + test3.TPER_EH_SE[*,1])/2d0
+qmag3    = (test3.QMAG_SE[*,0] + test3.QMAG_SE[*,1])/2d0
+kvec3    = test3.KVEC
+eg23_3   = test3.EIG_MID_MIN
+eg12_3   = test3.EIG_MAX_MID
+gnorm83  = [-0.865,-0.452,0.218]   ; => Using RH08 from JCK's site
+gnorm93  = [-0.930,-0.367,-0.028]   ; => Using RH09 from JCK's site
+thkn83   = ACOS(my_dot_prod(kvec3,gnorm83,/NOM))*18d1/!DPI
+thkn93   = ACOS(my_dot_prod(kvec3,gnorm93,/NOM))*18d1/!DPI
+thbn83   = REPLICATE(86.5,N_ELEMENTS(evn3))
+thbn93   = REPLICATE(89.9,N_ELEMENTS(evn3))
+
+date     = '040600'
+tramp    = '2000-04-06/16:32:09.237'
+vshn     = 646.9                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test4    = tdss_lhw_stats_read(DATE=date)
+evn4     = test4.EVENT_N
+scet4    = test4.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t4   = time_double(scet4) - time_double(tramp)
+dist_4   = del_t4*vshn[0]
+avg_lfk4 = (test4.K_ST_LOWF_MP + test4.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk4 = (test4.K_ST_highF_MP + test4.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql4   = test4.FREQ_LOW_HIGH[*,0]
+freqh4   = test4.FREQ_LOW_HIGH[*,1]
+thkbs4   = test4.THETA_KB[*,0]
+thkbe4   = test4.THETA_KB[*,1]
+thkvs4   = test4.THETA_KV[*,0]
+thkve4   = test4.THETA_KV[*,1]
+pkamp4   = test4.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp4 = test4.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce4     = (test4.WCE_SE[*,0] + test4.WCE_SE[*,1])/2d0
+wpe4     = (test4.WPE_SE[*,0] + test4.WPE_SE[*,1])/2d0
+wlh4     = (test4.WLH_SE[*,0] + test4.WLH_SE[*,1])/2d0
+vte4     = (test4.VTE_SE[*,0] + test4.VTE_SE[*,1])/2d0
+rhoe4    = (test4.RHO_VTCE_SE[*,0] + test4.RHO_VTCE_SE[*,1])/2d0
+vsw4     = (test4.VSW_ST + test4.VSW_EN)/2d0
+vdr4     = (test4.VDRIFT_ST + test4.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf4    = (test4.MAGF_ST + test4.MAGF_EN)/2d0
+dens4    = (test4.NE_SE[*,0] + test4.NE_SE[*,1])/2d0
+bmag4    = SQRT(TOTAL(magf4^2,2L,/NAN))
+betapa4  = (test4.BETA_PARCE_SE[*,0] + test4.BETA_PARCE_SE[*,1])/2d0
+teavg4   = (test4.TE_AVG_SE[*,0] + test4.TE_AVG_SE[*,1])/2d0
+tiavg4   = (test4.TI_AVG_SE[*,0] + test4.TI_AVG_SE[*,1])/2d0
+vti4     = SQRT(2d0*tiavg4*K_eV*kB/mp)
+tecavg4  = (test4.TEC_SE[*,0] + test4.TEC_SE[*,1])/2d0
+tehavg4  = (test4.TEH_SE[*,0] + test4.TEH_SE[*,1])/2d0
+tparc4   = (test4.TPAR_EC_SE[*,0] + test4.TPAR_EC_SE[*,1])/2d0
+tperc4   = (test4.TPER_EC_SE[*,0] + test4.TPER_EC_SE[*,1])/2d0
+tparh4   = (test4.TPAR_EH_SE[*,0] + test4.TPAR_EH_SE[*,1])/2d0
+tperh4   = (test4.TPER_EH_SE[*,0] + test4.TPER_EH_SE[*,1])/2d0
+qmag4    = (test4.QMAG_SE[*,0] + test4.QMAG_SE[*,1])/2d0
+kvec4    = test4.KVEC
+eg23_4   = test4.EIG_MID_MIN
+eg12_4   = test4.EIG_MAX_MID
+gnorm84  = [-0.984,-0.078,-0.162]   ; => Using RH08 from JCK's site
+gnorm94  = [-0.988,-0.061,-0.140]   ; => Using RH09 from JCK's site
+thkn84   = ACOS(my_dot_prod(kvec4,gnorm84,/NOM))*18d1/!DPI
+thkn94   = ACOS(my_dot_prod(kvec4,gnorm94,/NOM))*18d1/!DPI
+thbn84   = REPLICATE(69.6,N_ELEMENTS(evn4))
+thbn94   = REPLICATE(68.5,N_ELEMENTS(evn4))
+;-----------------------------------------------------------------------------------------
+; => Combine terms
+;-----------------------------------------------------------------------------------------
+tramp0   = REPLICATE('1997-12-10/04:33:14.664',N_ELEMENTS(evn0))
+tramp1   = REPLICATE('1998-08-26/06:40:24.972',N_ELEMENTS(evn1))
+tramp2   = REPLICATE('1998-09-24/23:20:37.374',N_ELEMENTS(evn2))
+tramp3   = REPLICATE('2000-02-11/23:33:55.319',N_ELEMENTS(evn3))
+tramp4   = REPLICATE('2000-04-06/16:32:09.237',N_ELEMENTS(evn4))
+trampa   = [tramp0,tramp1,tramp2,tramp3,tramp4]
+vshn0    = REPLICATE(391.2,N_ELEMENTS(evn0))
+vshn1    = REPLICATE(687.4,N_ELEMENTS(evn1))
+vshn2    = REPLICATE(772.4,N_ELEMENTS(evn2))
+vshn3    = REPLICATE(641.4,N_ELEMENTS(evn3))
+vshn4    = REPLICATE(646.9,N_ELEMENTS(evn4))
+vshn_a   = [vshn0,vshn1,vshn2,vshn3,vshn4]
+evns     = [evn0,evn1,evn2,evn3,evn4]
+n_all    = N_ELEMENTS(evns)
+scets    = [scet0,scet1,scet2,scet3,scet4]
+scete    = [test0.SCET_SE[*,1],test1.SCET_SE[*,1],test2.SCET_SE[*,1],test3.SCET_SE[*,1],test4.SCET_SE[*,1]]
+del_ts   = time_double(scets) - time_double(trampa)
+del_te   = time_double(scete) - time_double(trampa)
+del_t    = time_double(scete) - time_double(scets)
+;--------------------------------------------
+; => Define wave vector directions [GSE]
+;--------------------------------------------
+kvecs    = [kvec0,kvec1,kvec2,kvec3,kvec4]
+kvecx    = [test0.KVEC[*,0],test1.KVEC[*,0],test2.KVEC[*,0],test3.KVEC[*,0],test4.KVEC[*,0]]
+kvecy    = [test0.KVEC[*,1],test1.KVEC[*,1],test2.KVEC[*,1],test3.KVEC[*,1],test4.KVEC[*,1]]
+kvecz    = [test0.KVEC[*,2],test1.KVEC[*,2],test2.KVEC[*,2],test3.KVEC[*,2],test4.KVEC[*,2]]
+eig_23   = [eg23_0,eg23_1,eg23_2,eg23_3,eg23_4]                ; => Eigenvalue ratio [Mid/Min]
+eig_12   = [eg12_0,eg12_1,eg12_2,eg12_3,eg12_4]                ; => Eigenvalue ratio [Max/Mid]
+pkamps   = [pkamp0,pkamp1,pkamp2,pkamp3,pkamp4]                ; => Peak-to-Peak amplitudes
+filtamp  = [ftpkamp0,ftpkamp1,ftpkamp2,ftpkamp3,ftpkamp4]*2d0  ; => Filtered amplitudes [change to Peak-to-Peak]
+dist_rs  = del_ts*vshn_a
+dist_re  = del_te*vshn_a
+dist_r   = [dist_0,dist_1,dist_2,dist_3,dist_4]            ; => normal distance from shock ramp (km)
+; => Define SC-Frame frequencies
+freql    = [freql0,freql1,freql2,freql3,freql4]            ; => (Hz) low  freq. end of bandpass
+freqh    = [freqh0,freqh1,freqh2,freqh3,freqh4]            ; => (Hz) high freq. end of bandpass
+; => Define wave number estimates [km^(-1)]
+avg_lfk  = [avg_lfk0,avg_lfk1,avg_lfk2,avg_lfk3,avg_lfk4]  ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk  = [avg_hfk0,avg_hfk1,avg_hfk2,avg_hfk3,avg_hfk4]  ; => [Avg. |k| from high freq. end of bandpass]
+;--------------------------------------------
+; => Define relevant background parameters
+;--------------------------------------------
+; => Define relevant frequencies
+wce      = [wce0,wce1,wce2,wce3,wce4]             ; => Electron cyclotron frequency (rad/s)
+wcp      = wce*me/mp                              ; => Proton   cyclotron frequency (rad/s)
+wpe      = [wpe0,wpe1,wpe2,wpe3,wpe4]             ; => Electron plasma    frequency (rad/s)
+wlh      = [wlh0,wlh1,wlh2,wlh3,wlh4]             ; => ES lower hybrid resonance frequency (rad/s)
+; => Define ambient magnetic fields [GSE, nT]
+magf_s   = [test0.MAGF_ST,test1.MAGF_ST,test2.MAGF_ST,test3.MAGF_ST,test4.MAGF_ST]
+magf_e   = [test0.MAGF_EN,test1.MAGF_EN,test2.MAGF_EN,test3.MAGF_EN,test4.MAGF_EN]
+magf     = [magf0,magf1,magf2,magf3,magf4]
+bmag_s   = SQRT(TOTAL(magf_s^2,2L,/NAN))
+bmag_e   = SQRT(TOTAL(magf_e^2,2L,/NAN))
+bmag     = [bmag0,bmag1,bmag2,bmag3,bmag4]        ; => Magnitude of the B-field (nT)
+;--------------------------------------------
+; => Define wave normal angles [deg]
+;--------------------------------------------
+thbn8    = [thbn80,thbn81,thbn82,thbn83,thbn84]   ; => Theta_Bn (deg) [RH08 JCK's]
+thbn9    = [thbn90,thbn91,thbn92,thbn93,thbn94]   ; => Theta_Bn (deg) [RH09 JCK's]
+thkn8    = [thkn80,thkn81,thkn82,thkn83,thkn84]   ; => Theta_kn (deg) [RH08 JCK's]
+thkn9    = [thkn90,thkn91,thkn92,thkn93,thkn94]   ; => Theta_kn (deg) [RH09 JCK's]
+thkvs    = [thkvs0,thkvs1,thkvs2,thkvs3,thkvs4]   ; => Theta_kV (deg) [at start of TDSS]
+thkbs    = [thkbs0,thkbs1,thkbs2,thkbs3,thkbs4]   ; => Theta_kB (deg) [at start of TDSS]
+thkve    = [thkve0,thkve1,thkve2,thkve3,thkve4]   ; => Theta_kV (deg) [at end   of TDSS]
+thkbe    = [thkbe0,thkbe1,thkbe2,thkbe3,thkbe4]   ; => Theta_kB (deg) [at end   of TDSS]
+thkba    = (thkbs + thkbe)/2d0                    ; => Theta_kB (deg) [Avg.]
+thkva    = (thkvs + thkve)/2d0                    ; => Theta_kV (deg) [Avg.]
+;--------------------------------------------
+; => Define (Vsw - Ve) [km/s, SC-Frame]
+;--------------------------------------------
+vdrft_s  = [test0.VDRIFT_ST,test1.VDRIFT_ST,test2.VDRIFT_ST,test3.VDRIFT_ST,test4.VDRIFT_ST]
+vdrft_e  = [test0.VDRIFT_EN,test1.VDRIFT_EN,test2.VDRIFT_EN,test3.VDRIFT_EN,test4.VDRIFT_EN]
+vdrft    = [vdr0,vdr1,vdr2,vdr3,vdr4]             ; => (Vsw - Ve) (km/s) [SC-Frame]
+vdrmg_s  = SQRT(TOTAL(vdrft_s^2,2L,/NAN))
+vdrmg_e  = SQRT(TOTAL(vdrft_e^2,2L,/NAN))
+vdrmg    = SQRT(TOTAL(vdrft^2,2L,/NAN))
+del_vd   = vdrft_e - vdrft_s
+delvdmg  = SQRT(TOTAL(del_vd^2,2L,/NAN))
+; => Calculate k . (Vsw - Ve)/|(Vsw - Ve)|
+v_dot_ks = my_dot_prod(vdrft_s,kvecs,/NOM)/vdrmg_s
+v_dot_ke = my_dot_prod(vdrft_e,kvecs,/NOM)/vdrmg_e
+vd_dot_k = my_dot_prod(vdrft,kvecs,/NOM)/vdrmg
+dv_dot_k = my_dot_prod(del_vd,kvecs,/NOM)/delvdmg
+; => Calculate k . (Vsw - Ve)/|(Vsw - Ve)| angle [deg]
+thekv_s  = ACOS(v_dot_ks)*18d1/!DPI
+thekv_e  = ACOS(v_dot_ke)*18d1/!DPI
+thekv_ss = thekv_s < (18d1 - thekv_s)             ; => 0 < Theta_kVd < 90
+thekv_es = thekv_e < (18d1 - thekv_e)             ; => 0 < Theta_kVd < 90
+the_kvd  = ACOS(vd_dot_k)*18d1/!DPI
+the_kvds = the_kvd < (18d1 - the_kvd)             ; => 0 < Theta_kVd < 90
+the_dv   = ACOS(dv_dot_k)*18d1/!DPI
+the_dvs  = the_dv < (18d1 - the_dv)
+;--------------------------------------------
+; => Define electron moments [All  Electrons]
+;--------------------------------------------
+; => Define electron density [cm^(-3)] from TNR
+dens_s   = [test0.NE_SE[*,0],test1.NE_SE[*,0],test2.NE_SE[*,0],test3.NE_SE[*,0],test4.NE_SE[*,0]]
+dens_e   = [test0.NE_SE[*,1],test1.NE_SE[*,1],test2.NE_SE[*,1],test3.NE_SE[*,1],test4.NE_SE[*,1]]
+dens     = [dens0,dens1,dens2,dens3,dens4]        ; => Electron density [cm^(-3)] from TNR
+; => Define Avg. electron temperatures [eV]
+teavg_s  = [test0.TE_AVG_SE[*,0],test1.TE_AVG_SE[*,0],test2.TE_AVG_SE[*,0],test3.TE_AVG_SE[*,0],test4.TE_AVG_SE[*,0]]
+teavg_e  = [test0.TE_AVG_SE[*,1],test1.TE_AVG_SE[*,1],test2.TE_AVG_SE[*,1],test3.TE_AVG_SE[*,1],test4.TE_AVG_SE[*,1]]
+teavg    = [teavg0,teavg1,teavg2,teavg3,teavg4]   ; => EL electron avg. temp (eV)
+; => Define Avg. parallel/perpendicular electron temperatures [eV]
+tpare_s  = [test0.TPAR_EA_SE[*,0],test1.TPAR_EA_SE[*,0],test2.TPAR_EA_SE[*,0],test3.TPAR_EA_SE[*,0],test4.TPAR_EA_SE[*,0]]
+tpare_e  = [test0.TPAR_EA_SE[*,1],test1.TPAR_EA_SE[*,1],test2.TPAR_EA_SE[*,1],test3.TPAR_EA_SE[*,1],test4.TPAR_EA_SE[*,1]]
+tpare    = (tpare_s + tpare_e)/2d0
+tpere_s  = [test0.TPER_EA_SE[*,0],test1.TPER_EA_SE[*,0],test2.TPER_EA_SE[*,0],test3.TPER_EA_SE[*,0],test4.TPER_EA_SE[*,0]]
+tpere_e  = [test0.TPER_EA_SE[*,1],test1.TPER_EA_SE[*,1],test2.TPER_EA_SE[*,1],test3.TPER_EA_SE[*,1],test4.TPER_EA_SE[*,1]]
+tpere    = (tpere_s + tpere_e)/2d0
+; => Define electron thermal speeds [km/s]
+vte_s    = [test0.VTE_SE[*,0],test1.VTE_SE[*,0],test2.VTE_SE[*,0],test3.VTE_SE[*,0],test4.VTE_SE[*,0]]
+vte_e    = [test0.VTE_SE[*,1],test1.VTE_SE[*,1],test2.VTE_SE[*,1],test3.VTE_SE[*,1],test4.VTE_SE[*,1]]
+vte      = [vte0,vte1,vte2,vte3,vte4]             ; => Electron thermal speed (km/s)
+; => Define electron thermal gyroradii [km]
+rhoe_s   = [test0.RHO_VTCE_SE[*,0],test1.RHO_VTCE_SE[*,0],test2.RHO_VTCE_SE[*,0],test3.RHO_VTCE_SE[*,0],test4.RHO_VTCE_SE[*,0]]
+rhoe_e   = [test0.RHO_VTCE_SE[*,1],test1.RHO_VTCE_SE[*,1],test2.RHO_VTCE_SE[*,1],test3.RHO_VTCE_SE[*,1],test4.RHO_VTCE_SE[*,1]]
+rhoe     = [rhoe0,rhoe1,rhoe2,rhoe3,rhoe4]        ; => Electron thermal gyroradius (km)
+; => Define electron betas [unitless]
+betaaves = beta_fac[0]*(dens_s*ne_ne[0])*teavg_s/((bmag_s*1d-9)^2)
+betaavee = beta_fac[0]*(dens_e*ne_ne[0])*teavg_e/((bmag_e*1d-9)^2)
+betaavge = beta_fac[0]*(dens*ne_ne[0])*teavg/((bmag*1d-9)^2)
+; => Parallel
+betapaes = beta_fac[0]*(dens_s*ne_ne[0])*tpare_s/((bmag_s*1d-9)^2)
+betapaee = beta_fac[0]*(dens_e*ne_ne[0])*tpare_e/((bmag_e*1d-9)^2)
+beta_pae = beta_fac[0]*(dens*ne_ne[0])*tpare/((bmag*1d-9)^2)
+; => Perpendicular
+betapees = beta_fac[0]*(dens_s*ne_ne[0])*tpere_s/((bmag_s*1d-9)^2)
+betapeee = beta_fac[0]*(dens_e*ne_ne[0])*tpere_e/((bmag_e*1d-9)^2)
+beta_pee = beta_fac[0]*(dens*ne_ne[0])*tpere/((bmag*1d-9)^2)
+; => Define electron heat flux [eV km/s cm^(-3)]
+qmag_s   = [test0.QMAG_SE[*,0],test1.QMAG_SE[*,0],test2.QMAG_SE[*,0],test3.QMAG_SE[*,0],test4.QMAG_SE[*,0]]
+qmag_e   = [test0.QMAG_SE[*,1],test1.QMAG_SE[*,1],test2.QMAG_SE[*,1],test3.QMAG_SE[*,1],test4.QMAG_SE[*,1]]
+qmag     = [qmag0,qmag1,qmag2,qmag3,qmag4]
+;--------------------------------------------
+; => Define electron moments [Core Electrons]
+;--------------------------------------------
+; => Define Avg. electron temperatures [eV]
+tecavg_s = [test0.TEC_SE[*,0],test1.TEC_SE[*,0],test2.TEC_SE[*,0],test3.TEC_SE[*,0],test4.TEC_SE[*,0]]
+tecavg_e = [test0.TEC_SE[*,1],test1.TEC_SE[*,1],test2.TEC_SE[*,1],test3.TEC_SE[*,1],test4.TEC_SE[*,1]]
+tecavg   = [tecavg0,tecavg1,tecavg2,tecavg3,tecavg4]      ; => core avg.  temp (eV)
+; => Define Avg. parallel/perpendicular electron temperatures [eV]
+tparc_s  = [test0.TPAR_EC_SE[*,0],test1.TPAR_EC_SE[*,0],test2.TPAR_EC_SE[*,0],test3.TPAR_EC_SE[*,0],test4.TPAR_EC_SE[*,0]]
+tparc_e  = [test0.TPAR_EC_SE[*,1],test1.TPAR_EC_SE[*,1],test2.TPAR_EC_SE[*,1],test3.TPAR_EC_SE[*,1],test4.TPAR_EC_SE[*,1]]
+tparc    = [tparc0,tparc1,tparc2,tparc3,tparc4]          ; => core para. temp (eV)
+tperc_s  = [test0.TPER_EC_SE[*,0],test1.TPER_EC_SE[*,0],test2.TPER_EC_SE[*,0],test3.TPER_EC_SE[*,0],test4.TPER_EC_SE[*,0]]
+tperc_e  = [test0.TPER_EC_SE[*,1],test1.TPER_EC_SE[*,1],test2.TPER_EC_SE[*,1],test3.TPER_EC_SE[*,1],test4.TPER_EC_SE[*,1]]
+tperc    = [tperc0,tperc1,tperc2,tperc3,tperc4]          ; => core perp. temp (eV)
+; => Define electron betas [unitless]
+betaavcs = beta_fac[0]*(dens_s*nc_ne[0])*tecavg_s/((bmag_s*1d-9)^2)
+betaavce = beta_fac[0]*(dens_e*nc_ne[0])*tecavg_s/((bmag_e*1d-9)^2)
+betaavgc = beta_fac[0]*(dens*nc_ne[0])*tecavg/((bmag*1d-9)^2)
+; => Parallel
+betapacs = beta_fac[0]*(dens_s*nc_ne[0])*tparc_s/((bmag_s*1d-9)^2)
+betapace = beta_fac[0]*(dens_e*nc_ne[0])*tparc_e/((bmag_e*1d-9)^2)
+beta_pac = beta_fac[0]*(dens*nc_ne[0])*tparc/((bmag*1d-9)^2)
+; => Perpendicular
+betapecs = beta_fac[0]*(dens_s*nc_ne[0])*tperc_s/((bmag_s*1d-9)^2)
+betapece = beta_fac[0]*(dens_e*nc_ne[0])*tperc_e/((bmag_e*1d-9)^2)
+beta_pec = beta_fac[0]*(dens*nc_ne[0])*tperc/((bmag*1d-9)^2)
+;--------------------------------------------
+; => Define electron moments [Halo Electrons]
+;--------------------------------------------
+; => Define Avg. electron temperatures [eV]
+tehavg_s = [test0.TEH_SE[*,0],test1.TEH_SE[*,0],test2.TEH_SE[*,0],test3.TEH_SE[*,0],test4.TEH_SE[*,0]]
+tehavg_e = [test0.TEH_SE[*,1],test1.TEH_SE[*,1],test2.TEH_SE[*,1],test3.TEH_SE[*,1],test4.TEH_SE[*,1]]
+tehavg   = [tehavg0,tehavg1,tehavg2,tehavg3,tehavg4]      ; => halo avg.  temp (eV)
+; => Define Avg. parallel/perpendicular electron temperatures [eV]
+tparh_s  = [test0.TPAR_EH_SE[*,0],test1.TPAR_EH_SE[*,0],test2.TPAR_EH_SE[*,0],test3.TPAR_EH_SE[*,0],test4.TPAR_EH_SE[*,0]]
+tparh_e  = [test0.TPAR_EH_SE[*,1],test1.TPAR_EH_SE[*,1],test2.TPAR_EH_SE[*,1],test3.TPAR_EH_SE[*,1],test4.TPAR_EH_SE[*,1]]
+tparh    = [tparh0,tparh1,tparh2,tparh3,tparh4]          ; => halo para. temp (eV)
+tperh_s  = [test0.TPER_EH_SE[*,0],test1.TPER_EH_SE[*,0],test2.TPER_EH_SE[*,0],test3.TPER_EH_SE[*,0],test4.TPER_EH_SE[*,0]]
+tperh_e  = [test0.TPER_EH_SE[*,1],test1.TPER_EH_SE[*,1],test2.TPER_EH_SE[*,1],test3.TPER_EH_SE[*,1],test4.TPER_EH_SE[*,1]]
+tperh    = [tperh0,tperh1,tperh2,tperh3,tperh4]          ; => halo perp. temp (eV)
+; => Define electron betas [unitless]
+betaavhs = beta_fac[0]*(dens_s*nh_ne[0])*tehavg_s/((bmag_s*1d-9)^2)
+betaavhe = beta_fac[0]*(dens_e*nh_ne[0])*tehavg_e/((bmag_e*1d-9)^2)
+betaavgh = beta_fac[0]*(dens*nh_ne[0])*tehavg/((bmag*1d-9)^2)
+; => Parallel
+betapahs = beta_fac[0]*(dens_s*nh_ne[0])*tparh_s/((bmag_s*1d-9)^2)
+betapahe = beta_fac[0]*(dens_e*nh_ne[0])*tparh_e/((bmag_e*1d-9)^2)
+beta_pah = beta_fac[0]*(dens*nh_ne[0])*tparh/((bmag*1d-9)^2)
+; => Perpendicular
+betapehs = beta_fac[0]*(dens_s*nh_ne[0])*tperh_s/((bmag_s*1d-9)^2)
+betapehe = beta_fac[0]*(dens_e*nh_ne[0])*tperh_e/((bmag_e*1d-9)^2)
+beta_peh = beta_fac[0]*(dens*nh_ne[0])*tperh/((bmag*1d-9)^2)
+;--------------------------------------------
+; => Define ion moments [All  Ions]
+;--------------------------------------------
+; => Define Avg. ion temperatures [eV]
+tiavg_s  = [test0.TI_AVG_SE[*,0],test1.TI_AVG_SE[*,0],test2.TI_AVG_SE[*,0],test3.TI_AVG_SE[*,0],test4.TI_AVG_SE[*,0]]
+tiavg_e  = [test0.TI_AVG_SE[*,1],test1.TI_AVG_SE[*,1],test2.TI_AVG_SE[*,1],test3.TI_AVG_SE[*,1],test4.TI_AVG_SE[*,1]]
+tiavg    = [tiavg0,tiavg1,tiavg2,tiavg3,tiavg4]          ; => PL ion avg. temp (eV)
+; => Define ion thermal speeds [km/s]
+vti_s    = SQRT(2d0*tiavg_s*K_eV[0]*kB[0]/mp[0])
+vti_e    = SQRT(2d0*tiavg_e*K_eV[0]*kB[0]/mp[0])
+vti      = [vti0,vti1,vti2,vti3,vti4]                    ; => Proton thermal speed (km/s)
+; => Define proton thermal gyroradii [km]
+rhop_s   = rhoe_s*SQRT(mp[0]/me[0])
+rhop_e   = rhoe_e*SQRT(mp[0]/me[0])
+rhop     = rhoe*SQRT(mp[0]/me[0])
+; => Define ion bulk speeds [km/s]
+vsw_s    = [test0.VSW_ST,test1.VSW_ST,test2.VSW_ST,test3.VSW_ST,test4.VSW_ST]
+vsw_e    = [test0.VSW_EN,test1.VSW_EN,test2.VSW_EN,test3.VSW_EN,test4.VSW_EN]
+vsw      = [vsw0,vsw1,vsw2,vsw3,vsw4]                    ; => PL solar wind velocity (km/s) [GSE]
+vmag_s   = SQRT(TOTAL(vsw_s^2,2L,/NAN))
+vmag_e   = SQRT(TOTAL(vsw_e^2,2L,/NAN))
+vmag     = SQRT(TOTAL(vsw^2,2L,/NAN))
+; => Define ion betas [unitless]
+betaavis = beta_fac[0]*(dens_s*ne_ne[0])*tiavg_s/((bmag_s*1d-9)^2)
+betaavie = beta_fac[0]*(dens_e*ne_ne[0])*tiavg_e/((bmag_e*1d-9)^2)
+betaavgi = beta_fac[0]*(dens*ne_ne[0])*tiavg/((bmag*1d-9)^2)
+;--------------------------------------------
+; => Calc. relevant speeds
+;--------------------------------------------
+v_ae_s   = SQRT(vae_fac2[0]*bmag_s^2/dens_s)*1d-3  ; => Electron Alfven speed (km/s) [at start of TDSS]
+v_ae_e   = SQRT(vae_fac2[0]*bmag_e^2/dens_e)*1d-3  ; => Electron Alfven speed (km/s) [at end   of TDSS]
+v_a_s    = SQRT(val_fac2[0]*bmag_s^2/dens_s)*1d-3  ; => Alfven speed (km/s) [at start of TDSS]
+v_a_e    = SQRT(val_fac2[0]*bmag_e^2/dens_e)*1d-3  ; => Alfven speed (km/s) [at end   of TDSS]
+;--------------------------------------------
+; => Calc. temperature ratios
+;--------------------------------------------
+teti_s   = teavg_s/tiavg_s
+teti_e   = teavg_e/tiavg_e
+te_tiav  = teavg/tiavg
+tanis_cs = tperc_s/tparc_s
+tanis_ce = tperc_e/tparc_e
+tanis_c  = tperc/tparc
+tanis_hs = tperh_s/tparh_s
+tanis_he = tperh_e/tparh_e
+tanis_h  = tperh/tparh
+thc_pars = tparh_s/tparc_s
+thc_pare = tparh_e/tparc_e
+thc_pers = tperh_s/tperc_s
+thc_pere = tperh_e/tperc_e
+thc_par  = tparh/tparc
+thc_per  = tperh/tperc
+tehc_avs = tehavg_s/tecavg_s
+tehc_ave = tehavg_e/tecavg_e
+tehc_avg = tehavg/tecavg
+; => Normalize the wave number by the electron inertial length
+kcwpelfm = avg_lfk[*,0]*c*1d-3/wpe
+kcwpelfp = avg_lfk[*,1]*c*1d-3/wpe
+kcwpehfm = avg_hfk[*,0]*c*1d-3/wpe
+kcwpehfp = avg_hfk[*,1]*c*1d-3/wpe
+; => Normalize the wave number by the electron thermal gyroradius
+krhoelfm = avg_lfk[*,0]*rhoe
+krhoelfp = avg_lfk[*,1]*rhoe
+krhoehfm = avg_hfk[*,0]*rhoe
+krhoehfp = avg_hfk[*,1]*rhoe
+;---------------------------------------------------------------------
+; => Wave number estimates from:
+;
+; => Calculations of Eq. 4 from Coroniti et al., [1982]
+;  Coroniti, F. V., C. F. Kennel, F. L. Scarf, and E. J. Smith (1982),
+;    Whistler mode turbulence in the disturbed solar wind, J. Geophys.
+;    Res., 87, 6029–6044, doi:10.1029/JA087iA08p06029.
+;---------------------------------------------------------------------
+; => Separate by plus and minus sign
+avg_lfkm = avg_lfk[*,0]  ; => [Avg. |k| (- sign) from low  freq. end of bandpass]
+avg_lfkp = avg_lfk[*,1]  ; => [Avg. |k| (+ sign) from low  freq. end of bandpass]
+avg_hfkm = avg_hfk[*,0]  ; => [Avg. |k| (- sign) from high freq. end of bandpass]
+avg_hfkp = avg_hfk[*,1]  ; => [Avg. |k| (+ sign) from high freq. end of bandpass]
+; => Calculate rest frame frequencies from wave number estimates
+ckm        = (c*1d-3)
+fac0l      = wce*ABS(COS(thkbs*!DPI/18d1))
+fac0h      = wce*ABS(COS(thkbe*!DPI/18d1))
+fac1lm     = (wpe/(ckm*avg_lfkm))^2
+fac1lp     = (wpe/(ckm*avg_lfkp))^2
+fac1hm     = (wpe/(ckm*avg_hfkm))^2
+fac1hp     = (wpe/(ckm*avg_hfkp))^2
+frest_lfkm = fac0l/(1d0 + fac1lm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from low  freq. end of bandpass]
+frest_lfkp = fac0l/(1d0 + fac1lp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from low  freq. end of bandpass]
+frest_hfkm = fac0h/(1d0 + fac1hm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from high freq. end of bandpass]
+frest_hfkp = fac0h/(1d0 + fac1hp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from high freq. end of bandpass]
+; => Define parallel/perpendicular k-vector components [km^(-1)]
+avg_lfkm_par = avg_lfkm*COS(thkba*!DPI/18d1)
+avg_lfkp_par = avg_lfkp*COS(thkba*!DPI/18d1)
+avg_hfkm_par = avg_hfkm*COS(thkba*!DPI/18d1)
+avg_hfkp_par = avg_hfkp*COS(thkba*!DPI/18d1)
+avg_lfkm_per = avg_lfkm*SIN(thkba*!DPI/18d1)
+avg_lfkp_per = avg_lfkp*SIN(thkba*!DPI/18d1)
+avg_hfkm_per = avg_hfkm*SIN(thkba*!DPI/18d1)
+avg_hfkp_per = avg_hfkp*SIN(thkba*!DPI/18d1)
+; => Normalize parallel/perpendicular k-vector components by electron inertial length
+kcwpelfm_par = avg_lfkm_par*c*1d-3/wpe
+kcwpelfp_par = avg_lfkp_par*c*1d-3/wpe
+kcwpehfm_par = avg_hfkm_par*c*1d-3/wpe
+kcwpehfp_par = avg_hfkp_par*c*1d-3/wpe
+kcwpelfm_per = avg_lfkm_per*c*1d-3/wpe
+kcwpelfp_per = avg_lfkp_per*c*1d-3/wpe
+kcwpehfm_per = avg_hfkm_per*c*1d-3/wpe
+kcwpehfp_per = avg_hfkp_per*c*1d-3/wpe
+; => Normalize parallel/perpendicular k-vector components by electron thermal gyroradius
+krhoelfm_par = avg_lfkm_par*rhoe
+krhoelfp_par = avg_lfkp_par*rhoe
+krhoehfm_par = avg_hfkm_par*rhoe
+krhoehfp_par = avg_hfkp_par*rhoe
+krhoelfm_per = avg_lfkm_per*rhoe
+krhoelfp_per = avg_lfkp_per*rhoe
+krhoehfm_per = avg_hfkm_per*rhoe
+krhoehfp_per = avg_hfkp_per*rhoe
+;-----------------------------------------------------------------------------------------
+; => Look at only the 3 wave examples in paper
+;-----------------------------------------------------------------------------------------
+evns_ex    = [00010684L,00010923L,23145474L]
+good_ex    = array_where(evns,evns_ex,/N_UNIQ)
+good_ex    = good_ex[*,0]
+
+good_ex0   = array_where(evns,evns_ex[0],/N_UNIQ)
+good_ex0   = good_ex0[*,0]
+good_ex1   = array_where(evns,evns_ex[1],/N_UNIQ)
+good_ex1   = good_ex1[*,0]
+good_ex2   = array_where(evns,evns_ex[2],/N_UNIQ)
+good_ex2   = good_ex2[*,0]
+
+unq0       = UNIQ(evns[good_ex0],SORT(evns[good_ex0]))
+unq1       = UNIQ(evns[good_ex1],SORT(evns[good_ex1]))
+unq2       = UNIQ(evns[good_ex2],SORT(evns[good_ex2]))
+good_ex00  = good_ex0[unq0]
+good_ex10  = good_ex1[unq1]
+good_ex20  = good_ex2[unq2]
+
+
+thkba_ex0  = thkba[good_ex0] < (18d1 - thkba[good_ex0])
+thkva_ex0  = thkva[good_ex0] < (18d1 - thkva[good_ex0])
+freql_ex0  = freql[good_ex0]
+freqh_ex0  = freqh[good_ex0]
+vmag_ex0   = vmag[good_ex0]
+bmag_ex0   = bmag[good_ex0]
+dens_ex0   = dens[good_ex0]
+PRINT,';  ',  MIN(dens_ex0,/NAN),  MAX(dens_ex0,/NAN),  MEAN(dens_ex0,/NAN),  STDDEV(dens_ex0,/NAN)
+PRINT,';  ',  MIN(vmag_ex0,/NAN),  MAX(vmag_ex0,/NAN),  MEAN(vmag_ex0,/NAN),  STDDEV(vmag_ex0,/NAN)
+PRINT,';  ',  MIN(bmag_ex0,/NAN),  MAX(bmag_ex0,/NAN),  MEAN(bmag_ex0,/NAN),  STDDEV(bmag_ex0,/NAN)
+;---------------------------------------------------------------------
+; => Results for 1998-08-26/06:41:08.353
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         21.840500       21.840500       21.840500       0.0000000
+;         644.02973       644.02973       644.02973       0.0000000
+;         22.678811       22.678811       22.678811       0.0000000
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(freql_ex0,/NAN),  MAX(freql_ex0,/NAN),  MEAN(freql_ex0,/NAN),  STDDEV(freql_ex0,/NAN)
+PRINT,';  ',  MIN(freqh_ex0,/NAN),  MAX(freqh_ex0,/NAN),  MEAN(freqh_ex0,/NAN),  STDDEV(freqh_ex0,/NAN)
+;---------------------------------------------------------------------
+; => Results for 1998-08-26/06:41:08.353
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;        3.00000      3.00000      3.00000      0.00000
+;        30.0000      30.0000      30.0000      0.00000
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(thkba_ex0,/NAN),  MAX(thkba_ex0,/NAN),  MEAN(thkba_ex0,/NAN),  STDDEV(thkba_ex0,/NAN)
+PRINT,';  ',  MIN(thkva_ex0,/NAN),  MAX(thkva_ex0,/NAN),  MEAN(thkva_ex0,/NAN),  STDDEV(thkva_ex0,/NAN)
+;---------------------------------------------------------------------
+; => Results for 1998-08-26/06:41:08.353
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         41.243500       85.369499       72.828215       15.790152
+;         35.400497       81.086502       50.872784       15.050142
+;---------------------------------------------------------------------
+
+
+thkba_ex1  = thkba[good_ex1] < (18d1 - thkba[good_ex1])
+thkva_ex1  = thkva[good_ex1] < (18d1 - thkva[good_ex1])
+freql_ex1  = freql[good_ex1]
+freqh_ex1  = freqh[good_ex1]
+vmag_ex1   = vmag[good_ex1]
+bmag_ex1   = bmag[good_ex1]
+dens_ex1   = dens[good_ex1]
+PRINT,';  ',  MIN(dens_ex1,/NAN),  MAX(dens_ex1,/NAN),  MEAN(dens_ex1,/NAN),  STDDEV(dens_ex1,/NAN)
+PRINT,';  ',  MIN(vmag_ex1,/NAN),  MAX(vmag_ex1,/NAN),  MEAN(vmag_ex1,/NAN),  STDDEV(vmag_ex1,/NAN)
+PRINT,';  ',  MIN(bmag_ex1,/NAN),  MAX(bmag_ex1,/NAN),  MEAN(bmag_ex1,/NAN),  STDDEV(bmag_ex1,/NAN)
+;---------------------------------------------------------------------
+; => Results for 1998-08-26/06:42:04.115
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         16.841499       16.841499       16.841499       0.0000000
+;         653.78073       653.78073       653.78073       0.0000000
+;         22.807665       22.807665       22.807665       0.0000000
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(freql_ex1,/NAN),  MAX(freql_ex1,/NAN),  MEAN(freql_ex1,/NAN),  STDDEV(freql_ex1,/NAN)
+PRINT,';  ',  MIN(freqh_ex1,/NAN),  MAX(freqh_ex1,/NAN),  MEAN(freqh_ex1,/NAN),  STDDEV(freqh_ex1,/NAN)
+;---------------------------------------------------------------------
+; => Results for 1998-08-26/06:42:04.115
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;        40.0000      40.0000      40.0000      0.00000
+;        200.000      200.000      200.000      0.00000
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(thkba_ex1,/NAN),  MAX(thkba_ex1,/NAN),  MEAN(thkba_ex1,/NAN),  STDDEV(thkba_ex1,/NAN)
+PRINT,';  ',  MIN(thkva_ex1,/NAN),  MAX(thkva_ex1,/NAN),  MEAN(thkva_ex1,/NAN),  STDDEV(thkva_ex1,/NAN)
+;---------------------------------------------------------------------
+; => Results for 1998-08-26/06:42:04.115
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         24.058502       35.286003       28.192228       3.9000694
+;         59.860504       76.035004       68.107864       4.9135846
+;---------------------------------------------------------------------
+
+
+thkba_ex2  = thkba[good_ex2] < (18d1 - thkba[good_ex2])
+thkva_ex2  = thkva[good_ex2] < (18d1 - thkva[good_ex2])
+freql_ex2  = freql[good_ex2]
+freqh_ex2  = freqh[good_ex2]
+vmag_ex2   = vmag[good_ex2]
+bmag_ex2   = bmag[good_ex2]
+dens_ex2   = dens[good_ex2]
+PRINT,';  ',  MIN(dens_ex2,/NAN),  MAX(dens_ex2,/NAN),  MEAN(dens_ex2,/NAN),  STDDEV(dens_ex2,/NAN)
+PRINT,';  ',  MIN(vmag_ex2,/NAN),  MAX(vmag_ex2,/NAN),  MEAN(vmag_ex2,/NAN),  STDDEV(vmag_ex2,/NAN)
+PRINT,';  ',  MIN(bmag_ex2,/NAN),  MAX(bmag_ex2,/NAN),  MEAN(bmag_ex2,/NAN),  STDDEV(bmag_ex2,/NAN)
+;---------------------------------------------------------------------
+; => Results for 2000-02-11/23:33:56.703
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         16.028999       16.028999       16.028999       0.0000000
+;         585.85964       585.85964       585.85964       0.0000000
+;         15.743071       15.743071       15.743071       0.0000000
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(freql_ex2,/NAN),  MAX(freql_ex2,/NAN),  MEAN(freql_ex2,/NAN),  STDDEV(freql_ex2,/NAN)
+PRINT,';  ',  MIN(freqh_ex2,/NAN),  MAX(freqh_ex2,/NAN),  MEAN(freqh_ex2,/NAN),  STDDEV(freqh_ex2,/NAN)
+;---------------------------------------------------------------------
+; => Results for 2000-02-11/23:33:56.703
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;        5.00000      120.000      78.0000      41.9689
+;        20.0000      200.000      175.000      63.5791
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(thkba_ex2,/NAN),  MAX(thkba_ex2,/NAN),  MEAN(thkba_ex2,/NAN),  STDDEV(thkba_ex2,/NAN)
+PRINT,';  ',  MIN(thkva_ex2,/NAN),  MAX(thkva_ex2,/NAN),  MEAN(thkva_ex2,/NAN),  STDDEV(thkva_ex2,/NAN)
+;---------------------------------------------------------------------
+; => Results for 2000-02-11/23:33:56.703
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         14.874001       56.905502       36.392393       14.055875
+;         28.641001       89.274002       71.448214       19.637008
+;---------------------------------------------------------------------
+
+
+
+;---------------------------------------------------------------------
+; => Results for 1998-08-26/06:41:08.353
+;---------------------------------------------------------------------
+PRINT,';  ', wcp[good_ex00], wlh[good_ex00], wce[good_ex00]
+;=====================================================================
+;         2.1987389       94.217003       4037.2205
+;=====================================================================
+PRINT,';  ', vti_s[good_ex00]*1d-3, vte_s[good_ex00]*1d-3, v_a_s[good_ex00]
+PRINT,';  ', vti_e[good_ex00]*1d-3, vte_e[good_ex00]*1d-3, v_a_e[good_ex00]
+;=====================================================================
+;         122.51149       4510.0430       109.68110
+;         120.90987       4500.6030       104.58421
+;=====================================================================
+PRINT,';  ', dens_s[good_ex00], bmag_s[good_ex00], vmag_s[good_ex00]
+PRINT,';  ', dens_e[good_ex00], bmag_e[good_ex00], vmag_e[good_ex00]
+;=====================================================================
+;        21.8580      23.5094      648.288
+;        21.8230      22.3989      639.792
+;=====================================================================
+PRINT,';  ', tiavg_s[good_ex00], teavg_s[good_ex00], tecavg_s[good_ex00], tehavg_s[good_ex00]
+PRINT,';  ', tiavg_e[good_ex00], teavg_e[good_ex00], tecavg_e[good_ex00], tehavg_e[good_ex00]
+;=====================================================================
+;        78.3430      57.8230      49.5950      296.072
+;        76.3080      57.5810      48.9980      297.519
+;=====================================================================
+PRINT,';  ', tparc_s[good_ex00], tperc_s[good_ex00], tparh_s[good_ex00], tperh_s[good_ex00]
+PRINT,';  ', tparc_e[good_ex00], tperc_e[good_ex00], tparh_e[good_ex00], tperh_e[good_ex00]
+;=====================================================================
+;        53.8520      47.4670      278.688      304.764
+;        52.0820      47.4550      268.831      311.864
+;=====================================================================
+PRINT,';  ', rhoe_s[good_ex00], betapacs[good_ex00], qmag_s[good_ex00]*1d-3
+PRINT,';  ', rhoe_e[good_ex00], betapace[good_ex00], qmag_e[good_ex00]*1d-3
+;=====================================================================
+;        1.09073     0.857600       859.15325
+;        1.14241     0.912300       802.21019
+;=====================================================================
+PRINT,';  ', teti_s[good_ex00], tehc_avs[good_ex00], thc_pars[good_ex00]
+PRINT,';  ', teti_e[good_ex00], tehc_ave[good_ex00], thc_pare[good_ex00]
+;=====================================================================
+;       0.738075      5.96980      5.17507
+;       0.754587      6.07206      5.16169
+;=====================================================================
+PRINT,';  ', tanis_cs[good_ex00], tanis_hs[good_ex00], thc_pers[good_ex00]
+PRINT,';  ', tanis_ce[good_ex00], tanis_he[good_ex00], thc_pere[good_ex00]
+;=====================================================================
+;       0.881434      1.09357      6.42055
+;       0.911159      1.16007      6.57178
+;=====================================================================
+
+
+
+;---------------------------------------------------------------------
+; => Results for 1998-08-26/06:42:04.115
+;---------------------------------------------------------------------
+PRINT,';  ', wcp[good_ex10], wlh[good_ex10], wce[good_ex10]
+;=====================================================================
+;         2.1848069       93.620003       4011.6392
+;=====================================================================
+PRINT,';  ', vti_s[good_ex10]*1d-3, vte_s[good_ex10]*1d-3, v_a_s[good_ex10]
+PRINT,';  ', vti_e[good_ex10]*1d-3, vte_e[good_ex10]*1d-3, v_a_e[good_ex10]
+;=====================================================================
+;         130.43318       4641.7645       119.78345
+;         130.98137       4623.6360       122.68211
+;=====================================================================
+PRINT,';  ', dens_s[good_ex10], bmag_s[good_ex10], vmag_s[good_ex10]
+PRINT,';  ', dens_e[good_ex10], bmag_e[good_ex10], vmag_e[good_ex10]
+;=====================================================================
+;        16.9200      22.5892      654.645
+;        16.7630      23.0283      652.918
+;=====================================================================
+PRINT,';  ', tiavg_s[good_ex10], teavg_s[good_ex10], tecavg_s[good_ex10], tehavg_s[good_ex10]
+PRINT,';  ', tiavg_e[good_ex10], teavg_e[good_ex10], tecavg_e[good_ex10], tehavg_e[good_ex10]
+;=====================================================================
+;        88.8020      61.2500      53.4380      283.601
+;        89.5500      60.7720      52.8800      285.645
+;=====================================================================
+PRINT,';  ', tparc_s[good_ex10], tperc_s[good_ex10], tparh_s[good_ex10], tperh_s[good_ex10]
+PRINT,';  ', tparc_e[good_ex10], tperc_e[good_ex10], tparh_e[good_ex10], tperh_e[good_ex10]
+;=====================================================================
+;        57.0490      51.6320      245.260      302.771
+;        56.8870      50.8760      248.553      304.191
+;=====================================================================
+PRINT,';  ', rhoe_s[good_ex10], betapacs[good_ex10], qmag_s[good_ex10]*1d-3
+PRINT,';  ', rhoe_e[good_ex10], betapace[good_ex10], qmag_e[good_ex10]*1d-3
+;=====================================================================
+;        1.16832     0.761700       476.07391
+;        1.14157     0.724100       497.07875
+;=====================================================================
+PRINT,';  ', teti_s[good_ex10], tehc_avs[good_ex10], thc_pars[good_ex10]
+PRINT,';  ', teti_e[good_ex10], tehc_ave[good_ex10], thc_pare[good_ex10]
+;=====================================================================
+;       0.689737      5.30710      4.29911
+;       0.678638      5.40176      4.36924
+;=====================================================================
+PRINT,';  ', tanis_cs[good_ex10], tanis_hs[good_ex10], thc_pers[good_ex10]
+PRINT,';  ', tanis_ce[good_ex10], tanis_he[good_ex10], thc_pere[good_ex10]
+;=====================================================================
+;       0.905047      1.23449      5.86402
+;       0.894334      1.22385      5.97907
+;=====================================================================
+
+
+;---------------------------------------------------------------------
+; => Results for 2000-02-11/23:33:56.703
+;---------------------------------------------------------------------
+PRINT,';  ', wcp[good_ex20], wlh[good_ex20], wce[good_ex20]
+;=====================================================================
+;         1.5083208       64.632500       2769.5073
+;=====================================================================
+PRINT,';  ', vti_s[good_ex20]*1d-3, vte_s[good_ex20]*1d-3, v_a_s[good_ex20]
+PRINT,';  ', vti_e[good_ex20]*1d-3, vte_e[good_ex20]*1d-3, v_a_e[good_ex20]
+;=====================================================================
+;         75.755013       4563.8405       89.869909
+;         75.755013       4454.5175       81.705244
+;=====================================================================
+PRINT,';  ', dens_s[good_ex20], bmag_s[good_ex20], vmag_s[good_ex20]
+PRINT,';  ', dens_e[good_ex20], bmag_e[good_ex20], vmag_e[good_ex20]
+;=====================================================================
+;        16.0290      16.4957      585.860
+;        16.0290      14.9971      585.860
+;=====================================================================
+PRINT,';  ', tiavg_s[good_ex20], teavg_s[good_ex20], tecavg_s[good_ex20], tehavg_s[good_ex20]
+PRINT,';  ', tiavg_e[good_ex20], teavg_e[good_ex20], tecavg_e[good_ex20], tehavg_e[good_ex20]
+;=====================================================================
+;        29.9550      59.2100      35.9590      259.825
+;        29.9550      56.4080      35.1290      257.425
+;=====================================================================
+PRINT,';  ', tparc_s[good_ex20], tperc_s[good_ex20], tparh_s[good_ex20], tperh_s[good_ex20]
+PRINT,';  ', tparc_e[good_ex20], tperc_e[good_ex20], tparh_e[good_ex20], tperh_e[good_ex20]
+;=====================================================================
+;        37.7170      35.0790      270.664      254.406
+;        37.0560      34.1660      258.515      256.880
+;=====================================================================
+PRINT,';  ', rhoe_s[good_ex20], betapacs[good_ex20], qmag_s[good_ex20]*1d-3
+PRINT,';  ', rhoe_e[good_ex20], betapace[good_ex20], qmag_e[good_ex20]*1d-3
+;=====================================================================
+;        1.57304     0.894700       85.534422
+;        1.68878      1.06350       109.33757
+;=====================================================================
+PRINT,';  ', teti_s[good_ex20], tehc_avs[good_ex20], thc_pars[good_ex20]
+PRINT,';  ', teti_e[good_ex20], tehc_ave[good_ex20], thc_pare[good_ex20]
+;=====================================================================
+;        1.97663      7.22559      7.17618
+;        1.88309      7.32799      6.97633
+;=====================================================================
+PRINT,';  ', tanis_cs[good_ex20], tanis_hs[good_ex20], thc_pers[good_ex20]
+PRINT,';  ', tanis_ce[good_ex20], tanis_he[good_ex20], thc_pere[good_ex20]
+;=====================================================================
+;       0.930058     0.939933      7.25237
+;       0.922010     0.993675      7.51859
+;=====================================================================
+
+
+;-----------------------------------------------------------------------------------------
+; => Plot correlations
+;-----------------------------------------------------------------------------------------
+evns_lhw   = [00010618L,00010684L,02013066L,02014864L,02015635L,02015691L,$
+              02017428L,02018091L,27126767L,27127153L,27127228L,27127757L,$
+              27128778L,27128936L,27128950L,27128986L,27128990L,27129174L,$
+              27129566L,27129583L,27130144L,27133978L,27133987L]
+good_lhw   = array_where(evns,evns_lhw,/N_UNIQ)
+good_lhw   = good_lhw[*,0]
+PRINT,';  ', N_ELEMENTS(good_lhw)
+;            53
+
+
+evns_whi   = [00010807L,00010832L,00010868L,00010881L,00010888L,00010895L,$
+              00010923L,00010937L,23145603L,23145610L,23153276L,23154909L,$
+              23155087L,27126638L,27134252L]
+good_whi   = array_where(evns,evns_whi,/N_UNIQ)
+good_whi   = good_whi[*,0]
+PRINT,';  ', N_ELEMENTS(good_whi)
+;           138
+
+
+evns_mix   = [02011723L,02011820L,02013165L,02015299L,02015304L,02015650L,$
+              02017555L,23145474L,23145484L]
+good_mix   = array_where(evns,evns_mix,/N_UNIQ)
+good_mix   = good_mix[*,0]
+PRINT,';  ', N_ELEMENTS(good_mix)
+;           148
+
+; => use the SC frame filter values to separate high from low
+test_high  = (freql[good_mix] GT wlh[good_mix]/(2d0*!DPI)) AND $
+             (freqh[good_mix] GT 40d0)
+good_high  = WHERE(test_high,gdhg,COMPLEMENT=good_low,NCOMPLEMENT=gdlw)
+PRINT,';  ',  gdhg, gdlw
+;           110          38
+good_mixlw = good_mix[good_low]
+good_mixhg = good_mix[good_high]
+
+
+
+WINDOW,0,RETAIN=2
+WINDOW,1,RETAIN=2
+WINDOW,2,RETAIN=2
+WINDOW,3,RETAIN=2
+
+ydat      = filtamp
+yttl      = '!7d!3'+'B [nT, filtered]'
+pref      = 'Filtered-Wave-Amplitudes_'
+yra_lhw   = [3e-2,1e1]
+yra_whi   = [3e-2,1e1]
+yra_mix   = [3e-2,1e1]
+yra_suff  = '_YRA-0.03-10.0'
+;yra_lhw   = [1e-1,5e0]
+;yra_whi   = [3e-2,5e0]
+;yra_mix   = [8e-2,1e1]
+
+; => |qe| [keV km/s cm^(-3)]
+xdat      = qmag*1d-3  
+xttl      = '|q!De!N'+'| [keV km/s cm!U-3!N'+']'
+fsuffx    = 'vs_heat-flux-magnitude'
+xra_lhw   = [5e1,1e3]
+xra_whi   = [5e1,1e3]
+xra_mix   = [5e1,1e3]
+xra_suff  = '_XRA-50.0-1000.0'
+;xra_lhw   = [2e2,1e3]
+;xra_whi   = [5e1,75e1]
+;xra_mix   = [5e1,6e2]
+xlog      = 0
+
+; => |Teh/Tec| [unitless]
+xdat      = tehc_avg
+xttl      = '(T!Deh!N'+'/T!Dec!N'+') [unitless]'
+fsuffx    = 'vs_Te-Avg_Halo-to-Core-Ratio'
+xra_lhw   = [3e0,9e0]
+xra_whi   = [3e0,9e0]
+xra_mix   = [3e0,9e0]
+xra_suff  = '_XRA-3.0-9.0'
+xlog      = 0
+
+; => |∆(Teh/Tec)| [unitless]
+xdat      = ABS(tehc_ave - tehc_avs)
+xttl      = '|'+'!7D!3'+'(T!Deh!N'+'/T!Dec!N'+')| [unitless]'
+fsuffx    = 'vs_Abs-dTe-Avg_Halo-to-Core-Ratio'
+xra_lhw   = [1e-5,3e-1]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_1.0E-5_3.0E-1'
+xlog      = 1
+
+; => ∆(Teh/Tec) [unitless]
+xdat      = (tehc_ave - tehc_avs)
+xttl      = '!7D!3'+'(T!Deh!N'+'/T!Dec!N'+') [unitless]'
+fsuffx    = 'vs_dTe-Avg_Halo-to-Core-Ratio'
+xra_lhw   = [-1e0,1e0]*13e-2
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_-0.13_0.13'
+xlog      = 0
+
+; => |∆Bo/∆Ln| [nT/km]
+dist_3d   = ABS(dist_re - dist_rs) # REPLICATE(1d0,3)
+delxyz    = (magf_e - magf_s)/dist_3d
+xdat      = SQRT(TOTAL(delxyz^2,2L,/NAN))
+xttl      = '|'+'!7D!3'+'B!Do!N'+'|/!7D!3'+'L!Dn!N  [nT/km, Vector Diff.]'
+fsuffx    = 'vs_dBo-dLn'
+xra_lhw   = [4e-4,4e-2]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_4.0E-4_4.0E-2'
+xlog      = 1
+
+; => |∆ne/∆Ln| [m^(-3)/km]
+xdat      = (ABS(dens_e - dens_s)/ABS(dist_re - dist_rs))*1d6
+xttl      = '|'+'!7D!3'+'n!De!N'+'|/!7D!3'+'L!Dn!N  [m!U-3!N km!U-1!N'+']'
+fsuffx    = 'vs_dne-dLn'
+xra_lhw   = [1e0,3e2]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_1.0-300.0'
+xlog      = 1
+
+; => |(∆Bo)| [nT]
+delxyz    = magf_e - magf_s
+xdat      = SQRT(TOTAL(delxyz^2,2L,/NAN))
+xttl      = '|'+'!7D!3'+'B!Do!N'+'|  [nT, Vector Diff.]'
+fsuffx    = 'vs_Abs-dBo'
+xra_lhw   = [1e-1,3e1]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_0.1-30.0'
+xlog      = 1
+
+; => |∆Te| [eV]
+xdat      = ABS(teavg_e - teavg_s)
+xttl      = '|'+'!7D!3'+'T!De!N'+'| [All Electrons, eV]'
+fsuffx    = 'vs_Abs-dTe-Avg'
+xra_lhw   = [2e-3,5e0]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_0.002-5.0'
+xlog      = 1
+
+; => |∆Tec| [eV]
+xdat      = ABS(tecavg_e - tecavg_s)
+xttl      = '|'+'!7D!3'+'T!Dec!N'+'| [Core Electrons, eV]'
+fsuffx    = 'vs_Abs-dTe-Avg-Core'
+xra_lhw   = [1e-3,5e0]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_0.001-5.0'
+xlog      = 1
+
+; => |∆Teh| [eV]
+xdat      = ABS(tehavg_e - tehavg_s)
+xttl      = '|'+'!7D!3'+'T!Deh!N'+'| [Halo Electrons, eV]'
+fsuffx    = 'vs_Abs-dTe-Avg-Halo'
+xra_lhw   = [1e-3,5e0]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_0.001-5.0'
+xlog      = 1
+
+; => |∆Ti| [eV]
+xdat      = ABS(tiavg_e - tiavg_s)
+xttl      = '|'+'!7D!3'+'T!Di!N'+'| [eV]'
+fsuffx    = 'vs_Abs-dTi'
+xra_lhw   = [1e-2,5e0]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_0.01-5.0'
+xlog      = 1
+
+; => (∆Ti) [eV]
+xdat      = (tiavg_e - tiavg_s)
+xttl      = '|'+'!7D!3'+'T!Di!N'+'| [eV]'
+fsuffx    = 'vs_dTi'
+xra_lhw   = [-1e0,1e0]*25e-1
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_-2.5_2.5'
+xlog      = 0
+
+; => |∆Tpara|_he [eV]
+xdat      = ABS(tparh_e - tparh_s)
+xttl      = '|'+'!7D!3'+'(T!D!9#!3'+'!N'+')| [Halo Electrons, eV]'
+fsuffx    = 'vs_Abs-dTpara-he'
+xra_lhw   = [5e-3,25e0]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_0.01-5.0'
+xlog      = 1
+
+; => (∆Tpara)_he [eV]
+xdat      = (tparh_e - tparh_s)
+xttl      = '!7D!3'+'(T!D!9#!3'+'!N'+') [Halo Electrons, eV]'
+fsuffx    = 'vs_dTpara-he'
+xra_lhw   = [-1e0,1e0]*21e0
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_-21.0_21.0'
+xlog      = 0
+
+; => |∆Tperp|_he [eV]
+xdat      = ABS(tperh_e - tperh_s)
+xttl      = '|'+'!7D!3'+'(T!D!9x!3'+'!N'+')| [Halo Electrons, eV]'
+fsuffx    = 'vs_Abs-dTperp-he'
+xra_lhw   = [1e-3,1e1]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_0.001-10.0'
+xlog      = 1
+
+; => (∆Tperp)_he [eV]
+xdat      = (tperh_e - tperh_s)
+xttl      = '!7D!3'+'(T!D!9x!3'+'!N'+') [Halo Electrons, eV]'
+fsuffx    = 'vs_dTperp-he'
+xra_lhw   = [-1e0,1e0]*8e0
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_-8.0_8.0'
+xlog      = 0
+
+; => |∆(Tperp/Tpara)|_ce [unitless]
+xdat      = ABS(tanis_ce - tanis_cs)
+xttl      = '|'+'!7D!3'+'(T!D!9x!3'+'!N'+'/T!D!9#!3'+'!N'+')| [Core Electrons, unitless]'
+fsuffx    = 'vs_Abs-dTanis-Core'
+xra_lhw   = [5e-6,1e-1]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_5.0E-6_1.0E-1'
+xlog      = 1
+
+; => |∆(Tperp/Tpara)|_he [unitless]
+xdat      = ABS(tanis_he - tanis_hs)
+xttl      = '|'+'!7D!3'+'(T!D!9x!3'+'!N'+'/T!D!9#!3'+'!N'+')| [Halo Electrons, unitless]'
+fsuffx    = 'vs_Abs-dTanis-Halo'
+xra_lhw   = [2e-5,2e-1]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_2.0E-5_2.0E-1'
+xlog      = 1
+
+; => |∆j| [µA m^(-2)]
+jdrft_s   = (dens_s # REPLICATE(1d0,3))*vdrft_s*(qq[0]*1d3*1d6)
+jdrft_e   = (dens_e # REPLICATE(1d0,3))*vdrft_e*(qq[0]*1d3*1d6)
+delxyz    = jdrft_e - jdrft_s
+xdat      = SQRT(TOTAL(delxyz^2,2L,/NAN))*1d6
+xttl      = '|'+'!7D!3'+'[e n!De!N (V!Di!N - V!De!N'+')]'+'|  [!7l!3'+'A m!U-2!N'+']'
+fsuffx    = 'vs_Abs-djdrift-Avg'
+xra_lhw   = [5e-4,3e-1]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_5.0E-4_3.0E-1'
+xlog      = 1
+
+; => |∆(µj ∆Ln)| [nT]
+dist_3d   = (ABS(dist_re - dist_rs) # REPLICATE(1d0,3))*1d3
+curlB_s   = (dens_s # REPLICATE(1d0,3))*vdrft_s*dist_3d*(muo[0]*qq[0]*1d3*1d6)
+curlB_e   = (dens_e # REPLICATE(1d0,3))*vdrft_e*dist_3d*(muo[0]*qq[0]*1d3*1d6)
+delxyz    = (curlB_e - curlB_s)*1d9
+xdat      = SQRT(TOTAL(delxyz^2,2L,/NAN))
+ttsuf     = ' !7D!3'+'L!Dn!N'+'|  [nT]'
+xttl      = '!7l!3'+'!Do!N'+'e |'+'!7D!3'+'[n!De!N (V!Di!N - V!De!N'+')]'+ttsuf[0]
+fsuffx    = 'vs_Abs-dj-dLn-Avg'
+xra_lhw   = [5e-1,3e2]
+xra_whi   = xra_lhw
+xra_mix   = xra_lhw
+xra_suff  = '_XRA_5.0E-1_300.0'
+xlog      = 1
+
+
+
+
+unq_lhw   = UNIQ(xdat[good_lhw],SORT(xdat[good_lhw]))
+ugood_lhw = good_lhw[unq_lhw]
+unq_whi   = UNIQ(xdat[good_whi],SORT(xdat[good_whi]))
+ugood_whi = good_whi[unq_whi]
+;unq_mix   = UNIQ(evns[good_mix],SORT(evns[good_mix]))
+;ugood_mix = good_mix[unq_mix]
+unq_mix   = UNIQ(xdat[good_mix],SORT(xdat[good_mix]))
+ugood_mix = good_mix[unq_mix]
+unq_mxl   = UNIQ(xdat[good_mixlw],SORT(xdat[good_mixlw]))
+ugood_mxl = good_mixlw[unq_mxl]
+unq_mxh   = UNIQ(xdat[good_mixhg],SORT(xdat[good_mixhg]))
+ugood_mxh = good_mixhg[unq_mxh]
+
+
+
+gels      = good_lhw
+PRINT, minmax(xdat[gels])
+gels      = good_whi
+PRINT, minmax(xdat[gels])
+gels      = good_mix
+PRINT, minmax(xdat[gels])
+
+
+yra       = yra_lhw
+xra       = xra_lhw
+ttle      = 'Lower Hybrid Filtered Amplitudes'
+f_suff    = '_LHW'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+gels      = good_lhw
+ugels     = ugood_lhw
+WSET,0
+PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+  FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+    test = WHERE(xdat EQ xdat[ugels[j]])                                     & $
+    vals = [MEAN(ydat[test],/NAN),MIN(ydat[test],/NAN),MAX(ydat[test],/NAN)] & $
+    OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+    ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+
+yra       = yra_whi
+xra       = xra_whi
+ttle      = 'Whistler Filtered Amplitudes'
+f_suff    = '_WW'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+gels      = good_whi
+ugels     = ugood_whi
+WSET,1
+PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+  FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+    test = WHERE(xdat EQ xdat[ugels[j]])                                     & $
+    vals = [MEAN(ydat[test],/NAN),MIN(ydat[test],/NAN),MAX(ydat[test],/NAN)] & $
+    OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+    ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+
+yra       = yra_mix
+xra       = xra_mix
+ttle      = 'MIXED Filtered Amplitudes [All Frequencies]'
+f_suff    = '_MIXED_All'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+gels      = good_mix
+ugels     = ugood_mix
+WSET,2
+PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+  FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+    test = WHERE(xdat EQ xdat[ugels[j]])                                     & $
+    vals = [MEAN(ydat[test],/NAN),MIN(ydat[test],/NAN),MAX(ydat[test],/NAN)] & $
+    OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+    ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+
+
+yra       = yra_mix
+xra       = xra_mix
+ttle      = 'MIXED Filtered Amplitudes [Low Frequencies]'
+f_suff    = '_MIXED_Low'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+gels      = good_mixlw
+ugels     = ugood_mxl
+WSET,2
+PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+  FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+    test = WHERE(xdat[gels] EQ xdat[ugels[j]])                               & $
+    ytst = ydat[gels[test]]                                                  & $
+    vals = [MEAN(ytst,/NAN),MIN(ytst,/NAN),MAX(ytst,/NAN)]                   & $
+    OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+    ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+
+
+yra       = yra_mix
+xra       = xra_mix
+ttle      = 'MIXED Filtered Amplitudes [High Frequencies]'
+f_suff    = '_MIXED_High'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+gels      = good_mixhg
+ugels     = ugood_mxh
+WSET,3
+PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+  FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+    test = WHERE(xdat[gels] EQ xdat[ugels[j]])                               & $
+    ytst = ydat[gels[test]]                                                  & $
+    vals = [MEAN(ytst,/NAN),MIN(ytst,/NAN),MAX(ytst,/NAN)]                   & $
+    OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+    ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+
+
+;---------------------------------------------------------------------
+; => Save Plots
+;---------------------------------------------------------------------
+out_str   = 'Output at:  '
+
+yra       = yra_lhw
+xra       = xra_lhw
+ttle      = 'Lower Hybrid Filtered Amplitudes'
+f_suff    = '_LHW'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+unq_lhw   = UNIQ(xdat[good_lhw],SORT(xdat[good_lhw]))
+ugood_lhw = good_lhw[unq_lhw]
+gels      = good_lhw
+ugels     = ugood_lhw
+; => Lower Hybrid Modes
+fname     = pref[0]+fsuffx[0]+xra_suff[0]+yra_suff[0]+f_suff[0]
+popen,fname[0],/LAND
+  PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+    FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+      test = WHERE(xdat EQ xdat[ugels[j]])                                     & $
+      vals = [MEAN(ydat[test],/NAN),MIN(ydat[test],/NAN),MAX(ydat[test],/NAN)] & $
+      OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+      ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+      tout = time_string(SYSTIME(1,/SECONDS),PREC=3)
+      vers = out_str[0]+tout[0]
+      XYOUTS,0.300,-0.05,vers[0],CHARSIZE=.55,/NORMAL,ORIENTATION=0.
+pclose
+
+
+yra       = yra_whi
+xra       = xra_whi
+ttle      = 'Whistler Filtered Amplitudes'
+f_suff    = '_WW'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+unq_whi   = UNIQ(xdat[good_whi],SORT(xdat[good_whi]))
+ugood_whi = good_whi[unq_whi]
+gels      = good_whi
+ugels     = ugood_whi
+; => Whistler Modes
+fname     = pref[0]+fsuffx[0]+xra_suff[0]+yra_suff[0]+f_suff[0]
+popen,fname[0],/LAND
+  PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+    FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+      test = WHERE(xdat EQ xdat[ugels[j]])                                     & $
+      vals = [MEAN(ydat[test],/NAN),MIN(ydat[test],/NAN),MAX(ydat[test],/NAN)] & $
+      OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+      ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+      tout = time_string(SYSTIME(1,/SECONDS),PREC=3)
+      vers = out_str[0]+tout[0]
+      XYOUTS,0.300,-0.05,vers[0],CHARSIZE=.55,/NORMAL,ORIENTATION=0.
+pclose
+
+
+yra       = yra_mix
+xra       = xra_mix
+ttle      = 'MIXED Filtered Amplitudes [All Frequencies]'
+f_suff    = '_MIXED_All'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+unq_mix   = UNIQ(xdat[good_mix],SORT(xdat[good_mix]))
+ugood_mix = good_mix[unq_mix]
+gels      = good_mix
+ugels     = ugood_mix
+; => MIXED Modes [All Frequencies]
+fname     = pref[0]+fsuffx[0]+xra_suff[0]+yra_suff[0]+f_suff[0]
+popen,fname[0],/LAND
+  PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+    FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+      test = WHERE(xdat EQ xdat[ugels[j]])                                     & $
+      vals = [MEAN(ydat[test],/NAN),MIN(ydat[test],/NAN),MAX(ydat[test],/NAN)] & $
+      OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+      ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+      tout = time_string(SYSTIME(1,/SECONDS),PREC=3)
+      vers = out_str[0]+tout[0]
+      XYOUTS,0.300,-0.05,vers[0],CHARSIZE=.55,/NORMAL,ORIENTATION=0.
+pclose
+
+
+yra       = yra_mix
+xra       = xra_mix
+ttle      = 'MIXED Filtered Amplitudes [Low Frequencies]'
+f_suff    = '_MIXED_Low'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+unq_mxl   = UNIQ(xdat[good_mixlw],SORT(xdat[good_mixlw]))
+ugood_mxl = good_mixlw[unq_mxl]
+gels      = good_mixlw
+ugels     = ugood_mxl
+; => MIXED Modes [Low Frequencies]
+fname     = pref[0]+fsuffx[0]+xra_suff[0]+yra_suff[0]+f_suff[0]
+popen,fname[0],/LAND
+  PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+    FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+      test = WHERE(xdat[gels] EQ xdat[ugels[j]])                               & $
+      ytst = ydat[gels[test]]                                                  & $
+      vals = [MEAN(ytst,/NAN),MIN(ytst,/NAN),MAX(ytst,/NAN)]                   & $
+      OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+      ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+      tout = time_string(SYSTIME(1,/SECONDS),PREC=3)
+      vers = out_str[0]+tout[0]
+      XYOUTS,0.300,-0.05,vers[0],CHARSIZE=.55,/NORMAL,ORIENTATION=0.
+pclose
+
+
+yra       = yra_mix
+xra       = xra_mix
+ttle      = 'MIXED Filtered Amplitudes [High Frequencies]'
+f_suff    = '_MIXED_High'
+pstr      = {NODATA:1,XLOG:xlog,YLOG:1,YRANGE:yra,XRANGE:xra,XSTYLE:1,YSTYLE:1,$
+             XTITLE:xttl,YTITLE:yttl,TITLE:ttle}
+unq_mxh   = UNIQ(xdat[good_mixhg],SORT(xdat[good_mixhg]))
+ugood_mxh = good_mixhg[unq_mxh]
+gels      = good_mixhg
+ugels     = ugood_mxh
+; => MIXED Modes [High Frequencies]
+fname     = pref[0]+fsuffx[0]+xra_suff[0]+yra_suff[0]+f_suff[0]
+popen,fname[0],/LAND
+  PLOT,xdat[gels],ydat[gels],_EXTRA=pstr
+    FOR j=0L, N_ELEMENTS(ugels) - 1L DO BEGIN                                    $
+      test = WHERE(xdat[gels] EQ xdat[ugels[j]])                               & $
+      ytst = ydat[gels[test]]                                                  & $
+      vals = [MEAN(ytst,/NAN),MIN(ytst,/NAN),MAX(ytst,/NAN)]                   & $
+      OPLOT,[xdat[ugels[j]]],[vals[0]],PSYM=6,COLOR=250                        & $
+      ERRPLOT,[xdat[ugels[j]]],[vals[1]],[vals[2]],/DATA,COLOR= 50
+      tout = time_string(SYSTIME(1,/SECONDS),PREC=3)
+      vers = out_str[0]+tout[0]
+      XYOUTS,0.300,-0.05,vers[0],CHARSIZE=.55,/NORMAL,ORIENTATION=0.
+pclose
+
+
+
+
+
+
+
+
+
+

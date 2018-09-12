@@ -1,0 +1,553 @@
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+beta_fac = 1d6*(kB*K_eV)*(2d0*muo)
+wpefac = SQRT(1d6*qq^2/me/epo)
+wppfac = SQRT(1d6*qq^2/mp/epo)
+fcefac  = qq/me*1d-9/(2d0*!DPI)
+fpefac  = SQRT(1d6*qq^2/me/epo)/(2d0*!DPI)
+R_E     = 6.37814d3                ; => Earth's Equitorial Radius (km)
+
+;-----------------------------------------------------------------------------------------
+; => Time Ranges and dates
+;-----------------------------------------------------------------------------------------
+date        = '111398'
+temp        = orbit_region_time_range(DATE=date[0])
+t_orbit_all = temp.ENTIRE_ORBIT
+t_outer_mag = temp.MAGNETOSPHERE
+t_rad_belts = temp.RADIATION_BELTS
+;-----------------------------------------------------------------------------------------
+; => Format dates
+;-----------------------------------------------------------------------------------------
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate  = mydate.DATE[0]    ; -('YYYYMMDD')
+ldate  = STRMID(mdate,4L,4L)+STRMID(mdate,0L,4L)
+tdate  = mydate.TDATE[0]
+;-----------------------------------------------------------------------------------------
+; => Load MFI data
+;-----------------------------------------------------------------------------------------
+mag3   = read_wind_mfi_ascii_magneto(DATE=date)
+t3x    = mag3.MAG.X
+bmag4  = mag3.MAG.Y
+magf4  = mag3.BGSE.Y
+nt     = N_ELEMENTS(t3x) 
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+tplot_options,'xmargin',[18,12]
+tplot_options,'ymargin',[5,5]
+tplot,nn0,TRANGE=tr3
+
+fce   = fcefac[0]*bmag4*1d-3
+store_data,'fce',DATA={X:mag3.MAG.X,Y:fce}
+options,'fce','YTITLE','f!Dce!N (kHz)'
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+
+; => Add zero-line and |B| to plots
+zero  = REPLICATE(0e0,nt)
+magf5 = mag3.BGSM.Y
+data  = [[magf4],[bmag4],[zero]]
+ymxe  = MAX(ABS(data),/NAN)
+store_data,'B3_GSE_mag',DATA={X:t3x,Y:data}
+data  = [[magf5],[bmag4],[zero]]
+ymxm  = MAX(ABS(data),/NAN)
+store_data,'B3_GSM_mag',DATA={X:t3x,Y:data}
+ymx   = MAX([ymxe,ymxm],/NAN)*1.01
+options,['B3_GSE_mag','B3_GSM_mag'],'YRANGE',[-1.*ymx[0],ymx[0]]
+options,['B3_GSE_mag','B3_GSM_mag'],'COLORS',[250,150,50,0,0]
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => TDS times
+;-----------------------------------------------------------------------------------------
+lshell     = 15.
+test_wh    = all_stats_all_waves_read(/NO_INCOMP,WAVET='Whistlers',REGION='magneto',LSHELL=lshell[0])
+wscets     = STRTRIM(test_wh.SCETS,2)
+wunix      = time_double(wscets)
+trmag      = time_double(t_outer_mag)
+good       = WHERE(wunix LE trmag[1] AND wunix GE trmag[0],gd)
+unix_whist = wunix[good]
+
+
+;-----------------------------------------------------------------------------------------
+; => Load orbit data
+;-----------------------------------------------------------------------------------------
+tds_magneto_orbits,DATE=date,BNAME='wi_B3(GSE)'
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+tplot_options, var_label=['Wind_Radial_Distance','Wind_L-Shell','Wind_MLT']
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+;-----------------------------------------------------------------------------------------
+; => Restore distributions to IDL
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+
+mfiles = FILE_SEARCH(mdir,'*.sav')
+;-----------------------------------
+; => Look at SST Moments
+;-----------------------------------
+RESTORE,mfiles[2]
+
+all_sf           = asf
+all_so           = aso
+
+sf_corrupt_abins = [7,8,9,15,31,32,33]
+gbins            = BYTARR(48) + 1
+gbins[sf_corrupt_abins] = 0b
+
+get_spec,'sf',NAME='sfspec_raw_flux',UNITS='flux',DAT_ARR=all_sf
+get_spec,'sf',NAME='sfspec_corrected_flux',UNITS='flux',DAT_ARR=all_sf,BINS=gbins
+get_data,'sfspec_raw_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+sp = SORT(test0.X)
+test0.X = test0.X[sp]
+test0.Y = test0.Y[sp,*]
+test0.V = test0.V[sp,*]
+store_data,'sfspec_raw_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+get_data,'sfspec_corrected_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+sp = SORT(test0.X)
+test0.X = test0.X[sp]
+test0.Y = test0.Y[sp,*]
+test0.V = test0.V[sp,*]
+store_data,'sfspec_corrected_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+
+colors = LINDGEN(7L)*(250L - 30L)/(7L - 1L) + 30L
+options,['sfspec_raw_flux','sfspec_corrected_flux'],'COLORS',colors
+;options,['sfspec_raw_flux','sfspec_corrected_flux'],'COLORS',REVERSE(colors)
+
+get_spec,'so',NAME='sospec_raw_flux',UNITS='flux',DAT_ARR=all_so
+colors = LINDGEN(9L)*(250L - 30L)/(9L - 1L) + 30L
+options,'sospec_raw_flux','COLORS',colors
+;options,'sospec_raw_flux','COLORS',REVERSE(colors)
+get_data,'sospec_raw_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+sp = SORT(test0.X)
+test0.X = test0.X[sp]
+test0.Y = test0.Y[sp,*]
+test0.V = test0.V[sp,*]
+store_data,'sospec_raw_flux',DATA=test0,DLIM=dlim0,LIM=lim0
+;-----------------------------------
+; => Fix Y-Axis Tick marks
+;-----------------------------------
+ytnpw   = ['10!U-30!N','10!U-29!N','10!U-28!N','10!U-27!N','10!U-26!N','10!U-25!N',$
+           '10!U-24!N','10!U-23!N','10!U-22!N','10!U-21!N','10!U-20!N','10!U-19!N',$
+           '10!U-18!N','10!U-17!N','10!U-16!N','10!U-15!N','10!U-14!N','10!U-13!N',$
+           '10!U-12!N','10!U-11!N','10!U-10!N','10!U-09!N','10!U-08!N','10!U-07!N',$
+           '10!U-06!N','10!U-05!N','10!U-04!N','10!U-03!N','10!U-02!N','10!U-01!N',$
+           '10!U+00!N','10!U+01!N','10!U+02!N','10!U+03!N','10!U+04!N','10!U+05!N',$
+           '10!U+06!N','10!U+07!N','10!U+08!N','10!U+09!N','10!U+10!N','10!U+11!N',$
+           '10!U+12!N','10!U+13!N']
+ytvpw   = [1e-30,1e-29,1e-28,1e-27,1e-26,1e-25,1e-24,1e-23,1e-22,1e-21,1e-20,1e-19,  $
+           1e-18,1e-17,1e-16,1e-15,1e-14,1e-13,1e-12,1e-11,1e-10,1e-9,1e-8,1e-7,1e-6,$
+           1e-5,1e-4,1e-3,1e-2,1e-1,1e0,1e1,1e2,1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10,    $
+           1e11,1e12,1e13]
+
+; => Force Y-Axis ranges within the following time range
+t       = ['1998-11-13/13:00:00','1998-11-14/02:00:00']
+tg      = time_double(t)
+
+get_data,'sfspec_raw_flux',DATA=test0
+get_data,'sfspec_corrected_flux',DATA=test1
+bad0  = WHERE(test0.Y LE 0.,bd0)
+bad1  = WHERE(test1.Y LE 0.,bd1)
+good0 = WHERE(test0.X GE tg[0] AND test0.X LE tg[1],gd0)
+good1 = WHERE(test1.X GE tg[0] AND test1.X LE tg[1],gd1)
+IF (bd0 GT 0) THEN bind0 = ARRAY_INDICES(test0.Y,bad0)
+IF (bd1 GT 0) THEN bind1 = ARRAY_INDICES(test1.Y,bad1)
+IF (bd0 GT 0) THEN test0.Y[bind0[0,*],bind0[1,*]] = f
+IF (bd1 GT 0) THEN test1.Y[bind1[0,*],bind1[1,*]] = f
+
+nna   = ['sfspec_raw_flux','sfspec_corrected_flux']
+ymin  = MIN([test0.Y[good0,*],test1.Y[good1,*]],/NAN)/1.05
+ymax  = MAX([test0.Y[good0,*],test1.Y[good1,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+get_data,'sospec_raw_flux',DATA=test0
+bad0  = WHERE(test0.Y LE 0.,bd0)
+good0 = WHERE(test0.X GE tg[0] AND test0.X LE tg[1],gd0)
+IF (bd0 GT 0) THEN bind0 = ARRAY_INDICES(test0.Y,bad0)
+IF (bd0 GT 0) THEN test0.Y[bind0[0,*],bind0[1,*]] = f
+
+nna   = ['sospec_raw_flux']
+ymin  = MIN([test0.Y[good0,*]],/NAN)/1.05
+ymax  = MAX([test0.Y[good0,*]],/NAN)*1.5
+gynam = WHERE(ytvpw LE ymax AND ytvpw GE ymin,gyn)
+IF (gyn GT 0) THEN options,nna,'YRANGE',[ymin,ymax]
+IF (gyn GT 0) THEN options,nna,'YTICKNAME',ytnpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKV',ytvpw[gynam]
+IF (gyn GT 0) THEN options,nna,'YTICKS',gyn - 1L
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+nnw = tnames('*spec_*')
+options,nnw,'YMINOR',9
+;-----------------------------------------------------------------------------------------
+; => Load WAVES data
+;-----------------------------------------------------------------------------------------
+fl        = 4.
+fh        = 13e3
+yscl      = 'log'
+wave_tnr_rad_to_tplot,DATE=date,FLOW=fl,FHIGH=fh,YSCL=yscl,TRANGE=tr3,/NODCBLS
+
+pref = ['TNR','RAD1','RAD2']
+wnam = tnames(pref[*]+'_'+date[0])
+;options,wnam,'ZTITLE','dB Above'+'!C'+'Background'
+options,wnam,'ZTITLE','!7l!3'+'V/!9S!3'+'(Hz)'
+options,tnames(pref[0]+'_'+date[0]),'YRANGE',[4.00000,245.148]
+;-----------------------------------------------------------------------------------------
+; => Downsample the B-field data
+;-----------------------------------------------------------------------------------------
+t = ['1998-11-13/13:00:00','1998-11-14/02:00:00']
+tlimit,t
+
+magf4    = mag3.BGSE.Y
+magf5    = mag3.BGSM.Y
+PRINT,';  ', nt
+;         24000
+sm_magf4 = REBIN(magf4,8000L,3L)      ; => Downsampled GSE B-field
+sm_magf5 = REBIN(magf5,8000L,3L)      ; => Downsampled GSM B-field
+sm_t3x   = REBIN(t3x,8000L)           ; => Downsampled B-field time stamps
+sm_nt    = N_ELEMENTS(sm_t3x)
+sm_zero  = REPLICATE(0e0,sm_nt)
+
+sm_bmag  = SQRT(TOTAL(sm_magf4^2,2L,/NAN))
+sm_datae = [[sm_magf4],[sm_bmag],[sm_zero]]
+sm_datam = [[sm_magf5],[sm_bmag],[sm_zero]]
+sm_ymxe  = MAX(ABS(sm_datae),/NAN)
+sm_ymxm  = MAX(ABS(sm_datam),/NAN)
+sm_ymx   = MAX([sm_ymxe,sm_ymxm],/NAN)*1.01
+
+store_data,'sm_B3_GSE_mag',DATA={X:sm_t3x,Y:sm_datae}
+store_data,'sm_B3_GSM_mag',DATA={X:sm_t3x,Y:sm_datam}
+options,'sm_'+['B3_GSE_mag','B3_GSM_mag'],'YRANGE',[-1e0,1e0]*sm_ymx[0]
+options,'sm_'+['B3_GSE_mag','B3_GSM_mag'],'COLORS',[250,150,50,0,0]
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Plot results
+;-----------------------------------------------------------------------------------------
+fnm     = file_name_times(t,PREC=0)
+sfname  = fnm.F_TIME[0]+'_'+fnm.F_TIME[1]
+pref    = 'Wind-MFI3s_GSE-GSM-Mag_'
+suffx0  = '_fixed'
+suffx1  = '_no-yrange_fixed'
+labsuff = '_whistlers-red_radbelt-blue_magnetopause-green'
+; Wind-MFI3s_GSE-GSM-Mag_1998-11-13-1300_1998-11-14-0200_fixed
+; Wind-MFI3s_GSE-GSM-Mag_1998-11-13-1300_1998-11-14-0200_no-yrange_fixed
+fname0  = pref[0]+sfname[0]+suffx0[0]+labsuff[0]
+fname1  = pref[0]+sfname[0]+suffx1[0]+labsuff[0]
+
+nn0     = ['B3_GSE_mag','B3_GSM_mag']
+  tplot,nn0,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nn0,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nn0,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nn0,COLOR=150L
+popen,fname0[0],/LAND
+  tplot,nn0,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nn0,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nn0,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nn0,COLOR=150L
+pclose
+
+options,['B3_GSE_mag','B3_GSM_mag'],'YRANGE'
+
+nn0     = ['B3_GSE_mag','B3_GSM_mag']
+  tplot,nn0,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nn0,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nn0,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nn0,COLOR=150L
+popen,fname1[0],/LAND
+  tplot,nn0,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nn0,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nn0,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nn0,COLOR=150L
+pclose
+
+
+pref    = 'Wind-MFI3s_GSE-GSM-Mag_Downsampled_'
+suffx0  = '_fixed'
+suffx1  = '_no-yrange_fixed'
+labsuff = '_whistlers-red_radbelt-blue_magnetopause-green'
+fname0  = pref[0]+sfname[0]+suffx0[0]+labsuff[0]
+fname1  = pref[0]+sfname[0]+suffx1[0]+labsuff[0]
+nn0     = 'sm_'+['B3_GSE_mag','B3_GSM_mag']
+  tplot,nn0,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nn0,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nn0,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nn0,COLOR=150L
+popen,fname0[0],/LAND
+  tplot,nn0,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nn0,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nn0,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nn0,COLOR=150L
+pclose
+
+options,'sm_'+['B3_GSE_mag','B3_GSM_mag'],'YRANGE'
+
+nn0     = 'sm_'+['B3_GSE_mag','B3_GSM_mag']
+  tplot,nn0,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nn0,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nn0,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nn0,COLOR=150L
+popen,fname1[0],/LAND
+  tplot,nn0,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nn0,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nn0,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nn0,COLOR=150L
+pclose
+
+; => Plot SST Fluxes with each
+prefe   = 'Wind-MFI3s_GSE-Mag_Downsampled_'
+prefxe  = prefe[0]+'SST-Foil-Open_Flux_'
+prefm   = 'Wind-MFI3s_GSM-Mag_Downsampled_'
+prefxm  = prefm[0]+'SST-Foil-Open_Flux_'
+suffx1  = '_no-yrange_fixed'
+labsuff = '_whistlers-red_radbelt-blue_magnetopause-green'
+fnamee  = prefxe[0]+sfname[0]+suffx1[0]+labsuff[0]
+fnamem  = prefxm[0]+sfname[0]+suffx1[0]+labsuff[0]
+
+nn0     = 'sm_B3_GSE_mag'
+nna     = [nn0,'sfspec_corrected_flux','sospec_raw_flux']
+  tplot,nna,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nna,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nna,COLOR=150L
+popen,fnamee[0],/LAND
+  tplot,nna,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nna,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nna,COLOR=150L
+pclose
+
+
+nn0     = 'sm_B3_GSM_mag'
+nna     = [nn0,'sfspec_corrected_flux','sospec_raw_flux']
+  tplot,nna,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nna,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nna,COLOR=150L
+popen,fnamem[0],/LAND
+  tplot,nna,TRANGE=time_double(t)
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+  time_bar,time_double(t_rad_belts),VARNAME=nna,COLOR= 50L
+  time_bar,time_double(t_outer_mag),VARNAME=nna,COLOR=150L
+pclose
+;-----------------------------------------------------------------------------------------
+; => bow shock model [Greenstadt et al., [1990,1991]]
+;-----------------------------------------------------------------------------------------
+aterm  = 0.04d0    ; => R_e
+bterm  = 566.4d0   ; => R_e
+cterm  = 304682d0  ; => R_e
+
+dumbx  = DINDGEN(1000)*3d1/999L - 15d0
+ybowp  = SQRT(aterm[0]*((dumbx - bterm[0])^2 - cterm[0]))  ; => positive term
+ybown  = -1d0*ybowp
+zbowp  = SQRT( (aterm[0]*(bterm[0]^2 - cterm[0])) - dumbx^2)
+zbown  = -1d0*zbowp
+
+; => XY-Plane Projection
+xybowx = [dumbx,dumbx]
+xybowy = [ybowp,ybown]
+; => XZ-Plane Projection
+xzbowx = [dumbx,dumbx]
+xzbowy = xybowy             ; => same functional form as Y-projection for XZ-Plane
+; => YZ-Plane Projection
+yzbowx = [dumbx,dumbx]
+yzbowy = [zbowp,zbown]
+;-----------------------------------------------------------------------------------------
+; => Plot orbit
+;-----------------------------------------------------------------------------------------
+tomunx = time_double(t_outer_mag)
+trdunx = time_double(t_rad_belts)
+ang360 = DINDGEN(100)*2d0*!DPI/99L
+circx  = 1d0*COS(ang360)
+circy  = 1d0*SIN(ang360)
+
+WINDOW,1,XSIZE=800,YSIZE=800,RETAIN=2
+R_E     = 6.37814d3                ; => Earth's Equitorial Radius (km)
+get_data,'Wind_GSM_Location',DATA=windgsmloc
+time = windgsmloc.X
+xdat = windgsmloc.Y[*,0]/r_e
+ydat = windgsmloc.Y[*,1]/r_e
+zdat = windgsmloc.Y[*,2]/r_e
+
+
+diff0  = ABS( time - tomunx[0] )
+mndff0 = MIN(diff0,/NAN,ln0)
+diff1  = ABS( time - tomunx[1] )
+mndff1 = MIN(diff1,/NAN,ln1)
+diff2  = ABS( time - trdunx[0] )
+mndff2 = MIN(diff2,/NAN,ln2)
+diff3  = ABS( time - trdunx[1] )
+mndff3 = MIN(diff3,/NAN,ln3)
+
+t    = ['1998-11-13/13:00:00','1998-11-14/02:00:00']
+fnm  = file_name_times(t,PREC=0)
+ftim = STRMID(fnm.F_TIME,11L)
+sfnm = ftim[0]+'-'+ftim[1]
+xra  = [-15.,15.]
+xttl = 'Y-GSM (R!DE!N'+')'
+yttl = 'X-GSM (R!DE!N'+')'
+ttle = 'Wind XY-GSM Orbit on:  '+tdate[0]
+pstr = {XSTYLE:1,YSTYLE:1,XTITLE:xttl[0],YTITLE:yttl[0],NODATA:1,YRANGE:xra,$
+        XRANGE:-1d0*xra,XMINOR:6,XTICKLEN:0.04,YMINOR:6,YTICKLEN:0.04,TITLE:ttle[0]}
+
+WSET,1
+PLOT,ydat,xdat,_EXTRA=pstr
+  OPLOT,ydat,xdat,LINESTYLE=3,COLOR=30
+  OPLOT,circx,circy,LINESTYLE=0,COLOR= 50
+  OPLOT,3*circx,3*circy,LINESTYLE=2,COLOR= 50
+  OPLOT,4*circx,4*circy,LINESTYLE=1,COLOR= 50
+  OPLOT,[ydat[ln0]],[xdat[ln0]],PSYM=2,COLOR=250,SYMSIZE=2.0
+  OPLOT,[ydat[ln1]],[xdat[ln1]],PSYM=4,COLOR=250,SYMSIZE=2.0
+  OPLOT,[ydat[ln2]],[xdat[ln2]],PSYM=5,COLOR=150,SYMSIZE=2.0
+  OPLOT,[ydat[ln3]],[xdat[ln3]],PSYM=5,COLOR=150,SYMSIZE=2.0
+  OPLOT,[0d0,0d0],[xra[0],xra[1]],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[0d0,0d0],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[xra[0],xra[1]],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[xra[1],xra[0]],LINESTYLE=2,COLOR=150
+  ; => Overplot model bow shock
+  OPLOT,xybowy,xybowx,LINESTYLE=1,THICK=2.0,COLOR=200
+
+
+fpref = 'Wind_XY-GSM-Orbit_'+tdate[0]+'_'+sfnm[0]
+popen,fpref[0],/PORT
+PLOT,ydat,xdat,_EXTRA=pstr
+  OPLOT,ydat,xdat,LINESTYLE=3,COLOR=30
+  OPLOT,circx,circy,LINESTYLE=0,COLOR= 50
+  OPLOT,3*circx,3*circy,LINESTYLE=2,COLOR= 50
+  OPLOT,4*circx,4*circy,LINESTYLE=1,COLOR= 50
+  OPLOT,[ydat[ln0]],[xdat[ln0]],PSYM=2,COLOR=250,SYMSIZE=2.0
+  OPLOT,[ydat[ln1]],[xdat[ln1]],PSYM=4,COLOR=250,SYMSIZE=2.0
+  OPLOT,[ydat[ln2]],[xdat[ln2]],PSYM=5,COLOR=150,SYMSIZE=2.0
+  OPLOT,[ydat[ln3]],[xdat[ln3]],PSYM=5,COLOR=150,SYMSIZE=2.0
+  OPLOT,[0d0,0d0],[xra[0],xra[1]],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[0d0,0d0],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[xra[0],xra[1]],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[xra[1],xra[0]],LINESTYLE=2,COLOR=150
+  ; => Overplot model bow shock
+  OPLOT,xybowy,xybowx,LINESTYLE=1,THICK=2.0,COLOR=200
+pclose
+
+
+
+
+get_data,'Wind_GSE_Location',DATA=windgseloc
+time = windgseloc.X
+xdat = windgseloc.Y[*,0]/r_e
+ydat = windgseloc.Y[*,1]/r_e
+zdat = windgseloc.Y[*,2]/r_e
+
+diff0  = ABS( time - tomunx[0] )
+mndff0 = MIN(diff0,/NAN,ln0)
+diff1  = ABS( time - tomunx[1] )
+mndff1 = MIN(diff1,/NAN,ln1)
+
+
+t    = ['1998-11-13/13:00:00','1998-11-14/02:00:00']
+fnm  = file_name_times(t,PREC=0)
+ftim = STRMID(fnm.F_TIME,11L)
+sfnm = ftim[0]+'-'+ftim[1]
+xra  = [-15.,15.]
+xttl = 'Y-GSE (R!DE!N'+')'
+yttl = 'X-GSE (R!DE!N'+')'
+ttle = 'Wind XY-GSE Orbit on:  '+tdate[0]
+pstr = {XSTYLE:1,YSTYLE:1,XTITLE:xttl[0],YTITLE:yttl[0],NODATA:1,YRANGE:xra,$
+        XRANGE:-1d0*xra,XMINOR:6,XTICKLEN:0.04,YMINOR:6,YTICKLEN:0.04,TITLE:ttle[0]}
+
+WSET,1
+PLOT,ydat,xdat,_EXTRA=pstr
+  OPLOT,ydat,xdat,LINESTYLE=3,COLOR=30
+  OPLOT,circx,circy,LINESTYLE=0,COLOR= 50
+  OPLOT,3*circx,3*circy,LINESTYLE=2,COLOR= 50
+  OPLOT,4*circx,4*circy,LINESTYLE=1,COLOR= 50
+  OPLOT,[ydat[ln0]],[xdat[ln0]],PSYM=2,COLOR=250,SYMSIZE=2.0
+  OPLOT,[ydat[ln1]],[xdat[ln1]],PSYM=4,COLOR=250,SYMSIZE=2.0
+  OPLOT,[ydat[ln2]],[xdat[ln2]],PSYM=5,COLOR=150,SYMSIZE=2.0
+  OPLOT,[ydat[ln3]],[xdat[ln3]],PSYM=5,COLOR=150,SYMSIZE=2.0
+  OPLOT,[0d0,0d0],[xra[0],xra[1]],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[0d0,0d0],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[xra[0],xra[1]],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[xra[1],xra[0]],LINESTYLE=2,COLOR=150
+  ; => Overplot model bow shock
+  OPLOT,xybowy,xybowx,LINESTYLE=1,THICK=2.0,COLOR=200
+
+fpref = 'Wind_XY-GSE-Orbit_'+tdate[0]+'_'+sfnm[0]
+popen,fpref[0],/PORT
+PLOT,ydat,xdat,_EXTRA=pstr
+  OPLOT,ydat,xdat,LINESTYLE=3,COLOR=30
+  OPLOT,circx,circy,LINESTYLE=0,COLOR= 50
+  OPLOT,3*circx,3*circy,LINESTYLE=2,COLOR= 50
+  OPLOT,4*circx,4*circy,LINESTYLE=1,COLOR= 50
+  OPLOT,[ydat[ln0]],[xdat[ln0]],PSYM=2,COLOR=250,SYMSIZE=2.0
+  OPLOT,[ydat[ln1]],[xdat[ln1]],PSYM=4,COLOR=250,SYMSIZE=2.0
+  OPLOT,[ydat[ln2]],[xdat[ln2]],PSYM=5,COLOR=150,SYMSIZE=2.0
+  OPLOT,[ydat[ln3]],[xdat[ln3]],PSYM=5,COLOR=150,SYMSIZE=2.0
+  OPLOT,[0d0,0d0],[xra[0],xra[1]],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[0d0,0d0],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[xra[0],xra[1]],LINESTYLE=2,COLOR=150
+  OPLOT,[xra[0],xra[1]],[xra[1],xra[0]],LINESTYLE=2,COLOR=150
+  ; => Overplot model bow shock
+  OPLOT,xybowy,xybowx,LINESTYLE=1,THICK=2.0,COLOR=200
+pclose
+
+
+
+WINDOW,2,XSIZE=1000,YSIZE=800,RETAIN=2
+time_mn = time - MIN(time,/NAN)
+WSET,2
+PLOT,time_mn,xdat,YRANGE=xra,/XSTYLE,/YSTYLE
+  OPLOT,time_mn,ydat,COLOR= 50
+
+
+
+

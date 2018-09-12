@@ -1,0 +1,404 @@
+;;  plot_mva_statistics_precusor_crib.pro
+
+;;  ***  Need to start in SPEDAS mode, not UIDL64  ***
+;;  Compile relevant routines
+@comp_lynn_pros
+thm_init
+
+;;----------------------------------------------------------------------------------------
+;;  Coordinates and vectors
+;;----------------------------------------------------------------------------------------
+;;  Define some coordinate strings
+coord_dsl      = 'dsl'
+coord_gse      = 'gse'
+coord_gsm      = 'gsm'
+coord_fac      = 'fac'
+coord_mag      = 'mag'
+coord_gseu     = STRUPCASE(coord_gse[0])
+vec_str        = ['x','y','z']
+tensor_str     = ['x'+vec_str,'y'+vec_str[1:2],'zz']
+fac_vec_str    = ['perp1','perp2','para']
+fac_dir_str    = ['para','perp','anti']
+vec_col        = [250,150, 50]
+;;  Define spacecraft-specific variables
+sc             = 'Wind'
+scpref         = sc[0]+'_'
+;;----------------------------------------------------------------------------------------
+;;  Initialize and setup
+;;----------------------------------------------------------------------------------------
+@/Users/lbwilson/Desktop/low_beta_Ma_whistlers/crib_sheets/print_ip_shocks_whistler_stats_batch.pro
+;;  Convert zoom times to Unix
+start_unix     = time_double(start_times)
+end___unix     = time_double(end___times)
+midt__unix     = (start_unix + end___unix)/2d0
+;;----------------------------------------------------------------------------------------
+;;  Define time ranges to load into TPLOT
+;;----------------------------------------------------------------------------------------
+delt           = [-1,1]*6d0*36d2        ;;  load ±6 hours about ramp
+@/Users/lbwilson/Desktop/low_beta_Ma_whistlers/crib_sheets/get_ip_shocks_whistler_ramp_times_batch.pro
+
+all_stunix     = tura_mid + delt[0]
+all_enunix     = tura_mid + delt[1]
+all__trans     = [[all_stunix],[all_enunix]]
+nprec          = N_ELEMENTS(tura_mid)
+;;----------------------------------------------------------------------------------------
+;;  Define burst and precursor intervals
+;;----------------------------------------------------------------------------------------
+tran_brsts     = time_string(all__trans,PREC=3)
+tran__subs     = [[prec_st],[prec_en]]
+;;----------------------------------------------------------------------------------------
+;;  Define frequency filter range
+;;----------------------------------------------------------------------------------------
+fran_mods      = REPLICATE(0d0,nprec[0],2L)
+fran_mods[*,0] = 1d-1         ;;  Put lower bound at 100 mHz
+fran_mods[*,1] = 30d0         ;;  Put upper bound well above Nyquist frequency
+special_dates  = ['1998-02-18','1999-08-23','1999-11-05','2000-02-05','2001-03-03','2006-08-19','2008-06-24','2011-02-04','2012-01-21','2013-07-12','2013-10-26','2014-04-19','2014-05-07','2014-05-29']
+special_flow   = [2e-1,1e-1,1e-1,4e-1,2e-1,1e-1,2e-1,2e-1,5e-1,3e-1,3e-1,2e-1,2e-1,2e-1]
+sind           = array_where(tdate_ramps,special_dates,/N_UNIQ)
+sind_f         = REFORM(sind[*,0])
+fran_mods[sind_f] = special_flow
+;;----------------------------------------------------------------------------------------
+;;  Define file name and plot stuff
+;;----------------------------------------------------------------------------------------
+date_in_pre0   = 'EventDate_'+tdate_ramps
+date_in_pre    = 'EventDate_'+tdate_ramps+'_'
+date_mid_0     = 'Event Date: '+tdate_ramps
+date_mid_1     = 'Date: '+tdate_ramps
+scpref0        = sc[0]
+num_ip_str     = num2int_str(nprec[0],NUM_CHAR=3,/ZERO_PAD)
+
+;;  Define tag prefixes
+date_tpre      = 'DATE_'        ;;  Dates
+iint_tpre      = 'INT_'         ;;  precursor time intervals for each date
+fint_tpre      = 'FR_'          ;;  frequency range tags
+;;  Define date and precursor interval tags
+date_tags      = date_tpre[0]+tdate_ramps
+prec_tags      = iint_tpre[0]+'000'
+suffxs         = ', on '+tdate_ramps+', with '+STRUPCASE(scpref0[0])
+;;----------------------------------------------------------------------------------------
+;;  Restore IDL save file containing all "best" MVA results for all burst intervals
+;;----------------------------------------------------------------------------------------
+mva_dir        = slash[0]+'Users'+slash[0]+'lbwilson'+slash[0]+'Desktop'+slash[0]+$
+                 'low_beta_Ma_whistlers'+slash[0]+'mva_sav'+slash[0]
+fname_suff     = 'Filtered_MFI_OnlyBest_MVA_Results.sav'
+fname_out      = STRUPCASE(scpref[0])+'All_'+num_ip_str[0]+'_Precursor_Ints_'+fname_suff[0]             ;;  e.g., 'WIND_All_113_Precursor_Ints_Filtered_MFI_OnlyBest_MVA_Results.sav'
+gfile          = FILE_SEARCH(mva_dir[0],fname_out[0])
+test           = (gfile[0] NE '')
+IF (test[0]) THEN RESTORE,gfile[0]
+;all___mva__res
+;best_subin_res
+;best__mva__res
+;all_polwav_res
+
+;;  Define indices relative to CfA database
+good           = good_y_all0
+gd             = gd_y_all[0]
+ind1           = good_A
+ind2           = good_A[good_y_all0]      ;;  All "good" shocks with whistlers [indices for CfA arrays]
+;;  Define upstream average vectors
+bvecup         = bo_gse_up[ind2,*]
+d_bvecup       = ABS(asy_info_str.MAGF_GSE.DY[ind2,*,0])
+nvecup         = n_gse__up[ind2,*]
+d_nvecup       = ABS(bvn_info_str.SH_N_GSE.DY[ind2,*])
+;;  Define dummy variables
+cnt_by_brst    = 0L
+tot_cnt        = 0L
+FOR kk=0L, nprec[0] - 1L DO BEGIN                                                                           $
+  cnt_by_brst    = 0L                                                                                     & $
+  tr_load        = time_double(REFORM(tran_brsts[kk,*]))                                                  & $   ;;  Define time range [Unix] to load into TPLOT
+  tr_ww_ints     = tran__subs[kk,*]                                                                       & $   ;;  Define array of lion roar interval time ranges [string]
+  tr_ww_pred     = time_double(REFORM(tr_ww_ints,1,2))                                                    & $   ;;  Define precursor interval time ranges [string]
+  fran_int       = REFORM(fran_mods[kk,*])                                                                & $
+  n_ww_ints      = N_ELEMENTS(tr_ww_pred[*,0])                                                            & $
+  int_mid        = 'Int: '+num2int_str(LINDGEN(n_ww_ints[0]),NUM_CHAR=3,/ZERO_PAD)                        & $
+  s_suffxb       = ';  For '+date_mid_0[kk[0]]+suffxs[kk[0]]                                              & $
+  s_suffxi       = ';  For '+date_mid_1[kk[0]]+', '+int_mid+suffxs[kk[0]]                                 & $
+  best_results   = best__mva__res.(kk[0])                                                                 & $
+  polarize_wav   = all_polwav_res.(kk[0])                                                                 & $
+  test0          = (SIZE(best_results,/TYPE) NE 8) OR (SIZE(polarize_wav,/TYPE) NE 8)                     & $
+  test1          = (TOTAL(tr_ww_ints[*,0] EQ '') EQ n_ww_ints[0])                                         & $
+  test           = test0[0] OR test1[0]                                                                   & $   ;;  Make sure valid variables before going forward
+  cnt_str        = (num2int_str(cnt_by_brst[0],NUM_CHAR=6,/ZERO_PAD))[0]                                  & $
+  IF (test[0]) THEN CONTINUE                                                                              & $
+  FOR ii=0L, n_ww_ints[0] - 1L DO BEGIN                                                                     $   ;;  Loop through and separate low/high frequency [Hz] into 2 structures
+    cnt_by__int  = 0L                                                                                     & $
+    ff_ind_struc = best_results.INDICES_STRUC.(ii[0])                                                     & $
+    ff_sitw_strc = best_results.SI_TW_STRUC.(ii[0])                                                       & $
+    ff_eval_strc = best_results.EIGVALS_STRUC.(ii[0])                                                     & $
+    ff_evec_strc = best_results.EIGVECS_STRUC.(ii[0])                                                     & $
+    polz_wav     = polarize_wav.(ii[0])                                                                   & $
+    test         = (SIZE(ff_ind_struc,/TYPE) NE 8) OR (SIZE(ff_sitw_strc,/TYPE) NE 8) OR                    $
+                   (SIZE(ff_eval_strc,/TYPE) NE 8) OR (SIZE(ff_evec_strc,/TYPE) NE 8) OR                    $
+                   (SIZE(polz_wav,/TYPE) NE 8)                                                            & $
+    IF (test[0]) THEN CONTINUE                                                                            & $
+    nfrq         = MIN([N_TAGS(ff_ind_struc),N_TAGS(ff_sitw_strc),N_TAGS(ff_eval_strc),                     $
+                        N_TAGS(ff_evec_strc),N_TAGS(polz_wav)])                                           & $
+    FOR ff=0L, nfrq[0] - 1L DO BEGIN                                                                        $
+      test         = (SIZE(ff_ind_struc.(ff[0]),/TYPE) NE 8) OR (SIZE(ff_sitw_strc.(ff[0]),/TYPE) NE 8) OR  $
+                     (SIZE(ff_eval_strc.(ff[0]),/TYPE) NE 8) OR (SIZE(ff_evec_strc.(ff[0]),/TYPE) NE 8) OR  $
+                     (SIZE(polz_wav.(ff[0]),/TYPE) NE 8)                                                  & $
+      IF (test[0]) THEN CONTINUE                                                                          & $
+      theta_kb0    = polz_wav.(ff[0]).THETA_KB                                                            & $
+      theta_kn0    = polz_wav.(ff[0]).THETA_KN                                                            & $
+      wave_amp0    = polz_wav.(ff[0]).WAV_AMP                                                             & $
+      kvec_00      = ff_evec_strc.(ff[0]).MIN_EIGVECS                                                     & $
+      nsubs        = N_TAGS(polz_wav.(ff[0]).GIND)                                                        & $
+      temp         = REPLICATE(-1,nsubs[0])                                                               & $
+      FOR jj=0L, nsubs[0] - 1L DO temp[jj] = ([-1,jj])[polz_wav.(ff[0]).GIND.(jj)]                        & $
+      good_int     = WHERE(temp GE 0,gd_int,COMPLEMENT=bad_int,NCOMPLEMENT=bd_int)                        & $
+      cnt_by__int += gd_int[0]                                                                            & $
+      bvec_00      = REPLICATE(d,nsubs[0],3L)                                                             & $
+      dbvec00      = REPLICATE(d,nsubs[0],3L)                                                             & $
+      nvec_00      = REPLICATE(d,nsubs[0],3L)                                                             & $
+      dnvec00      = REPLICATE(d,nsubs[0],3L)                                                             & $
+      FOR jj=0L, 2L DO BEGIN                                                                                $
+        bvec_00[*,jj] = bvecup[kk,jj]                                                                     & $
+        dbvec00[*,jj] = d_bvecup[kk,jj]                                                                   & $
+        nvec_00[*,jj] = nvecup[kk,jj]                                                                     & $
+        dnvec00[*,jj] = d_nvecup[kk,jj]                                                                   & $
+      ENDFOR                                                                                              & $
+      IF (bd_int[0] GT 0) THEN theta_kb0[bad_int]  = d                                                    & $
+      IF (bd_int[0] GT 0) THEN theta_kn0[bad_int]  = d                                                    & $
+      IF (bd_int[0] GT 0) THEN wave_amp[bad_int,*] = d                                                    & $
+      IF (bd_int[0] GT 0) THEN kvecs[bad_int,*]    = d                                                    & $
+      test         = (N_ELEMENTS(theta_kb) EQ 0)                                                          & $
+      IF (test[0]) THEN theta_kb = theta_kb0 ELSE theta_kb = [theta_kb,theta_kb0]                         & $
+      test         = (N_ELEMENTS(theta_kn) EQ 0)                                                          & $
+      IF (test[0]) THEN theta_kn = theta_kn0 ELSE theta_kn = [theta_kn,theta_kn0]                         & $
+      test         = (N_ELEMENTS(wave_amp) EQ 0)                                                          & $
+      IF (test[0]) THEN wave_amp = wave_amp0 ELSE wave_amp = [wave_amp,wave_amp0]                         & $
+      test         = (N_ELEMENTS(kvecs) EQ 0)                                                             & $
+      IF (test[0]) THEN kvecs = kvec_00 ELSE kvecs = [kvecs,kvec_00]                                      & $
+      test         = (N_ELEMENTS(bvec_up) EQ 0)                                                           & $
+      IF (test[0]) THEN bvec_up = bvec_00 ELSE bvec_up = [bvec_up,bvec_00]                                & $
+      IF (test[0]) THEN dbvecup = dbvec00 ELSE dbvecup = [dbvecup,dbvec00]                                & $
+      test         = (N_ELEMENTS(nvec_up) EQ 0)                                                           & $
+      IF (test[0]) THEN nvec_up = nvec_00 ELSE nvec_up = [nvec_up,nvec_00]                                & $
+      IF (test[0]) THEN dnvecup = dnvec00 ELSE dnvecup = [dnvecup,dnvec00]                                & $
+    ENDFOR                                                                                                & $
+    cnt_by_brst += cnt_by__int[0]                                                                         & $
+  ENDFOR                                                                                                  & $
+  tot_cnt       += cnt_by_brst[0]
+
+;      g_int_0      = polz_wav.(ff[0]).GIND                                                                & $
+;      nsubs        = N_TAGS(g_int_0)                                                                      & $
+;  sout           = ';;  '+cnt_str[0]+' Good MVA Results'+s_suffxb[0]                                      & $
+;  IF (test[0]) THEN PRINT,sout[0]                                                                         & $
+;      FOR jj=0L, nsubs[0] - 1L DO BEGIN                                                                     $
+;        IF (jj EQ 0) THEN temp = LONG(g_int_0.(jj)) ELSE temp += LONG(g_int_0.(jj))                       & $
+;      ENDFOR                                                                                              & $
+;      cnt_by__int += temp[0]                                                                              & $
+;      nsubs        = N_ELEMENTS(theta_kb0)                                                      & $
+;      nsubs        = LONG(TOTAL(FINITE(theta_kb0)))                                             & $
+;      cnt_by__int += nsubs[0]                                                                   & $
+;    cnt_str      = (num2int_str(cnt_by__int[0],NUM_CHAR=6,/ZERO_PAD))[0]                        & $
+;    sout         = cnt_str[0]+' Good MVA Results'+s_suffxi[ii[0]]                               & $
+;  cnt_str        = (num2int_str(cnt_by_brst[0],NUM_CHAR=6,/ZERO_PAD))[0]                        & $
+;  sout           = ';;  '+cnt_str[0]+' Good MVA Results'+s_suffxb[0]                            & $
+;  PRINT,sout[0]                                                                                 & $
+
+
+cnt_str        = (num2int_str(tot_cnt[0],NUM_CHAR=6,/ZERO_PAD))[0]
+gdmva_str      = (num2int_str(TOTAL(FINITE(theta_kb)),NUM_CHAR=6,/ZERO_PAD))[0]
+suffixt        = ' Total Good MVA Intervals for '+scpref0[0]+' IP Shocks'
+sout           = ';;  '+cnt_str[0]+' of '+gdmva_str[0]+suffixt[0]
+PRINT,''          & $
+PRINT,sout[0]     & $
+PRINT,''
+;;  000673 of 000711 Total Good MVA Intervals for Wind IP Shocks
+
+
+;;----------------------------------------------------------------------------------------
+;;  Plot results
+;;----------------------------------------------------------------------------------------
+wi,1
+wi,2
+popen_str      = {LANDSCAPE:1,UNITS:'inches',XSIZE:10.75,YSIZE:8.25}
+
+;;  Define unit vectors
+kvecsu         = unit_vec(kvecs)
+;;  Force angles:  0 ≤ ø ≤ 90
+thetakb        = theta_kb < (18d1 - theta_kb)
+thetakn        = theta_kn < (18d1 - theta_kn)
+;;  Define default plot stuff
+tot_cnt_out    = 'Total #: '+(num2int_str(tot_cnt[0],NUM_CHAR=6,/ZERO_PAD))[0]
+yttl0          = 'Number of Events'
+yttl1          = 'Percentage of Events'
+xttl0          = 'Wave Normal Angle [deg, theta_kB]'
+xttl1          = 'Wave Normal Angle [deg, theta_kn]'
+xran           = [0d0,9d1]
+yrabprc        = [0d0,10d0]
+yranprc        = [0d0,10d0]
+titleb         = 'Wave Normal Angle:  (k . <Bo>_up)'
+titlen         = 'Wave Normal Angle:  (k . n_sh)'
+;;  Bin results
+dth_kba        = 2.5d0
+hist_thkb      = HISTOGRAM(thetakb,BINSIZE=dth_kba[0],LOCATIONS=locs_b,MAX= 9d1,MIN=0d0,/NAN)
+hist_thkn      = HISTOGRAM(thetakn,BINSIZE=dth_kba[0],LOCATIONS=locs_n,MAX= 9d1,MIN=0d0,/NAN)
+hist_kbpc      = 1d2*hist_thkb/(1d0*tot_cnt[0])
+hist_knpc      = 1d2*hist_thkn/(1d0*tot_cnt[0])
+;;  Define plot limits structures
+yranb          = [1d0,(1.05*MAX(ABS(hist_thkb),/NAN)) > 2d2]
+yrann          = [1d0,(1.05*MAX(ABS(hist_thkn),/NAN)) > 2d2]
+pstrn          = {XRANGE:xran,XSTYLE:1,YRANGE:yranb,YSTYLE:1,XTICKS:9,XMINOR:10,NODATA:1,$
+                  PSYM:10,XTITLE:xttl0[0],YLOG:1,YMINOR:9L}
+pstrp          = {XRANGE:xran,XSTYLE:1,YRANGE:yrabprc,YSTYLE:1,XTICKS:9,XMINOR:10,NODATA:1,$
+                  PSYM:10,XTITLE:xttl0[0],YLOG:1,YMINOR:9L}
+;;  Define plot limits structures:  theta_kB
+pstrnb         = pstrn
+pstrpb         = pstrp
+str_element,pstrnb,'YTITLE',yttl0[0],/ADD_REPLACE
+str_element,pstrpb,'YTITLE',yttl1[0],/ADD_REPLACE
+str_element,pstrpb,'YMINOR',      10,/ADD_REPLACE
+str_element,pstrpb,  'YLOG',       0,/ADD_REPLACE
+
+;;  Define plot limits structures:  theta_kn
+pstrnn         = pstrn
+pstrpn         = pstrp
+str_element,pstrnn,'XTITLE',xttl0[0],/ADD_REPLACE
+str_element,pstrpn,'XTITLE',xttl1[0],/ADD_REPLACE
+str_element,pstrnn,'YTITLE',yttl0[0],/ADD_REPLACE
+str_element,pstrpn,'YTITLE',yttl1[0],/ADD_REPLACE
+str_element,pstrpn,'YRANGE', yranprc,/ADD_REPLACE
+str_element,pstrpn,'YMINOR',      10,/ADD_REPLACE
+str_element,pstrpn,  'YLOG',       0,/ADD_REPLACE
+
+;;  Plot theta_kB angles
+xdata          =    locs_b
+ydata0         = hist_thkb
+ydata1         = hist_kbpc
+pstr0          =    pstrnb
+pstr1          =    pstrpb
+WSET,1
+WSHOW,1
+!P.MULTI       = [0,1,2]
+PLOT,xdata,ydata0,_EXTRA=pstr0,TITLE=titleb[0]
+  OPLOT,xdata,ydata0,PSYM=10,COLOR= 50
+PLOT,xdata,ydata1,_EXTRA=pstr1,TITLE=titleb[0]
+  OPLOT,xdata,ydata1,PSYM=10,COLOR= 50
+  XYOUTS,0.45,0.90,tot_cnt_out[0],/NORMAL,COLOR=250,CHARSIZE=1.
+!P.MULTI       = 0
+
+;;  Plot theta_kn angles
+xdata          =    locs_n
+ydata0         = hist_thkn
+ydata1         = hist_knpc
+pstr0          =    pstrnn
+pstr1          =    pstrpn
+WSET,2
+WSHOW,2
+!P.MULTI       = [0,1,2]
+PLOT,xdata,ydata0,_EXTRA=pstr0,TITLE=titlen[0]
+  OPLOT,xdata,ydata0,PSYM=10,COLOR= 50
+PLOT,xdata,ydata1,_EXTRA=pstr1,TITLE=titlen[0]
+  OPLOT,xdata,ydata1,PSYM=10,COLOR= 50
+  XYOUTS,0.45,0.90,tot_cnt_out[0],/NORMAL,COLOR=250,CHARSIZE=1.
+!P.MULTI       = 0
+
+
+;;  Plot theta_kB angles
+data           = thetakb
+nbins          = 10L
+xttl           = xttl0[0]
+ttle           = titleb[0]
+xran           = [0d0,9d1]
+WSET,1
+WSHOW,1
+  my_histogram_plot,data,NBINS=nbins,XTTL=xttl,TTLE=ttle,DRANGE=xran,PREC=0,BARCOLOR=1
+
+
+;;----------------------------------------------------------------------------------------
+;;  Save results
+;;----------------------------------------------------------------------------------------
+fnameb         = STRUPCASE(scpref[0])+'All_Precursor_Ints_Wave_Normal_Angles_Bup'
+fnamen         = STRUPCASE(scpref[0])+'All_Precursor_Ints_Wave_Normal_Angles_nsh'
+
+;;  Plot theta_kB angles
+thck           = 2e0
+xdata          =    locs_b
+ydata0         = hist_thkb
+ydata1         = hist_kbpc
+pstr0          =    pstrnb
+pstr1          =    pstrpb
+popen,fnameb[0],_EXTRA=popen_str
+  !P.MULTI       = [0,1,2]
+  PLOT,xdata,ydata0,_EXTRA=pstr0,TITLE=titleb[0]
+    OPLOT,xdata,ydata0,PSYM=10,COLOR= 50,THICK=thck[0]
+  PLOT,xdata,ydata1,_EXTRA=pstr1,TITLE=titleb[0]
+    OPLOT,xdata,ydata1,PSYM=10,COLOR= 50,THICK=thck[0]
+    XYOUTS,0.45,0.90,tot_cnt_out[0],/NORMAL,COLOR=250,CHARSIZE=1.
+  !P.MULTI       = 0
+pclose
+
+;;  Plot theta_kn angles
+thck           = 2e0
+xdata          =    locs_n
+ydata0         = hist_thkn
+ydata1         = hist_knpc
+pstr0          =    pstrnn
+pstr1          =    pstrpn
+popen,fnamen[0],_EXTRA=popen_str
+  !P.MULTI       = [0,1,2]
+  PLOT,xdata,ydata0,_EXTRA=pstr0,TITLE=titlen[0]
+    OPLOT,xdata,ydata0,PSYM=10,COLOR= 50,THICK=thck[0]
+  PLOT,xdata,ydata1,_EXTRA=pstr1,TITLE=titlen[0]
+    OPLOT,xdata,ydata1,PSYM=10,COLOR= 50,THICK=thck[0]
+    XYOUTS,0.45,0.90,tot_cnt_out[0],/NORMAL,COLOR=250,CHARSIZE=1.
+  !P.MULTI       = 0
+pclose
+
+
+
+
+
+
+
+
+
+
+
+
+
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Old/Obsolete
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Perturb <Bo>_up and nsh
+ones           = [-1,0,1]
+buvc_up_lmh    = REPLICATE(d,tot_cnt[0],3L,3L)
+nshu_up_lmh    = REPLICATE(d,tot_cnt[0],3L,3L)
+FOR kk=0L, tot_cnt[0] - 1L DO BEGIN                                                               $
+  FOR jj=0L, 2L DO BEGIN                                                                          $
+    tempb                = unit_vec(REFORM(bvec_up[kk,*] + ones[jj]*dbvecup[kk,*]))             & $
+    tempn                = unit_vec(REFORM(nvec_up[kk,*] + ones[jj]*dnvecup[kk,*]))             & $
+    buvc_up_lmh[kk,*,jj] = tempb                                                                & $
+    nshu_up_lmh[kk,*,jj] = tempn
+
+;;  Define dot-products
+k_dot_n_l      = my_dot_prod(kvecsu,nshu_up_lmh[*,*,0],/NOM)
+k_dot_n_m      = my_dot_prod(kvecsu,nshu_up_lmh[*,*,1],/NOM)
+k_dot_n_h      = my_dot_prod(kvecsu,nshu_up_lmh[*,*,2],/NOM)
+k_dot_b_l      = my_dot_prod(kvecsu,buvc_up_lmh[*,*,0],/NOM)
+k_dot_b_m      = my_dot_prod(kvecsu,buvc_up_lmh[*,*,1],/NOM)
+k_dot_b_h      = my_dot_prod(kvecsu,buvc_up_lmh[*,*,2],/NOM)
+
+;;  Define wave normal angles [deg]
+theta_kn_l_0   = ACOS(k_dot_n_l)*18d1/!DPI
+theta_kn_m_0   = ACOS(k_dot_n_m)*18d1/!DPI
+theta_kn_h_0   = ACOS(k_dot_n_h)*18d1/!DPI
+theta_kb_l_0   = ACOS(k_dot_b_l)*18d1/!DPI
+theta_kb_m_0   = ACOS(k_dot_b_m)*18d1/!DPI
+theta_kb_h_0   = ACOS(k_dot_b_h)*18d1/!DPI
+theta_kn_l     = theta_kn_l_0 < (18d1 - theta_kn_l_0)
+theta_kn_m     = theta_kn_m_0 < (18d1 - theta_kn_m_0)
+theta_kn_h     = theta_kn_h_0 < (18d1 - theta_kn_h_0)
+theta_kb_l     = theta_kb_l_0 < (18d1 - theta_kb_l_0)
+theta_kb_m     = theta_kb_m_0 < (18d1 - theta_kb_m_0)
+theta_kb_h     = theta_kb_h_0 < (18d1 - theta_kb_h_0)
+;;  Define average wave normal angles [deg]
+theta_kn       = (theta_kn_l + theta_kn_m + theta_kn_h)/3d0
+theta_kb       = (theta_kb_l + theta_kb_m + theta_kb_h)/3d0
+

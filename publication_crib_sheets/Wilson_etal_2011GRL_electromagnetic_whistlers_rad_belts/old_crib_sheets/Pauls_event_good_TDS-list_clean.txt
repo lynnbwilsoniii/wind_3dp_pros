@@ -1,0 +1,1604 @@
+
+days   = LINDGEN(31L) + 1L
+months = LINDGEN(12L) + 1L
+years  = LINDGEN(10L) + 1996L
+
+dstr   = STRING(FORMAT='(I2.2)',days)
+mstr   = STRING(FORMAT='(I2.2)',months)
+ystr   = STRING(FORMAT='(I4.4)',years)
+pref0  = 'wi_h0_mfi_'
+suff0  = '_v04.cdf'
+tsuff  = '/00:00:00'
+fpref  = '/home/lbwilson/overflow/wind_3dp/MFI_CDF/'
+
+
+d_string = STRARR(10,12,31)
+dfstring = STRARR(10,12,31)
+FOR i=0L, 9L DO BEGIN $
+  FOR j=0L, 11L DO BEGIN $
+    FOR k=0L, 30L DO BEGIN $
+      d_string[i,j,k] = ystr[i]+'-'+mstr[j]+'-'+dstr[k]+tsuff  & $
+      dfstring[i,j,k] = ystr[i]+mstr[j]+dstr[k]
+
+FOR i=0L, 9L DO BEGIN                $
+  FOR j=0L, 11L DO BEGIN             $
+    FOR k=0L, 29L DO BEGIN           $
+      m = k + 1L                   & $
+      PRINT,d_string[i,j,k]+' '+d_string[i,j,m]+' '+fpref+pref0+dfstring[i,j,k]+suff0
+
+fpref  = '/data1/wind/3dp/lz/'
+pref0  = 'wi_lz_3dp_'
+suff0  = '_v01.dat'
+
+FOR i=0L, 9L DO BEGIN                $
+  FOR j=0L, 11L DO BEGIN             $
+    FOR k=0L, 29L DO BEGIN           $
+      m = k + 1L                   & $
+      PRINT,d_string[i,j,k]+' '+d_string[i,j,m]+' '+fpref+ystr[i]+'/'+pref0+dfstring[i,j,k]+suff0
+;-----------------------------------------------------------------------------------------
+; => Load data
+;-----------------------------------------------------------------------------------------
+date = '102698'
+date = '111398'
+date = '121498'
+date = '040900'
+date = '050300'
+date = '052600'
+date = '061000'
+date = '062600'
+date = '071000'
+date = '072300'
+date = '080400'
+date = '081500'
+date = '100301'
+date = '102401'
+date = '111501'
+date = '120301'
+date = '072002'
+date = '101002'
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate  = mydate.DATE[0]    ; -('YYYYMMDD')
+ldate  = STRMID(mdate,4L,4L)+STRMID(mdate,0L,4L)
+tdate  = mydate.TDATE[0]
+;-----------------------------------------------------------------------------------------
+; => Find Wind/3DP IDL Save Files
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+
+
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;-----------------------------------------------------------------------------------------
+; => Load mag data
+;-----------------------------------------------------------------------------------------
+t = ['1998-10-26/00:00:00','1998-10-26/20:45:00']
+t = ['1998-11-13/13:00:00','1998-11-14/05:00:00'] 
+t = ['1998-12-14/04:30:00','1998-12-15/16:00:00']
+t = ['2000-04-09/00:00:00','2000-04-10/20:00:00']
+t = ['2000-05-02/20:00:00','2000-05-03/10:00:00']
+t = ['2000-05-25/10:00:00','2000-05-26/20:00:00']
+t = ['2000-06-09/23:00:00','2000-06-11/03:00:00']
+t = ['2000-06-26/10:00:00','2000-06-27/02:00:00']
+t = ['2000-07-09/23:00:00','2000-07-10/12:00:00']
+t = ['2000-07-23/04:30:00','2000-07-25/00:00:00']
+t = ['2000-08-03/15:00:00','2000-08-05/00:00:00']
+t = ['2000-08-15/11:30:00','2000-08-18/00:00:00']
+t = ['2001-10-03/00:00:00','2001-10-04/14:00:00']
+t = ['2001-10-23/06:00:00','2001-10-25/10:00:00']
+t = ['2001-11-14/00:00:00','2001-11-16/06:00:00']
+t = ['2001-12-02/02:00:00','2001-12-05/06:00:00']
+t = ['2002-07-20/00:00:00','2002-07-22/02:00:00']
+t = ['2002-10-09/20:00:00','2002-10-10/04:00:00']
+tr3 = time_double(t)
+mag3  = read_wind_mfi(TRANGE=tr3)
+t3x   = mag3.MAG.X
+bmag4 = mag3.MAG.Y
+magf4 = mag3.BGSE.Y
+nt    = N_ELEMENTS(t3x) 
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+tplot,nn0
+;-----------------------------------------------------------------------------------------
+; => Load orbit data
+;-----------------------------------------------------------------------------------------
+tds_magneto_orbits,DATE=date
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+tplot_options, var_label=['Wind_Radial_Distance','Wind_L-Shell','Wind_MLT']
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Calc Density, temp, etc... for ions
+;-----------------------------------------------------------------------------------------
+npl        = N_ELEMENTS(apl)
+nplb       = N_ELEMENTS(aplb)
+nph        = N_ELEMENTS(aph)
+nphb       = N_ELEMENTS(aphb)
+pesa_low_moment_calibrate,DATE=date,/NOLOAD,PLM=apl,PLBM=aplb,TRANGE=tr3
+
+pesa_high_moment_calibrate,DATE=date,/NOLOAD,PHM=aph,PHBM=aphb,TRANGE=tr3
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => TDS times
+;-----------------------------------------------------------------------------------------
+temp       = tds_whist_ehole_times(DATE=date[0],FIXFILE=fixfile)
+ymdb_whist = temp.WHISTLER_T
+unix_whist = temp.WHISTLER_UNX
+
+ymdb_ehole = temp.SOLITARY_T
+unix_ehole = temp.SOLITARY_UNX
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+
+invdenf = 1d-6*(2d0*!DPI)^2*(me*epo/qq^2)  ; => [cm^(-3) s^2]
+;-----------------------------------------------------------------------------------------
+; => fix Pesa Low data
+;-----------------------------------------------------------------------------------------
+get_data,'N_i2',DATA=ions,DLIM=dlim
+idens      = ions.Y
+test       = idens
+IF (date EQ '111398') THEN i_max = 350.
+IF (date EQ '040900') THEN i_max = 100.
+IF (date EQ '050300') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '052600') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '061000') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '062600') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '071000') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '101002') THEN i_max = 950.  ; => never gets above this
+badd       = WHERE(idens GT i_max,bdd,COMPLEMENT=goodd)
+IF (bdd GT 0L) THEN test[badd] = f
+test2      = interp(test[goodd],ions.X[goodd],ions.X,/NO_EXTRAP)
+store_data,'N_i2',DATA={X:ions.X,Y:test2},DLIM=dlim
+
+tbad_o     = [time_double('1998-10-26/07:50:00'),time_double('1998-10-26/12:30:00')]
+tbad_o     = [time_double('1998-11-13/15:30:00'),time_double('1998-11-13/21:30:00')]
+tbad_o     = [time_double('1998-12-14/09:00:00'),time_double('1998-12-15/08:00:00')]
+tbad_o     = [time_double('2000-04-10/01:40:00'),time_double('2000-04-10/05:30:00')]
+tbad_o     = [time_double('2000-05-03/00:00:00'),time_double('2000-05-03/05:00:00')]
+tbad_o     = [time_double('2000-05-25/20:00:00'),time_double('2000-05-26/08:30:00')]
+tbad_o     = [time_double('2000-06-10/08:00:00'),time_double('2000-06-10/16:00:00')]
+tbad_o     = [time_double('2000-06-26/18:00:00'),time_double('2000-06-26/21:30:00')]
+tbad_o     = [time_double('2000-07-10/00:00:00'),time_double('2000-07-10/06:00:00')]
+tbad_o     = [time_double('2000-07-23/07:00:00'),time_double('2000-07-23/12:00:00')]
+tbad_o     = [time_double('2000-08-03/22:00:00'),time_double('2000-08-04/04:00:00')]
+tbad_o     = [time_double('2000-08-15/21:00:00'),time_double('2000-08-16/03:00:00')]
+tbad_o     = [time_double('2001-10-03/04:00:00'),time_double('2001-10-04/10:00:00')]
+tbad_o     = [time_double('2001-10-23/11:00:00'),time_double('2001-10-24/21:00:00')]
+tbad_o     = [time_double('2001-11-14/01:12:00'),time_double('2001-11-16/04:00:00')]
+tbad_o     = [time_double('2001-12-02/05:10:00'),time_double('2001-12-03/18:45:00')]
+tbad_o     = [time_double('2002-07-21/16:00:00'),time_double('2002-07-21/20:00:00')]
+tbad_o     = [time_double('2002-10-09/23:00:00'),time_double('2002-10-10/03:40:00')]
+
+get_data,'sc_pot_2',DATA=scpots,DLIM=dlimsp
+scpot      = scpots.Y
+badscp     = WHERE(scpots.X LT tbad_o[1] AND scpots.X GT tbad_o[0] AND scpot LT 10.,bdsp)
+;IF (bdsp GT 0L) THEN scpot[badscp] = 12.
+IF (bdsp GT 0L) THEN scpot[badscp] = 15.
+
+sm_scpot   = SMOOTH(scpot,5L,/EDGE_TRUNCATE,/NAN)
+store_data,'sc_pot_3',DATA={X:scpots.X,Y:sm_scpot},DLIM=dlimsp
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Cold Plasma Parameters
+;-----------------------------------------------------------------------------------------
+dens_whist = interp(test2,ions.X,unix_whist,/NO_EXTRAP)
+fpe_const  = SQRT(qq^2*1e6/(me*epo))/(2d0*!DPI)
+fpe_whist  = fpe_const[0]*SQRT(dens_whist)          ; => Plasma Frequency (Hz)
+
+bmag_whist = interp(bmag4,t3x,unix_whist,/NO_EXTRAP)
+fce_const  = 1d-9*qq/me/(2d0*!DPI)
+fce_whist  = fce_const[0]*bmag_whist
+
+nwhist     = N_ELEMENTS(unix_whist)
+f_whist    = DINDGEN(nwhist)*(1d4 - 1d2)/(nwhist - 1L) + 1d2  ; => dummy array of whistler freqs
+V_Ae       = (bmag_whist*1d-9)^2/(muo*dens_whist*1d6*me)      ; => Electron Alfven speed (m/s)^2
+f_ratio    = DBLARR(nwhist,nwhist)                            ; => e Cyclotron to wave freq.
+FOR j=0L, nwhist - 1L DO BEGIN $
+  FOR k=0L, nwhist - 1L DO BEGIN $
+    f_ratio[j,k] = fce_whist[j]/f_whist[k]
+
+; => Propagation angles (deg)
+theta_kB   = DINDGEN(nwhist)*((8d1 - 2d1)*!DPI/18d1)/(nwhist - 1L) + (2d1)*!DPI/18d1
+
+cold_vph   = DBLARR(nwhist,nwhist,nwhist)  ; => Whistler Vph (km/s) [j-fce,k-f_w,i-theta]
+FOR j=0L, nwhist - 1L DO BEGIN $
+  FOR k=0L, nwhist - 1L DO BEGIN $
+    FOR i=0L, nwhist - 1L DO BEGIN $
+      cold_vph[j,k,i] = SQRT(V_Ae[j]*(f_ratio[j,k]*COS(theta_kB[i]) - 1d0)/f_ratio[j,k]^2)
+
+n_cold_vph = DBLARR(nwhist,nwhist,nwhist)  ; => Whistler Vph/V_Ae
+FOR j=0L, nwhist - 1L DO BEGIN $
+  n_cold_vph[j,*,*] = cold_vph[j,*,*]/SQRT(V_Ae[j])
+
+
+omst = '!7x!3'
+omms = '!7X!3'
+thes = '!7h!3'
+ccs  = LINDGEN(50)*(250L - 30L)/49L + 30L
+yttl = omms[0]+'!Dce!N'+'/'+omst[0]
+xttl = thes[0]+' (!Uo!N)'
+vphs = 'V!Dph!N/V!DAe!N'
+
+cstr = {C_COLORS:ccs,NLEVELS:50,YSTYLE:1,XSTYLE:1,YTITLE:yttl,XTITLE:xttl,FILL:1}
+CONTOUR,REFORM(n_cold_vph[*,10,*]),theta_kB*18d1/!DPI,f_ratio[*,10],_EXTRA=cstr
+
+FOR j=0L, nwhist - 1L DO BEGIN $
+  ttl_tm = whistler_times[j]                                                      & $
+  ttl_pr = 'Whistler at: '+ttl_tm[0]                                              & $
+  vphra  = minmax(REFORM(n_cold_vph[j,*,*]))                                      & $
+  vphn   = REFORM(n_cold_vph[j,*,*])                                              & $
+  vph_st = STRTRIM(STRING(FORMAT='(f12.4)',vphra),2)                              & $
+  v_stra = vph_st[0]+' < '+vphs[0]+' < '+vph_st[1]                                & $
+  tttl   = ttl_pr[0]+' for '+v_stra[0]                                            & $
+  CONTOUR,vphn,theta_kB*18d1/!DPI,f_ratio[j,*],_EXTRA=cstr,TITLE=tttl             & $
+  WAIT,0.5
+
+
+mts        = my_time_string(whistler_times,STR=1,FORM=1)
+ymdb_whist = mts.DATE_TIME
+ft_whist   = mts.TIME_N
+w_dates    = STRMID(ymdb_whist[*],0L,4L)+'-'+STRMID(ymdb_whist[*],5L,2L)+'-'+STRMID(ymdb_whist[*],8L,2L)
+w_ymdb     = w_dates+'_'+ft_whist
+f_pref     = 'Whistler_phase_speeds_f-ratio_theta_'
+vae_pref   = 'V!DAe!N = '
+FOR j=0L, nwhist - 1L DO BEGIN $
+  ttl_tm = whistler_times[j]                                                      & $
+  ttl_pr = 'Whistler at: '+ttl_tm[0]                                              & $
+  vphra  = minmax(REFORM(n_cold_vph[j,*,*]))                                      & $
+  vphn   = REFORM(n_cold_vph[j,*,*])                                              & $
+  vph_st = STRTRIM(STRING(FORMAT='(f12.4)',vphra),2)                              & $
+  v_stra = vph_st[0]+' < '+vphs[0]+' < '+vph_st[1]                                & $
+  v_aest = vae_pref[0]+STRTRIM(STRING(FORMAT='(f12.2)',SQRT(V_Ae[j])*1d-3),2)+' km/s'  & $
+  str_element,cstr,'XTITLE',xttl[0]+'  ('+v_aest[0]+')',/ADD_REPLACE              & $
+  tttl   = ttl_pr[0]+' for '+v_stra[0]                                            & $
+  popen,f_pref[0]+w_ymdb[j],/LAND                                                 & $
+    CONTOUR,vphn,theta_kB*18d1/!DPI,f_ratio[j,*],_EXTRA=cstr,TITLE=tttl           & $
+  pclose
+
+
+cold_vph   = DBLARR(nwhist,nwhist)                   ; => Whistler Vph (km/s)
+FOR j=0L, nwhist - 1L DO BEGIN $
+  FOR k=0L, nwhist - 1L DO BEGIN $
+    cold_vph[k,j] = SQRT(c^2*f_whist[k]*(fce_whist[j] - f_whist[k])/fpe_whist[j]^2)*1d-3
+
+
+fpe_fce    = fpe_whist/fce_whist
+sp         = SORT(fpe_fce)
+fpe_fce2   = fpe_fce[sp]
+cold_vph2  = cold_vph[*,sp]
+
+omst = '!7x!3'
+omms = '!7X!3'
+ccs  = LINDGEN(50)*(250L - 30L)/49L + 30L
+yttl = omst[0]+'!Dpe!N'+'/'+omms[0]+'!Dce!N'
+xttl = omst[0]+' (Hz)'
+
+cstr = {C_COLORS:ccs,NLEVELS:50,YSTYLE:1,XSTYLE:1,YTITLE:yttl,XTITLE:xttl}
+CONTOUR,cold_vph2,f_whist,fpe_fce2,_EXTRA=cstr
+
+
+; => Cut-off frequencies of R and L mode waves in a cold plasma
+f_cut_off_R = fce/2d0 + SQRT((fce/2d0)^2 + (fpe)^2)
+f_cut_off_L = -1d0*fce/2d0 + SQRT((fce/2d0)^2 + (fpe)^2)
+;-----------------------------------------------------------------------------------------
+; => Look at EL beams
+;-----------------------------------------------------------------------------------------
+t_u    = [time_double('2001-10-04/04:59:00'),time_double('2001-10-04/06:00:00')]
+get_data,'N_i2',DATA=ions,DLIM=dlim
+idens  = ions.Y
+tip    = ions.X
+
+el_times  = REFORM(ael.TIME)
+g_el      = WHERE(el_times LE MAX(t_u,/NAN) AND el_times GE MIN(t_u,/NAN),g_l)
+IF (g_l GT 0)  THEN el_times  = el_times[g_el]   ELSE el_times  = 0
+
+
+
+bmag_ebeams = interp(bmag4,t3x,el_times,/NO_EXTRAP)
+dens_ebeams = interp(idens,tip,el_times,/NO_EXTRAP)
+
+V_Ae_fac    = 1d-9/SQRT(muo*1d6*me)
+V_Ap_fac    = 1d-9/SQRT(muo*1d6*mp)
+
+V_Ae  = V_Ae_fac[0]*bmag_ebeams[*]/SQRT(dens_ebeams[*])
+V_Ap  = V_Ap_fac[0]*bmag_ebeams[*]/SQRT(dens_ebeams[*])
+
+ymd   = time_string(el_times,PREC=0)
+space = '  => For '
+
+FOR j=0L, g_l - 1L DO BEGIN $
+  PRINT,bmag_ebeams[j],dens_ebeams[j],V_Ae[j]*1d-3,V_Ap[j]*1d-3,space[0],ymd[j],FORMAT='(";",4f12.3,a9,a19)'
+;      23.434       1.768   16473.337     384.439  => For 2001-10-04/04:59:57
+;      20.242       1.838   13953.805     325.640  => For 2001-10-04/05:01:36
+;      21.170       2.107   13632.234     318.136  => For 2001-10-04/05:03:16
+;      18.520       2.375   11231.705     262.115  => For 2001-10-04/05:04:55
+;      19.085       2.339   11663.962     272.202  => For 2001-10-04/05:06:35
+;      20.794       2.303   12807.506     298.889  => For 2001-10-04/05:08:14
+;      17.873       2.151   11389.880     265.806  => For 2001-10-04/05:09:54
+;      21.172       2.474   12580.317     293.587  => For 2001-10-04/05:11:33
+;      22.744       2.433   13629.633     318.075  => For 2001-10-04/05:13:13
+;      21.776       2.554   12735.691     297.213  => For 2001-10-04/05:14:52
+;      20.259       2.684   11557.445     269.716  => For 2001-10-04/05:16:32
+;      18.699       2.788   10466.044     244.246  => For 2001-10-04/05:18:12
+;      16.526       3.001    8916.929     208.095  => For 2001-10-04/05:19:51
+;      18.049       3.423    9117.866     212.784  => For 2001-10-04/05:21:31
+;      19.001       3.568    9401.605     219.406  => For 2001-10-04/05:23:10
+;      18.245       4.994    7630.706     178.078  => For 2001-10-04/05:24:50
+;      19.589       4.411    8717.336     203.437  => For 2001-10-04/05:26:29
+;      18.578       6.025    7074.076     165.088  => For 2001-10-04/05:28:09
+;      21.692       4.471    9588.732     223.773  => For 2001-10-04/05:29:48
+;      21.158       4.591    9228.926     215.376  => For 2001-10-04/05:31:28
+;      17.137       6.870    6111.091     142.615  => For 2001-10-04/05:33:07
+;      19.405       5.923    7452.581     173.921  => For 2001-10-04/05:34:47
+;      18.561       5.660    7292.079     170.175  => For 2001-10-04/05:36:26
+;      19.020       4.814    8102.153     189.080  => For 2001-10-04/05:38:06
+;      18.672       3.863    8880.026     207.233  => For 2001-10-04/05:39:45
+;      19.414       4.365    8684.999     202.682  => For 2001-10-04/05:41:25
+;      22.201       4.221   10099.489     235.692  => For 2001-10-04/05:43:05
+;      21.844       4.856    9264.802     216.213  => For 2001-10-04/05:44:44
+;      22.339       5.176    9177.126     214.167  => For 2001-10-04/05:46:24
+;      23.273       5.405    9356.666     218.357  => For 2001-10-04/05:48:03
+;      23.114       6.041    8789.898     205.130  => For 2001-10-04/05:49:43
+;      18.926       6.306    7044.341     164.394  => For 2001-10-04/05:51:22
+;      18.972       5.893    7304.245     170.459  => For 2001-10-04/05:53:02
+;      18.381       5.464    7349.461     171.515  => For 2001-10-04/05:54:41
+;      19.380       5.633    7631.740     178.102  => For 2001-10-04/05:56:21
+;      22.094       5.736    8622.290     201.219  => For 2001-10-04/05:58:00
+;      19.262       6.297    7174.115     167.423  => For 2001-10-04/05:59:40
+
+
+IF (g_l GT 0)  THEN gael  = ael[g_el]   ELSE gael  = 0
+
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+dfdir   = '~/Desktop/3DP_contours/'+date[0]+'/PS_EL/'
+pddir   = '~/Desktop/3DP_contours/'+date[0]+'/PADS_EL/'
+mtsel   = my_time_string(gael.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+dfsuff  = '_17PAs-30Grids-one-count_vtherm-taniso-heatf_interp-no-low_vlines_DF'
+nel     = N_ELEMENTS(gael)
+FOR j=0L, nel - 1L DO BEGIN                                                         $
+  dat   = gael[j]                                                                 & $
+  del   = convert_vframe(dat,/INTERP)                                             & $
+  bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)                                 & $
+  IF (bd GT 0) THEN del.DATA[bad,*] = f                                           & $
+  pd    = pad(del,NUM_PA=17)                                                      & $
+  df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)                   & $
+  extract_tags,del,df                                                             & $
+  temp  = moments_3d(del)                                                         & $
+  vther = temp.VTHERMAL                                                           & $
+  pltn1  = dfdir+'el_'+gdate[j]+'_'+UTtime[j]+dfsuff[0]                           & $
+  popen,pltn1,/port                                                               & $
+    cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=dat               & $
+    yras = 1d1^(!Y.CRANGE)                                                        & $
+    OPLOT,[vther*1d-3,vther*1d-3],[yras[0],yras[1]],LINESTYLE=3                   & $
+    OPLOT,[-1d0*vther*1d-3,-1d0*vther*1d-3],[yras[0],yras[1]],LINESTYLE=3         & $
+  pclose
+;-----------------------------------------------------------------------------------------
+; => Look at EL moments in Magnetosphere
+;-----------------------------------------------------------------------------------------
+t_o       = ['1998-11-13/15:00:00','1998-11-13/22:30:00'] 
+t_o       = ['2000-04-09/20:20:00','2000-04-10/14:00:00']
+t_o       = ['2000-05-02/21:00:00','2000-05-03/10:00:00']
+t_o       = ['2000-05-25/20:50:00','2000-05-26/04:20:00']
+t_o       = ['2000-06-10/01:00:00','2000-06-11/03:00:00']
+t_o       = ['2000-06-26/13:00:00','2000-06-27/02:00:00']
+t_o       = ['2000-07-09/18:30:00','2000-07-10/12:00:00']
+t_o       = ['2000-07-23/04:40:00','2000-07-24/22:00:00']
+t_o       = ['2000-08-03/16:30:00','2000-08-04/22:00:00']
+t_o       = ['2000-08-15/13:00:00','2000-08-17/16:00:00']
+t_o       = ['2001-10-03/02:00:00','2001-10-04/13:00:00']
+t_o       = ['2001-10-23/06:00:00','2001-10-25/10:00:00']
+t_o       = ['2001-11-14/00:00:00','2001-11-16/05:00:00']
+t_o       = ['2001-12-02/02:00:00','2001-12-05/06:00:00']
+t_o       = ['2002-07-21/02:00:00','2002-07-22/00:24:00']
+t_o       = ['2002-10-09 22:00:00','2002-10-10 05:00:00']
+t_u       = time_double(t_o)
+el_times  = REFORM(ael.TIME)
+elb_times = REFORM(aelb.TIME)
+g_el      = WHERE(el_times LE MAX(t_u,/NAN) AND el_times GE MIN(t_u,/NAN),g_l)
+g_elb     = WHERE(elb_times LE MAX(t_u,/NAN) AND elb_times GE MIN(t_u,/NAN),g_lb)
+eh_times  = REFORM(aeh.TIME)
+ehb_times = REFORM(aehb.TIME)
+g_eh      = WHERE(eh_times LE MAX(t_u,/NAN) AND eh_times GE MIN(t_u,/NAN),g_h)
+g_ehb     = WHERE(ehb_times LE MAX(t_u,/NAN) AND ehb_times GE MIN(t_u,/NAN),g_hb)
+
+IF (g_l GT 0)  THEN gael  = ael[g_el]   ELSE gael  = 0
+IF (g_lb GT 0) THEN gaelb = aelb[g_elb] ELSE gaelb = 0
+IF (g_h GT 0)  THEN gaeh  = aeh[g_eh]   ELSE gaeh  = 0
+IF (g_hb GT 0) THEN gaehb = aehb[g_ehb] ELSE gaehb = 0
+print, g_l, g_lb
+; => For 1998-11-13/15:00:00 - 1998-11-13/22:30:00
+;         279          95
+; => For 2000-04-09/20:20:00 - 2000-04-10/14:00:00
+;         636         208
+; => For 2000-05-02/21:00:00 - 2000-05-03/10:00:00
+;         469          98
+; => For 2000-05-25/20:50:00 - 2000-05-26/04:20:00
+;         271          96
+; => For 2000-06-10/01:00:00 - 2000-06-11/03:00:00
+;         937       0
+; => For 2000-06-26/13:00:00 - 2000-06-27/02:00:00
+;         463       0
+; => For 2000-07-09/18:30:00 - 2000-07-10/12:00:00
+;         614         192
+; => For 2000-07-23/04:40:00 - 2000-07-24/22:00:00
+;        1524         653
+; => For 2000-08-03/16:30:00 - 2000-08-04/22:00:00
+;        1077         389
+; => For 2000-08-15/13:00:00 - 2000-08-17/16:00:00
+;        1858         387
+; => For 2001-10-03/04:00:00 - 2001-10-04/11:00:00
+;        1256         594
+; => For 2001-10-23/07:00:00 - 2001-10-25/09:00:00
+;        1829         640
+; => For 2001-11-14/00:00:00 - 2001-11-16/05:00:00
+;        1902         997
+; => For 2001-12-02/02:00:00 - 2001-12-05/06:00:00
+;        2713        1153
+; => For 2002-10-09/22:00:00 - 2002-10-10/05:00:00
+;         225          96
+print, g_h, g_hb
+; => For 1998-11-13/15:00:00 - 1998-11-13/22:30:00
+;         279       0
+; => For 2000-04-09/20:20:00 - 2000-04-10/14:00:00
+;         616         217
+; => For 2000-05-02/21:00:00 - 2000-05-03/10:00:00
+;         469         101
+; => For 2000-05-25/20:50:00 - 2000-05-26/04:20:00
+;         271         102
+; => For 2000-06-10/01:00:00 - 2000-06-11/03:00:00
+;         904       0
+; => For 2000-06-26/13:00:00 - 2000-06-27/02:00:00
+;         427       0
+; => For 2000-07-09/18:30:00 - 2000-07-10/12:00:00
+;         588         202
+; => For 2000-07-23/04:40:00 - 2000-07-24/22:00:00
+;        1481         682
+; => For 2000-08-03/16:30:00 - 2000-08-04/22:00:00
+;        1058         403
+; => For 2000-08-15/13:00:00 - 2000-08-17/16:00:00
+;        1836         401
+; => For 2001-10-03/04:00:00 - 2001-10-04/11:00:00
+;        1232         623
+; => For 2001-10-23/07:00:00 - 2001-10-25/09:00:00
+;        1827         665
+; => For 2001-11-14/00:00:00 - 2001-11-16/05:00:00
+;        1902        1036
+; => For 2001-12-02/02:00:00 - 2001-12-05/06:00:00
+;        2682        1205
+; => For 2002-10-09/22:00:00 - 2002-10-10/05:00:00
+;         204         101
+
+add_scpot,gael,'sc_pot_3'
+add_scpot,gaelb,'sc_pot_3'
+add_scpot,gaeh,'sc_pot_3'
+add_scpot,gaehb,'sc_pot_3'
+
+moments_array_3dp,PLM=gael,PLBM=gaelb,AVGTEMP=avtempe,T_PERP=tperp_e, $
+                  T_PARA=tpara_e,V_THERM=vtherme,VELOCITY=elb_vels,   $
+                  PRESSURE=press_e,MOMS=moms,/TO_TPLOT,SUFFX='el'
+
+moments_array_3dp,PLM=gaeh,PLBM=gaehb,AVGTEMP=avtempeh,T_PERP=tperp_eh, $
+                  T_PARA=tpara_eh,V_THERM=vthermeh,VELOCITY=ehb_vels,   $
+                  PRESSURE=press_eh,MOMS=momsh,/TO_TPLOT,SUFFX='eh'
+
+add_vsw2,gael,'Velocity_el'
+add_vsw2,gaelb,'Velocity_el'
+
+add_vsw2,gaeh,'Velocity_eh'
+add_vsw2,gaehb,'Velocity_eh'
+
+get_data,'Velocity_el',DATA=el_vel
+tvels = el_vel.Y*1e-3
+store_data,'Velocity_el',DATA={X:el_vel.X,Y:tvels}
+get_data,'Velocity_eh',DATA=el_vel
+tvels = el_vel.Y*1e-3
+store_data,'Velocity_eh',DATA={X:el_vel.X,Y:tvels}
+DELVAR,tvels,el_vel
+options,'Velocity_el','YTITLE','V!Del!N (1000 km/s)'
+options,'Velocity_eh','YTITLE','V!Deh!N (1000 km/s)'
+options,'Velocity_eh','MAX_VALUE',5e0
+options,'Velocity_eh','MIN_VALUE',-5e0
+
+
+
+stime  = STRMID(t_o[*],0,10)+'_'+STRMID(t_o[*],11,2)+STRMID(t_o[*],14,2)
+sfname = stime[0]+'_'+stime[1]+'_TDS-Locations_eholes-blue_whistlers-red'
+temp_to_tplot,t_o,unix_whist,unix_ehole
+
+nna = tnames([nn0,'N_i2','Tanisotropy_el','Tanisotropy_eh'])
+tplot,nna
+time_bar,unix_whist,VARNAME=nna,COLOR=250L
+time_bar,unix_ehole,VARNAME=nna,COLOR=50L
+;-----------------------------------------------------------------------------------------
+; => Print special event to ASCII file
+;-----------------------------------------------------------------------------------------
+temp = gael[123]   ; => EL at 1998-11-13/18:18:44
+del  = convert_vframe(temp,/INTERP)
+pd   = pad(del,NUM_PA=24)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+dfpar   = distfunc(vout,0.,PARAM=del)
+dfper   = distfunc(0.,vout,PARAM=del)
+ndf     = N_ELEMENTS(dfpar)
+
+mform   = '(f12.3,2e20.8)'
+fname   = 'EL_1998-11-13_181844_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout[j],dfpar[j],dfper[j]
+FREE_LUN,gunit
+
+temp   = gaeh[123]   ; => EH at 1998-11-13/18:18:44
+ngrid  = 20
+vlim   = 6d4
+ns     = 3
+tad    = temp
+add_df2d_to_ph,tad,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=ns
+dfpara = SMOOTH(tad.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp = SMOOTH(tad.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+
+ndf     = N_ELEMENTS(dfpara)
+vout2   = tad.VX2D
+mform   = '(f12.3,2e20.8)'
+fname   = 'EH_1998-11-13_181844_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout2[j],dfpara[j],dfperp[j]
+FREE_LUN,gunit
+
+temp = gael[124]   ; => EL at 1998-11-13/18:20:20
+del  = convert_vframe(temp,/INTERP)
+pd   = pad(del,NUM_PA=24)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+dfpar   = distfunc(vout,0.,PARAM=del)
+dfper   = distfunc(0.,vout,PARAM=del)
+ndf     = N_ELEMENTS(dfpar)
+
+mform   = '(f12.3,2e20.8)'
+fname   = 'EL_1998-11-13_182020_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout[j],dfpar[j],dfper[j]
+FREE_LUN,gunit
+
+temp   = gaeh[124]   ; => EH at 1998-11-13/18:20:20
+ngrid  = 20
+vlim   = 6d4
+ns     = 3
+tad    = temp
+add_df2d_to_ph,tad,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=ns
+dfpara = SMOOTH(tad.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp = SMOOTH(tad.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+
+ndf     = N_ELEMENTS(dfpara)
+vout2   = tad.VX2D
+mform   = '(f12.3,2e20.8)'
+fname   = 'EH_1998-11-13_182020_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout2[j],dfpara[j],dfperp[j]
+FREE_LUN,gunit
+
+
+; => Adjust SC Potential to 28 eV
+temp = gael[111]   ; => EL at 2000-04-09/23:25:17
+temp.SC_POT = 28.0
+del  = convert_vframe(temp,/INTERP)
+bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)
+IF (bd GT 0) THEN del.DATA[bad,*] = f
+pd   = pad(del,NUM_PA=17)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+dfpar   = distfunc(vout,0.,PARAM=del)
+dfper   = distfunc(0.,vout,PARAM=del)
+ndf     = N_ELEMENTS(dfpar)
+
+mform   = '(f12.3,2e20.8)'
+fname   = 'EL_2000-04-09_232517_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout[j],dfpar[j],dfper[j]
+FREE_LUN,gunit
+
+
+temp = gael[233]   ; => EL at 2000-04-10/02:46:58
+del  = convert_vframe(temp,/INTERP)
+pd   = pad(del,NUM_PA=24)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+dfpar   = distfunc(vout,0.,PARAM=del)
+dfper   = distfunc(0.,vout,PARAM=del)
+ndf     = N_ELEMENTS(dfpar)
+
+mform   = '(f12.3,2e20.8)'
+fname   = 'EL_2000-04-10_024658_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout[j],dfpar[j],dfper[j]
+FREE_LUN,gunit
+
+
+temp   = gaeh[212]   ; => EH at 2000-04-10/02:46:58
+ngrid  = 20
+vlim   = 6d4
+ns     = 3
+tad    = temp
+add_df2d_to_ph,tad,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=ns
+dfpara = SMOOTH(tad.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp = SMOOTH(tad.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+
+ndf     = N_ELEMENTS(dfpara)
+vout2   = tad.VX2D
+mform   = '(f12.3,2e20.8)'
+fname   = 'EH_2000-04-10_024658_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout2[j],dfpara[j],dfperp[j]
+FREE_LUN,gunit
+
+
+temp = gael[247]   ; => EL at 2000-04-10/03:11:46
+del  = convert_vframe(temp,/INTERP)
+pd   = pad(del,NUM_PA=24)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+dfpar   = distfunc(vout,0.,PARAM=del)
+dfper   = distfunc(0.,vout,PARAM=del)
+ndf     = N_ELEMENTS(dfpar)
+
+mform   = '(f12.3,2e20.8)'
+fname   = 'EL_2000-04-10_031146_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout[j],dfpar[j],dfper[j]
+FREE_LUN,gunit
+
+
+temp   = gaeh[226]   ; => EH at 2000-04-10/03:11:46
+ngrid  = 20
+vlim   = 6d4
+ns     = 3
+tad    = temp
+add_df2d_to_ph,tad,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=ns
+dfpara = SMOOTH(tad.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp = SMOOTH(tad.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+
+ndf     = N_ELEMENTS(dfpara)
+vout2   = tad.VX2D
+mform   = '(f12.3,2e20.8)'
+fname   = 'EH_2000-04-10_031146_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout2[j],dfpara[j],dfperp[j]
+FREE_LUN,gunit
+
+
+temp = gael[210]   ; => EL at 2000-08-15/18:42:33
+del  = convert_vframe(temp,/INTERP)
+bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)
+IF (bd GT 0) THEN del.DATA[bad,*] = f
+pd   = pad(del,NUM_PA=17)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+dfpar   = distfunc(vout,0.,PARAM=del)
+dfper   = distfunc(0.,vout,PARAM=del)
+ndf     = N_ELEMENTS(dfpar)
+
+mform   = '(f12.3,2e20.8)'
+fname   = 'EL_2000-08-15_184233_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout[j],dfpar[j],dfper[j]
+FREE_LUN,gunit
+
+
+temp   = gaeh[210]   ; => EH at 2000-08-15/18:42:33
+ngrid  = 20
+vlim   = 6d4
+ns     = 3
+tad    = temp
+add_df2d_to_ph,tad,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=ns
+dfpara = SMOOTH(tad.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp = SMOOTH(tad.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+
+ndf     = N_ELEMENTS(dfpara)
+vout2   = tad.VX2D
+mform   = '(f12.3,2e20.8)'
+fname   = 'EH_2000-08-15_184233_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout2[j],dfpara[j],dfperp[j]
+FREE_LUN,gunit
+
+
+temp  = gael[170]   ; => EL at 2002-10-10/02:32:20
+del   = convert_vframe(temp,/INTERP)
+bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)
+IF (bd GT 0) THEN del.DATA[bad,*] = f
+pd    = pad(del,NUM_PA=24)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+dfpar   = distfunc(vout,0.,PARAM=del)
+dfper   = distfunc(0.,vout,PARAM=del)
+ndf     = N_ELEMENTS(dfpar)
+
+mform   = '(f12.3,2e20.8)'
+fname   = 'EL_2002-10-10_023220_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout[j],dfpar[j],dfper[j]
+FREE_LUN,gunit
+
+
+temp  = gael[171]   ; => EL at 2002-10-10/02:33:56
+del   = convert_vframe(temp,/INTERP)
+bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)
+IF (bd GT 0) THEN del.DATA[bad,*] = f
+pd    = pad(del,NUM_PA=24)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+dfpar   = distfunc(vout,0.,PARAM=del)
+dfper   = distfunc(0.,vout,PARAM=del)
+ndf     = N_ELEMENTS(dfpar)
+
+mform   = '(f12.3,2e20.8)'
+fname   = 'EL_2002-10-10_023356_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout[j],dfpar[j],dfper[j]
+FREE_LUN,gunit
+
+
+temp   = gaeh[166]   ; => EH at 2002-10-10/02:33:56
+ngrid  = 20
+vlim   = 6d4
+ns     = 3
+tad    = temp
+add_df2d_to_ph,tad,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=ns
+dfpara = SMOOTH(tad.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp = SMOOTH(tad.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+ndf    = N_ELEMENTS(dfpara)
+vout2  = tad.VX2D
+
+mform   = '(f12.3,2e20.8)'
+fname   = 'EH_2002-10-10_023356_para-perp.txt'
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vout2[j],dfpara[j],dfperp[j]
+FREE_LUN,gunit
+
+
+; => Combine EL and EH
+tad   = temp
+bad   = WHERE(ABS(vout2) LE velocity(MIN(tad.ENERGY,/NAN),me_3dp,/TRUE),bd)
+dfpara2 = dfpara
+dfperp2 = dfperp
+dfpara2[bad] = d
+dfperp2[bad] = d
+
+vv2   = [vout,vout2]
+dfpa2 = [dfpar,dfpara2]
+dfpe2 = [dfper,dfperp2]
+sp    = SORT(vv2)
+vv2   = vv2[sp]
+dfpa2 = dfpa2[sp]
+dfpe2 = dfpe2[sp]
+
+dfpa3 = SMOOTH(dfpa2,7L,/EDGE_TRUNCATE,/NAN)
+dfpe3 = SMOOTH(dfpe2,7L,/EDGE_TRUNCATE,/NAN)
+plot,vv2,dfpa3,/nodata,/ystyle,/xstyle,/ylog,yminor=9
+oplot,vv2,dfpa3,color=250
+oplot,vv2,dfpe3,color=50
+
+
+dfpa4 = SMOOTH(dfpa3,7L,/EDGE_TRUNCATE,/NAN)
+dfpe4 = SMOOTH(dfpe3,7L,/EDGE_TRUNCATE,/NAN)
+plot,vv2,dfpa4,/nodata,/ystyle,/xstyle,/ylog,yminor=9
+oplot,vv2,dfpa4,color=250
+oplot,vv2,dfpe4,color=50
+mform   = '(f12.3,2e20.8)'
+;fname   = 'EL_and_EH_1998-11-13_181844_para-perp.txt'
+fname   = 'EL_and_EH_1998-11-13_182020_para-perp.txt'
+;fname   = 'EL_and_EH_2000-04-10_024658_para-perp.txt'
+;fname   = 'EL_and_EH_2000-08-15_184233_para-perp.txt'
+;fname   = 'EL_and_EH_2002-10-10_023356_para-perp.txt'
+ndf     = N_ELEMENTS(dfpa4)
+OPENW,gunit,fname,/GET_LUN
+  FOR j=0L, ndf - 1L DO BEGIN $
+    PRINTF,gunit,FORMAT=mform,vv2[j],dfpa4[j],dfpe4[j]
+FREE_LUN,gunit
+
+;tt_00 = time_double(['2000-04-10/02:46:58'])
+tt_00 = time_double(['2000-08-15/18:40:56','2000-08-15/18:42:33','2000-08-15/18:44:10'])
+;tt_00 = time_double(['2002-10-10/02:32:20','2002-10-10/02:33:56'])
+
+get_data,'wi_B3_MAG(GSE)',DATA=test
+print, interp(test.Y,test.X,tt_00,/no_extrap)
+; => For 2000-04-10/02:46:58
+;       182.93002
+; => For 2000-08-15/18:40:56, 2000-08-15/18:42:33,  and  2000-08-15/18:44:10
+;       68.557686       65.712963       33.590079
+; => For 2002-10-10/02:32:20  and  2002-10-10/02:33:56
+;       412.12894       404.45137
+get_data,'N_i2',DATA=test
+print, interp(test.Y,test.X,tt_00,/no_extrap)
+; => For 2000-04-10/02:46:58
+;       45.238088
+; => For 2000-08-15/18:40:56, 2000-08-15/18:42:33,  and  2000-08-15/18:44:10
+;     0.010518245      0.17982571      0.34941864
+; => For 2002-10-10/02:32:20  and  2002-10-10/02:33:56
+;       76.200224       73.905617
+get_data,'N_ph',DATA=test
+print, interp(test.Y,test.X,tt_00,/no_extrap)
+; => For 2000-04-10/02:46:58
+;       41.084560
+; => For 2000-08-15/18:40:56, 2000-08-15/18:42:33,  and  2000-08-15/18:44:10
+;       1.9225192       1.0485190       19.595831
+; => For 2002-10-10/02:32:20  and  2002-10-10/02:33:56
+;       17.745445       16.380190
+get_data,'Tpara_el',DATA=test
+print, interp(test.Y,test.X,tt_00,/no_extrap)
+; => For 2000-04-10/02:46:58
+;       117.54472
+; => For 2000-08-15/18:40:56, 2000-08-15/18:42:33,  and  2000-08-15/18:44:10
+;       150.97413       194.33347       58.455781
+; => For 2002-10-10/02:32:20  and  2002-10-10/02:33:56
+;       88.436980       82.765606
+get_data,'Tperp_el',DATA=test
+print, interp(test.Y,test.X,tt_00,/no_extrap)
+; => For 2000-04-10/02:46:58
+;       141.20073
+; => For 2000-08-15/18:40:56, 2000-08-15/18:42:33,  and  2000-08-15/18:44:10
+;       82.100315       80.708172       55.693650
+; => For 2002-10-10/02:32:20  and  2002-10-10/02:33:56
+;       96.969134       89.856152
+get_data,'Tpara_eh',DATA=test
+print, interp(test.Y,test.X,tt_00,/no_extrap)
+; => For 2000-04-10/02:46:58
+;       1895.6682
+; => For 2000-08-15/18:40:56, 2000-08-15/18:42:33,  and  2000-08-15/18:44:10
+;       342.53335       283.83819       116.08093
+; => For 2002-10-10/02:32:20  and  2002-10-10/02:33:56
+;       1409.3710       1445.8599
+get_data,'Tperp_eh',DATA=test
+print, interp(test.Y,test.X,tt_00,/no_extrap)
+; => For 2000-04-10/02:46:58
+;       2305.7725
+; => For 2000-08-15/18:40:56, 2000-08-15/18:42:33,  and  2000-08-15/18:44:10
+;       262.53769       187.77613       126.49307
+; => For 2002-10-10/02:32:20  and  2002-10-10/02:33:56
+;       1471.7996       1516.5689
+;-----------------------------------------------------------------------------------------
+; => Look at special event
+;-----------------------------------------------------------------------------------------
+temp = gael[111]   ; => EL at 2000-04-09/23:25:17
+del  = convert_vframe(temp,/INTERP)
+bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)
+IF (bd GT 0) THEN del.DATA[bad,*] = f
+pd   = pad(del,NUM_PA=24)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+; => Plot values for nothing below SC Potential
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+temp = gael[111]   ; => EL at 2000-04-09/23:25:17
+del2 = convert_vframe(temp,/INTERP)
+pd   = pad(del2,NUM_PA=24)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del2,df
+
+; => Plot values for interpolation below SC Potential
+cont2d,del2,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+; => Adjust SC Potential to 28 eV
+temp = gael[111]   ; => EL at 2000-04-09/23:25:17
+temp.SC_POT = 28.0
+del  = convert_vframe(temp,/INTERP)
+bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)
+IF (bd GT 0) THEN del.DATA[bad,*] = f
+pd   = pad(del,NUM_PA=17)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+; => Plot values for nothing below SC Potential
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+;-----------------------------------------------------------------------------------------
+; => Electron Distributions
+;-----------------------------------------------------------------------------------------
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+dfdir   = '~/Desktop/3DP_contours/'+date[0]+'/PS_EL/'
+pddir   = '~/Desktop/3DP_contours/'+date[0]+'/PADS_EL/'
+mtsel   = my_time_string(gael.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+dfsuff  = '_17PAs-30Grids-one-count_vtherm-taniso-heatf_interp-no-low_DF'
+pdsuff  = '_17PAs-30Grids-7-Highest-Energies_interp-no-low_PAD'
+nel     = N_ELEMENTS(gael)
+FOR j=0L, nel - 1L DO BEGIN                                                         $
+  dat   = gael[j]                                                                 & $
+  del   = convert_vframe(dat,/INTERP)                                             & $
+  bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)                                 & $
+  IF (bd GT 0) THEN del.DATA[bad,*] = f                                           & $
+  pd    = pad(del,NUM_PA=17)                                                      & $
+  df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)                   & $
+  extract_tags,del,df                                                             & $
+  pltn2 = pddir[0]+'el_'+gdate[j]+'_'+UTtime[j]+pdsuff[0]                         & $
+  popen,pltn2,/port                                                               & $
+    my_padplot_both,pd,UNITS='flux',EBINS=[0L,6L]                                 & $
+  pclose                                                                          & $
+  pltn1  = dfdir+'el_'+gdate[j]+'_'+UTtime[j]+dfsuff[0]                           & $
+  popen,pltn1,/port                                                               & $
+    cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=dat               & $
+  pclose
+
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+ngrid   = 20
+vlim    = 6d4
+pdir    = '~/Desktop/3DP_contours/'+date[0]+'/PS_EH/'
+suffx   = '_3D-30Grids-All-Energies_e-frame_sundir-DF'
+mtsel   = my_time_string(gaeh.TIME,UNIX=1)
+ymdehs  = mtsel.DATE_TIME
+ymdb    = ymdehs
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+n_aeh   = N_ELEMENTS(gaeh)
+FOR j=0L, n_aeh - 1L DO BEGIN                                 $
+  dat  = gaeh[j]                                            & $
+  fnam = pdir+'eh_'+gdate[j]+'_'+UTtime[j]+suffx            & $
+  popen,fnam,/PORT                                          & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NSMOOTH=5,/ONE_C,/SM_CUTS,EX_VEC=sunv,EX_VN=sunn  & $
+  pclose
+
+
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+dfdir   = '~/Desktop/3DP_contours/'+date[0]+'/PS_ELB/'
+pddir   = '~/Desktop/3DP_contours/'+date[0]+'/PADS_ELB/'
+mtsel   = my_time_string(gaelb.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+dfsuff  = '_17PAs-30Grids-one-count_vtherm-taniso-heatf_interp-no-low_DF'
+pdsuff  = '_17PAs-30Grids-7-Highest-Energies_interp-no-low_PAD'
+nelb    = N_ELEMENTS(gaelb)
+FOR j=0L, nelb - 1L DO BEGIN                                                        $
+  dat   = gaelb[j]                                                                & $
+  del   = convert_vframe(dat,/INTERP)                                             & $
+  bad   = WHERE(del.ENERGY[*,0] LE del.SC_POT,bd)                                 & $
+  IF (bd GT 0) THEN del.DATA[bad,*] = f                                           & $
+  pd    = pad(del,NUM_PA=17)                                                      & $
+  df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)                   & $
+  extract_tags,del,df                                                             & $
+  pltn2 = pddir[0]+'elb_'+gdate[j]+'_'+UTtime[j]+pdsuff[0]                        & $
+  popen,pltn2,/port                                                               & $
+    my_padplot_both,pd,UNITS='flux',EBINS=[0L,6L]                                 & $
+  pclose                                                                          & $
+  pltn1  = dfdir+'elb_'+gdate[j]+'_'+UTtime[j]+dfsuff[0]                          & $
+  popen,pltn1,/port                                                               & $
+    cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=dat               & $
+  pclose
+;-----------------------------------------------------------------------------------------
+; => Find elements of non-burst (nb) and burst (yb) structures near whistler TDS samples
+;-----------------------------------------------------------------------------------------
+test0 = bracket(gael.time,unix_whist)
+test1 = bracket(gaelb.time,unix_whist)
+
+winds_111398_nb = [LINDGEN(3L)+52L,LINDGEN(3L)+60L,LINDGEN(3L)+64L,LINDGEN(10L)+117L,$
+                   LINDGEN(3L)+149L]
+winds_111398_yb = -1
+
+winds_040900_nb = [LINDGEN(9L)+232L,LINDGEN(9L)+245L,LINDGEN(5L)+265L,LINDGEN(3L)+275L,$
+                   LINDGEN(3L)+283L,LINDGEN(7L)+290L]
+winds_040900_yb = LINDGEN(18) + 79L
+
+winds_050300_nb = [LINDGEN(3L)+208L,LINDGEN(4L)+222L,LINDGEN(3L)+227L,LINDGEN(3L)+445L,$
+                   LINDGEN(7L)+450L]
+winds_050300_yb = -1
+
+winds_052600_nb = [LINDGEN(7L)+0L,LINDGEN(3L)+12L,LINDGEN(3L)+60L,LINDGEN(6L)+65L,$
+                   LINDGEN(4L)+72L,LINDGEN(6L)+83L,LINDGEN(8L)+96L,LINDGEN(4L)+110L,$
+                   LINDGEN(3L)+139L,LINDGEN(4L)+195L]
+winds_052600_yb = -1
+
+winds_061000_nb = [LINDGEN(3L)+50L,LINDGEN(3L)+424L,LINDGEN(5L)+433L,LINDGEN(7L)+815L,$
+                   LINDGEN(3L)+828L,LINDGEN(4L)+832L,LINDGEN(4L)+926L]
+winds_061000_yb = -1
+
+winds_062600_nb = [LINDGEN(4L)+9L,LINDGEN(3L)+30L,LINDGEN(3L)+52L,LINDGEN(5L)+69L,$
+                   LINDGEN(7L)+75L,LINDGEN(4L)+267L]
+winds_062600_yb = -1
+
+winds_071000_nb = [LINDGEN(3L)+168L,LINDGEN(8L)+446L,LINDGEN(3L)+456L]
+winds_071000_yb = -1
+
+winds_072300_nb = [LINDGEN(3L)+0L,LINDGEN(7L)+35L,LINDGEN(7L)+46L,LINDGEN(7L)+69L,       $
+                   LINDGEN(7L)+86L,LINDGEN(21L)+117L,LINDGEN(7L)+133L,LINDGEN(7L)+185L,  $
+                   LINDGEN(4L)+1187L]
+winds_072300_yb = [LINDGEN(3L)+0L,LINDGEN(7L)+459L]
+
+
+winds_080400_nb = [LINDGEN(10L)+15L,LINDGEN(50L)+80L,LINDGEN(30L)+195L,LINDGEN(20L)+240L,$
+                   LINDGEN(5L)+409L,LINDGEN(10L)+924L,LINDGEN(10L)+950L]
+winds_080400_yb = LINDGEN(N_ELEMENTS(gaelb))
+
+
+winds_081500_nb = [LINDGEN(120L)+9L,LINDGEN(90L)+170L,LINDGEN(10L)+300L,LINDGEN(20L)+480L]
+winds_081500_yb = LINDGEN(N_ELEMENTS(gaelb))
+
+
+winds_101002_nb = [LINDGEN(4L)+5L,LINDGEN(9L)+22L,LINDGEN(3L)+48L,LINDGEN(3L)+81L,       $
+                   LINDGEN(3L)+112L,LINDGEN(11L)+118L,LINDGEN(12L)+168L,LINDGEN(3L)+185L,$
+                   LINDGEN(3L)+201L,LINDGEN(4L)+213L]
+winds_101002_yb = -1
+
+
+; => Find elements of non-burst (nb) and burst (yb) structures near e-holes TDS samples
+test0 = bracket(gael.time,unix_ehole)
+test1 = bracket(gaelb.time,unix_ehole)
+
+einds_111398_nb = [LINDGEN(7L)+2L,LINDGEN(3L)+27L,LINDGEN(3L)+126L,LINDGEN(7L)+134L,$
+                   LINDGEN(3L)+161L,LINDGEN(11L)+256L]
+einds_111398_yb = -1
+
+einds_040900_nb = [LINDGEN(4L)+4L,LINDGEN(3L)+14L,LINDGEN(5L)+109L,LINDGEN(3L)+180L,$
+                   LINDGEN(4L)+189L,LINDGEN(3L)+198L]
+einds_040900_yb = -1
+
+einds_050300_nb = [LINDGEN(3L)+19L,LINDGEN(7L)+25L,LINDGEN(3L)+40L,LINDGEN(3L)+74L]
+einds_050300_yb = -1
+
+einds_052600_nb = [LINDGEN(3L)+167L,LINDGEN(3L)+194L,LINDGEN(3L)+200L,$
+                   LINDGEN(11L)+205L,LINDGEN(3L)+234L,LINDGEN(3L)+257L,LINDGEN(3L)+264L]
+einds_052600_yb = LINDGEN(16)+80L
+
+einds_061000_nb = [LINDGEN(9L)+432L,LINDGEN(5L)+449L,LINDGEN(4L)+464L,LINDGEN(3L)+474L,$
+                   LINDGEN(3L)+488L,LINDGEN(3L)+539L,LINDGEN(5L)+557L,LINDGEN(3L)+563L,$
+                   LINDGEN(4L)+635L,LINDGEN(4L)+661L]
+einds_061000_yb = -1
+
+einds_062600_nb = [LINDGEN(6L)+156L,LINDGEN(7L)+180L,LINDGEN(3L)+263L,LINDGEN(3L)+320L,$
+                   LINDGEN(6L)+357L,LINDGEN(3L)+371L,LINDGEN(3L)+409L,LINDGEN(6L)+440L]
+einds_062600_yb = -1
+
+einds_071000_nb = [LINDGEN(9L)+0L,LINDGEN(12L)+41L,LINDGEN(3L)+171L,LINDGEN(5L)+366L,$
+                   LINDGEN(16L)+484L,LINDGEN(3L)+531L,LINDGEN(4L)+549L,LINDGEN(4L)+558L,$
+                   LINDGEN(8L)+593L]
+einds_071000_yb = -1
+
+einds_072300_nb = [LINDGEN(246L)+336L,LINDGEN(65L)+634L,LINDGEN(19L)+728L,   $
+                   LINDGEN(3L)+835L,LINDGEN(11L)+852L,LINDGEN(4L)+909L,      $
+                   LINDGEN(4L)+1103L,LINDGEN(5L)+1138L,LINDGEN(80L)+1202L,   $
+                   LINDGEN(4L)+1332L,LINDGEN(30L)+1353L,LINDGEN(4L)+1436L,   $
+                   LINDGEN(10L)+1475L,LINDGEN(4L)+1514L]
+einds_072300_yb = [LINDGEN(4L)+94L,LINDGEN(22L)+130L,LINDGEN(32L)+173L,      $
+                   LINDGEN(4L)+290L,LINDGEN(4L)+459L,LINDGEN(4L)+555L,       $
+                   LINDGEN(4L)+643L,LINDGEN(4L)+650L]
+
+einds_080400_nb = [LINDGEN(30L)+515L,LINDGEN(20L)+730L,LINDGEN(10L)+890L,$
+                   LINDGEN(10L)+940L,LINDGEN(10L)+1055L]
+einds_080400_yb = LINDGEN(N_ELEMENTS(gaelb))
+
+einds_081500_nb = [LINDGEN(30L)+159L,LINDGEN(280L)+598L,LINDGEN(50L)+980L,$
+                   LINDGEN(20L)+1015L,LINDGEN(160L)+1125L,LINDGEN(20L)+1410L,$
+                   LINDGEN(5L)+1510L,LINDGEN(5L)+1575L,LINDGEN(40L)+1599L,$
+                   LINDGEN(120L)+1720L]
+einds_081500_yb = LINDGEN(N_ELEMENTS(gaelb))
+
+einds_101002_nb = [LINDGEN(3L)+204L]
+einds_101002_yb = -1
+
+
+
+;all_inds_nb     = [winds_111398_nb,einds_111398_nb]
+;all_inds_yb     = -1
+;all_inds_nb    = [winds_040900_nb,einds_040900_nb]
+;all_inds_yb    = winds_040900_nb
+;all_inds_nb     = [winds_050300_nb,einds_050300_nb]
+;all_inds_yb     = -1
+;all_inds_nb     = [winds_052600_nb,einds_052600_nb]
+;all_inds_yb     = einds_052600_yb
+;all_inds_nb     = [winds_061000_nb,einds_061000_nb]
+;all_inds_yb     = -1
+;all_inds_nb     = [winds_062600_nb,einds_062600_nb]
+;all_inds_yb     = -1
+;all_inds_nb     = [winds_071000_nb,einds_071000_nb]
+;all_inds_yb     = -1
+;all_inds_nb     = [winds_072300_nb,einds_072300_nb]
+;all_inds_yb     = [winds_072300_yb,einds_072300_yb]
+all_inds_nb     = [winds_080400_nb,einds_080400_nb]
+all_inds_yb     = [winds_080400_yb,einds_080400_yb]
+;all_inds_nb     = [winds_081500_nb,einds_081500_nb]
+;all_inds_yb     = [winds_081500_yb,einds_081500_yb]
+;all_inds_nb     = [winds_101002_nb,einds_101002_nb]
+;all_inds_yb     = -1
+
+
+unq_nb          = SORT(UNIQ(all_inds_nb,SORT(all_inds_nb)))
+all_inds_nb     = all_inds_nb[unq_nb]
+unq_yb          = SORT(UNIQ(all_inds_yb,SORT(all_inds_yb)))
+all_inds_yb     = all_inds_yb[unq_yb]
+
+
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+ngrid   = 30
+vlim    = 2d4
+pdir    = '~/Desktop/3DP_contours/'+date[0]+'/PS_EL/'
+suffx   = '_3D-30Grids-All-Energies_e-frame_sundir-DF'
+tempel  = gael[all_inds_nb]
+sp      = SORT(tempel.TIME)
+tempel  = tempel[sp]
+mtsel   = my_time_string(tempel.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+n_ael   = N_ELEMENTS(tempel)
+FOR j=0L, n_ael - 1L DO BEGIN                                 $
+  dat  = tempel[j]                                          & $
+  fnam = pdir+'el_'+gdate[j]+'_'+UTtime[j]+suffx            & $
+  popen,fnam,/PORT                                          & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NSMOOTH=5,/ONE_C,/SM_CUTS,EX_VEC=sunv,EX_VN=sunn  & $
+  pclose
+
+ngrid   = 20
+vlim    = 6d4
+pdir    = '~/Desktop/3DP_contours/'+date[0]+'/PS_EH/'
+suffx   = '_3D-30Grids-All-Energies_e-frame_sundir-DF'
+tempeh  = gaeh[all_inds_nb]
+sp      = SORT(tempeh.TIME)
+tempeh  = tempeh[sp]
+mtsel   = my_time_string(tempeh.TIME,UNIX=1)
+ymdehs  = mtsel.DATE_TIME
+ymdb    = ymdehs
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+n_aeh   = N_ELEMENTS(tempeh)
+FOR j=0L, n_aeh - 1L DO BEGIN                                 $
+  dat  = tempeh[j]                                          & $
+  fnam = pdir+'eh_'+gdate[j]+'_'+UTtime[j]+suffx            & $
+  popen,fnam,/PORT                                          & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NSMOOTH=5,/ONE_C,/SM_CUTS,EX_VEC=sunv,EX_VN=sunn  & $
+  pclose
+
+n_aelb  = N_ELEMENTS(all_inds_yb)
+ngrid   = 30
+vlim    = 2d4
+pdir    = '~/Desktop/3DP_contours/'+date[0]+'/PS_ELB/'
+suffx   = '_3D-30Grids-All-Energies_e-frame-DF'
+tempelb = gaelb[all_inds_yb]
+sp      = SORT(tempelb.TIME)
+tempelb = tempelb[sp]
+mtsel   = my_time_string(tempelb.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+FOR j=0L, n_aelb - 1L DO BEGIN                                 $
+  dat  = tempelb[j]                                          & $
+  fnam = pdir+'elb_'+gdate[j]+'_'+UTtime[j]+suffx            & $
+  popen,fnam,/PORT                                           & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NSMOOTH=5,/SM_CUTS   & $
+  pclose
+
+ngrid   = 20
+vlim    = 6d4
+pdir    = '~/Desktop/3DP_contours/'+date[0]+'/PS_EHB/'
+suffx   = '_3D-30Grids-All-Energies_e-frame-DF'
+tempehb = gaehb[all_inds_yb]
+sp      = SORT(tempehb.TIME)
+tempehb = tempehb[sp]
+mtsel   = my_time_string(tempehb.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+n_aehb  = N_ELEMENTS(tempehb)
+FOR j=0L, n_aehb - 1L DO BEGIN                                 $
+  dat  = tempehb[j]                                          & $
+  fnam = pdir+'ehb_'+gdate[j]+'_'+UTtime[j]+suffx            & $
+  popen,fnam,/PORT                                           & $
+    eh_cont3d,dat,VLIM=vlim,NGRID=ngrid,NSMOOTH=5,/SM_CUTS   & $
+  pclose
+
+
+
+nelb     = N_ELEMENTS(gaelb[all_inds_yb])
+; -Calculates DFs and PADs and converts into Electron rest frame
+test     = eesa_data_4(gaelb[all_inds_yb],NUM_PA=24L)
+myb_delb = test.MOMENTS
+myb_pdb  = test.PADS
+
+nel      = N_ELEMENTS(gael[all_inds_nb])
+; -Calculates DFs and PADs and converts into Electron rest frame
+test     = eesa_data_4(gael[all_inds_nb],NUM_PA=24L) 
+my_delb  = test.MOMENTS
+my_pdb   = test.PADS
+
+
+
+pdir    = '~/Desktop/3DP_contours/'+date[0]+'/PS_EL/'
+suffx   = '_24PAs-30Grids-All-Energies_e-frame-DF_w-One-Count'
+mtsel   = my_time_string(gael[all_inds_nb].TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+ngrid  = 30L
+vlim   = 2d4
+vout   = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+nel    = N_ELEMENTS(gael[all_inds_nb])
+FOR j=0L, nel - 1L DO BEGIN                                                           $
+  myonec   = gael[all_inds_nb[j]]                                                   & $
+  delb     = my_delb[j]                                                             & $
+  fnam = pdir+'el_'+gdate[j]+'_'+UTtime[j]+suffx                                    & $
+  popen,fnam,/PORT                                                                  & $
+    cont2d,delb,NGRID=30,VLIM=2d4,/HEAT_F,MYONEC=myonec                             & $
+  pclose
+
+pdir    = '~/Desktop/3DP_contours/'+date[0]+'/PS_ELB/'
+suffx   = '_24PAs-30Grids-All-Energies_e-frame-DF_w-One-Count'
+mtsel   = my_time_string(gaelb[all_inds_yb].TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+ngrid  = 30L
+vlim   = 2d4
+vout   = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+FOR j=0L, nelb - 1L DO BEGIN                                                          $
+  delb     = myb_delb[j]                                                            & $
+  myonec   = gaelb[all_inds_yb[j]]                                                  & $
+  fnam = pdir+'elb_'+gdate[j]+'_'+UTtime[j]+suffx                                   & $
+  popen,fnam,/PORT                                                                  & $
+    cont2d,delb,NGRID=30,VLIM=2d4,/HEAT_F,MYONEC=myonec                             & $
+  pclose
+;-----------------------------------------------------------------------------------------
+; => Look at SST 
+;-----------------------------------------------------------------------------------------
+date = '102698'
+date = '111398'
+date = '121498'
+date = '040900'
+date = '050300'
+date = '052600'
+date = '061000'
+date = '062600'
+date = '071000'
+date = '072300'
+date = '080400'
+date = '081500'
+date = '100301'
+date = '102401'
+date = '111501'
+date = '072002'
+date = '101002'
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+
+t_o       = ['1998-11-13/14:00:00','1998-11-13/23:30:00'] 
+t_o       = ['2000-04-09/20:20:00','2000-04-10/14:00:00']
+t_o       = ['2000-05-02/21:00:00','2000-05-03/10:00:00']
+t_o       = ['2000-05-25/20:50:00','2000-05-26/04:20:00']
+t_o       = ['2000-06-10/01:00:00','2000-06-11/03:00:00']
+t_o       = ['2000-06-26/13:00:00','2000-06-27/02:00:00']
+t_o       = ['2000-07-09/18:30:00','2000-07-10/12:00:00']
+t_o       = ['2000-07-23/04:40:00','2000-07-24/22:00:00']
+t_o       = ['2000-08-03/16:30:00','2000-08-04/22:00:00']
+t_o       = ['2000-08-15/13:00:00','2000-08-17/16:00:00']
+t_o       = ['2001-10-03/02:00:00','2001-10-04/13:00:00']
+t_o       = ['2001-10-23/07:00:00','2001-10-25/09:00:00']
+t_o       = ['2001-11-14/00:00:00','2001-11-16/05:00:00']
+t_o       = ['2002-07-21/02:00:00','2002-07-22/00:24:00']
+t_o       = ['2002-10-09 22:00:00','2002-10-10 05:00:00']
+
+RESTORE,mfiles[2]
+
+; => Write SST Open and Foil data to ASCII files
+guni = 'df'
+guni = 'flux'
+guni = 'eflux'
+write_padspec_ascii,'sf',NUM_PA=10L,DAT_ARR=asf,UNITS=guni,/G_MAGF,/NO_KILL
+write_padspec_ascii,'so',NUM_PA=10L,DAT_ARR=aso,UNITS=guni,/G_MAGF,/NO_KILL
+
+; => Read in SST Open and Foil data from ASCII files
+name      = 'sf'
+;units     = 'df'
+;units     = 'flux'
+units     = 'eflux'
+;range_avg = time_double(['2000-04-04/00:00:00','2000-04-04/12:00:00'])
+padspec_ascii_to_tplot,name,DATE=date,/DAT_NORM,/DAT_CLN,UNITS=units,RANGE_AVG=range_avg
+
+name      = 'so'
+;units     = 'df'
+;units     = 'flux'
+units     = 'eflux'
+;range_avg = time_double(['2000-04-02/12:00:00','2000-04-03/12:00:00'])
+padspec_ascii_to_tplot,name,DATE=date,/DAT_NORM,/DAT_CLN,UNITS=units,RANGE_AVG=range_avg
+
+stime  = STRMID(t_o[*],0,10)+'_'+STRMID(t_o[*],11,2)+STRMID(t_o[*],14,2)
+sfname = stime[0]+'_'+stime[1]+'_TDS-Locations_eholes-blue_whistlers-red'
+pref   = 'SST-Open_stacked-spectra_para-perp-anti_'+units[0]+'_'
+nna    = ['nso_pads_'+units[0]+'-2-0:1_N_cln','nso_pads_'+units[0]+'-2-4:5_N_cln',$
+          'nso_pads_'+units[0]+'-2-8:9_N_cln']
+
+nna    = ['nsf_pads_'+units[0]+'-2-0:1_N_cln','nsf_pads_'+units[0]+'-2-4:5_N_cln',$
+          'nsf_pads_'+units[0]+'-2-8:9_N_cln']
+pref   = 'SST-Foil_stacked-spectra_para-perp-anti_'+units[0]+'_'
+
+
+popen,pref+sfname,/land
+  tplot,nna,TRANGE=time_double(t_o)
+  time_bar,unix_whist,VARNAME=nna,COLOR=250L
+  time_bar,unix_ehole,VARNAME=nna,COLOR=50L
+pclose
+
+;-----------------------------------------------------------------------------------------
+; => Look at SST PADs
+;-----------------------------------------------------------------------------------------
+date = '102698'
+date = '111398'
+date = '121498'
+date = '040900'
+date = '050300'
+date = '052600'
+date = '061000'
+date = '062600'
+date = '071000'
+date = '072300'
+date = '080400'
+date = '081500'
+date = '100301'
+date = '102401'
+date = '111501'
+date = '101002'
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate  = mydate.DATE[0]    ; -('YYYYMMDD')
+ldate  = STRMID(mdate,4L,4L)+STRMID(mdate,0L,4L)
+tdate  = mydate.TDATE[0]
+;-----------------------------------------------------------------------------------------
+; => Find Wind/3DP IDL Save Files
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+
+
+RESTORE,mfiles[2]
+;-----------------------------------------------------------------------------------------
+; => Load mag data
+;-----------------------------------------------------------------------------------------
+t = ['1998-10-26/00:00:00','1998-10-26/20:45:00']
+t = ['1998-11-13/13:00:00','1998-11-14/05:00:00'] 
+t = ['1998-12-14/04:30:00','1998-12-15/16:00:00']
+t = ['2000-04-09/00:00:00','2000-04-10/20:00:00']
+t = ['2000-05-02/20:00:00','2000-05-03/10:00:00']
+t = ['2000-05-25/10:00:00','2000-05-26/20:00:00']
+t = ['2000-06-09/23:00:00','2000-06-11/03:00:00']
+t = ['2000-06-26/10:00:00','2000-06-27/02:00:00']
+t = ['2000-07-09/23:00:00','2000-07-10/12:00:00']
+t = ['2000-07-23/04:30:00','2000-07-25/00:00:00']
+t = ['2000-08-03/15:00:00','2000-08-05/00:00:00']
+t = ['2000-08-15/11:30:00','2000-08-18/00:00:00']
+t = ['2001-10-03/00:00:00','2001-10-04/14:00:00']
+t = ['2001-10-23/06:00:00','2001-10-25/10:00:00']
+t = ['2001-11-14/00:00:00','2001-11-16/06:00:00']
+t = ['2002-10-09/20:00:00','2002-10-10/04:00:00']
+tr3 = time_double(t)
+mag3  = read_wind_mfi(TRANGE=tr3)
+t3x   = mag3.MAG.X
+bmag4 = mag3.MAG.Y
+magf4 = mag3.BGSE.Y
+nt    = N_ELEMENTS(t3x) 
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+tplot,nn0
+;-----------------------------------------------------------------------------------------
+; => Load orbit data
+;-----------------------------------------------------------------------------------------
+tds_magneto_orbits,DATE=date
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+tplot_options, var_label=['Wind_Radial_Distance','Wind_L-Shell','Wind_MLT']
+
+;options,,'YTITLE',''
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+
+;-----------------------------------------------------------------------------------------
+sfmagfx  = interp(magf4[*,0],t3x,asf.TIME,/NO_EXTRAP)
+sfmagfy  = interp(magf4[*,1],t3x,asf.TIME,/NO_EXTRAP)
+sfmagfz  = interp(magf4[*,2],t3x,asf.TIME,/NO_EXTRAP)
+somagfx  = interp(magf4[*,0],t3x,aso.TIME,/NO_EXTRAP)
+somagfy  = interp(magf4[*,1],t3x,aso.TIME,/NO_EXTRAP)
+somagfz  = interp(magf4[*,2],t3x,aso.TIME,/NO_EXTRAP)
+
+efmagfx  = interp(magf4[*,0],t3x,asf.END_TIME,/NO_EXTRAP)
+efmagfy  = interp(magf4[*,1],t3x,asf.END_TIME,/NO_EXTRAP)
+efmagfz  = interp(magf4[*,2],t3x,asf.END_TIME,/NO_EXTRAP)
+eomagfx  = interp(magf4[*,0],t3x,aso.END_TIME,/NO_EXTRAP)
+eomagfy  = interp(magf4[*,1],t3x,aso.END_TIME,/NO_EXTRAP)
+eomagfz  = interp(magf4[*,2],t3x,aso.END_TIME,/NO_EXTRAP)
+
+fmagfx   = (sfmagfx + efmagfx)/2e0
+fmagfy   = (sfmagfy + efmagfy)/2e0
+fmagfz   = (sfmagfz + efmagfz)/2e0
+omagfx   = (somagfx + eomagfx)/2e0
+omagfy   = (somagfy + eomagfy)/2e0
+omagfz   = (somagfz + eomagfz)/2e0
+fmagf = TRANSPOSE([[fmagfx],[fmagfy],[fmagfz]])
+omagf = TRANSPOSE([[omagfx],[omagfy],[omagfz]])
+
+asf.MAGF = fmagf
+aso.MAGF = omagf
+;-----------------------------------------------------------------------------------------
+
+bdir    = '~/Desktop/3DP_contours/'+date[0]
+pdir4   = bdir+'/PADS_SF/'
+pdir5   = bdir+'/PADS_SO/'
+
+mtsel   = my_time_string(asf.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+pdsuff  = '_8PAs-ALL-Highest-Energies_PAD'
+
+nsf     = N_ELEMENTS(asf)
+FOR j=0L, nsf - 1L DO BEGIN                                                        $
+  dat   = asf[j]                                                                 & $
+  pd    = pad(dat,NUM_PA=8)                                                      & $
+  pltn2 = pdir4[0]+'sf_'+gdate[j]+'_'+UTtime[j]+pdsuff[0]                        & $
+  popen,pltn2,/port                                                              & $
+    my_padplot_both,pd,UNITS='counts'                                            & $
+  pclose
+  
+  
+  
+mtsel   = my_time_string(aso.TIME,UNIX=1)
+ymdels  = mtsel.DATE_TIME
+ymdb    = ymdels
+UTtime  = STRMID(ymdb[*],11L,2L)+STRMID(ymdb[*],14L,2L)+$
+          STRMID(ymdb[*],17L,2L)+STRMID(ymdb[*],19L,3L)
+gdate   = STRMID(ymdb[*],0L,10L)
+pdsuff  = '_8PAs-7-Lowest-Energies_PAD'
+;pdsuff  = '_8PAs-ALL-Highest-Energies_PAD'
+
+nso     = N_ELEMENTS(aso)
+FOR j=0L, nso - 1L DO BEGIN                                                        $
+  dat   = aso[j]                                                                 & $
+  pd    = pad(dat,NUM_PA=8)                                                      & $
+  pltn2 = pdir5[0]+'so_'+gdate[j]+'_'+UTtime[j]+pdsuff[0]                        & $
+  popen,pltn2,/port                                                              & $
+    my_padplot_both,pd,UNITS='counts',EBINS=[2L,8L]                              & $
+  pclose
+
+
+

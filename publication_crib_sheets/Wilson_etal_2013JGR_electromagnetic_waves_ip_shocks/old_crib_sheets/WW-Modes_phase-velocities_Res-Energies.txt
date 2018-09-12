@@ -1,0 +1,589 @@
+; => Constants and dummy variables
+kB     = 1.3806504d-23     ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+; => Factor for "electron Alfven" speed
+eAlfvenf = 1d-9/SQRT(2d0*muo*me*1d6)
+; => Factor for electron cyclotron frequency
+wcefac   = qq*1d-9/me
+; => Factor for electron plasma frequency
+wpefac   = SQRT(qq^2*1d6/(epo*me))
+
+
+;---------------------------------------------------------------------------------------------------
+;      Date        Time                Ni          Ti            Vx              Vy             Vz
+;===================================================================================================
+;    1998-08-26/06:41:37.623 UT      20.740      97.926       -624.523         28.156       -172.991
+;    1998-08-26/06:41:44.013 UT      19.820      94.920       -622.222         26.771       -171.121
+;    1998-08-26/06:41:53.249 UT      18.489      90.192       -617.180         35.365       -172.132
+;    1998-08-26/06:41:56.315 UT      18.048      90.428       -618.909         38.376       -172.310
+;    1998-08-26/06:41:57.909 UT      17.818      92.303       -620.820         39.779       -171.913
+;    1998-08-26/06:41:59.233 UT      17.628      90.878       -617.455         45.240       -175.425
+;    1998-08-26/06:42:05.763 UT      16.687      89.882       -622.537         58.923       -179.050
+;    1998-08-26/06:42:09.131 UT      16.734      89.497       -626.764         45.472       -179.093
+;---------------------------------------------------------------------------------------------------
+
+;-----------------------------------------------------------------------------------------
+;      Date        Time             Betaparc       Bx          By          Bz          |B|
+;=========================================================================================
+;    1998-08-26/06:41:37.623 UT       1.003     -11.757       7.391      15.400      20.737
+;    1998-08-26/06:41:44.013 UT       0.894     -14.585       9.331      13.295      21.830
+;    1998-08-26/06:41:53.249 UT       0.772     -16.235       7.547      13.996      22.725
+;    1998-08-26/06:41:56.315 UT       0.774     -15.850       7.100      14.471      22.606
+;    1998-08-26/06:41:57.909 UT       0.747     -16.221       7.117      14.593      22.951
+;    1998-08-26/06:41:59.233 UT       0.723     -15.606       7.808      15.434      23.296
+;    1998-08-26/06:42:05.763 UT       0.778     -15.730      -0.292      15.587      22.146
+;    1998-08-26/06:42:09.131 UT       0.938     -14.292      -2.428      13.992      20.148
+;-----------------------------------------------------------------------------------------
+
+;
+; => For  30 Hz < f < 130 Hz  at  1998-08-26/06:41:37.623 UT
+;
+f0    = 30.
+f1    = 130.
+theta = MEAN([2.862,8.956,11.881,9.362],/NAN)
+no    = 20.74
+bo    = 20.737
+thkv  = MEAN([69.67,60.03,56.36,57.74],/NAN)
+vsw   = [-624.523,28.156,-172.991]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.24633618      0.45550978
+;      0.15570077      0.36487437
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       12.348478       22.834049
+;       7.8050551       18.290626
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       937.01071       1762.3336
+;       2.5486306       9.0155875
+;       858.11927       108.25765
+;      0.20116692      0.46348437
+
+
+;
+; => For  30 Hz < f < 130 Hz  at  1998-08-26/06:41:44.013 UT
+;
+f0    = 30.
+f1    = 130.
+theta = MEAN([ 9.68, 7.59,10.34, 8.98, 4.49,10.35, 9.51, 3.77, 4.14, 3.18],/NAN)
+no    = 19.820
+bo    = 21.830
+thkv  = MEAN([63.44,57.03,61.37,52.40,58.24,60.08,62.72,59.99,62.63,61.86],/NAN)
+vsw   = [-622.222,26.771,-171.121]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.23316359      0.43232551
+;      0.14895385      0.34811577
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       11.992696       22.236526
+;       7.6613945       17.905225
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       986.10815       1866.1558
+;       2.8085346       10.058343
+;       1053.6661       137.74219
+;      0.19115100      0.43769878
+
+
+;
+; => For  35 Hz < f < 150 Hz  at  1998-08-26/06:41:53.249 UT
+;
+f0    = 35.
+f1    = 150.
+theta = MEAN([ 0.54, 6.17, 6.95, 9.27, 7.58, 3.55, 5.31, 5.03, 5.69,17.59, 6.41],/NAN)
+no    = 18.489
+bo    = 22.725
+thkv  = MEAN([56.87,55.08,61.02,48.87,49.92,54.02,61.60,58.40,52.19,59.39,50.99],/NAN)
+vsw   = [-617.18,35.365,-172.132]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.23776463      0.43917741
+;      0.15255921      0.35397200
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       13.822347       25.531394
+;       8.8689658       20.578013
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       1122.2211       2087.3906
+;       3.6301213       12.559481
+;       1070.8304       131.91452
+;      0.19596092      0.45151003
+
+;
+; => For  30 Hz < f < 150 Hz  at  1998-08-26/06:41:56.315 UT
+;
+f0    = 30.
+f1    = 150.
+theta = MEAN([ 3.76, 1.02, 3.46, 8.50,10.07, 7.45, 9.01,19.23,11.22, 9.02],/NAN)
+no    = 18.048
+bo    = 22.606
+thkv  = MEAN([57.77,58.71,56.99,53.67,55.84,58.96,61.00,54.08,58.10,54.51],/NAN)
+vsw   = [-618.909,38.376,-172.31]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.21985987      0.43363471
+;      0.13925960      0.35303444
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       12.277718       24.215627
+;       7.7767263       19.714636
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       1051.1271       2100.5837
+;       3.2073586       12.809053
+;       1294.9374       132.69839
+;      0.17932709      0.44867424
+
+
+;
+; => For  30 Hz < f < 150 Hz  at  1998-08-26/06:41:57.909 UT
+;
+f0    = 30.
+f1    = 150.
+theta = MEAN([ 6.21, 5.72, 6.98, 5.10, 4.45, 7.10,11.25, 9.40, 9.06, 9.76,45.97, 8.11, 5.06, 5.13],/NAN)
+no    = 17.818
+bo    = 22.951
+thkv  = MEAN([57.23,56.76,52.98,53.83,54.29,64.23,57.31,50.83,59.63,50.31,78.26,67.31,60.20,57.11],/NAN)
+vsw   = [-620.82,39.779,-171.913]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.21476686      0.42631673
+;      0.13928154      0.35083141
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       11.496752       22.821295
+;       7.4559241       18.780467
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       1063.7118       2128.6551
+;       3.3155869       13.277706
+;       1381.8693       143.11149
+;      0.17720548      0.44275741
+
+
+;
+; => For  30 Hz < f < 150 Hz  at  1998-08-26/06:41:59.233 UT
+;
+f0    = 30.
+f1    = 150.
+theta = MEAN([ 4.49, 4.55, 5.20, 9.77, 7.77, 5.99, 8.30, 6.17],/NAN)
+no    = 17.628
+bo    = 23.296
+thkv  = MEAN([57.17,65.24,57.64,50.79,51.42,62.47,51.71,57.42],/NAN)
+vsw   = [-617.455,45.24,-175.425]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.21254333      0.42035919
+;      0.13599485      0.34381072
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       11.940440       23.615296
+;       7.6400345       19.314891
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       1082.7320       2173.2837
+;       3.3763231       13.603008
+;       1451.9106       152.42463
+;      0.17409254      0.43366532
+
+
+;
+; => For  40 Hz < f < 200 Hz  at  1998-08-26/06:42:05.763 UT
+;
+f0    = 40.
+f1    = 200.
+theta = MEAN([ 1.96, 2.18, 5.35, 0.39, 4.91, 5.58, 3.79, 5.63,10.93, 8.79,12.11],/NAN)
+no    = 16.687
+bo    = 22.146
+thkv  = MEAN([61.79,58.45,59.82,58.27,61.08,57.00,64.10,65.50,65.44,56.52,72.96],/NAN)
+vsw   = [-622.537,58.923,-179.05]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.23151706      0.47193289
+;      0.16547763      0.40589345
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       11.287794       23.009454
+;       8.0679899       19.789650
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       1241.7183       2360.3835
+;       4.4254039       15.990862
+;       930.18944       70.493358
+;      0.20240292      0.53238683
+
+
+;
+; => For  50 Hz < f < 200 Hz  at  1998-08-26/06:42:09.131 UT
+;
+f0    = 50.
+f1    = 200.
+theta = MEAN([ 1.96, 2.18, 5.35, 0.39, 4.91, 5.58, 3.79, 5.63,10.93, 8.79,12.11],/NAN)
+no    = 16.734
+bo    = 20.148
+thkv  = MEAN([64.88,64.07,61.41,75.42,49.35,52.50],/NAN)
+vsw   = [-626.764,45.472,-179.093]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.27007769      0.49833137
+;      0.19544674      0.42370042
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       13.500366       24.910076
+;       9.7697906       21.179501
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       1305.0635       2194.1058
+;       4.8884374       13.817259
+;       516.58732       45.766423
+;      0.24072335      0.57273311
+
+
+;---------------------------------------------------------------------------------------------------
+;      Date        Time                Ni          Ti            Vx              Vy             Vz
+;===================================================================================================
+;    2000-02-11/23:34:27.503 UT      16.849      41.461       -616.468        -88.752         24.278
+;    2000-02-11/23:34:29.065 UT      16.895      42.224       -614.831        -87.347         26.389
+;    2000-02-12/00:14:21.709 UT      24.601      27.713       -545.068       -104.704         71.029
+;    2000-02-12/00:26:17.217 UT      20.398      25.645       -544.911       -108.653         50.280
+;    2000-02-12/00:27:19.142 UT      19.291      26.395       -543.505       -117.934         36.899
+;---------------------------------------------------------------------------------------------------
+
+;-----------------------------------------------------------------------------------------
+;      Date        Time             Betaparc       Bx          By          Bz          |B|
+;=========================================================================================
+;    2000-02-11/23:34:27.503 UT       0.398       8.921     -20.718      -0.924      22.576
+;    2000-02-11/23:34:29.065 UT       0.390       8.527     -21.037      -0.421      22.704
+;    2000-02-12/00:14:21.709 UT       0.749      -2.216     -11.756     -13.614      18.124
+;    2000-02-12/00:26:17.217 UT       1.013       6.405     -13.570      -1.004      15.040
+;    2000-02-12/00:27:19.142 UT       1.031       6.617     -13.802      -0.253      15.308
+;-----------------------------------------------------------------------------------------
+
+;
+; => For  50 Hz < f < 250 Hz  at  2000-02-11/23:34:27.503 UT
+;
+f0    = 50.
+f1    = 250.
+theta = MEAN([ 5.64, 9.38, 6.13,10.08,11.56, 6.40,11.01, 3.75,11.00, 6.82, 3.10,14.91, 2.48, 1.04, 6.73, 6.32,22.34, 2.33,26.52, 8.21],/NAN)
+no    = 16.849
+bo    = 22.576
+thkv  = MEAN([78.87,70.49,72.52,78.81,84.56,80.78,81.72,72.86,85.12,69.03,71.71,87.90,72.33,73.77,74.41,71.30,85.17,76.54,85.42,80.51],/NAN)
+vsw   = [-616.468,-88.752,24.278]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.23330837      0.50320081
+;      0.20473645      0.47462889
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       4.9340007       10.641681
+;       4.3297624       10.037442
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       1378.6916       2489.0932
+;       5.5327242       18.033792
+;       749.51921       42.095820
+;      0.22786768      0.63107173
+
+
+;
+; => For  40 Hz < f < 250 Hz  at  2000-02-11/23:34:29.065 UT
+;
+f0    = 40.
+f1    = 250.
+theta = MEAN([ 7.04, 6.63,10.33, 8.74, 7.43,12.52, 3.77, 4.10, 9.34, 8.27, 4.24,12.94, 3.62, 7.34, 5.92, 9.75],/NAN)
+no    = 16.895
+bo    = 22.704
+thkv  = MEAN([83.14,79.15,86.30,83.98,81.27,87.05,78.98,79.08,78.44,74.10,79.14,87.86,77.57,82.00,80.14,84.13],/NAN)
+vsw   = [-614.831,-87.347,26.389]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.20510370      0.49731809
+;      0.18522458      0.47743898
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       3.0355919       7.3604463
+;       2.7413754       7.0662299
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       1247.8367       2503.5024
+;       4.5058439       18.136632
+;       998.80341       43.133886
+;      0.20141049      0.62743950
+
+
+;
+; => For  60 Hz < f < 150 Hz  at  2000-02-12/00:14:21.709 UT
+;
+f0    = 60.
+f1    = 150.
+theta = MEAN([14.80, 9.04, 6.73,12.73, 3.17,16.65, 4.89,11.28, 6.25,11.01,14.92,10.51,14.67, 9.83],/NAN)
+no    = 24.601
+bo    = 18.124
+thkv  = MEAN([86.15,74.93,86.53,79.30,84.28,77.85,80.29,71.49,77.63,72.75,67.37,72.32,67.83,72.62],/NAN)
+vsw   = [-545.068,-104.704,71.029]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.35031699      0.53804847
+;      0.29906862      0.48680010
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       7.2701844       11.166206
+;       6.2066189       10.102640
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       1092.4238       1540.0289
+;       3.5082827       6.9722032
+;       195.01112       39.567677
+;      0.34509604      0.61198708
+
+
+;
+; => For  36 Hz < f < 100 Hz  at  2000-02-12/00:26:17.217 UT
+;
+f0    = 36.
+f1    = 100.
+theta = MEAN([14.51, 6.99,13.12],/NAN)
+no    = 20.398
+bo    = 15.040
+thkv  = MEAN([89.36,80.02,85.60],/NAN)
+vsw   = [-544.911,-108.653,50.28]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.26085475      0.42816571
+;      0.24166454      0.40897550
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       2.0214095       3.3179317
+;       1.8727012       3.1692234
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       860.69022       1306.8860
+;       2.1937171       5.0578076
+;       250.90699       52.118413
+;      0.26280614      0.48077531
+
+
+;
+; => For  30 Hz < f < 100 Hz  at  2000-02-12/00:27:19.142 UT
+;
+f0    = 30.
+f1    = 100.
+theta = MEAN([ 2.52, 4.09, 5.41, 8.54, 4.39, 2.87, 3.08, 4.86, 2.46, 0.90, 3.52],/NAN)
+no    = 19.291
+bo    = 15.308
+thkv  = MEAN([74.72,80.61,71.83,70.07,78.04,74.22,79.60,79.81,74.78,76.28,80.62],/NAN)
+vsw   = [-543.505,-117.934,36.899]
+eAlfv = eAlfvenf[0]*bo[0]/SQRT(no[0])
+VswAv = NORM(vsw)/(2d0*1d-3*eAlfv[0])
+; => Doppler Calculations of Eq. 4 from Coroniti et al., [1982]
+wrwce = [f0,f1]*(2d0*!DPI)/(wcefac[0]*bo[0])
+einer = c/(wpefac[0]*SQRT(no[0]))*1d-3    ; => Electron inertial length [km]
+absth = ABS(COS(thkv[0]*!DPI/18d1))/ABS(COS(theta[0]*!DPI/18d1))
+plusk = VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+minsk = -1d0*VswAv[0]*absth[0] + SQRT((VswAv[0]*absth[0])^2 + wrwce[*]/ABS(COS(theta[0]*!DPI/18d1)))
+print, minmax(plusk)/einer[0], minmax(minsk)/einer[0]
+;      0.24374215      0.42396127
+;      0.19666268      0.37688180
+doppl = minmax(plusk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+dopmn = minmax(minsk)/einer[0]*NORM(vsw)*COS(thkv[0]*!DPI/18d1)/(2d0*!DPI)
+print, minmax(doppl), minmax(dopmn)
+;       5.0782708       8.8330643
+;       4.0973888       7.8521823
+; => Cold Plasma Estimates
+test0 = cold_plasma_whistler_params(bo[0],no[0],f0,theta[0])
+test1 = cold_plasma_whistler_params(bo[0],no[0],f1,theta[0])
+print, [test0.V_PHASE[0], test1.V_PHASE[0]],     $
+       [test0.ERES_LAND[0], test1.ERES_LAND[0]], $
+       [test0.ERES_NCYC[0], test1.ERES_NCYC[0]], $
+       [(2d0*!DPI)/test0.WAVE_LENGTH[0], (2d0*!DPI)/test1.WAVE_LENGTH[0]]
+;       830.18798       1375.8030
+;       1.9682986       5.4056830
+;       347.31583       58.337112
+;      0.22705166      0.45669224
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,2226 @@
+;-----------------------------------------------------------------------------------------
+; -Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+ma     = 4d0*(mp + me)     ; -Alpha-Particle mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+mm     = [-1d0,0d0,1d0]    ; -[Normal Cyclotron, Landau, Anomalous Cyclotron]
+mass_e = 0.5109906d6       ; -Electron mass in eV/c^2
+mass_p = mp*c^2/qq         ; -Proton mass in eV/c^2
+u_mass = mass_e/c2         ; -Electron mass [eV/(km/s)^2]
+p_mass = mass_p/c2         ; -Proton mass [eV/(km/s)^2]
+pressc = 1.60217646d-13    ; => Conversion from eV/cm^3 to J/m^3 (or Pascals)
+picops = pressc*1d12       ; => Conversion from eV/cm^3 to pJ/m^3 (or pPa)
+;-----------------------------------------------------------------------------------------
+; => Dates and time ranges
+;-----------------------------------------------------------------------------------------
+date   = '121097'
+t      = ['1997-12-10/03:33:00','1997-12-10/05:33:00']
+tramp  = '1997-12-10/04:33:14.664'
+tr3   = time_double(t)
+tura  = time_double(tramp)
+
+mydate = my_str_date(DATE=date)
+sdate  = mydate.S_DATE[0]  ; -('MMDDYY')
+ldate  = mydate.DATE[0]    ; -('YYYYMMDD')
+tdate  = mydate.TDATE[0]   ; => 'YYYY-MM-DD'
+;-----------------------------------------------------------------------------------------
+; => Load MFI data
+;-----------------------------------------------------------------------------------------
+htr_mfi2tplot,DATE=date
+get_data,'WIND_B3_HTR(GSE,nT)',DATA=temporary_mfi
+magf_htr = temporary_mfi
+str_element,magf_htr,'R',REPLICATE(1L,N_ELEMENTS(magf_htr.X)),/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => Find shock info
+;-----------------------------------------------------------------------------------------
+gnorm      = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+dgnorm     = [ 0.015, 0.032, 0.374]
+
+gnorm2     = [-0.971, 0.094,-0.218]   ; => Using RH08 from JCK's site
+dgnorm2    = [ 0.016, 0.071, 0.214]
+;-----------------------------------------------------------------------------------------
+; => Get TDS data
+;-----------------------------------------------------------------------------------------
+; => Get TDSS data
+my_tdss    = get_wind_tds_data(DATE=date,FIXFILE=1,/TDSS)
+x          = LINDGEN(N_ELEMENTS(my_tdss.SCET))
+IF (sdate[0] EQ '121097') THEN gels = [x[17L:20L]]
+; => Get ONLY whistler TDSS
+IF (gels[0] NE -1) THEN scetss  = my_tdss.SCET[gels[*]]             ELSE scetss  = ''
+IF (gels[0] NE -1) THEN fieldss = REFORM(my_tdss.EFIELD[gels[*],*]) ELSE fieldss = dumbf
+IF (gels[0] NE -1) THEN timess  = REFORM(my_tdss.TIME[gels[*],*])   ELSE timess  = dumbd
+IF (gels[0] NE -1) THEN evnums  = my_tdss.EVENT_N[gels[*]]          ELSE evnums  = -1
+IF (gels[0] NE -1) THEN atypes  = my_tdss.A_TYPE[gels[*]]           ELSE atypes  = ''
+IF (gels[0] NE -1) THEN sangss  = my_tdss.S_ANG[gels[*]]            ELSE sangss  = 0.
+IF (gels[0] NE -1) THEN eangss  = my_tdss.E_ANG[gels[*]]            ELSE eangss  = 0.
+
+ascets     = scetss
+; => STRMID(scet,0,2)+STRMID(scet,3,2)+'-'+STRMID(scet,6,2)+'x'+STRMID(scet,9,3)
+ascets2    = string_replace_char(string_replace_char(ascets,'/','-'),' ','_')
+ascets2    = STRMID(ascets2[*],0L,23L)  ; => Remove the _UT
+fdates     = STRMID(ascets2[*],0L,11L)
+fscets     = STRMID(ascets2[*],11L)
+fscets     = STRMID(fscets[*],0,2)+STRMID(fscets[*],3,2)+'-'+$
+             STRMID(fscets[*],6,2)+'x'+STRMID(fscets[*],9,3)
+fn_scets   = fdates[*]+fscets[*]
+
+afields    = fieldss
+atimes     = timess
+aevnum     = evnums
+aatype     = atypes
+asangs     = sangss
+aeangs     = eangss
+; => Eliminate bad elements
+bad        = WHERE(ascets EQ '',bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+IF (gd GT 0) THEN ascets  = ascets[good]
+IF (gd GT 0) THEN afields = afields[good,*]
+IF (gd GT 0) THEN atimes  = atimes[good,*]
+IF (gd GT 0) THEN aevnum  = aevnum[good]
+IF (gd GT 0) THEN aatype  = aatype[good]
+IF (gd GT 0) THEN asangs  = asangs[good]
+IF (gd GT 0) THEN aeangs  = aeangs[good]
+; => sort elements
+mts        = my_time_string(ascets,STR=1,FORM=1,PREC=3,/NOMSSG)
+ascets     = mts.DATE_TIME
+aunix      = mts.UNIX
+sp         = SORT(aunix)
+ascets     = ascets[sp]
+aunix      = aunix[sp]
+afields    = afields[sp,*]
+atimes     = atimes[sp,*]
+aevnum     = aevnum[sp]
+aatype     = aatype[sp]
+asangs     = asangs[sp]
+aeangs     = aeangs[sp]
+;-----------------------------------------------------------------------------------------
+; => define fields
+;-----------------------------------------------------------------------------------------
+nsams   = N_ELEMENTS(REFORM(my_tdss.TIME[0,*]))
+efxyz   = DBLARR(N_ELEMENTS(UNIQ(ascets,SORT(ascets))),nsams,3L)  ; => Dummy array of E-fields (mV/m)
+bfxyz   = DBLARR(N_ELEMENTS(UNIQ(ascets,SORT(ascets))),nsams,3L)  ; => Dummy array of B-fields (nT)
+unqel   = UNIQ(aevnum,SORT(aevnum))
+n_uq    = N_ELEMENTS(unqel) - 1L
+tempevn = aevnum[unqel]
+n_avgs  = N_ELEMENTS(aevnum)/N_ELEMENTS(unqel) - 1L
+
+jj      = 0L
+FOR j=0L, n_uq DO BEGIN                                                    $
+  t_evn   = tempevn[j]                                                   & $
+  ggd     = WHERE(t_evn[0] EQ aevnum)                                    & $
+  t_types = STRMID(aatype[ggd],0L,2L)                                    & $
+  t_field = afields[ggd,*]                                               & $
+  FOR k=0L, n_avgs DO BEGIN                                                $
+    t_type = STRMID(t_types[k],0L,2L)                                    & $
+    IF (t_type EQ 'EX') THEN efxyz[j,*,0] = t_field[k,*]                 & $
+    IF (t_type EQ 'EY') THEN efxyz[j,*,1] = t_field[k,*]                 & $
+    IF (t_type EQ 'EZ') THEN efxyz[j,*,2] = t_field[k,*]                 & $
+    IF (t_type EQ 'BX') THEN bfxyz[j,*,0] = t_field[k,*]                 & $
+    IF (t_type EQ 'BY') THEN bfxyz[j,*,1] = t_field[k,*]                 & $
+    IF (t_type EQ 'BZ') THEN bfxyz[j,*,2] = t_field[k,*]                 & $
+  ENDFOR                                                                 & $
+  jj += 1L
+
+FOR j=0L, n_uq DO BEGIN                                                    $
+  jstr  = 'T'+STRTRIM(j,2)                                               & $
+  str_element,waves_ef,jstr,REFORM(efxyz[j,*,*]),/ADD_REPLACE            & $
+  str_element,waves_bf,jstr,REFORM(bfxyz[j,*,*]),/ADD_REPLACE
+;-----------------------------------------------------------------------------------------
+; => find unique elements of fields
+;-----------------------------------------------------------------------------------------
+unqel   = UNIQ(ascets,SORT(ascets))
+nscets  = REFORM(ascets[unqel])
+nunix   = REFORM(aunix[unqel])
+nsangs  = REFORM(asangs[unqel])
+neangs  = REFORM(aeangs[unqel])
+nevnm   = REFORM(aevnum[unqel])
+natype  = aatype[unqel]
+fn_scet = fn_scets[unqel]
+ntimes  = REFORM(atimes[unqel,*],N_ELEMENTS(unqel),nsams)
+n_uq    = N_ELEMENTS(unqel) - 1L
+;-----------------------------------------------------------------------------------------
+; => interpolate angles
+;-----------------------------------------------------------------------------------------
+nangsi = DBLARR(nsams,n_uq+1L)
+FOR k=0L, n_uq DO BEGIN                                              $
+  kstr  = 'T'+STRTRIM(k,2)                                         & $
+  tt0         = REFORM(ntimes[k,*])*1d-3 + nunix[k]                & $
+  tts0        = [MIN(tt0,/NAN),MAX(tt0,/NAN)]                      & $
+  temp0       = interp([nsangs[k],neangs[k]],tts0,tt0,/NO_EXTRAP)  & $
+  str_element,tds_unx,kstr,tt0,/ADD_REPLACE                        & $
+  nangsi[*,k] = temp0
+
+san_str    = STRTRIM(STRING(FORMAT='(f15.1)',nsangs),2)
+ean_str    = STRTRIM(STRING(FORMAT='(f15.1)',neangs),2)
+ang_str    = san_str[*]+'!Uo!N'+'-'+ean_str[*]+'!Uo!N'
+fang_str   = '+E!Dx!N Angle to Sun:  '+ang_str[*]
+;-----------------------------------------------------------------------------------------
+; => filter fields
+;-----------------------------------------------------------------------------------------
+lfc0  = [2.5d0,5d0,2d1,3d1,4d1,1d2,1d2]   ; => For 1997-12-10/04:33:15.605 UT
+hfc0  = [2d1  ,2d1,1d2,1d2,2d2,2d2,4d2]   ; => For 1997-12-10/04:33:15.605 UT
+
+tags  = ['t0']
+
+lf_str = CREATE_STRUCT(tags,lfc0)
+hf_str = CREATE_STRUCT(tags,hfc0)
+
+DELVAR,filter_sf0,filter_ef0,filter_bf0,filter_sf,filter_ef,filter_bf
+jj     = 0L
+FOR j=0L, n_uq DO BEGIN                                                             $
+  evln  = (MAX(ntimes[j,*],/NAN) - MIN(ntimes[j,*],/NAN))*1d-3                    & $
+  tsam  = (nsams - 1L)/evln                                                       & $
+  jstr  = 'T'+STRTRIM(j,2)                                                        & $
+  lfc0  = lf_str.(j)                                                              & $
+  hfc0  = hf_str.(j)                                                              & $
+  n_fr  = N_ELEMENTS(lfc0) - 1L                                                   & $
+  t_ef  = REFORM(waves_ef.(j))                                                    & $
+  t_bf  = REFORM(waves_bf.(j))                                                    & $
+  FOR k=0L, n_fr DO BEGIN                                                           $
+    kstr  = 'T'+STRTRIM(k,2)                                                      & $
+    flow  = lfc0[k]                                                               & $
+    fhigh = hfc0[k]                                                               & $
+    filte = vector_bandpass(t_ef,tsam[0],flow[0],fhigh[0],/MIDF)                  & $
+    filtb = vector_bandpass(t_bf,tsam[0],flow[0],fhigh[0],/MIDF)                  & $
+    str_element,filter_ef0,kstr,filte,/ADD_REPLACE                                & $
+    str_element,filter_bf0,kstr,filtb,/ADD_REPLACE                                & $
+    vec_ef = REFORM(filte)*1d-3                                                   & $
+    vec_bf = REFORM(filtb)*1d-9                                                   & $
+    poy_sf = my_crossp_2(vec_ef,vec_bf,/NOM)/muo*1d6                              & $
+    str_element,filter_sf0,kstr,poy_sf,/ADD_REPLACE                               & $
+  ENDFOR                                                                          & $
+  str_element,filter_sf,jstr,filter_sf0,/ADD_REPLACE                              & $
+  str_element,filter_ef,jstr,filter_ef0,/ADD_REPLACE                              & $
+  str_element,filter_bf,jstr,filter_bf0,/ADD_REPLACE                              & $
+  filter_ef0 = 0                                                                  & $
+  filter_bf0 = 0                                                                  & $
+  filter_sf0 = 0                                                                  & $
+ENDFOR                                                                            & $
+jj += 1L
+
+DELVAR,filter_sf0,filter_ef0,filter_bf0,vec_ef,vec_bf,filte,filtb,poy_sf,t_ef,b_ef
+
+; => [erg cm^(-2) s^(-1) = 10^(-3) W m^(-2)]
+; => [milliergs cm^(-2) s^(-1) = 10^(-6) W m^(-2)]
+;-----------------------------------------------------------------------------------------
+; => rotate fields into GSE and FAC Coordinates [use Shock Norm. Vec. as second vector]
+;-----------------------------------------------------------------------------------------
+unx_t0     = ntimes*1d-3 + (nunix # REPLICATE(1d0,2048L))
+t_mag0     = tds_bfield(unx_t0,nsangs,neangs,B3SMAG=magf_3s,HTRMAG=magf_htr,DATE=date,/NOCURR)
+b3s_gse    = t_mag0.G3MAG                ; => [# of TDSF, # of points, 3L]
+htr_gse    = t_mag0.GHTR
+; => Change the following line when HTR MFI is available...
+;mag_gse    = b3s_gse
+mag_gse    = htr_gse
+mag_waves  = t_mag0.ROT_HTR
+sun_dir    = gnorm
+
+jj     = 0L
+FOR j=0L, n_uq DO BEGIN                                                     $
+  jstr    = 'T'+STRTRIM(j,2)                                              & $
+  unx0    = REFORM(unx_t0[j,*])                                           & $
+  g_magf  = REFORM(mag_gse[j,*,*])                                        & $
+  angles  = REFORM(nangsi[*,j])                                           & $
+  filter_ef0 = filter_ef.(j)                                              & $
+  filter_bf0 = filter_bf.(j)                                              & $
+  filter_sf0 = filter_sf.(j)                                              & $
+  n_fr       = N_ELEMENTS(lf_str.(j)) - 1L                                & $
+  FOR k=0L, n_fr DO BEGIN                                                   $
+    kstr    = 'T'+STRTRIM(k,2)                                            & $
+    vec_ef  = REFORM(filter_ef0.(k))*1d0                                  & $
+    vec_bf  = REFORM(filter_bf0.(k))*1d0                                  & $
+    vec_sf  = REFORM(filter_sf0.(k))*1d0                                  & $
+    rot_efg = DBLARR(nsams,3L)                                            & $
+    rot_bfg = DBLARR(nsams,3L)                                            & $
+    rot_sfg = DBLARR(nsams,3L)                                            & $
+    rot_ef  = DBLARR(nsams,3L)                                            & $
+    rot_bf  = DBLARR(nsams,3L)                                            & $
+    rot_sf  = DBLARR(nsams,3L)                                            & $
+    FOR i=0L, nsams - 1L DO BEGIN                                           $
+      rotm0 = TRANSPOSE(eulermat(0d0,angles[i],180d0,/DEG))               & $
+      t_eef = REFORM(rotm0 ## REFORM(vec_ef[i,*]))                        & $
+      t_ebf = REFORM(rotm0 ## REFORM(vec_bf[i,*]))                        & $
+      t_esf = REFORM(rotm0 ## REFORM(vec_sf[i,*]))                        & $
+      rot_efg[i,*] = t_eef                                                & $
+      rot_bfg[i,*] = t_ebf                                                & $
+      rot_sfg[i,*] = t_esf                                                & $
+      magf  = REFORM(g_magf[i,*])                                         & $
+      rotm0 = rot_mat(magf,sun_dir)                                       & $
+      t_eef = REFORM(rotm0 ## REFORM(vec_ef[i,*]))                        & $
+      t_ebf = REFORM(rotm0 ## REFORM(vec_bf[i,*]))                        & $
+      t_esf = REFORM(rotm0 ## REFORM(vec_sf[i,*]))                        & $
+      rot_ef[i,*] = t_eef                                                 & $
+      rot_bf[i,*] = t_ebf                                                 & $
+      rot_sf[i,*] = t_esf                                                 & $
+    ENDFOR                                                                & $
+    str_element,rotated_gse_ef0,kstr,rot_efg,/ADD_REPLACE                 & $
+    str_element,rotated_gse_bf0,kstr,rot_bfg,/ADD_REPLACE                 & $
+    str_element,rotated_gse_sf0,kstr,rot_sfg,/ADD_REPLACE                 & $
+    str_element,rotated_fac_ef0,kstr,rot_ef,/ADD_REPLACE                  & $
+    str_element,rotated_fac_bf0,kstr,rot_bf,/ADD_REPLACE                  & $
+    str_element,rotated_fac_sf0,kstr,rot_sf,/ADD_REPLACE                  & $
+  ENDFOR                                                                  & $
+  str_element,rotated_gse_ef,jstr,rotated_gse_ef0,/ADD_REPLACE            & $
+  str_element,rotated_gse_bf,jstr,rotated_gse_bf0,/ADD_REPLACE            & $
+  str_element,rotated_gse_sf,jstr,rotated_gse_sf0,/ADD_REPLACE            & $
+  str_element,rotated_fac_ef,jstr,rotated_fac_ef0,/ADD_REPLACE            & $
+  str_element,rotated_fac_bf,jstr,rotated_fac_bf0,/ADD_REPLACE            & $
+  str_element,rotated_fac_sf,jstr,rotated_fac_sf0,/ADD_REPLACE            & $
+  rotated_gse_ef0 = 0                                                     & $
+  rotated_gse_bf0 = 0                                                     & $
+  rotated_gse_sf0 = 0                                                     & $
+  rotated_fac_ef0 = 0                                                     & $
+  rotated_fac_bf0 = 0                                                     & $
+  rotated_fac_sf0 = 0                                                     & $
+ENDFOR                                                                            & $
+jj += 1L
+
+;      rotm0 = eulermat(0d0,angles[i],180d0,/DEG)                          & $
+DELVAR,filter_sf0,filter_ef0,filter_bf0
+DELVAR,rotated_gse_ef0,rotated_gse_bf0,rotated_gse_sf0,rot_efg,rot_bfg,rot_sfg
+DELVAR,rot_ef,rot_bf,rot_sf,vec_ef,vec_bf,vec_sf,t_eef,t_ebf,t_esf
+
+; => *_gse_*  =  fields rotated into GSE Coordinates
+; => *_fac_*  =  fields rotated into FACs
+
+;-----------------------------------------------------------------------------------------
+; => Plot waveforms in GSE Coordinates
+;-----------------------------------------------------------------------------------------
+wi,1
+!P.MULTI = [0,1,3]
+
+yttlsws   = ['S!Dx!N (!7l!3'+'W/m!U2!N'+')','S!Dy!N (!7l!3'+'W/m!U2!N'+')',$
+             'S!Dz!N (!7l!3'+'W/m!U2!N'+')']
+yttlbws   = ['B!Dx!N (nT)','B!Dy!N (nT)','B!Dz!N (nT)']
+yttlews   = ['E!Dx!N (mV/m)','E!Dy!N (mV/m)','E!Dz!N (mV/m)']
+
+xtntm     = ['0','200','400','600','800','1000']
+xtvtm     = [0e0,2e2,4e2,6e2,8e2,1e3]
+xtstm     = N_ELEMENTS(xtvtm) - 1L
+xtt1      = 'Time (ms)'
+exstr_s   = {XSTYLE:1,YSTYLE:1,NODATA:1,XTICKNAME:xtntm,XTICKV:xtvtm,$
+             XTICKS:xtstm,XTITLE:xtt1,XMINOR:10,XTICKLEN:0.04}
+
+ffw_prefx = 'FIXED_WAVES-Coords_filtered_'
+colors    = [250,150,50]
+!P.CHARSIZE = 1.5
+!P.MULTI    = [0,1,3]
+
+
+
+; => Plot Filtered fields 
+jj = 0
+FOR i=0L, n_uq DO BEGIN                                                         $
+  lfc0       = lf_str.(i)                                                     & $
+  hfc0       = hf_str.(i)                                                     & $
+  fwl_str    = STRTRIM(STRING(FORMAT='(f15.1)',lfc0),2)                       & $
+  fwh_str    = STRTRIM(STRING(FORMAT='(f15.1)',hfc0),2)                       & $
+  fil_str    = fwl_str[*]+'-'+fwh_str[*]+'Hz_'                                & $
+  fil_st2    = STRARR(N_ELEMENTS(fil_str))                                    & $
+  n_fr       = N_ELEMENTS(lfc0) - 1L                                          & $
+  FOR j=0L, n_fr DO fil_st2[j] = STRMID(fil_str[j],0L,STRLEN(fil_str[j])-1L)  & $
+  FOR k=0L, n_fr DO BEGIN                                                       $
+    ms_times = REFORM(ntimes[i,*])                                        & $
+    sw_field = filter_sf.(i).(k)                                          & $
+    ew_field = filter_ef.(i).(k)                                          & $
+    bw_field = filter_bf.(i).(k)                                          & $
+    yra_sw   = [-1e0*MAX(ABS(sw_field),/NAN),MAX(ABS(sw_field),/NAN)]     & $
+    yra_bw   = [-1e0*MAX(ABS(bw_field),/NAN),MAX(ABS(bw_field),/NAN)]     & $
+    yra_ew   = [-1e0*MAX(ABS(ew_field),/NAN),MAX(ABS(ew_field),/NAN)]     & $
+    fname0   = ffw_prefx[0]+fil_str[k]+fn_scet[i]+'_Sxyz'                 & $
+    popen,fname0,/LAND                                                    & $
+      FOR j=0L, 2L DO BEGIN                                                 $
+        IF (j EQ 0) THEN ttle = 'Poynting Flux [WAVES-Coords] at: '+nscets[i] & $
+        IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]  & $
+        IF (j EQ 2) THEN ttle = ''                                        & $
+        PLOT,ms_times,sw_field[*,j],_EXTRA=exstr_s,YTITLE=yttlsws[j],YRANGE=yra_sw,TITLE=ttle  & $
+          OPLOT,ms_times,sw_field[*,j],COLOR=colors[j]                    & $
+      ENDFOR                                                              & $
+    pclose                                                                & $
+    fname0   = ffw_prefx[0]+fil_str[k]+fn_scet[i]+'_Bxyz'                 & $
+    popen,fname0,/LAND                                                    & $
+      FOR j=0L, 2L DO BEGIN                                                 $
+        IF (j EQ 0) THEN ttle = 'Magnetic Field [WAVES-Coords] at: '+nscets[i] & $
+        IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]  & $
+        IF (j EQ 2) THEN ttle = ''                                        & $
+        PLOT,ms_times,bw_field[*,j],_EXTRA=exstr_s,YTITLE=yttlbws[j],YRANGE=yra_bw,TITLE=ttle  & $
+          OPLOT,ms_times,bw_field[*,j],COLOR=colors[j]                    & $
+      ENDFOR                                                              & $
+    pclose                                                                & $
+    fname0   = ffw_prefx[0]+fil_str[k]+fn_scet[i]+'_Exyz'                 & $
+    popen,fname0,/LAND                                                    & $
+      FOR j=0L, 2L DO BEGIN                                                 $
+        IF (j EQ 0) THEN ttle = 'Electric Field [WAVES-Coords] at: '+nscets[i] & $
+        IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]  & $
+        IF (j EQ 2) THEN ttle = ''                                        & $
+        PLOT,ms_times,ew_field[*,j],_EXTRA=exstr_s,YTITLE=yttlews[j],YRANGE=yra_ew,TITLE=ttle  & $
+          OPLOT,ms_times,ew_field[*,j],COLOR=colors[j]                    & $
+      ENDFOR                                                              & $
+    pclose                                                                & $
+  ENDFOR                                                                  & $
+  jj += 1L
+
+
+ffr_prefx = 'FIXED_rotated_filtered_'
+; => Plot rotated and filtered fields 
+FOR i=0L, n_uq DO BEGIN                                                         $
+  lfc0       = lf_str.(i)                                                     & $
+  hfc0       = hf_str.(i)                                                     & $
+  fwl_str    = STRTRIM(STRING(FORMAT='(f15.1)',lfc0),2)                       & $
+  fwh_str    = STRTRIM(STRING(FORMAT='(f15.1)',hfc0),2)                       & $
+  fil_str    = fwl_str[*]+'-'+fwh_str[*]+'Hz_'                                & $
+  fil_st2    = STRARR(N_ELEMENTS(fil_str))                                    & $
+  n_fr       = N_ELEMENTS(lfc0) - 1L                                          & $
+  FOR j=0L, n_fr DO fil_st2[j] = STRMID(fil_str[j],0L,STRLEN(fil_str[j])-1L)  & $
+  FOR k=0L, n_fr DO BEGIN                                                   $
+    ms_times = REFORM(ntimes[i,*])                                        & $
+    sw_field = rotated_gse_sf.(i).(k)                                     & $
+    ew_field = rotated_gse_ef.(i).(k)                                     & $
+    bw_field = rotated_gse_bf.(i).(k)                                     & $
+    yra_sw   = [-1e0*MAX(ABS(sw_field),/NAN),MAX(ABS(sw_field),/NAN)]     & $
+    yra_bw   = [-1e0*MAX(ABS(bw_field),/NAN),MAX(ABS(bw_field),/NAN)]     & $
+    yra_ew   = [-1e0*MAX(ABS(ew_field),/NAN),MAX(ABS(ew_field),/NAN)]     & $
+    fname0   = ffr_prefx[0]+fil_str[k]+fn_scet[i]+'_S-GSE'                & $
+    popen,fname0,/LAND                                                    & $
+      FOR j=0L, 2L DO BEGIN                                                 $
+        IF (j EQ 0) THEN ttle = 'Poynting Flux [GSE-Coords] at: '+nscets[i] & $
+        IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]  & $
+        IF (j EQ 2) THEN ttle = ''                                        & $
+        PLOT,ms_times,sw_field[*,j],_EXTRA=exstr_s,YTITLE=yttlsws[j],YRANGE=yra_sw,TITLE=ttle  & $
+          OPLOT,ms_times,sw_field[*,j],COLOR=colors[j]                    & $
+      ENDFOR                                                              & $
+    pclose                                                                & $
+    fname0   = ffr_prefx[0]+fil_str[k]+fn_scet[i]+'_B-GSE'                 & $
+    popen,fname0,/LAND                                                    & $
+      FOR j=0L, 2L DO BEGIN                                                 $
+        IF (j EQ 0) THEN ttle = 'Magnetic Field [GSE-Coords] at: '+nscets[i] & $
+        IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]  & $
+        IF (j EQ 2) THEN ttle = ''                                        & $
+        PLOT,ms_times,bw_field[*,j],_EXTRA=exstr_s,YTITLE=yttlbws[j],YRANGE=yra_bw,TITLE=ttle  & $
+          OPLOT,ms_times,bw_field[*,j],COLOR=colors[j]                    & $
+      ENDFOR                                                              & $
+    pclose                                                                & $
+    fname0   = ffr_prefx[0]+fil_str[k]+fn_scet[i]+'_E-GSE'                 & $
+    popen,fname0,/LAND                                                    & $
+      FOR j=0L, 2L DO BEGIN                                                 $
+        IF (j EQ 0) THEN ttle = 'Electric Field [GSE-Coords] at: '+nscets[i] & $
+        IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]  & $
+        IF (j EQ 2) THEN ttle = ''                                        & $
+        PLOT,ms_times,ew_field[*,j],_EXTRA=exstr_s,YTITLE=yttlews[j],YRANGE=yra_ew,TITLE=ttle  & $
+          OPLOT,ms_times,ew_field[*,j],COLOR=colors[j]                    & $
+      ENDFOR                                                              & $
+    pclose                                                                & $
+  ENDFOR                                                                  & $
+  jj += 1L
+
+
+yttlsrs   = ['S!D!9x!3'+',1!N (!7l!3'+'W/m!U2!N'+')',$
+             'S!D!9x!3'+',2!N (!7l!3'+'W/m!U2!N'+')',$
+             'S!D!9#!3'+'!N (!7l!3'+'W/m!U2!N'+')']
+yttlbrs   = ['B!D!9x!3'+',1!N (nT)','B!D!9x!3'+',2!N (nT)',$
+             'B!D!9#!3'+'!N (nT)']
+yttlers   = ['E!D!9x!3'+',1!N (mV/m)','E!D!9x!3'+',2!N (mV/m)',$
+             'E!D!9#!3'+'!N (mV/m)']
+ffr_prefx = 'FIXED_rotated_filtered_'
+FOR i=0L, n_uq DO BEGIN                                                         $
+  lfc0       = lf_str.(i)                                                     & $
+  hfc0       = hf_str.(i)                                                     & $
+  fwl_str    = STRTRIM(STRING(FORMAT='(f15.1)',lfc0),2)                       & $
+  fwh_str    = STRTRIM(STRING(FORMAT='(f15.1)',hfc0),2)                       & $
+  fil_str    = fwl_str[*]+'-'+fwh_str[*]+'Hz_'                                & $
+  fil_st2    = STRARR(N_ELEMENTS(fil_str))                                    & $
+  n_fr       = N_ELEMENTS(lfc0) - 1L                                          & $
+  FOR j=0L, n_fr DO fil_st2[j] = STRMID(fil_str[j],0L,STRLEN(fil_str[j])-1L)  & $
+  FOR k=0L, n_fr DO BEGIN                                                   $
+    ms_times = REFORM(ntimes[i,*])                                        & $
+    sw_field = rotated_fac_sf.(i).(k)                                     & $
+    ew_field = rotated_fac_ef.(i).(k)                                     & $
+    bw_field = rotated_fac_bf.(i).(k)                                     & $
+    yra_sw   = [-1e0*MAX(ABS(sw_field),/NAN),MAX(ABS(sw_field),/NAN)]     & $
+    yra_bw   = [-1e0*MAX(ABS(bw_field),/NAN),MAX(ABS(bw_field),/NAN)]     & $
+    yra_ew   = [-1e0*MAX(ABS(ew_field),/NAN),MAX(ABS(ew_field),/NAN)]     & $
+    fname0   = ffr_prefx[0]+fil_str[k]+fn_scet[i]+'_S-FACs'                & $
+    popen,fname0,/LAND                                                    & $
+      FOR j=0L, 2L DO BEGIN                                                 $
+        IF (j EQ 0) THEN ttle = 'Poynting Flux [FACs] at: '+nscets[i] & $
+        IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]  & $
+        IF (j EQ 2) THEN ttle = ''                                        & $
+        PLOT,ms_times,sw_field[*,j],_EXTRA=exstr_s,YTITLE=yttlsrs[j],YRANGE=yra_sw,TITLE=ttle  & $
+          OPLOT,ms_times,sw_field[*,j],COLOR=colors[j]                    & $
+      ENDFOR                                                              & $
+    pclose                                                                & $
+    fname0   = ffr_prefx[0]+fil_str[k]+fn_scet[i]+'_B-FACs'                 & $
+    popen,fname0,/LAND                                                    & $
+      FOR j=0L, 2L DO BEGIN                                                 $
+        IF (j EQ 0) THEN ttle = 'Magnetic Field [FACs] at: '+nscets[i] & $
+        IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]  & $
+        IF (j EQ 2) THEN ttle = ''                                        & $
+        PLOT,ms_times,bw_field[*,j],_EXTRA=exstr_s,YTITLE=yttlbrs[j],YRANGE=yra_bw,TITLE=ttle  & $
+          OPLOT,ms_times,bw_field[*,j],COLOR=colors[j]                    & $
+      ENDFOR                                                              & $
+    pclose                                                                & $
+    fname0   = ffr_prefx[0]+fil_str[k]+fn_scet[i]+'_E-FACs'                 & $
+    popen,fname0,/LAND                                                    & $
+      FOR j=0L, 2L DO BEGIN                                                 $
+        IF (j EQ 0) THEN ttle = 'Electric Field [FACs] at: '+nscets[i] & $
+        IF (j EQ 1) THEN ttle = 'Filtered: '+fil_st2[k]+', '+fang_str[i]  & $
+        IF (j EQ 2) THEN ttle = ''                                        & $
+        PLOT,ms_times,ew_field[*,j],_EXTRA=exstr_s,YTITLE=yttlers[j],YRANGE=yra_ew,TITLE=ttle  & $
+          OPLOT,ms_times,ew_field[*,j],COLOR=colors[j]                    & $
+      ENDFOR                                                              & $
+    pclose                                                                & $
+  ENDFOR                                                                  & $
+  jj += 1L
+
+!P.MULTI = 0
+;-----------------------------------------------------------------------------------------
+; => Perform MVA
+;-----------------------------------------------------------------------------------------
+dumbmag = magf_htr
+jj      = 0L
+tt_tds  = [MIN(REFORM(unx_t0[jj,*]),/NAN),MAX(REFORM(unx_t0[jj,*]),/NAN)]
+tmagfx  = MEAN(interp(dumbmag.Y[*,0],dumbmag.X,tt_tds,/NO_EXTRAP),/NAN)
+tmagfy  = MEAN(interp(dumbmag.Y[*,1],dumbmag.X,tt_tds,/NO_EXTRAP),/NAN)
+tmagfz  = MEAN(interp(dumbmag.Y[*,2],dumbmag.X,tt_tds,/NO_EXTRAP),/NAN)
+dumb_tt = [tt_tds[0],MEAN(tt_tds,/NAN),tt_tds[1]]
+dumb_mf = REFORM(REPLICATE(1d0,3L) # [tmagfx,tmagfy,tmagfz])
+dumbmfi = {X:dumb_tt,Y:dumb_mf}
+dumb_bm = SQRT(TOTAL(dumb_mf^2,2L,/NAN))
+dumb_bv = REFORM(dumb_mf[0,*])/dumb_bm[0]
+
+htrmfit = REFORM(t_mag0.GTIME[jj,*])      ; => Unix Time for HTR MFI data
+htrmagf = REFORM(t_mag0.GHTR[jj,*,*])       ; => GSE HTR MFI (nT)
+htrbmag = SQRT(TOTAL(htrmagf^2,2,/NAN))
+
+spref = 'bvec'
+ssuff = '   = ['
+mfor0 = '(a11,f8.5,",",f8.5,",",f8.5,"]")'
+mfor1 = '(a12,f8.5,",",f8.5,",",f8.5,"]")'
+FOR j=0L, N_TAGS(tr_str) - 1L DO BEGIN                                $
+  jstr   = STRTRIM(j,2L)                                            & $
+  IF (j LT 10L) THEN mform = mfor0 ELSE mform = mfor1               & $
+  strg   = spref[0]+jstr[0]+ssuff[0]                                & $
+  tr_00  = tr_str.(j)                                               & $
+  good   = WHERE(htrmfit LE tr_00[1] AND htrmfit GE tr_00[0],gd)    & $
+  avgbm  = MEAN(htrbmag[good],/NAN)                                 & $
+  avmagx = MEAN(htrmagf[good,0],/NAN)                               & $
+  avmagy = MEAN(htrmagf[good,1],/NAN)                               & $
+  avmagz = MEAN(htrmagf[good,2],/NAN)                               & $
+  avbvec = [avmagx,avmagy,avmagz]/avgbm[0]                          & $
+  PRINT,FORMAT=mform,strg[0],avbvec
+
+spref = 'bmag'
+ssuff = '   = ['
+mfor0 = '(a11,f8.5,"]")'
+mfor1 = '(a12,f8.5,"]")'
+FOR j=0L, N_TAGS(tr_str) - 1L DO BEGIN                                $
+  jstr   = STRTRIM(j,2L)                                            & $
+  IF (j LT 10L) THEN mform = mfor0 ELSE mform = mfor1               & $
+  tr_00  = tr_str.(j)                                               & $
+  good   = WHERE(htrmfit LE tr_00[1] AND htrmfit GE tr_00[0],gd)    & $
+  strg   = spref[0]+jstr[0]+ssuff[0]                                & $
+  avgbm  = MEAN(htrbmag[good],/NAN)                                 & $
+  PRINT,FORMAT=mform,strg[0],avgbm
+
+dummy0  = {X:REFORM(unx_t0[jj,*]),Y:rotated_gse_bf.(jj).(0)}
+dummy1  = {X:REFORM(unx_t0[jj,*]),Y:rotated_gse_bf.(jj).(1)}
+dummy2  = {X:REFORM(unx_t0[jj,*]),Y:rotated_gse_bf.(jj).(2)}
+dummy3  = {X:REFORM(unx_t0[jj,*]),Y:rotated_gse_bf.(jj).(3)}
+dummy4  = {X:REFORM(unx_t0[jj,*]),Y:rotated_gse_bf.(jj).(4)}
+dummy5  = {X:REFORM(unx_t0[jj,*]),Y:rotated_gse_bf.(jj).(5)}
+dummy6  = {X:REFORM(unx_t0[jj,*]),Y:rotated_gse_bf.(jj).(6)}
+
+lfc0    = lf_str.(jj)
+hfc0    = hf_str.(jj)
+print, lfc0, format='(";",8f10.1)'
+;       2.5       5.0      20.0      30.0      40.0     100.0     100.0
+print, hfc0, format='(";",8f10.1)'
+;      20.0      20.0     100.0     100.0     200.0     200.0     400.0
+
+vector_mv_plot,DATE=date,MYMAG=dummy0,FCUTOFF=[lfc0[0],hfc0[0]],$
+               SAT='W',COORD='GSE',FIELD='B',DCBKGF=dumbmfi,STATS=stats_121097_025_20
+
+vector_mv_plot,DATE=date,MYMAG=dummy1,FCUTOFF=[lfc0[1],hfc0[1]],$
+               SAT='W',COORD='GSE',FIELD='B',DCBKGF=dumbmfi,STATS=stats_121097_05_20
+
+vector_mv_plot,DATE=date,MYMAG=dummy2,FCUTOFF=[lfc0[2],hfc0[2]],$
+               SAT='W',COORD='GSE',FIELD='B',DCBKGF=dumbmfi,STATS=stats_121097_20_100
+
+vector_mv_plot,DATE=date,MYMAG=dummy3,FCUTOFF=[lfc0[3],hfc0[3]],$
+               SAT='W',COORD='GSE',FIELD='B',DCBKGF=dumbmfi,STATS=stats_121097_30_100
+
+vector_mv_plot,DATE=date,MYMAG=dummy4,FCUTOFF=[lfc0[4],hfc0[4]],$
+               SAT='W',COORD='GSE',FIELD='B',DCBKGF=dumbmfi,STATS=stats_121097_40_200
+
+vector_mv_plot,DATE=date,MYMAG=dummy5,FCUTOFF=[lfc0[5],hfc0[5]],$
+               SAT='W',COORD='GSE',FIELD='B',DCBKGF=dumbmfi,STATS=stats_121097_100_200
+
+vector_mv_plot,DATE=date,MYMAG=dummy6,FCUTOFF=[lfc0[6],hfc0[6]],$
+               SAT='W',COORD='GSE',FIELD='B',DCBKGF=dumbmfi,STATS=stats_121097_100_400
+
+;-----------------------------------------------------------------------------------------
+; => For  2.5 Hz < f < 20 Hz  at  1997-12-10/04:33:15.605 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 385-1043
+;Plot Range: 04:33:15.8103-04:33:16.1613
+;The angle between DC-Field and the k-vector is :
+;       67.957 +/- 0.230 degrees
+;The eigenvalues ratios are:
+;       96.584781       1.1937998
+;The Minimum Variance eigenvector is:
+;< 0.68403,-0.48642, 0.54360> +/- <-0.02190,-0.00430, 0.02370>
+;
+;Plot Index Range: 1256-1467
+;Plot Range: 04:33:16.2749-04:33:16.3874
+;The angle between DC-Field and the k-vector is :
+;       86.956 +/- 0.188 degrees
+;The eigenvalues ratios are:
+;       446.09540       3.9723722
+;The Minimum Variance eigenvector is:
+;< 0.81891,-0.10754, 0.56375> +/- <-0.00143, 0.01570, 0.00507>
+;
+;Plot Index Range: 1467-1626
+;Plot Range: 04:33:16.3874-04:33:16.4722
+;The angle between DC-Field and the k-vector is :
+;       88.896 +/- 0.618 degrees
+;The eigenvalues ratios are:
+;       56.452821       3.1852352
+;The Minimum Variance eigenvector is:
+;< 0.97406, 0.22072,-0.04988> +/- < 0.01094,-0.04989,-0.00705>
+;
+;Plot Index Range: 1896-2043
+;Plot Range: 04:33:16.6162-04:33:16.6946
+;The angle between DC-Field and the k-vector is :
+;       29.625 +/- 0.466 degrees
+;The eigenvalues ratios are:
+;       105.71235       6.2770173
+;The Minimum Variance eigenvector is:
+;<-0.30185,-0.85539,-0.42095> +/- <-0.01103, 0.01817,-0.02903>
+;
+
+struct0 = stats_121097_025_20
+nplots  = N_TAGS(struct0)
+tr_ss   = STRARR(nplots)
+kv_ss   = STRARR(nplots)
+dkv_ss  = STRARR(nplots)
+eig_ss  = STRARR(nplots)
+pr_str  = ',prefd[0]+'
+tr_pre  = '     = time_double([prefd[0]+'
+dv_0s   = '])'
+kv_0s   = ']'
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  tr_0p = 'tr'+STRTRIM(j,2L)                                            & $
+  tr_00 = time_string(struct0.(j).TRANGE,PREC=4)                        & $
+  tr_01 = STRMID(tr_00[*],11L)                                          & $
+  test  = tr_0p[0]+tr_pre[0]+"'"+tr_01[0]+"'"+pr_str[0]+"'"+tr_01[1]+"'"+dv_0s[0]  & $
+  tr_ss[j] = test[0]
+
+kvform = '(f8.5,",",f8.5,",",f8.5)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  kv_0p = 'kvec'+STRTRIM(j,2L)+'   = ['                                 & $
+  kv_00 = struct0.(j).MVA.EIGENVECTORS[*,0]                             & $
+  kv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = kv_0p[0]+kv_01+kv_0s[0]                                       & $
+  kv_ss[j] = test[0]
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  dv_0p = 'dkvec'+STRTRIM(j,2L)+'  = ABS(['                             & $
+  dv_00 = struct0.(j).MVA.DMIN_VEC                                      & $
+  dv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = dv_0p[0]+dv_01+dv_0s[0]                                       & $
+  dkv_ss[j] = test[0]
+
+eform = '(g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  eg_0p = 'elam'+STRTRIM(j,2L)+'   = ['                                 & $
+  eg_mx = struct0.(j).MVA.EIGENVALUES[0]                                & $
+  eg_md = struct0.(j).MVA.EIGENVALUES[1]                                & $
+  eg_mn = struct0.(j).MVA.EIGENVALUES[2]                                & $
+  er_00 = FLOAT([eg_md/eg_mn,eg_mx/eg_md])                              & $
+  er_01 = STRCOMPRESS(STRING(FORMAT=eform,er_00),/REMOVE_ALL)           & $
+  test  = eg_0p[0]+er_01+kv_0s[0]                                       & $
+  eig_ss[j] = test[0]
+
+
+PRINT, TRANSPOSE(tr_ss)
+PRINT, TRANSPOSE(kv_ss)
+PRINT, TRANSPOSE(dkv_ss)
+PRINT, TRANSPOSE(eig_ss)
+prefd   = '1997-12-10/'
+tr0     = time_double([prefd[0]+'04:33:15.8103',prefd[0]+'04:33:16.1612'])
+tr1     = time_double([prefd[0]+'04:33:16.2748',prefd[0]+'04:33:16.3874'])
+tr2     = time_double([prefd[0]+'04:33:16.3874',prefd[0]+'04:33:16.4722'])
+tr3     = time_double([prefd[0]+'04:33:16.6162',prefd[0]+'04:33:16.6946'])
+kvec0   = [ 0.68403,-0.48642, 0.54360]
+kvec1   = [ 0.81891,-0.10754, 0.56375]
+kvec2   = [ 0.97406, 0.22072,-0.04988]
+kvec3   = [-0.30185,-0.85539,-0.42095]
+dkvec0  = ABS([-0.30185,-0.85539,-0.42095])
+dkvec1  = ABS([-0.30185,-0.85539,-0.42095])
+dkvec2  = ABS([-0.30185,-0.85539,-0.42095])
+dkvec3  = ABS([-0.30185,-0.85539,-0.42095])
+elam0   = [96.58478,1.193800]
+elam1   = [446.0954,3.972372]
+elam2   = [56.45282,3.185235]
+elam3   = [105.7124,6.277017]
+bvec0   = [ 0.18202,-0.88395,-0.42956]
+bvec1   = [ 0.12796,-0.87844,-0.46034]
+bvec2   = [ 0.10310,-0.87890,-0.46570]
+bvec3   = [ 0.13200,-0.87068,-0.47379]
+bmag0   = [16.11884]
+bmag1   = [15.99577]
+bmag2   = [16.25960]
+bmag3   = [16.88358]
+
+tags    = ['t0','t1','t2','t3']
+tr_str  = CREATE_STRUCT(tags,tr0,tr1,tr2,tr3)
+kv_str  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3)
+dkv_str = CREATE_STRUCT(tags,dkvec0,dkvec1,dkvec2,dkvec3)
+nn      = N_ELEMENTS(tags)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  tr_00  = tr_str.(j)                                               & $
+  good   = WHERE(htrmfit LE tr_00[1] AND htrmfit GE tr_00[0],gd)    & $
+  avgbm  = MEAN(htrbmag[good],/NAN)                                 & $
+  avmagx = MEAN(htrmagf[good,0],/NAN)                               & $
+  avmagy = MEAN(htrmagf[good,1],/NAN)                               & $
+  avmagz = MEAN(htrmagf[good,2],/NAN)                               & $
+  avbvec = [avmagx,avmagy,avmagz]/avgbm[0]                          & $
+  trs000 = time_string(tr_str.(j),PREC=4)                           & $
+  trs001 = STRMID(trs000[*],11L,13L)                                & $
+  t_rang = trs001[0]+'-'+trs001[1]                                  & $
+  str_element,bv_str,jstr,avbvec,/ADD_REPLACE                       & $
+  str_element,bm_str,jstr,avgbm,/ADD_REPLACE                        & $
+  str_element,st_str,jstr,t_rang,/ADD_REPLACE
+
+mform = '(";",a30,7f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(kv_str.(j)),           $
+                     REFORM(bv_str.(j)),REFORM(bm_str.(j))
+;
+; => For  2.5 Hz < f < 20 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.8103-04:33:16.1612      0.684     -0.486      0.544      0.182     -0.884     -0.430     16.119
+;   04:33:16.2748-04:33:16.3874      0.819     -0.108      0.564      0.128     -0.878     -0.460     15.996
+;   04:33:16.3874-04:33:16.4722      0.974      0.221     -0.050      0.103     -0.879     -0.466     16.260
+;   04:33:16.6162-04:33:16.6946     -0.302     -0.855     -0.421      0.132     -0.871     -0.474     16.884
+
+vswu   = [-314.548,10.913,-16.628]         ; => My 3DP estimates (km/s) For 1997-12-10/04:33:15.605 UT
+vswuv  = vswu/(NORM(vswu))[0]
+nvc00  = REFORM(gnorm)
+nvc02  = REFORM(gnorm2)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  thkn02 = ACOS(my_dot_prod(kvc00,nvc02,/NOM))*18d1/!DPI            & $
+  thkn12 = 18d1 - thkn02[0]                                         & $
+  thkv0  = ACOS(my_dot_prod(kvc00,vswuv,/NOM))*18d1/!DPI            & $
+  thkv1  = 18d1 - thkv0[0]                                          & $
+  str_element,thkb_str,jstr,[thkb0,thkb1],/ADD_REPLACE              & $
+  str_element,thkn_str,jstr,[thkn0,thkn1],/ADD_REPLACE              & $
+  str_element,thkn2_str,jstr,[thkn02,thkn12],/ADD_REPLACE           & $
+  str_element,thkv_str,jstr,[thkv0,thkv1],/ADD_REPLACE
+
+mform = '(";",a30,8f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(thkb_str.(j)),         $
+                     REFORM(thkn_str.(j)),REFORM(thkv_str.(j)),         $
+                     REFORM(thkn2_str.(j))
+;
+; => For  2.5 Hz < f < 20 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.8103-04:33:16.1612     71.279    108.721    156.235     23.765    136.735     43.265    145.937     34.063
+;   04:33:16.2748-04:33:16.3874     93.455     86.545    168.917     11.083    148.293     31.707    158.151     21.849
+;   04:33:16.3874-04:33:16.4722     94.033     85.967    145.355     34.645    164.122     15.878    156.091     23.909
+;   04:33:16.6162-04:33:16.6946     25.261    154.739     72.784    107.216     72.912    107.088     72.275    107.725
+
+theta_kb1210_025_20   = DBLARR(nn)
+theta_kn1210_025_20   = DBLARR(nn)
+theta_kn21210_025_20  = DBLARR(nn)
+theta_kv1210_025_20   = DBLARR(nn)
+FOR j=0L, nn - 1L DO BEGIN                                                        $
+  theta_kb1210_025_20[j]   = REFORM(thkb_str.(j)[0]) < REFORM(thkb_str.(j)[1])    & $
+  theta_kn1210_025_20[j]   = REFORM(thkn_str.(j)[0]) < REFORM(thkn_str.(j)[1])    & $
+  theta_kn21210_025_20[j]  = REFORM(thkn2_str.(j)[0]) < REFORM(thkn2_str.(j)[1])  & $
+  theta_kv1210_025_20[j]   = REFORM(thkv_str.(j)[0]) < REFORM(thkv_str.(j)[1])
+
+mform = '(";",a30,4f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                              $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(theta_kb1210_025_20[j]),  $
+                     REFORM(theta_kn1210_025_20[j]),$
+                     REFORM(theta_kv1210_025_20[j]),$
+                     REFORM(theta_kn21210_025_20[j])
+;
+; => For  2.5 Hz < f < 20 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.8103-04:33:16.1612     71.279     23.765     43.265     34.063
+;   04:33:16.2748-04:33:16.3874     86.545     11.083     31.707     21.849
+;   04:33:16.3874-04:33:16.4722     85.967     34.645     15.878     23.909
+;   04:33:16.6162-04:33:16.6946     25.261     72.784     72.912     72.275
+
+tkbf = '("[",'
+FOR k=0L, nn - 1L DO BEGIN                                                      $
+  tkbf += 'f5.2,",",' & $
+  IF (k EQ nn - 1L) THEN tkbf = STRMID(tkbf,0L,STRLEN(tkbf)-4L)+'"]")'
+  
+PRINT,FORMAT=tkbf,theta_kb1210_025_20
+PRINT,FORMAT=tkbf,theta_kn1210_025_20
+PRINT,FORMAT=tkbf,theta_kv1210_025_20
+PRINT,FORMAT=tkbf,theta_kn21210_025_20
+
+
+theta_kb1210_025_20  = [71.28,86.55,85.97,25.26]
+theta_kn1210_025_20  = [23.76,11.08,34.64,72.78]
+theta_kv1210_025_20  = [43.27,31.71,15.88,72.91]
+theta_kn21210_025_20 = [34.06,21.85,23.91,72.27]
+
+DELVAR,tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,tr10,tr11,tr12,tr13,tr14,tr15,tr16,tr17,tr18,tr19,tr20,tr21,tr22,tr23,tr24
+DELVAR,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15,kvec16,kvec17,kvec18,kvec19,kvec20,kvec21,kvec22,kvec23,kvec24
+DELVAR,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,dkvec6,dkvec7,dkvec8,dkvec9,dkvec10,dkvec11,dkvec12,dkvec13,dkvec14,dkvec15,dkvec16,dkvec17,dkvec18,dkvec19,dkvec20,dkvec21,dkvec22,dkvec23,dkvec24
+
+;-----------------------------------------------------------------------------------------
+; => For  5 Hz < f < 20 Hz  at  1997-12-10/04:33:15.605 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 108-267
+;Plot Range: 04:33:15.6626-04:33:15.7474
+;The angle between DC-Field and the k-vector is :
+;       88.720 +/- 0.432 degrees
+;The eigenvalues ratios are:
+;       113.55035       3.0934028
+;The Minimum Variance eigenvector is:
+;<-0.93910,-0.04680,-0.34043> +/- < 0.00019, 0.03593,-0.00546>
+;
+;Plot Index Range: 267-428
+;Plot Range: 04:33:15.7474-04:33:15.8333
+;The angle between DC-Field and the k-vector is :
+;       88.430 +/- 0.374 degrees
+;The eigenvalues ratios are:
+;       148.51225       2.8486819
+;The Minimum Variance eigenvector is:
+;<-0.97115,-0.23560,-0.03678> +/- <-0.00625, 0.02799,-0.01415>
+;
+;Plot Index Range: 579-831
+;Plot Range: 04:33:15.9138-04:33:16.0482
+;The angle between DC-Field and the k-vector is :
+;       79.524 +/- 0.708 degrees
+;The eigenvalues ratios are:
+;       28.042905       1.1966973
+;The Minimum Variance eigenvector is:
+;< 0.50057,-0.40599, 0.76460> +/- <-0.06723,-0.01536, 0.03586>
+;
+;Plot Index Range: 1269-1623
+;Plot Range: 04:33:16.2818-04:33:16.4706
+;The angle between DC-Field and the k-vector is :
+;       86.597 +/- 0.301 degrees
+;The eigenvalues ratios are:
+;       104.88346       2.1555935
+;The Minimum Variance eigenvector is:
+;<-0.91903,-0.11778,-0.37619> +/- <-0.00194, 0.03205,-0.00530>
+;
+
+struct0 = stats_121097_05_20
+nplots  = N_TAGS(struct0)
+tr_ss   = STRARR(nplots)
+kv_ss   = STRARR(nplots)
+dkv_ss  = STRARR(nplots)
+eig_ss  = STRARR(nplots)
+pr_str  = ',prefd[0]+'
+tr_pre  = '     = time_double([prefd[0]+'
+dv_0s   = '])'
+kv_0s   = ']'
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  tr_0p = 'tr'+STRTRIM(j,2L)                                            & $
+  tr_00 = time_string(struct0.(j).TRANGE,PREC=4)                        & $
+  tr_01 = STRMID(tr_00[*],11L)                                          & $
+  test  = tr_0p[0]+tr_pre[0]+"'"+tr_01[0]+"'"+pr_str[0]+"'"+tr_01[1]+"'"+dv_0s[0]  & $
+  tr_ss[j] = test[0]
+
+kvform = '(f8.5,",",f8.5,",",f8.5)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  kv_0p = 'kvec'+STRTRIM(j,2L)+'   = ['                                 & $
+  kv_00 = struct0.(j).MVA.EIGENVECTORS[*,0]                             & $
+  kv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = kv_0p[0]+kv_01+kv_0s[0]                                       & $
+  kv_ss[j] = test[0]
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  dv_0p = 'dkvec'+STRTRIM(j,2L)+'  = ABS(['                             & $
+  dv_00 = struct0.(j).MVA.DMIN_VEC                                      & $
+  dv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = dv_0p[0]+dv_01+dv_0s[0]                                       & $
+  dkv_ss[j] = test[0]
+
+eform = '(g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  eg_0p = 'elam'+STRTRIM(j,2L)+'   = ['                                 & $
+  eg_mx = struct0.(j).MVA.EIGENVALUES[0]                                & $
+  eg_md = struct0.(j).MVA.EIGENVALUES[1]                                & $
+  eg_mn = struct0.(j).MVA.EIGENVALUES[2]                                & $
+  er_00 = FLOAT([eg_md/eg_mn,eg_mx/eg_md])                              & $
+  er_01 = STRCOMPRESS(STRING(FORMAT=eform,er_00),/REMOVE_ALL)           & $
+  test  = eg_0p[0]+er_01+kv_0s[0]                                       & $
+  eig_ss[j] = test[0]
+
+
+PRINT, TRANSPOSE(tr_ss)
+PRINT, TRANSPOSE(kv_ss)
+PRINT, TRANSPOSE(dkv_ss)
+PRINT, TRANSPOSE(eig_ss)
+prefd   = '1997-12-10/'
+tr0     = time_double([prefd[0]+'04:33:15.6626',prefd[0]+'04:33:15.7474'])
+tr1     = time_double([prefd[0]+'04:33:15.7474',prefd[0]+'04:33:15.8332'])
+tr2     = time_double([prefd[0]+'04:33:15.9138',prefd[0]+'04:33:16.0482'])
+tr3     = time_double([prefd[0]+'04:33:16.2818',prefd[0]+'04:33:16.4706'])
+kvec0   = [-0.93910,-0.04680,-0.34043]
+kvec1   = [-0.97115,-0.23560,-0.03678]
+kvec2   = [ 0.50057,-0.40599, 0.76460]
+kvec3   = [-0.91903,-0.11778,-0.37619]
+dkvec0  = ABS([-0.91903,-0.11778,-0.37619])
+dkvec1  = ABS([-0.91903,-0.11778,-0.37619])
+dkvec2  = ABS([-0.91903,-0.11778,-0.37619])
+dkvec3  = ABS([-0.91903,-0.11778,-0.37619])
+elam0   = [113.5504,3.093403]
+elam1   = [148.5123,2.848682]
+elam2   = [28.04291,1.196697]
+elam3   = [104.8835,2.155593]
+bvec0   = [ 0.22626,-0.91021,-0.34610]
+bvec1   = [ 0.20760,-0.89294,-0.39931]
+bvec2   = [ 0.18591,-0.88202,-0.43261]
+bvec3   = [ 0.11680,-0.87872,-0.46260]
+bmag0   = [15.49161]
+bmag1   = [16.95673]
+bmag2   = [15.62541]
+bmag3   = [16.09916]
+
+tags    = ['t0','t1','t2','t3']
+tr_str  = CREATE_STRUCT(tags,tr0,tr1,tr2,tr3)
+kv_str  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3)
+dkv_str = CREATE_STRUCT(tags,dkvec0,dkvec1,dkvec2,dkvec3)
+nn      = N_ELEMENTS(tags)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  tr_00  = tr_str.(j)                                               & $
+  good   = WHERE(htrmfit LE tr_00[1] AND htrmfit GE tr_00[0],gd)    & $
+  avgbm  = MEAN(htrbmag[good],/NAN)                                 & $
+  avmagx = MEAN(htrmagf[good,0],/NAN)                               & $
+  avmagy = MEAN(htrmagf[good,1],/NAN)                               & $
+  avmagz = MEAN(htrmagf[good,2],/NAN)                               & $
+  avbvec = [avmagx,avmagy,avmagz]/avgbm[0]                          & $
+  trs000 = time_string(tr_str.(j),PREC=4)                           & $
+  trs001 = STRMID(trs000[*],11L,13L)                                & $
+  t_rang = trs001[0]+'-'+trs001[1]                                  & $
+  str_element,bv_str,jstr,avbvec,/ADD_REPLACE                       & $
+  str_element,bm_str,jstr,avgbm,/ADD_REPLACE                        & $
+  str_element,st_str,jstr,t_rang,/ADD_REPLACE
+
+mform = '(";",a30,7f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(kv_str.(j)),           $
+                     REFORM(bv_str.(j)),REFORM(bm_str.(j))
+;
+; => For  5 Hz < f < 20 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.6626-04:33:15.7474     -0.939     -0.047     -0.340      0.226     -0.910     -0.346     15.492
+;   04:33:15.7474-04:33:15.8332     -0.971     -0.236     -0.037      0.208     -0.893     -0.399     16.957
+;   04:33:15.9138-04:33:16.0482      0.501     -0.406      0.765      0.186     -0.882     -0.433     15.625
+;   04:33:16.2818-04:33:16.4706     -0.919     -0.118     -0.376      0.117     -0.879     -0.463     16.099
+
+vswu   = [-314.548,10.913,-16.628]         ; => My 3DP estimates (km/s) For 1997-12-10/04:33:15.605 UT
+vswuv  = vswu/(NORM(vswu))[0]
+nvc00  = REFORM(gnorm)
+nvc02  = REFORM(gnorm2)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  thkn02 = ACOS(my_dot_prod(kvc00,nvc02,/NOM))*18d1/!DPI            & $
+  thkn12 = 18d1 - thkn02[0]                                         & $
+  thkv0  = ACOS(my_dot_prod(kvc00,vswuv,/NOM))*18d1/!DPI            & $
+  thkv1  = 18d1 - thkv0[0]                                          & $
+  str_element,thkb_str,jstr,[thkb0,thkb1],/ADD_REPLACE              & $
+  str_element,thkn_str,jstr,[thkn0,thkn1],/ADD_REPLACE              & $
+  str_element,thkn2_str,jstr,[thkn02,thkn12],/ADD_REPLACE           & $
+  str_element,thkv_str,jstr,[thkv0,thkv1],/ADD_REPLACE
+
+mform = '(";",a30,8f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(thkb_str.(j)),         $
+                     REFORM(thkn_str.(j)),REFORM(thkv_str.(j)),         $
+                     REFORM(thkn2_str.(j))
+;
+; => For  5 Hz < f < 20 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.6626-04:33:15.7474     92.984     87.016     12.762    167.238     17.528    162.472     10.984    169.016
+;   04:33:15.7474-04:33:15.8332     88.656     91.344     31.573    148.427     15.635    164.365     21.742    158.258
+;   04:33:15.9138-04:33:16.0482     83.086     96.914    145.464     34.536    123.640     56.360    133.701     46.299
+;   04:33:16.2818-04:33:16.4706     80.202     99.798     16.373    163.627     21.098    158.902     15.567    164.433
+
+theta_kb1210_05_20   = DBLARR(nn)
+theta_kn1210_05_20   = DBLARR(nn)
+theta_kn21210_05_20  = DBLARR(nn)
+theta_kv1210_05_20   = DBLARR(nn)
+FOR j=0L, nn - 1L DO BEGIN                                                        $
+  theta_kb1210_05_20[j]   = REFORM(thkb_str.(j)[0]) < REFORM(thkb_str.(j)[1])    & $
+  theta_kn1210_05_20[j]   = REFORM(thkn_str.(j)[0]) < REFORM(thkn_str.(j)[1])    & $
+  theta_kn21210_05_20[j]  = REFORM(thkn2_str.(j)[0]) < REFORM(thkn2_str.(j)[1])  & $
+  theta_kv1210_05_20[j]   = REFORM(thkv_str.(j)[0]) < REFORM(thkv_str.(j)[1])
+
+mform = '(";",a30,4f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                              $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(theta_kb1210_05_20[j]),  $
+                     REFORM(theta_kn1210_05_20[j]),$
+                     REFORM(theta_kv1210_05_20[j]),$
+                     REFORM(theta_kn21210_05_20[j])
+;
+; => For  5 Hz < f < 20 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.6626-04:33:15.7474     87.016     12.762     17.528     10.984
+;   04:33:15.7474-04:33:15.8332     88.656     31.573     15.635     21.742
+;   04:33:15.9138-04:33:16.0482     83.086     34.536     56.360     46.299
+;   04:33:16.2818-04:33:16.4706     80.202     16.373     21.098     15.567
+
+tkbf = '("[",'
+FOR k=0L, nn - 1L DO BEGIN                                                      $
+  tkbf += 'f5.2,",",' & $
+  IF (k EQ nn - 1L) THEN tkbf = STRMID(tkbf,0L,STRLEN(tkbf)-4L)+'"]")'
+  
+PRINT,FORMAT=tkbf,theta_kb1210_05_20
+PRINT,FORMAT=tkbf,theta_kn1210_05_20
+PRINT,FORMAT=tkbf,theta_kv1210_05_20
+PRINT,FORMAT=tkbf,theta_kn21210_05_20
+
+
+theta_kb1210_05_20  = [87.02,88.66,83.09,80.20]
+theta_kn1210_05_20  = [12.76,31.57,34.54,16.37]
+theta_kv1210_05_20  = [17.53,15.64,56.36,21.10]
+theta_kn21210_05_20 = [10.98,21.74,46.30,15.57]
+
+DELVAR,tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,tr10,tr11,tr12,tr13,tr14,tr15,tr16,tr17,tr18,tr19,tr20,tr21,tr22,tr23,tr24
+DELVAR,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15,kvec16,kvec17,kvec18,kvec19,kvec20,kvec21,kvec22,kvec23,kvec24
+DELVAR,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,dkvec6,dkvec7,dkvec8,dkvec9,dkvec10,dkvec11,dkvec12,dkvec13,dkvec14,dkvec15,dkvec16,dkvec17,dkvec18,dkvec19,dkvec20,dkvec21,dkvec22,dkvec23,dkvec24
+;-----------------------------------------------------------------------------------------
+; => For  20 Hz < f < 100 Hz  at  1997-12-10/04:33:15.605 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 590-662
+;Plot Range: 04:33:15.9197-04:33:15.9581
+;The angle between DC-Field and the k-vector is :
+;       20.666 +/- 1.128 degrees
+;The eigenvalues ratios are:
+;       38.283635       2.9964379
+;The Minimum Variance eigenvector is:
+;< 0.05839,-0.99634,-0.06242> +/- <-0.07429,-0.00302,-0.02121>
+;
+;Plot Index Range: 738-798
+;Plot Range: 04:33:15.9986-04:33:16.0306
+;The angle between DC-Field and the k-vector is :
+;       14.638 +/- 0.711 degrees
+;The eigenvalues ratios are:
+;       112.11444       1.2996544
+;The Minimum Variance eigenvector is:
+;< 0.03595, 0.88868, 0.45711> +/- <-0.04421, 0.01568,-0.02700>
+;
+;Plot Index Range: 1269-1317
+;Plot Range: 04:33:16.2818-04:33:16.3074
+;The angle between DC-Field and the k-vector is :
+;       25.300 +/- 1.383 degrees
+;The eigenvalues ratios are:
+;       38.475698       6.6240998
+;The Minimum Variance eigenvector is:
+;<-0.23249,-0.89230,-0.38696> +/- <-0.05632, 0.03401,-0.04459>
+;
+;Plot Index Range: 1350-1391
+;Plot Range: 04:33:16.3250-04:33:16.3469
+;The angle between DC-Field and the k-vector is :
+;       21.950 +/- 1.043 degrees
+;The eigenvalues ratios are:
+;       77.384111       3.5973018
+;The Minimum Variance eigenvector is:
+;< 0.55222,-0.74685,-0.37050> +/- < 0.05093, 0.03083, 0.01376>
+;
+;Plot Index Range: 1470-1530
+;Plot Range: 04:33:16.3890-04:33:16.4210
+;The angle between DC-Field and the k-vector is :
+;       88.172 +/- 1.371 degrees
+;The eigenvalues ratios are:
+;       31.573372       11.697311
+;The Minimum Variance eigenvector is:
+;<-0.97167,-0.21784,-0.09167> +/- <-0.00481, 0.04854,-0.06436>
+;
+
+struct0 = stats_121097_20_100
+nplots  = N_TAGS(struct0)
+tr_ss   = STRARR(nplots)
+kv_ss   = STRARR(nplots)
+dkv_ss  = STRARR(nplots)
+eig_ss  = STRARR(nplots)
+pr_str  = ',prefd[0]+'
+tr_pre  = '     = time_double([prefd[0]+'
+dv_0s   = '])'
+kv_0s   = ']'
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  tr_0p = 'tr'+STRTRIM(j,2L)                                            & $
+  tr_00 = time_string(struct0.(j).TRANGE,PREC=4)                        & $
+  tr_01 = STRMID(tr_00[*],11L)                                          & $
+  test  = tr_0p[0]+tr_pre[0]+"'"+tr_01[0]+"'"+pr_str[0]+"'"+tr_01[1]+"'"+dv_0s[0]  & $
+  tr_ss[j] = test[0]
+
+kvform = '(f8.5,",",f8.5,",",f8.5)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  kv_0p = 'kvec'+STRTRIM(j,2L)+'   = ['                                 & $
+  kv_00 = struct0.(j).MVA.EIGENVECTORS[*,0]                             & $
+  kv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = kv_0p[0]+kv_01+kv_0s[0]                                       & $
+  kv_ss[j] = test[0]
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  dv_0p = 'dkvec'+STRTRIM(j,2L)+'  = ABS(['                             & $
+  dv_00 = struct0.(j).MVA.DMIN_VEC                                      & $
+  dv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = dv_0p[0]+dv_01+dv_0s[0]                                       & $
+  dkv_ss[j] = test[0]
+
+eform = '(g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  eg_0p = 'elam'+STRTRIM(j,2L)+'   = ['                                 & $
+  eg_mx = struct0.(j).MVA.EIGENVALUES[0]                                & $
+  eg_md = struct0.(j).MVA.EIGENVALUES[1]                                & $
+  eg_mn = struct0.(j).MVA.EIGENVALUES[2]                                & $
+  er_00 = FLOAT([eg_md/eg_mn,eg_mx/eg_md])                              & $
+  er_01 = STRCOMPRESS(STRING(FORMAT=eform,er_00),/REMOVE_ALL)           & $
+  test  = eg_0p[0]+er_01+kv_0s[0]                                       & $
+  eig_ss[j] = test[0]
+
+
+PRINT, TRANSPOSE(tr_ss)
+PRINT, TRANSPOSE(kv_ss)
+PRINT, TRANSPOSE(dkv_ss)
+PRINT, TRANSPOSE(eig_ss)
+prefd   = '1997-12-10/'
+tr0     = time_double([prefd[0]+'04:33:15.9196',prefd[0]+'04:33:15.9580'])
+tr1     = time_double([prefd[0]+'04:33:15.9986',prefd[0]+'04:33:16.0306'])
+tr2     = time_double([prefd[0]+'04:33:16.2818',prefd[0]+'04:33:16.3074'])
+tr3     = time_double([prefd[0]+'04:33:16.3250',prefd[0]+'04:33:16.3468'])
+tr4     = time_double([prefd[0]+'04:33:16.3890',prefd[0]+'04:33:16.4210'])
+kvec0   = [ 0.05839,-0.99634,-0.06242]
+kvec1   = [ 0.03595, 0.88868, 0.45711]
+kvec2   = [-0.23249,-0.89230,-0.38696]
+kvec3   = [ 0.55222,-0.74685,-0.37050]
+kvec4   = [-0.97167,-0.21784,-0.09167]
+dkvec0  = ABS([-0.97167,-0.21784,-0.09167])
+dkvec1  = ABS([-0.97167,-0.21784,-0.09167])
+dkvec2  = ABS([-0.97167,-0.21784,-0.09167])
+dkvec3  = ABS([-0.97167,-0.21784,-0.09167])
+dkvec4  = ABS([-0.97167,-0.21784,-0.09167])
+elam0   = [38.28363,2.996438]
+elam1   = [112.1144,1.299654]
+elam2   = [38.47570,6.624100]
+elam3   = [77.38411,3.597302]
+elam4   = [31.57337,11.69731]
+bvec0   = [ 0.20316,-0.87657,-0.43627]
+bvec1   = [ 0.17165,-0.88697,-0.42871]
+bvec2   = [ 0.13254,-0.87748,-0.46093]
+bvec3   = [ 0.13232,-0.87832,-0.45938]
+bvec4   = [ 0.10362,-0.88091,-0.46179]
+bmag0   = [15.81205]
+bmag1   = [15.51477]
+bmag2   = [16.11753]
+bmag3   = [15.89856]
+bmag4   = [16.00851]
+
+tags    = ['t0','t1','t2','t3','t4']
+tr_str  = CREATE_STRUCT(tags,tr0,tr1,tr2,tr3,tr4)
+kv_str  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4)
+dkv_str = CREATE_STRUCT(tags,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4)
+nn      = N_ELEMENTS(tags)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  tr_00  = tr_str.(j)                                               & $
+  good   = WHERE(htrmfit LE tr_00[1] AND htrmfit GE tr_00[0],gd)    & $
+  avgbm  = MEAN(htrbmag[good],/NAN)                                 & $
+  avmagx = MEAN(htrmagf[good,0],/NAN)                               & $
+  avmagy = MEAN(htrmagf[good,1],/NAN)                               & $
+  avmagz = MEAN(htrmagf[good,2],/NAN)                               & $
+  avbvec = [avmagx,avmagy,avmagz]/avgbm[0]                          & $
+  trs000 = time_string(tr_str.(j),PREC=4)                           & $
+  trs001 = STRMID(trs000[*],11L,13L)                                & $
+  t_rang = trs001[0]+'-'+trs001[1]                                  & $
+  str_element,bv_str,jstr,avbvec,/ADD_REPLACE                       & $
+  str_element,bm_str,jstr,avgbm,/ADD_REPLACE                        & $
+  str_element,st_str,jstr,t_rang,/ADD_REPLACE
+
+mform = '(";",a30,7f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(kv_str.(j)),           $
+                     REFORM(bv_str.(j)),REFORM(bm_str.(j))
+;
+; => For  20 Hz < f < 100 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.9196-04:33:15.9580      0.058     -0.996     -0.062      0.203     -0.877     -0.436     15.812
+;   04:33:15.9986-04:33:16.0306      0.036      0.889      0.457      0.172     -0.887     -0.429     15.515
+;   04:33:16.2818-04:33:16.3074     -0.232     -0.892     -0.387      0.133     -0.877     -0.461     16.118
+;   04:33:16.3250-04:33:16.3468      0.552     -0.747     -0.370      0.132     -0.878     -0.459     15.899
+;   04:33:16.3890-04:33:16.4210     -0.972     -0.218     -0.092      0.104     -0.881     -0.462     16.009
+
+vswu   = [-314.548,10.913,-16.628]         ; => My 3DP estimates (km/s) For 1997-12-10/04:33:15.605 UT
+vswuv  = vswu/(NORM(vswu))[0]
+nvc00  = REFORM(gnorm)
+nvc02  = REFORM(gnorm2)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  thkn02 = ACOS(my_dot_prod(kvc00,nvc02,/NOM))*18d1/!DPI            & $
+  thkn12 = 18d1 - thkn02[0]                                         & $
+  thkv0  = ACOS(my_dot_prod(kvc00,vswuv,/NOM))*18d1/!DPI            & $
+  thkv1  = 18d1 - thkv0[0]                                          & $
+  str_element,thkb_str,jstr,[thkb0,thkb1],/ADD_REPLACE              & $
+  str_element,thkn_str,jstr,[thkn0,thkn1],/ADD_REPLACE              & $
+  str_element,thkn2_str,jstr,[thkn02,thkn12],/ADD_REPLACE           & $
+  str_element,thkv_str,jstr,[thkv0,thkv1],/ADD_REPLACE
+
+mform = '(";",a30,8f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(thkb_str.(j)),         $
+                     REFORM(thkn_str.(j)),REFORM(thkv_str.(j)),         $
+                     REFORM(thkn2_str.(j))
+;
+; => For  20 Hz < f < 100 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.9196-04:33:15.9580     24.153    155.847    101.264     78.736     95.134     84.866     97.860     82.140
+;   04:33:15.9986-04:33:16.0306    167.967     12.033     93.706     86.294     91.675     88.325     92.925     87.075
+;   04:33:16.2818-04:33:16.3074     21.483    158.517     77.663    102.337     77.200    102.800     76.925    103.075
+;   04:33:16.3250-04:33:16.3468     25.941    154.059    118.492     61.508    123.878     56.122    121.711     58.289
+;   04:33:16.3890-04:33:16.4210     82.326     97.674     28.692    151.308     14.754    165.246     19.439    160.561
+
+theta_kb1210_20_100   = DBLARR(nn)
+theta_kn1210_20_100   = DBLARR(nn)
+theta_kn21210_20_100  = DBLARR(nn)
+theta_kv1210_20_100   = DBLARR(nn)
+FOR j=0L, nn - 1L DO BEGIN                                                        $
+  theta_kb1210_20_100[j]   = REFORM(thkb_str.(j)[0]) < REFORM(thkb_str.(j)[1])    & $
+  theta_kn1210_20_100[j]   = REFORM(thkn_str.(j)[0]) < REFORM(thkn_str.(j)[1])    & $
+  theta_kn21210_20_100[j]  = REFORM(thkn2_str.(j)[0]) < REFORM(thkn2_str.(j)[1])  & $
+  theta_kv1210_20_100[j]   = REFORM(thkv_str.(j)[0]) < REFORM(thkv_str.(j)[1])
+
+mform = '(";",a30,4f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                              $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(theta_kb1210_20_100[j]),  $
+                     REFORM(theta_kn1210_20_100[j]),$
+                     REFORM(theta_kv1210_20_100[j]),$
+                     REFORM(theta_kn21210_20_100[j])
+;
+; => For  20 Hz < f < 100 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.9196-04:33:15.9580     24.153     78.736     84.866     82.140
+;   04:33:15.9986-04:33:16.0306     12.033     86.294     88.325     87.075
+;   04:33:16.2818-04:33:16.3074     21.483     77.663     77.200     76.925
+;   04:33:16.3250-04:33:16.3468     25.941     61.508     56.122     58.289
+;   04:33:16.3890-04:33:16.4210     82.326     28.692     14.754     19.439
+
+tkbf = '("[",'
+FOR k=0L, nn - 1L DO BEGIN                                                      $
+  tkbf += 'f5.2,",",' & $
+  IF (k EQ nn - 1L) THEN tkbf = STRMID(tkbf,0L,STRLEN(tkbf)-4L)+'"]")'
+  
+PRINT,FORMAT=tkbf,theta_kb1210_20_100
+PRINT,FORMAT=tkbf,theta_kn1210_20_100
+PRINT,FORMAT=tkbf,theta_kv1210_20_100
+PRINT,FORMAT=tkbf,theta_kn21210_20_100
+
+
+theta_kb1210_20_100  = [24.15,12.03,21.48,25.94,82.33]
+theta_kn1210_20_100  = [78.74,86.29,77.66,61.51,28.69]
+theta_kv1210_20_100  = [84.87,88.33,77.20,56.12,14.75]
+theta_kn21210_20_100 = [82.14,87.08,76.92,58.29,19.44]
+
+DELVAR,tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,tr10,tr11,tr12,tr13,tr14,tr15,tr16,tr17,tr18,tr19,tr20,tr21,tr22,tr23,tr24
+DELVAR,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15,kvec16,kvec17,kvec18,kvec19,kvec20,kvec21,kvec22,kvec23,kvec24
+DELVAR,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,dkvec6,dkvec7,dkvec8,dkvec9,dkvec10,dkvec11,dkvec12,dkvec13,dkvec14,dkvec15,dkvec16,dkvec17,dkvec18,dkvec19,dkvec20,dkvec21,dkvec22,dkvec23,dkvec24
+;-----------------------------------------------------------------------------------------
+; => For  30 Hz < f < 100 Hz  at  1997-12-10/04:33:15.605 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 331-390
+;Plot Range: 04:33:15.7815-04:33:15.8130
+;The angle between DC-Field and the k-vector is :
+;       88.466 +/- 0.546 degrees
+;The eigenvalues ratios are:
+;       191.79474       2.7751032
+;The Minimum Variance eigenvector is:
+;<-0.88348, 0.02381,-0.46787> +/- <-0.00585,-0.03468, 0.00927>
+;
+;Plot Index Range: 495-531
+;Plot Range: 04:33:15.8690-04:33:15.8882
+;The angle between DC-Field and the k-vector is :
+;       55.447 +/- 1.649 degrees
+;The eigenvalues ratios are:
+;       36.460378       6.1885700
+;The Minimum Variance eigenvector is:
+;< 0.51037,-0.71242, 0.48164> +/- <-0.01856,-0.05711,-0.06480>
+;
+;Plot Index Range: 1293-1332
+;Plot Range: 04:33:16.2946-04:33:16.3154
+;The angle between DC-Field and the k-vector is :
+;       17.330 +/- 1.394 degrees
+;The eigenvalues ratios are:
+;       46.415953       3.4343959
+;The Minimum Variance eigenvector is:
+;<-0.11486, 0.76815, 0.62988> +/- < 0.06491, 0.03575,-0.03176>
+;
+;Plot Index Range: 1362-1401
+;Plot Range: 04:33:16.3314-04:33:16.3522
+;The angle between DC-Field and the k-vector is :
+;       36.425 +/- 1.522 degrees
+;The eigenvalues ratios are:
+;       39.247265       3.1723407
+;The Minimum Variance eigenvector is:
+;< 0.73296,-0.56850,-0.37361> +/- < 0.05786, 0.03839, 0.05509>
+;
+;Plot Index Range: 1416-1460
+;Plot Range: 04:33:16.3602-04:33:16.3837
+;The angle between DC-Field and the k-vector is :
+;       69.009 +/- 2.109 degrees
+;The eigenvalues ratios are:
+;       19.115060       6.3597913
+;The Minimum Variance eigenvector is:
+;<-0.98644, 0.16236, 0.02416> +/- < 0.01901, 0.11050, 0.03349>
+;
+;Plot Index Range: 1587-1632
+;Plot Range: 04:33:16.4514-04:33:16.4754
+;The angle between DC-Field and the k-vector is :
+;       72.074 +/- 0.527 degrees
+;The eigenvalues ratios are:
+;       270.91102       1.2452650
+;The Minimum Variance eigenvector is:
+;<-0.77078,-0.27676,-0.57385> +/- < 0.02306,-0.00250,-0.02976>
+;
+
+struct0 = stats_121097_30_100
+nplots  = N_TAGS(struct0)
+tr_ss   = STRARR(nplots)
+kv_ss   = STRARR(nplots)
+dkv_ss  = STRARR(nplots)
+eig_ss  = STRARR(nplots)
+pr_str  = ',prefd[0]+'
+tr_pre  = '     = time_double([prefd[0]+'
+dv_0s   = '])'
+kv_0s   = ']'
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  tr_0p = 'tr'+STRTRIM(j,2L)                                            & $
+  tr_00 = time_string(struct0.(j).TRANGE,PREC=4)                        & $
+  tr_01 = STRMID(tr_00[*],11L)                                          & $
+  test  = tr_0p[0]+tr_pre[0]+"'"+tr_01[0]+"'"+pr_str[0]+"'"+tr_01[1]+"'"+dv_0s[0]  & $
+  tr_ss[j] = test[0]
+
+kvform = '(f8.5,",",f8.5,",",f8.5)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  kv_0p = 'kvec'+STRTRIM(j,2L)+'   = ['                                 & $
+  kv_00 = struct0.(j).MVA.EIGENVECTORS[*,0]                             & $
+  kv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = kv_0p[0]+kv_01+kv_0s[0]                                       & $
+  kv_ss[j] = test[0]
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  dv_0p = 'dkvec'+STRTRIM(j,2L)+'  = ABS(['                             & $
+  dv_00 = struct0.(j).MVA.DMIN_VEC                                      & $
+  dv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = dv_0p[0]+dv_01+dv_0s[0]                                       & $
+  dkv_ss[j] = test[0]
+
+eform = '(g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  eg_0p = 'elam'+STRTRIM(j,2L)+'   = ['                                 & $
+  eg_mx = struct0.(j).MVA.EIGENVALUES[0]                                & $
+  eg_md = struct0.(j).MVA.EIGENVALUES[1]                                & $
+  eg_mn = struct0.(j).MVA.EIGENVALUES[2]                                & $
+  er_00 = FLOAT([eg_md/eg_mn,eg_mx/eg_md])                              & $
+  er_01 = STRCOMPRESS(STRING(FORMAT=eform,er_00),/REMOVE_ALL)           & $
+  test  = eg_0p[0]+er_01+kv_0s[0]                                       & $
+  eig_ss[j] = test[0]
+
+
+PRINT, TRANSPOSE(tr_ss)
+PRINT, TRANSPOSE(kv_ss)
+PRINT, TRANSPOSE(dkv_ss)
+PRINT, TRANSPOSE(eig_ss)
+prefd   = '1997-12-10/'
+tr0     = time_double([prefd[0]+'04:33:15.7815',prefd[0]+'04:33:15.8130'])
+tr1     = time_double([prefd[0]+'04:33:15.8690',prefd[0]+'04:33:15.8882'])
+tr2     = time_double([prefd[0]+'04:33:16.2946',prefd[0]+'04:33:16.3154'])
+tr3     = time_double([prefd[0]+'04:33:16.3314',prefd[0]+'04:33:16.3522'])
+tr4     = time_double([prefd[0]+'04:33:16.3602',prefd[0]+'04:33:16.3836'])
+tr5     = time_double([prefd[0]+'04:33:16.4514',prefd[0]+'04:33:16.4754'])
+kvec0   = [-0.88348, 0.02381,-0.46787]
+kvec1   = [ 0.51037,-0.71242, 0.48164]
+kvec2   = [-0.11486, 0.76815, 0.62988]
+kvec3   = [ 0.73296,-0.56850,-0.37361]
+kvec4   = [-0.98644, 0.16236, 0.02416]
+kvec5   = [-0.77078,-0.27676,-0.57385]
+dkvec0  = ABS([-0.77078,-0.27676,-0.57385])
+dkvec1  = ABS([-0.77078,-0.27676,-0.57385])
+dkvec2  = ABS([-0.77078,-0.27676,-0.57385])
+dkvec3  = ABS([-0.77078,-0.27676,-0.57385])
+dkvec4  = ABS([-0.77078,-0.27676,-0.57385])
+dkvec5  = ABS([-0.77078,-0.27676,-0.57385])
+elam0   = [191.7947,2.775103]
+elam1   = [36.46038,6.188570]
+elam2   = [46.41595,3.434396]
+elam3   = [39.24726,3.172341]
+elam4   = [19.11506,6.359791]
+elam5   = [270.9110,1.245265]
+bvec0   = [ 0.20690,-0.89160,-0.40279]
+bvec1   = [ 0.21641,-0.88032,-0.42214]
+bvec2   = [ 0.13388,-0.87762,-0.46029]
+bvec3   = [ 0.12976,-0.87859,-0.45961]
+bvec4   = [ 0.11732,-0.87978,-0.46066]
+bvec5   = [ 0.10485,-0.87557,-0.47156]
+bmag0   = [17.04673]
+bmag1   = [16.84607]
+bmag2   = [16.03882]
+bmag3   = [15.90741]
+bmag4   = [15.95254]
+bmag5   = [16.65421]
+
+tags    = ['t0','t1','t2','t3','t4','t5']
+tr_str  = CREATE_STRUCT(tags,tr0,tr1,tr2,tr3,tr4,tr5)
+kv_str  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5)
+dkv_str = CREATE_STRUCT(tags,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5)
+nn      = N_ELEMENTS(tags)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  tr_00  = tr_str.(j)                                               & $
+  good   = WHERE(htrmfit LE tr_00[1] AND htrmfit GE tr_00[0],gd)    & $
+  avgbm  = MEAN(htrbmag[good],/NAN)                                 & $
+  avmagx = MEAN(htrmagf[good,0],/NAN)                               & $
+  avmagy = MEAN(htrmagf[good,1],/NAN)                               & $
+  avmagz = MEAN(htrmagf[good,2],/NAN)                               & $
+  avbvec = [avmagx,avmagy,avmagz]/avgbm[0]                          & $
+  trs000 = time_string(tr_str.(j),PREC=4)                           & $
+  trs001 = STRMID(trs000[*],11L,13L)                                & $
+  t_rang = trs001[0]+'-'+trs001[1]                                  & $
+  str_element,bv_str,jstr,avbvec,/ADD_REPLACE                       & $
+  str_element,bm_str,jstr,avgbm,/ADD_REPLACE                        & $
+  str_element,st_str,jstr,t_rang,/ADD_REPLACE
+
+mform = '(";",a30,7f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(kv_str.(j)),           $
+                     REFORM(bv_str.(j)),REFORM(bm_str.(j))
+;
+; => For  30 Hz < f < 100 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.7815-04:33:15.8130     -0.883      0.024     -0.468      0.207     -0.892     -0.403     17.047
+;   04:33:15.8690-04:33:15.8882      0.510     -0.712      0.482      0.216     -0.880     -0.422     16.846
+;   04:33:16.2946-04:33:16.3154     -0.115      0.768      0.630      0.134     -0.878     -0.460     16.039
+;   04:33:16.3314-04:33:16.3522      0.733     -0.568     -0.374      0.130     -0.879     -0.460     15.907
+;   04:33:16.3602-04:33:16.3836     -0.986      0.162      0.024      0.117     -0.880     -0.461     15.953
+;   04:33:16.4514-04:33:16.4754     -0.771     -0.277     -0.574      0.105     -0.876     -0.472     16.654
+
+vswu   = [-314.548,10.913,-16.628]         ; => My 3DP estimates (km/s) For 1997-12-10/04:33:15.605 UT
+vswuv  = vswu/(NORM(vswu))[0]
+nvc00  = REFORM(gnorm)
+nvc02  = REFORM(gnorm2)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  thkn02 = ACOS(my_dot_prod(kvc00,nvc02,/NOM))*18d1/!DPI            & $
+  thkn12 = 18d1 - thkn02[0]                                         & $
+  thkv0  = ACOS(my_dot_prod(kvc00,vswuv,/NOM))*18d1/!DPI            & $
+  thkv1  = 18d1 - thkv0[0]                                          & $
+  str_element,thkb_str,jstr,[thkb0,thkb1],/ADD_REPLACE              & $
+  str_element,thkn_str,jstr,[thkn0,thkn1],/ADD_REPLACE              & $
+  str_element,thkn2_str,jstr,[thkn02,thkn12],/ADD_REPLACE           & $
+  str_element,thkv_str,jstr,[thkv0,thkv1],/ADD_REPLACE
+
+mform = '(";",a30,8f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(thkb_str.(j)),         $
+                     REFORM(thkn_str.(j)),REFORM(thkv_str.(j)),         $
+                     REFORM(thkn2_str.(j))
+;
+; => For  30 Hz < f < 100 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.7815-04:33:15.8130     90.892     89.108      9.059    170.941     24.875    155.125     15.826    164.174
+;   04:33:15.8690-04:33:15.8882     57.704    122.296    140.512     39.488    124.016     55.984    131.877     48.123
+;   04:33:16.2946-04:33:16.3154    168.363     11.637     90.991     89.009     83.800     96.200     87.339     92.661
+;   04:33:16.3314-04:33:16.3522     39.977    140.023    127.521     52.479    137.010     42.990    133.133     46.867
+;   04:33:16.3602-04:33:16.3836    105.646     74.354     24.709    155.291      8.575    171.425     14.573    165.427
+;   04:33:16.4514-04:33:16.4754     64.398    115.602     28.677    151.323     37.820    142.180     32.058    147.942
+
+theta_kb1210_30_100   = DBLARR(nn)
+theta_kn1210_30_100   = DBLARR(nn)
+theta_kn21210_30_100  = DBLARR(nn)
+theta_kv1210_30_100   = DBLARR(nn)
+FOR j=0L, nn - 1L DO BEGIN                                                        $
+  theta_kb1210_30_100[j]   = REFORM(thkb_str.(j)[0]) < REFORM(thkb_str.(j)[1])    & $
+  theta_kn1210_30_100[j]   = REFORM(thkn_str.(j)[0]) < REFORM(thkn_str.(j)[1])    & $
+  theta_kn21210_30_100[j]  = REFORM(thkn2_str.(j)[0]) < REFORM(thkn2_str.(j)[1])  & $
+  theta_kv1210_30_100[j]   = REFORM(thkv_str.(j)[0]) < REFORM(thkv_str.(j)[1])
+
+mform = '(";",a30,4f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                              $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(theta_kb1210_30_100[j]),  $
+                     REFORM(theta_kn1210_30_100[j]),$
+                     REFORM(theta_kv1210_30_100[j]),$
+                     REFORM(theta_kn21210_30_100[j])
+;
+; => For  30 Hz < f < 100 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.7815-04:33:15.8130     89.108      9.059     24.875     15.826
+;   04:33:15.8690-04:33:15.8882     57.704     39.488     55.984     48.123
+;   04:33:16.2946-04:33:16.3154     11.637     89.009     83.800     87.339
+;   04:33:16.3314-04:33:16.3522     39.977     52.479     42.990     46.867
+;   04:33:16.3602-04:33:16.3836     74.354     24.709      8.575     14.573
+;   04:33:16.4514-04:33:16.4754     64.398     28.677     37.820     32.058
+
+tkbf = '("[",'
+FOR k=0L, nn - 1L DO BEGIN                                                      $
+  tkbf += 'f5.2,",",' & $
+  IF (k EQ nn - 1L) THEN tkbf = STRMID(tkbf,0L,STRLEN(tkbf)-4L)+'"]")'
+  
+PRINT,FORMAT=tkbf,theta_kb1210_30_100
+PRINT,FORMAT=tkbf,theta_kn1210_30_100
+PRINT,FORMAT=tkbf,theta_kv1210_30_100
+PRINT,FORMAT=tkbf,theta_kn21210_30_100
+
+
+theta_kb1210_30_100  = [89.11,57.70,11.64,39.98,74.35,64.40]
+theta_kn1210_30_100  = [ 9.06,39.49,89.01,52.48,24.71,28.68]
+theta_kv1210_30_100  = [24.88,55.98,83.80,42.99, 8.58,37.82]
+theta_kn21210_30_100 = [15.83,48.12,87.34,46.87,14.57,32.06]
+
+DELVAR,tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,tr10,tr11,tr12,tr13,tr14,tr15,tr16,tr17,tr18,tr19,tr20,tr21,tr22,tr23,tr24
+DELVAR,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15,kvec16,kvec17,kvec18,kvec19,kvec20,kvec21,kvec22,kvec23,kvec24
+DELVAR,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,dkvec6,dkvec7,dkvec8,dkvec9,dkvec10,dkvec11,dkvec12,dkvec13,dkvec14,dkvec15,dkvec16,dkvec17,dkvec18,dkvec19,dkvec20,dkvec21,dkvec22,dkvec23,dkvec24
+;-----------------------------------------------------------------------------------------
+; => For  40 Hz < f < 200 Hz  at  1997-12-10/04:33:15.605 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 312-390
+;Plot Range: 04:33:15.7714-04:33:15.8130
+;The angle between DC-Field and the k-vector is :
+;       65.165 +/- 1.431 degrees
+;The eigenvalues ratios are:
+;       22.777191       1.5695113
+;The Minimum Variance eigenvector is:
+;< 0.96398,-0.26284, 0.04066> +/- < 0.01890, 0.05493,-0.09308>
+;
+;Plot Index Range: 573-720
+;Plot Range: 04:33:15.9106-04:33:15.9890
+;The angle between DC-Field and the k-vector is :
+;       62.667 +/- 1.354 degrees
+;The eigenvalues ratios are:
+;       14.197718       3.1248561
+;The Minimum Variance eigenvector is:
+;< 0.94528,-0.31998, 0.06364> +/- <-0.03158,-0.09889,-0.02811>
+;
+;Plot Index Range: 1266-1311
+;Plot Range: 04:33:16.2802-04:33:16.3042
+;The angle between DC-Field and the k-vector is :
+;       16.211 +/- 1.400 degrees
+;The eigenvalues ratios are:
+;       40.046629       4.2308638
+;The Minimum Variance eigenvector is:
+;<-0.07267,-0.93689,-0.34200> +/- <-0.07748, 0.01432,-0.02276>
+;
+;Plot Index Range: 1416-1446
+;Plot Range: 04:33:16.3602-04:33:16.3762
+;The angle between DC-Field and the k-vector is :
+;       60.326 +/- 2.309 degrees
+;The eigenvalues ratios are:
+;       23.189546       2.0582739
+;The Minimum Variance eigenvector is:
+;<-0.74666,-0.63494,-0.19836> +/- < 0.03455,-0.07324, 0.10439>
+;
+;Plot Index Range: 1551-1568
+;Plot Range: 04:33:16.4322-04:33:16.4413
+;The angle between DC-Field and the k-vector is :
+;       33.239 +/- 2.821 degrees
+;The eigenvalues ratios are:
+;       27.738534       4.2375057
+;The Minimum Variance eigenvector is:
+;<-0.29323,-0.74049,-0.60473> +/- < 0.02432,-0.08480, 0.09205>
+;
+
+struct0 = stats_121097_40_200
+nplots  = N_TAGS(struct0)
+tr_ss   = STRARR(nplots)
+kv_ss   = STRARR(nplots)
+dkv_ss  = STRARR(nplots)
+eig_ss  = STRARR(nplots)
+pr_str  = ',prefd[0]+'
+tr_pre  = '     = time_double([prefd[0]+'
+dv_0s   = '])'
+kv_0s   = ']'
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  tr_0p = 'tr'+STRTRIM(j,2L)                                            & $
+  tr_00 = time_string(struct0.(j).TRANGE,PREC=4)                        & $
+  tr_01 = STRMID(tr_00[*],11L)                                          & $
+  test  = tr_0p[0]+tr_pre[0]+"'"+tr_01[0]+"'"+pr_str[0]+"'"+tr_01[1]+"'"+dv_0s[0]  & $
+  tr_ss[j] = test[0]
+
+kvform = '(f8.5,",",f8.5,",",f8.5)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  kv_0p = 'kvec'+STRTRIM(j,2L)+'   = ['                                 & $
+  kv_00 = struct0.(j).MVA.EIGENVECTORS[*,0]                             & $
+  kv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = kv_0p[0]+kv_01+kv_0s[0]                                       & $
+  kv_ss[j] = test[0]
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  dv_0p = 'dkvec'+STRTRIM(j,2L)+'  = ABS(['                             & $
+  dv_00 = struct0.(j).MVA.DMIN_VEC                                      & $
+  dv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = dv_0p[0]+dv_01+dv_0s[0]                                       & $
+  dkv_ss[j] = test[0]
+
+eform = '(g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  eg_0p = 'elam'+STRTRIM(j,2L)+'   = ['                                 & $
+  eg_mx = struct0.(j).MVA.EIGENVALUES[0]                                & $
+  eg_md = struct0.(j).MVA.EIGENVALUES[1]                                & $
+  eg_mn = struct0.(j).MVA.EIGENVALUES[2]                                & $
+  er_00 = FLOAT([eg_md/eg_mn,eg_mx/eg_md])                              & $
+  er_01 = STRCOMPRESS(STRING(FORMAT=eform,er_00),/REMOVE_ALL)           & $
+  test  = eg_0p[0]+er_01+kv_0s[0]                                       & $
+  eig_ss[j] = test[0]
+
+
+PRINT, TRANSPOSE(tr_ss)
+PRINT, TRANSPOSE(kv_ss)
+PRINT, TRANSPOSE(dkv_ss)
+PRINT, TRANSPOSE(eig_ss)
+prefd   = '1997-12-10/'
+tr0     = time_double([prefd[0]+'04:33:15.7714',prefd[0]+'04:33:15.8130'])
+tr1     = time_double([prefd[0]+'04:33:15.9106',prefd[0]+'04:33:15.9890'])
+tr2     = time_double([prefd[0]+'04:33:16.2802',prefd[0]+'04:33:16.3042'])
+tr3     = time_double([prefd[0]+'04:33:16.3602',prefd[0]+'04:33:16.3762'])
+tr4     = time_double([prefd[0]+'04:33:16.4322',prefd[0]+'04:33:16.4412'])
+kvec0   = [ 0.96398,-0.26284, 0.04066]
+kvec1   = [ 0.94528,-0.31998, 0.06364]
+kvec2   = [-0.07267,-0.93689,-0.34200]
+kvec3   = [-0.74666,-0.63494,-0.19836]
+kvec4   = [-0.29323,-0.74049,-0.60473]
+dkvec0  = ABS([-0.29323,-0.74049,-0.60473])
+dkvec1  = ABS([-0.29323,-0.74049,-0.60473])
+dkvec2  = ABS([-0.29323,-0.74049,-0.60473])
+dkvec3  = ABS([-0.29323,-0.74049,-0.60473])
+dkvec4  = ABS([-0.29323,-0.74049,-0.60473])
+elam0   = [22.77719,1.569511]
+elam1   = [14.19772,3.124856]
+elam2   = [40.04663,4.230864]
+elam3   = [23.18955,2.058274]
+elam4   = [27.73853,4.237506]
+bvec0   = [ 0.20602,-0.89237,-0.40152]
+bvec1   = [ 0.19904,-0.87756,-0.43612]
+bvec2   = [ 0.13223,-0.87745,-0.46108]
+bvec3   = [ 0.11876,-0.87965,-0.46055]
+bvec4   = [ 0.10109,-0.87892,-0.46613]
+bmag0   = [17.04379]
+bmag1   = [15.73206]
+bmag2   = [16.13570]
+bmag3   = [15.94714]
+bmag4   = [16.28558]
+
+tags    = ['t0','t1','t2','t3','t4']
+tr_str  = CREATE_STRUCT(tags,tr0,tr1,tr2,tr3,tr4)
+kv_str  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3,kvec4)
+dkv_str = CREATE_STRUCT(tags,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4)
+nn      = N_ELEMENTS(tags)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  tr_00  = tr_str.(j)                                               & $
+  good   = WHERE(htrmfit LE tr_00[1] AND htrmfit GE tr_00[0],gd)    & $
+  avgbm  = MEAN(htrbmag[good],/NAN)                                 & $
+  avmagx = MEAN(htrmagf[good,0],/NAN)                               & $
+  avmagy = MEAN(htrmagf[good,1],/NAN)                               & $
+  avmagz = MEAN(htrmagf[good,2],/NAN)                               & $
+  avbvec = [avmagx,avmagy,avmagz]/avgbm[0]                          & $
+  trs000 = time_string(tr_str.(j),PREC=4)                           & $
+  trs001 = STRMID(trs000[*],11L,13L)                                & $
+  t_rang = trs001[0]+'-'+trs001[1]                                  & $
+  str_element,bv_str,jstr,avbvec,/ADD_REPLACE                       & $
+  str_element,bm_str,jstr,avgbm,/ADD_REPLACE                        & $
+  str_element,st_str,jstr,t_rang,/ADD_REPLACE
+
+mform = '(";",a30,7f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(kv_str.(j)),           $
+                     REFORM(bv_str.(j)),REFORM(bm_str.(j))
+;
+; => For  40 Hz < f < 200 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.7714-04:33:15.8130      0.964     -0.263      0.041      0.206     -0.892     -0.402     17.044
+;   04:33:15.9106-04:33:15.9890      0.945     -0.320      0.064      0.199     -0.878     -0.436     15.732
+;   04:33:16.2802-04:33:16.3042     -0.073     -0.937     -0.342      0.132     -0.877     -0.461     16.136
+;   04:33:16.3602-04:33:16.3762     -0.747     -0.635     -0.198      0.119     -0.880     -0.461     15.947
+;   04:33:16.4322-04:33:16.4412     -0.293     -0.740     -0.605      0.101     -0.879     -0.466     16.286
+
+vswu   = [-314.548,10.913,-16.628]         ; => My 3DP estimates (km/s) For 1997-12-10/04:33:15.605 UT
+vswuv  = vswu/(NORM(vswu))[0]
+nvc00  = REFORM(gnorm)
+nvc02  = REFORM(gnorm2)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  thkn02 = ACOS(my_dot_prod(kvc00,nvc02,/NOM))*18d1/!DPI            & $
+  thkn12 = 18d1 - thkn02[0]                                         & $
+  thkv0  = ACOS(my_dot_prod(kvc00,vswuv,/NOM))*18d1/!DPI            & $
+  thkv1  = 18d1 - thkv0[0]                                          & $
+  str_element,thkb_str,jstr,[thkb0,thkb1],/ADD_REPLACE              & $
+  str_element,thkn_str,jstr,[thkn0,thkn1],/ADD_REPLACE              & $
+  str_element,thkn2_str,jstr,[thkn02,thkn12],/ADD_REPLACE           & $
+  str_element,thkv_str,jstr,[thkv0,thkv1],/ADD_REPLACE
+
+mform = '(";",a30,8f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(thkb_str.(j)),         $
+                     REFORM(thkn_str.(j)),REFORM(thkv_str.(j)),         $
+                     REFORM(thkn2_str.(j))
+;
+; => For  40 Hz < f < 200 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.7714-04:33:15.8130     65.366    114.634    158.556     21.444    166.731     13.269    165.835     14.165
+;   04:33:15.9106-04:33:15.9890     63.820    116.180    158.845     21.155    163.302     16.698    164.116     15.884
+;   04:33:16.2802-04:33:16.3042     14.033    165.967     87.478     92.522     86.668     93.332     86.729     93.271
+;   04:33:16.3602-04:33:16.3762     55.861    124.139     49.736    130.264     42.807    137.193     44.882    135.118
+;   04:33:16.4322-04:33:16.4412     25.435    154.565     67.638    112.362     72.608    107.392     69.699    110.301
+
+theta_kb1210_40_200   = DBLARR(nn)
+theta_kn1210_40_200   = DBLARR(nn)
+theta_kn21210_40_200  = DBLARR(nn)
+theta_kv1210_40_200   = DBLARR(nn)
+FOR j=0L, nn - 1L DO BEGIN                                                        $
+  theta_kb1210_40_200[j]   = REFORM(thkb_str.(j)[0]) < REFORM(thkb_str.(j)[1])    & $
+  theta_kn1210_40_200[j]   = REFORM(thkn_str.(j)[0]) < REFORM(thkn_str.(j)[1])    & $
+  theta_kn21210_40_200[j]  = REFORM(thkn2_str.(j)[0]) < REFORM(thkn2_str.(j)[1])  & $
+  theta_kv1210_40_200[j]   = REFORM(thkv_str.(j)[0]) < REFORM(thkv_str.(j)[1])
+
+mform = '(";",a30,4f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                              $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(theta_kb1210_40_200[j]),  $
+                     REFORM(theta_kn1210_40_200[j]),$
+                     REFORM(theta_kv1210_40_200[j]),$
+                     REFORM(theta_kn21210_40_200[j])
+;
+; => For  40 Hz < f < 200 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:15.7714-04:33:15.8130     65.366     21.444     13.269     14.165
+;   04:33:15.9106-04:33:15.9890     63.820     21.155     16.698     15.884
+;   04:33:16.2802-04:33:16.3042     14.033     87.478     86.668     86.729
+;   04:33:16.3602-04:33:16.3762     55.861     49.736     42.807     44.882
+;   04:33:16.4322-04:33:16.4412     25.435     67.638     72.608     69.699
+
+tkbf = '("[",'
+FOR k=0L, nn - 1L DO BEGIN                                                      $
+  tkbf += 'f5.2,",",' & $
+  IF (k EQ nn - 1L) THEN tkbf = STRMID(tkbf,0L,STRLEN(tkbf)-4L)+'"]")'
+  
+PRINT,FORMAT=tkbf,theta_kb1210_40_200
+PRINT,FORMAT=tkbf,theta_kn1210_40_200
+PRINT,FORMAT=tkbf,theta_kv1210_40_200
+PRINT,FORMAT=tkbf,theta_kn21210_40_200
+
+
+theta_kb1210_40_200  = [65.37,63.82,14.03,55.86,25.43]
+theta_kn1210_40_200  = [21.44,21.15,87.48,49.74,67.64]
+theta_kv1210_40_200  = [13.27,16.70,86.67,42.81,72.61]
+theta_kn21210_40_200 = [14.16,15.88,86.73,44.88,69.70]
+
+DELVAR,tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,tr10,tr11,tr12,tr13,tr14,tr15,tr16,tr17,tr18,tr19,tr20,tr21,tr22,tr23,tr24
+DELVAR,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15,kvec16,kvec17,kvec18,kvec19,kvec20,kvec21,kvec22,kvec23,kvec24
+DELVAR,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,dkvec6,dkvec7,dkvec8,dkvec9,dkvec10,dkvec11,dkvec12,dkvec13,dkvec14,dkvec15,dkvec16,dkvec17,dkvec18,dkvec19,dkvec20,dkvec21,dkvec22,dkvec23,dkvec24
+;-----------------------------------------------------------------------------------------
+; => For  100 Hz < f < 200 Hz  at  1997-12-10/04:33:15.605 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 1458-1490
+;Plot Range: 04:33:16.3826-04:33:16.3997
+;The angle between DC-Field and the k-vector is :
+;       77.213 +/- 2.379 degrees
+;The eigenvalues ratios are:
+;       20.661033       1.2023612
+;The Minimum Variance eigenvector is:
+;<-0.77058, 0.30337,-0.56050> +/- <-0.05984,-0.14127, 0.00580>
+;
+;Plot Index Range: 1500-1530
+;Plot Range: 04:33:16.4050-04:33:16.4210
+;The angle between DC-Field and the k-vector is :
+;       57.100 +/- 0.739 degrees
+;The eigenvalues ratios are:
+;       209.22670       2.4951511
+;The Minimum Variance eigenvector is:
+;<-0.54645,-0.42471,-0.72182> +/- <-0.00210,-0.03545, 0.02245>
+;
+;Plot Index Range: 1551-1599
+;Plot Range: 04:33:16.4322-04:33:16.4578
+;The angle between DC-Field and the k-vector is :
+;       38.164 +/- 2.352 degrees
+;The eigenvalues ratios are:
+;       14.562698       5.1140536
+;The Minimum Variance eigenvector is:
+;<-0.38518,-0.71445,-0.58413> +/- < 0.02818,-0.09184, 0.09375>
+;
+;Plot Index Range: 1599-1623
+;Plot Range: 04:33:16.4578-04:33:16.4706
+;The angle between DC-Field and the k-vector is :
+;       40.076 +/- 2.615 degrees
+;The eigenvalues ratios are:
+;       22.830435       8.9325173
+;The Minimum Variance eigenvector is:
+;<-0.45882,-0.75824,-0.46319> +/- <-0.08982, 0.07548,-0.03458>
+;
+
+struct0 = stats_121097_100_200
+nplots  = N_TAGS(struct0)
+tr_ss   = STRARR(nplots)
+kv_ss   = STRARR(nplots)
+dkv_ss  = STRARR(nplots)
+eig_ss  = STRARR(nplots)
+pr_str  = ',prefd[0]+'
+tr_pre  = '     = time_double([prefd[0]+'
+dv_0s   = '])'
+kv_0s   = ']'
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  tr_0p = 'tr'+STRTRIM(j,2L)                                            & $
+  tr_00 = time_string(struct0.(j).TRANGE,PREC=4)                        & $
+  tr_01 = STRMID(tr_00[*],11L)                                          & $
+  test  = tr_0p[0]+tr_pre[0]+"'"+tr_01[0]+"'"+pr_str[0]+"'"+tr_01[1]+"'"+dv_0s[0]  & $
+  tr_ss[j] = test[0]
+
+kvform = '(f8.5,",",f8.5,",",f8.5)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  kv_0p = 'kvec'+STRTRIM(j,2L)+'   = ['                                 & $
+  kv_00 = struct0.(j).MVA.EIGENVECTORS[*,0]                             & $
+  kv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = kv_0p[0]+kv_01+kv_0s[0]                                       & $
+  kv_ss[j] = test[0]
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  dv_0p = 'dkvec'+STRTRIM(j,2L)+'  = ABS(['                             & $
+  dv_00 = struct0.(j).MVA.DMIN_VEC                                      & $
+  dv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = dv_0p[0]+dv_01+dv_0s[0]                                       & $
+  dkv_ss[j] = test[0]
+
+eform = '(g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  eg_0p = 'elam'+STRTRIM(j,2L)+'   = ['                                 & $
+  eg_mx = struct0.(j).MVA.EIGENVALUES[0]                                & $
+  eg_md = struct0.(j).MVA.EIGENVALUES[1]                                & $
+  eg_mn = struct0.(j).MVA.EIGENVALUES[2]                                & $
+  er_00 = FLOAT([eg_md/eg_mn,eg_mx/eg_md])                              & $
+  er_01 = STRCOMPRESS(STRING(FORMAT=eform,er_00),/REMOVE_ALL)           & $
+  test  = eg_0p[0]+er_01+kv_0s[0]                                       & $
+  eig_ss[j] = test[0]
+
+
+PRINT, TRANSPOSE(tr_ss)
+PRINT, TRANSPOSE(kv_ss)
+PRINT, TRANSPOSE(dkv_ss)
+PRINT, TRANSPOSE(eig_ss)
+prefd   = '1997-12-10/'
+tr0     = time_double([prefd[0]+'04:33:16.3826',prefd[0]+'04:33:16.3996'])
+tr1     = time_double([prefd[0]+'04:33:16.4050',prefd[0]+'04:33:16.4210'])
+tr2     = time_double([prefd[0]+'04:33:16.4322',prefd[0]+'04:33:16.4578'])
+tr3     = time_double([prefd[0]+'04:33:16.4578',prefd[0]+'04:33:16.4706'])
+kvec0   = [-0.77058, 0.30337,-0.56050]
+kvec1   = [-0.54645,-0.42471,-0.72182]
+kvec2   = [-0.38518,-0.71445,-0.58413]
+kvec3   = [-0.45882,-0.75824,-0.46319]
+dkvec0  = ABS([-0.45882,-0.75824,-0.46319])
+dkvec1  = ABS([-0.45882,-0.75824,-0.46319])
+dkvec2  = ABS([-0.45882,-0.75824,-0.46319])
+dkvec3  = ABS([-0.45882,-0.75824,-0.46319])
+elam0   = [20.66103,1.202361]
+elam1   = [209.2267,2.495151]
+elam2   = [14.56270,5.114054]
+elam3   = [22.83043,8.932517]
+bvec0   = [ 0.10935,-0.88048,-0.46130]
+bvec1   = [ 0.10043,-0.88113,-0.46208]
+bvec2   = [ 0.10230,-0.87785,-0.46788]
+bvec3   = [ 0.10495,-0.87548,-0.47172]
+bmag0   = [15.98283]
+bmag1   = [16.02419]
+bmag2   = [16.40230]
+bmag3   = [16.66516]
+
+tags    = ['t0','t1','t2','t3']
+tr_str  = CREATE_STRUCT(tags,tr0,tr1,tr2,tr3)
+kv_str  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3)
+dkv_str = CREATE_STRUCT(tags,dkvec0,dkvec1,dkvec2,dkvec3)
+nn      = N_ELEMENTS(tags)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  tr_00  = tr_str.(j)                                               & $
+  good   = WHERE(htrmfit LE tr_00[1] AND htrmfit GE tr_00[0],gd)    & $
+  avgbm  = MEAN(htrbmag[good],/NAN)                                 & $
+  avmagx = MEAN(htrmagf[good,0],/NAN)                               & $
+  avmagy = MEAN(htrmagf[good,1],/NAN)                               & $
+  avmagz = MEAN(htrmagf[good,2],/NAN)                               & $
+  avbvec = [avmagx,avmagy,avmagz]/avgbm[0]                          & $
+  trs000 = time_string(tr_str.(j),PREC=4)                           & $
+  trs001 = STRMID(trs000[*],11L,13L)                                & $
+  t_rang = trs001[0]+'-'+trs001[1]                                  & $
+  str_element,bv_str,jstr,avbvec,/ADD_REPLACE                       & $
+  str_element,bm_str,jstr,avgbm,/ADD_REPLACE                        & $
+  str_element,st_str,jstr,t_rang,/ADD_REPLACE
+
+mform = '(";",a30,7f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(kv_str.(j)),           $
+                     REFORM(bv_str.(j)),REFORM(bm_str.(j))
+;
+; => For  100 Hz < f < 200 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:16.3826-04:33:16.3996     -0.771      0.303     -0.561      0.109     -0.880     -0.461     15.983
+;   04:33:16.4050-04:33:16.4210     -0.546     -0.425     -0.722      0.100     -0.881     -0.462     16.024
+;   04:33:16.4322-04:33:16.4578     -0.385     -0.714     -0.584      0.102     -0.878     -0.468     16.402
+;   04:33:16.4578-04:33:16.4706     -0.459     -0.758     -0.463      0.105     -0.875     -0.472     16.665
+
+vswu   = [-314.548,10.913,-16.628]         ; => My 3DP estimates (km/s) For 1997-12-10/04:33:15.605 UT
+vswuv  = vswu/(NORM(vswu))[0]
+nvc00  = REFORM(gnorm)
+nvc02  = REFORM(gnorm2)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  thkn02 = ACOS(my_dot_prod(kvc00,nvc02,/NOM))*18d1/!DPI            & $
+  thkn12 = 18d1 - thkn02[0]                                         & $
+  thkv0  = ACOS(my_dot_prod(kvc00,vswuv,/NOM))*18d1/!DPI            & $
+  thkv1  = 18d1 - thkv0[0]                                          & $
+  str_element,thkb_str,jstr,[thkb0,thkb1],/ADD_REPLACE              & $
+  str_element,thkn_str,jstr,[thkn0,thkn1],/ADD_REPLACE              & $
+  str_element,thkn2_str,jstr,[thkn02,thkn12],/ADD_REPLACE           & $
+  str_element,thkv_str,jstr,[thkv0,thkv1],/ADD_REPLACE
+
+mform = '(";",a30,8f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(thkb_str.(j)),         $
+                     REFORM(thkn_str.(j)),REFORM(thkv_str.(j)),         $
+                     REFORM(thkn2_str.(j))
+;
+; => For  100 Hz < f < 200 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:16.3826-04:33:16.3996     95.326     84.674     14.230    165.770     35.990    144.010     25.981    154.019
+;   04:33:16.4050-04:33:16.4210     49.241    130.759     44.874    135.126     55.338    124.662     49.606    130.394
+;   04:33:16.4322-04:33:16.4578     30.562    149.438     62.633    117.367     67.015    112.985     64.266    115.734
+;   04:33:16.4578-04:33:16.4706     33.471    146.529     61.913    118.087     62.865    117.135     61.627    118.373
+
+theta_kb1210_100_200   = DBLARR(nn)
+theta_kn1210_100_200   = DBLARR(nn)
+theta_kn21210_100_200  = DBLARR(nn)
+theta_kv1210_100_200   = DBLARR(nn)
+FOR j=0L, nn - 1L DO BEGIN                                                        $
+  theta_kb1210_100_200[j]   = REFORM(thkb_str.(j)[0]) < REFORM(thkb_str.(j)[1])    & $
+  theta_kn1210_100_200[j]   = REFORM(thkn_str.(j)[0]) < REFORM(thkn_str.(j)[1])    & $
+  theta_kn21210_100_200[j]  = REFORM(thkn2_str.(j)[0]) < REFORM(thkn2_str.(j)[1])  & $
+  theta_kv1210_100_200[j]   = REFORM(thkv_str.(j)[0]) < REFORM(thkv_str.(j)[1])
+
+mform = '(";",a30,4f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                              $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(theta_kb1210_100_200[j]),  $
+                     REFORM(theta_kn1210_100_200[j]),$
+                     REFORM(theta_kv1210_100_200[j]),$
+                     REFORM(theta_kn21210_100_200[j])
+;
+; => For  100 Hz < f < 200 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:16.3826-04:33:16.3996     84.674     14.230     35.990     25.981
+;   04:33:16.4050-04:33:16.4210     49.241     44.874     55.338     49.606
+;   04:33:16.4322-04:33:16.4578     30.562     62.633     67.015     64.266
+;   04:33:16.4578-04:33:16.4706     33.471     61.913     62.865     61.627
+
+tkbf = '("[",'
+FOR k=0L, nn - 1L DO BEGIN                                                      $
+  tkbf += 'f5.2,",",' & $
+  IF (k EQ nn - 1L) THEN tkbf = STRMID(tkbf,0L,STRLEN(tkbf)-4L)+'"]")'
+  
+PRINT,FORMAT=tkbf,theta_kb1210_100_200
+PRINT,FORMAT=tkbf,theta_kn1210_100_200
+PRINT,FORMAT=tkbf,theta_kv1210_100_200
+PRINT,FORMAT=tkbf,theta_kn21210_100_200
+
+
+theta_kb1210_100_200  = [84.67,49.24,30.56,33.47]
+theta_kn1210_100_200  = [14.23,44.87,62.63,61.91]
+theta_kv1210_100_200  = [35.99,55.34,67.01,62.87]
+theta_kn21210_100_200 = [25.98,49.61,64.27,61.63]
+
+DELVAR,tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,tr10,tr11,tr12,tr13,tr14,tr15,tr16,tr17,tr18,tr19,tr20,tr21,tr22,tr23,tr24
+DELVAR,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15,kvec16,kvec17,kvec18,kvec19,kvec20,kvec21,kvec22,kvec23,kvec24
+DELVAR,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,dkvec6,dkvec7,dkvec8,dkvec9,dkvec10,dkvec11,dkvec12,dkvec13,dkvec14,dkvec15,dkvec16,dkvec17,dkvec18,dkvec19,dkvec20,dkvec21,dkvec22,dkvec23,dkvec24
+;-----------------------------------------------------------------------------------------
+; => For  100 Hz < f < 400 Hz  at  1997-12-10/04:33:15.605 UT
+;-----------------------------------------------------------------------------------------
+;Plot Index Range: 1461-1484
+;Plot Range: 04:33:16.3842-04:33:16.3965
+;The angle between DC-Field and the k-vector is :
+;       75.911 +/- 2.535 degrees
+;The eigenvalues ratios are:
+;       25.178086       1.3152002
+;The Minimum Variance eigenvector is:
+;<-0.76165, 0.32894,-0.55829> +/- <-0.03551,-0.13950,-0.03374>
+;
+;Plot Index Range: 1503-1539
+;Plot Range: 04:33:16.4066-04:33:16.4258
+;The angle between DC-Field and the k-vector is :
+;       62.187 +/- 1.878 degrees
+;The eigenvalues ratios are:
+;       28.545576       2.1297584
+;The Minimum Variance eigenvector is:
+;< 0.59091, 0.34742, 0.72810> +/- <-0.08265, 0.06820, 0.03454>
+;
+;Plot Index Range: 1553-1589
+;Plot Range: 04:33:16.4333-04:33:16.4525
+;The angle between DC-Field and the k-vector is :
+;       39.626 +/- 2.794 degrees
+;The eigenvalues ratios are:
+;       13.946154       4.7224750
+;The Minimum Variance eigenvector is:
+;<-0.40189,-0.69595,-0.59510> +/- < 0.02474,-0.10337, 0.10418>
+;
+;Plot Index Range: 1596-1611
+;Plot Range: 04:33:16.4562-04:33:16.4642
+;The angle between DC-Field and the k-vector is :
+;       36.856 +/- 3.088 degrees
+;The eigenvalues ratios are:
+;       26.549127       8.3957622
+;The Minimum Variance eigenvector is:
+;<-0.41781,-0.80555,-0.42015> +/- <-0.10748, 0.06696,-0.02150>
+;
+
+struct0 = stats_121097_100_400
+nplots  = N_TAGS(struct0)
+tr_ss   = STRARR(nplots)
+kv_ss   = STRARR(nplots)
+dkv_ss  = STRARR(nplots)
+eig_ss  = STRARR(nplots)
+pr_str  = ',prefd[0]+'
+tr_pre  = '     = time_double([prefd[0]+'
+dv_0s   = '])'
+kv_0s   = ']'
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  tr_0p = 'tr'+STRTRIM(j,2L)                                            & $
+  tr_00 = time_string(struct0.(j).TRANGE,PREC=4)                        & $
+  tr_01 = STRMID(tr_00[*],11L)                                          & $
+  test  = tr_0p[0]+tr_pre[0]+"'"+tr_01[0]+"'"+pr_str[0]+"'"+tr_01[1]+"'"+dv_0s[0]  & $
+  tr_ss[j] = test[0]
+
+kvform = '(f8.5,",",f8.5,",",f8.5)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  kv_0p = 'kvec'+STRTRIM(j,2L)+'   = ['                                 & $
+  kv_00 = struct0.(j).MVA.EIGENVECTORS[*,0]                             & $
+  kv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = kv_0p[0]+kv_01+kv_0s[0]                                       & $
+  kv_ss[j] = test[0]
+
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  dv_0p = 'dkvec'+STRTRIM(j,2L)+'  = ABS(['                             & $
+  dv_00 = struct0.(j).MVA.DMIN_VEC                                      & $
+  dv_01 = STRING(FORMAT=kvform,kv_00)                                   & $
+  test  = dv_0p[0]+dv_01+dv_0s[0]                                       & $
+  dkv_ss[j] = test[0]
+
+eform = '(g,",",g)'
+FOR j=0L, nplots - 1L DO BEGIN                                            $
+  eg_0p = 'elam'+STRTRIM(j,2L)+'   = ['                                 & $
+  eg_mx = struct0.(j).MVA.EIGENVALUES[0]                                & $
+  eg_md = struct0.(j).MVA.EIGENVALUES[1]                                & $
+  eg_mn = struct0.(j).MVA.EIGENVALUES[2]                                & $
+  er_00 = FLOAT([eg_md/eg_mn,eg_mx/eg_md])                              & $
+  er_01 = STRCOMPRESS(STRING(FORMAT=eform,er_00),/REMOVE_ALL)           & $
+  test  = eg_0p[0]+er_01+kv_0s[0]                                       & $
+  eig_ss[j] = test[0]
+
+
+PRINT, TRANSPOSE(tr_ss)
+PRINT, TRANSPOSE(kv_ss)
+PRINT, TRANSPOSE(dkv_ss)
+PRINT, TRANSPOSE(eig_ss)
+prefd   = '1997-12-10/'
+tr0     = time_double([prefd[0]+'04:33:16.3842',prefd[0]+'04:33:16.3964'])
+tr1     = time_double([prefd[0]+'04:33:16.4066',prefd[0]+'04:33:16.4258'])
+tr2     = time_double([prefd[0]+'04:33:16.4332',prefd[0]+'04:33:16.4524'])
+tr3     = time_double([prefd[0]+'04:33:16.4562',prefd[0]+'04:33:16.4642'])
+kvec0   = [-0.76165, 0.32894,-0.55829]
+kvec1   = [ 0.59091, 0.34742, 0.72810]
+kvec2   = [-0.40189,-0.69595,-0.59510]
+kvec3   = [-0.41781,-0.80555,-0.42015]
+dkvec0  = ABS([-0.41781,-0.80555,-0.42015])
+dkvec1  = ABS([-0.41781,-0.80555,-0.42015])
+dkvec2  = ABS([-0.41781,-0.80555,-0.42015])
+dkvec3  = ABS([-0.41781,-0.80555,-0.42015])
+elam0   = [25.17809,1.315200]
+elam1   = [28.54558,2.129758]
+elam2   = [13.94615,4.722475]
+elam3   = [26.54913,8.395762]
+bvec0   = [ 0.10968,-0.88045,-0.46128]
+bvec1   = [ 0.09991,-0.88100,-0.46244]
+bvec2   = [ 0.10196,-0.87815,-0.46739]
+bvec3   = [ 0.10441,-0.87597,-0.47093]
+bmag0   = [15.98153]
+bmag1   = [16.04666]
+bmag2   = [16.36946]
+bmag3   = [16.61035]
+
+tags    = ['t0','t1','t2','t3']
+tr_str  = CREATE_STRUCT(tags,tr0,tr1,tr2,tr3)
+kv_str  = CREATE_STRUCT(tags,kvec0,kvec1,kvec2,kvec3)
+dkv_str = CREATE_STRUCT(tags,dkvec0,dkvec1,dkvec2,dkvec3)
+nn      = N_ELEMENTS(tags)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  tr_00  = tr_str.(j)                                               & $
+  good   = WHERE(htrmfit LE tr_00[1] AND htrmfit GE tr_00[0],gd)    & $
+  avgbm  = MEAN(htrbmag[good],/NAN)                                 & $
+  avmagx = MEAN(htrmagf[good,0],/NAN)                               & $
+  avmagy = MEAN(htrmagf[good,1],/NAN)                               & $
+  avmagz = MEAN(htrmagf[good,2],/NAN)                               & $
+  avbvec = [avmagx,avmagy,avmagz]/avgbm[0]                          & $
+  trs000 = time_string(tr_str.(j),PREC=4)                           & $
+  trs001 = STRMID(trs000[*],11L,13L)                                & $
+  t_rang = trs001[0]+'-'+trs001[1]                                  & $
+  str_element,bv_str,jstr,avbvec,/ADD_REPLACE                       & $
+  str_element,bm_str,jstr,avgbm,/ADD_REPLACE                        & $
+  str_element,st_str,jstr,t_rang,/ADD_REPLACE
+
+mform = '(";",a30,7f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(kv_str.(j)),           $
+                     REFORM(bv_str.(j)),REFORM(bm_str.(j))
+;
+; => For  100 Hz < f < 400 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:16.3842-04:33:16.3964     -0.762      0.329     -0.558      0.110     -0.880     -0.461     15.982
+;   04:33:16.4066-04:33:16.4258      0.591      0.347      0.728      0.100     -0.881     -0.462     16.047
+;   04:33:16.4332-04:33:16.4524     -0.402     -0.696     -0.595      0.102     -0.878     -0.467     16.369
+;   04:33:16.4562-04:33:16.4642     -0.418     -0.806     -0.420      0.104     -0.876     -0.471     16.610
+
+vswu   = [-314.548,10.913,-16.628]         ; => My 3DP estimates (km/s) For 1997-12-10/04:33:15.605 UT
+vswuv  = vswu/(NORM(vswu))[0]
+nvc00  = REFORM(gnorm)
+nvc02  = REFORM(gnorm2)
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  jstr   = 'T'+STRTRIM(j,2L)                                        & $
+  mag00  = REFORM(bv_str.(j))                                       & $
+  kvc00  = REFORM(kv_str.(j))                                       & $
+  thkb0  = ACOS(my_dot_prod(kvc00,mag00,/NOM))*18d1/!DPI            & $
+  thkb1  = 18d1 - thkb0[0]                                          & $
+  thkn0  = ACOS(my_dot_prod(kvc00,nvc00,/NOM))*18d1/!DPI            & $
+  thkn1  = 18d1 - thkn0[0]                                          & $
+  thkn02 = ACOS(my_dot_prod(kvc00,nvc02,/NOM))*18d1/!DPI            & $
+  thkn12 = 18d1 - thkn02[0]                                         & $
+  thkv0  = ACOS(my_dot_prod(kvc00,vswuv,/NOM))*18d1/!DPI            & $
+  thkv1  = 18d1 - thkv0[0]                                          & $
+  str_element,thkb_str,jstr,[thkb0,thkb1],/ADD_REPLACE              & $
+  str_element,thkn_str,jstr,[thkn0,thkn1],/ADD_REPLACE              & $
+  str_element,thkn2_str,jstr,[thkn02,thkn12],/ADD_REPLACE           & $
+  str_element,thkv_str,jstr,[thkv0,thkv1],/ADD_REPLACE
+
+mform = '(";",a30,8f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                            $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(thkb_str.(j)),         $
+                     REFORM(thkn_str.(j)),REFORM(thkv_str.(j)),         $
+                     REFORM(thkn2_str.(j))
+;
+; => For  100 Hz < f < 400 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:16.3842-04:33:16.3964     96.640     83.360     15.275    164.725     36.777    143.223     26.850    153.150
+;   04:33:16.4066-04:33:16.4258    125.714     54.286    139.843     40.157    128.033     51.967    134.414     45.586
+;   04:33:16.4332-04:33:16.4524     31.971    148.029     61.168    118.832     65.896    114.104     62.964    117.036
+;   04:33:16.4562-04:33:16.4642     30.697    149.303     65.874    114.126     65.717    114.283     65.067    114.933
+
+theta_kb1210_100_400   = DBLARR(nn)
+theta_kn1210_100_400   = DBLARR(nn)
+theta_kn21210_100_400  = DBLARR(nn)
+theta_kv1210_100_400   = DBLARR(nn)
+FOR j=0L, nn - 1L DO BEGIN                                                        $
+  theta_kb1210_100_400[j]   = REFORM(thkb_str.(j)[0]) < REFORM(thkb_str.(j)[1])    & $
+  theta_kn1210_100_400[j]   = REFORM(thkn_str.(j)[0]) < REFORM(thkn_str.(j)[1])    & $
+  theta_kn21210_100_400[j]  = REFORM(thkn2_str.(j)[0]) < REFORM(thkn2_str.(j)[1])  & $
+  theta_kv1210_100_400[j]   = REFORM(thkv_str.(j)[0]) < REFORM(thkv_str.(j)[1])
+
+mform = '(";",a30,4f11.3)'
+FOR j=0L, nn - 1L DO BEGIN                                              $
+  PRINT,FORMAT=mform,REFORM(st_str.(j)),REFORM(theta_kb1210_100_400[j]),  $
+                     REFORM(theta_kn1210_100_400[j]),$
+                     REFORM(theta_kv1210_100_400[j]),$
+                     REFORM(theta_kn21210_100_400[j])
+;
+; => For  100 Hz < f < 400 Hz  at  1997-12-10/04:33:15.605 UT
+;
+;   04:33:16.3842-04:33:16.3964     83.360     15.275     36.777     26.850
+;   04:33:16.4066-04:33:16.4258     54.286     40.157     51.967     45.586
+;   04:33:16.4332-04:33:16.4524     31.971     61.168     65.896     62.964
+;   04:33:16.4562-04:33:16.4642     30.697     65.874     65.717     65.067
+
+tkbf = '("[",'
+FOR k=0L, nn - 1L DO BEGIN                                                      $
+  tkbf += 'f5.2,",",' & $
+  IF (k EQ nn - 1L) THEN tkbf = STRMID(tkbf,0L,STRLEN(tkbf)-4L)+'"]")'
+  
+PRINT,FORMAT=tkbf,theta_kb1210_100_400
+PRINT,FORMAT=tkbf,theta_kn1210_100_400
+PRINT,FORMAT=tkbf,theta_kv1210_100_400
+PRINT,FORMAT=tkbf,theta_kn21210_100_400
+
+
+theta_kb1210_100_400  = [83.36,54.29,31.97,30.70]
+theta_kn1210_100_400  = [15.27,40.16,61.17,65.87]
+theta_kv1210_100_400  = [36.78,51.97,65.90,65.72]
+theta_kn21210_100_400 = [26.85,45.59,62.96,65.07]
+
+DELVAR,tr0,tr1,tr2,tr3,tr4,tr5,tr6,tr7,tr8,tr9,tr10,tr11,tr12,tr13,tr14,tr15,tr16,tr17,tr18,tr19,tr20,tr21,tr22,tr23,tr24
+DELVAR,kvec0,kvec1,kvec2,kvec3,kvec4,kvec5,kvec6,kvec7,kvec8,kvec9,kvec10,kvec11,kvec12,kvec13,kvec14,kvec15,kvec16,kvec17,kvec18,kvec19,kvec20,kvec21,kvec22,kvec23,kvec24
+DELVAR,dkvec0,dkvec1,dkvec2,dkvec3,dkvec4,dkvec5,dkvec6,dkvec7,dkvec8,dkvec9,dkvec10,dkvec11,dkvec12,dkvec13,dkvec14,dkvec15,dkvec16,dkvec17,dkvec18,dkvec19,dkvec20,dkvec21,dkvec22,dkvec23,dkvec24
+
+
+
+
+
+
+
+
+

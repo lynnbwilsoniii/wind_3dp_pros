@@ -1,0 +1,861 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+; => Compile necessary routines
+@comp_lynn_pros
+
+;-----------------------------------------------------------------------------------------
+; => Date/Times/Probes
+;-----------------------------------------------------------------------------------------
+tdate     = '2009-09-26'
+probe     = 'a'
+probef    = 'a'
+gprobes   = 'a'
+tr_00     = tdate[0]+'/'+['12:00:00','17:40:00']
+; => initialize themis routines and default parameters
+thm_init
+
+; Data parameters, load data, and set color table:
+;
+dur       = 1.0   ; # of days
+
+timespan,tdate[0],dur[0],/DAY
+tr        = timerange()
+probes    = ['a','b','c','d','e']
+
+tplot_options,'XMARGIN',[ 20, 15]
+tplot_options,'YMARGIN',[ 5, 5]
+;-----------------------------------------------------------------------------------------
+; => Load TPLOT data
+;-----------------------------------------------------------------------------------------
+mdir   = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_tplot_save/')
+mfiles = FILE_SEARCH(mdir,'tplot_state_fgm_scm_efi_basic_thm-*.tplot')
+
+test   = STRMATCH(mfiles,'*'+tdate[0]+'*')
+good   = WHERE(test,gd)
+
+gfile  = mfiles[good[0]]
+
+tplot_restore,FILENAME=gfile[0]
+
+loadct2, 39
+; => Delete tplot variables for THEMIS D and E
+del_data, 'thd_*'
+del_data, 'the_*'
+; => Delete tplot variables for the SCM [load level 2 later]
+del_data, 'tha_sc*'
+; => Delete tplot variables for the EFI [load calibrated later]
+del_data, 'tha_ef*'
+del_data, 'tha_va*'
+
+sc     = probe[0]
+bad_nm = tnames('th'+sc[0]+'_ef*_dot0*')
+del_data, bad_nm
+bad_nm = tnames('th'+sc[0]+'_ef*_e*')
+del_data, bad_nm
+bad_nm = tnames('th'+sc[0]+'_ef*_0')
+del_data, bad_nm
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+sc     = probe[0]
+pref   = 'th'+sc[0]+'_fg*'+['_dsl','_gse','_gsm']
+names  = tnames(pref)
+tplot,names
+;-----------------------------------------------------------------------------------------
+; => Calculate Magnetic Local Time (MLT), Magnetic Latitude (MLAT), L-Shell, and 
+;      Invariant Latitude (ILAT)
+;-----------------------------------------------------------------------------------------
+
+;-----------------------------------------------------
+; => Convert GSM SC position to SM position
+;-----------------------------------------------------
+; => call again so that spin model common blocks are loaded...
+sc        = probe[0]
+thm_load_state,PROBE=sc[0],/GET_SUPPORT_DATA
+
+sc      = probe[0]
+pos_gsm = 'th'+sc[0]+'_state_pos_gsm'
+pos__sm = 'th'+sc[0]+'_state_pos__sm'
+cotrans,pos_gsm[0],pos__sm[0],/GSM2SM
+posnm          = pos__sm[0]
+get_data,posnm[0],DATA=temp,DLIM=dlim,LIM=lim
+th_pos_time    = temp.X
+th_pos_vec__sm = temp.Y
+th_pos_rad__sm = SQRT(TOTAL(th_pos_vec__sm^2,2,/NAN))
+;-----------------------------------------------------
+; => MLT (hours)
+;-----------------------------------------------------
+t_x            = th_pos_vec__sm[*,0]
+t_y            = th_pos_vec__sm[*,1]
+t_z            = th_pos_vec__sm[*,2]
+th_mlt         = ATAN(t_y/t_x)*18d1/!DPI/15d0 + 12d0
+; => Check for negative X-SM coordinate points
+low_tmp        = WHERE(th_pos_vec__sm[*,0] LT 0d0,lwtp)
+IF (lwtp GT 0L) THEN th_mlt[low_tmp] = (ATAN(t_y[low_tmp]/t_x[low_tmp]) + !DPI)*18d1/(!DPI*15d0) + 12d0
+; => make sure LT 24
+th_mlt         = th_mlt MOD 24d0
+;-----------------------------------------------------
+; => MLAT (deg)
+;-----------------------------------------------------
+t_ratio        = t_z/th_pos_rad__sm
+th_mlat        = ATAN(t_ratio)*18d1/!DPI
+;-----------------------------------------------------
+; => L-Shell (Re)
+;-----------------------------------------------------
+cmlat          = COS(th_mlat*!DPI/18d1)
+th_lshell      = th_pos_rad__sm/(R_E[0]*cmlat^2)
+;-----------------------------------------------------
+; => ILAT (deg)
+;-----------------------------------------------------
+irt_lsh        = SQRT(1d0/th_lshell)
+th_ilat        = ACOS(irt_lsh)*18d1/!DPI
+
+; => send to TPLOT
+pref           = 'th'+sc[0]+'_'
+store_data,pref[0]+'_MLT',DATA={X:th_pos_time,Y:th_mlt}
+store_data,pref[0]+'MLAT',DATA={X:th_pos_time,Y:th_mlat}
+store_data,pref[0]+'_LSH',DATA={X:th_pos_time,Y:th_lshell}
+store_data,pref[0]+'ILAT',DATA={X:th_pos_time,Y:th_ilat}
+
+pref           = 'th'+sc[0]+'_'
+tpref          = 'th'+sc[0]+' '
+options,pref[0]+'_MLT','YTITLE',tpref[0]+'MLT [Hr]',/DEF
+options,pref[0]+'MLAT','YTITLE',tpref[0]+'MLAT [Deg]',/DEF
+options,pref[0]+'_LSH','YTITLE',tpref[0]+'LShell [Re]',/DEF
+options,pref[0]+'ILAT','YTITLE',tpref[0]+'ILAT [Deg]',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+; => Add SC position to TPLOT plots
+names          = [pref[0]+'_LSH',pref[0]+'_MLT',pref[0]+'MLAT',pref[0]+'ILAT']
+tplot_options,VAR_LABEL=names
+
+;-----------------------------------------------------
+; => Create |B| TPLOT variable
+;-----------------------------------------------------
+sc     = probe[0]
+mode   = 'fgs'
+; => rotate DSL to GSE
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_dsl',OUT_SUFFIX='_gse',OUT_COORD='gse'
+; => rotate GSE to GSM
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_gse',OUT_SUFFIX='_gsm',OUT_COORD='gsm'
+
+pref    = 'th'+sc[0]+'_fg*'
+names   = tnames(pref[0])
+hed_nm  = tnames('*_hed')
+good_nm = array_where(names,hed_nm,/N_UNIQ,NCOMP1=comp1,NCOMP2=comp2)
+names   = names[comp1]
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+mode    = 'fgs'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+mode    = 'fgl'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+mode    = 'fgh'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+mode    = 'fgs'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+
+mode    = 'fgl'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+
+mode    = 'fgh'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+;-----------------------------------------------------
+; => Fix the Y-Axis Titles
+;-----------------------------------------------------
+mode    = 'fg'+['s','l','h']
+coord   = ['dsl','gse','gsm','mag']
+modeu   = STRUPCASE(mode)
+coordu  = STRUPCASE(coord)
+
+FOR j=0L, 2L DO BEGIN                                                               $
+  FOR k=0L, 3L DO BEGIN                                                             $
+    pref    = 'th'+sc[0]+'_'+mode[j]+'_'+coord[k]                                 & $
+    names   = tnames(pref[0])                                                     & $
+    get_data,names[0],DATA=temp,DLIM=dlim,LIM=lim                                 & $
+    smrate  = sample_rate(temp.X,GAP_THRESH=2d0,/AVE)                             & $
+    strsmr  = STRTRIM(STRING(FORMAT='(f15.0)',smrate[0]),2L)                      & $
+    yttl    = 'B ['+modeu[j]+', '+coordu[k]+', nT]'                               & $
+    ysubt   = '[th'+sc[0]+' '+strsmr[0]+' sps, L2]'                               & $
+    str_element,dlim,'YTITLE',yttl[0],/ADD_REPLACE                                & $
+    str_element,dlim,'YSUBTITLE',ysubt[0],/ADD_REPLACE                            & $
+    store_data,names[0],DATA=temp,DLIM=dlim,LIM=lim
+
+
+mode    = 'fgs'
+names   = 'th'+sc[0]+'_'+mode[0]+['_mag','_gsm']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+mode[0]+['_mag','_gsm']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+;-----------------------------------------------------------------------------------------
+; => EFI
+;-----------------------------------------------------------------------------------------
+sc     = probe[0]
+mode   = 'eff efp efw'
+coord  = 'dsl'
+; => Load calibrated data
+thm_load_efi,PROBE=sc[0],DATATYPE=mode[0],TRANGE=tr,SUFFIX='_cal_dsl',TYPE='calibrated',$
+             COORD=coord[0]
+; => rotate DSL to GSE
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_cal_dsl',OUT_SUFFIX='_cal_gse',OUT_COORD='gse'
+; => rotate GSE to GSM
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_cal_gse',OUT_SUFFIX='_cal_gsm',OUT_COORD='gsm'
+
+; => change colors
+names   = tnames('th'+sc[0]+['_eff','_efp','_efw'])
+options,names,'COLORS',[250,150, 50],/DEF
+names   = tnames('th'+sc[0]+['_eff','_efp','_efw']+'_cal_dsl')
+options,names,'COLORS',[250,150, 50],/DEF
+names   = tnames('th'+sc[0]+['_eff','_efp','_efw']+'_cal_gse')
+options,names,'COLORS',[250,150, 50],/DEF
+names   = tnames('th'+sc[0]+['_eff','_efp','_efw']+'_cal_gsm')
+options,names,'COLORS',[250,150, 50],/DEF
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+[mode[0]+['_mag','_gsm'],['eff','efp','efw']+'_cal_gsm']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+
+; => EFI Wave Burst times
+tr_all_efi     = tdate[0]+'/'+[['12:27:30.100','12:27:36.500'],['12:29:21.900','12:29:28.300'],$
+                               ['13:33:01.900','13:33:08.400'],['13:36:01.900','13:36:08.300'],$
+                               ['15:53:02.600','15:53:09.000'],['15:53:09.125','15:53:15.500'],$
+                               ['17:19:59.250','17:20:05.650'],['17:20:05.700','17:20:12.100'] ]
+;-----------------------------------------------------
+; => Fix the Y-Axis Titles
+;-----------------------------------------------------
+mode    = 'ef'+['f','p','w']
+coord   = ['dsl','gse','gsm']
+modeu   = STRUPCASE(mode)
+coordu  = STRUPCASE(coord)
+
+FOR j=0L, 2L DO BEGIN                                                               $
+  FOR k=0L, 2L DO BEGIN                                                             $
+    pref    = 'th'+sc[0]+'_'+mode[j]+'_cal_'+coord[k]                             & $
+    names   = tnames(pref[0])                                                     & $
+    get_data,names[0],DATA=temp,DLIM=dlim,LIM=lim                                 & $
+    smrate  = sample_rate(temp.X,GAP_THRESH=2d0,/AVE)                             & $
+    strsmr  = STRTRIM(STRING(FORMAT='(f15.0)',smrate[0]),2L)                      & $
+    yttl    = 'E ['+modeu[j]+', '+coordu[k]+', mV/m]'                             & $
+    ysubt   = '[th'+sc[0]+' '+strsmr[0]+' sps, L2]'                               & $
+    str_element,dlim,'YTITLE',yttl[0],/ADD_REPLACE                                & $
+    str_element,dlim,'YSUBTITLE',ysubt[0],/ADD_REPLACE                            & $
+    store_data,names[0],DATA=temp,DLIM=dlim,LIM=lim
+
+; => Remove EFI data spikes
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+[mode[0]+['_mag','_gsm'],'ef'+['f','p','w']+'_cal_dsl']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+
+names0    = tnames('th'+sc[0]+['_eff','_efp','_efw']+'_cal_dsl')
+names1    = tnames('th'+sc[0]+['_eff','_efp','_efw']+'_cal_gse')
+names2    = tnames('th'+sc[0]+['_eff','_efp','_efw']+'_cal_gsm')
+all_names = [names0,names1,names2]
+options,all_names,'PSYM',3
+
+
+badnms  = tnames('th'+sc[0]+'_ef*_cal'+['_dsl','_gse','_gsm'])
+j       = 0L
+tlimit,time_double(REFORM(tr_all_efi[*,j]))
+kill_data_tr,NAMES=badnms
+;-----------------------------------------------------------------------------------------
+; => SCM
+;-----------------------------------------------------------------------------------------
+; => loading level 2 data
+;     [Level 2 data exists]
+thm_load_scm,PROBE=sc[0],LEVEL='l2',TRANGE=tr,/GET_SUPPORT,SUFFIX='_L2'
+
+pref    = 'th'+sc[0]+'_sc*'+['_dsl','_gse','_gsm']+'_L2'
+names   = tnames(pref)
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+options,names,'YSUBTITLE',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+; => Fix the Y-Axis Titles
+mode    = 'sc'+['f','p','w']
+coord   = ['dsl','gse','gsm']
+modeu   = STRUPCASE(mode)
+coordu  = STRUPCASE(coord)
+
+FOR j=0L, 2L DO BEGIN                                                               $
+  FOR k=0L, 2L DO BEGIN                                                             $
+    pref    = 'th'+sc[0]+'_'+mode[j]+'_'+coord[k]+'_L2'                           & $
+    names   = tnames(pref[0])                                                     & $
+    get_data,names[0],DATA=temp,DLIM=dlim,LIM=lim                                 & $
+    smrate  = sample_rate(temp.X,GAP_THRESH=2d0,/AVE)                             & $
+    strsmr  = STRTRIM(STRING(FORMAT='(f15.0)',smrate[0]),2L)                      & $
+    yttl    = 'B ['+modeu[j]+', '+coordu[k]+', nT]'                               & $
+    ysubt   = '[th'+sc[0]+' '+strsmr[0]+' sps, L2]'                               & $
+    str_element,dlim,'YTITLE',yttl[0],/ADD_REPLACE                                & $
+    str_element,dlim,'YSUBTITLE',ysubt[0],/ADD_REPLACE                            & $
+    store_data,names[0],DATA=temp,DLIM=dlim,LIM=lim
+
+
+; => SCM Wave Burst times
+tr_all_scm     = tdate[0]+'/'+[['12:27:30.700','12:27:36.000'],['12:29:22.500','12:29:27.800'],$
+                               ['13:33:02.300','13:33:07.700'],['13:36:02.400','13:36:07.800'],$
+                               ['15:53:03.200','15:53:08.500'],['15:53:09.700','15:53:15.000'],$
+                               ['17:19:59.850','17:20:05.150'],['17:20:06.300','17:20:11.650'] ]
+
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+[mode[0]+['_mag','_gsm'],['efw_gsm','scf_gsm_L2','scp_gsm_L2','scw_gsm_L2']]
+tplot,names,TRANGE=time_double(tr_00),/NOM
+;-----------------------------------------------------------------------------------------
+; => Transform into Xgse field aligned coordinates 
+;      built from time averaged fgm data
+;-----------------------------------------------------------------------------------------
+coord          = 'dsl'
+fgm_mode       = 'fgl'
+thscs_fgm_mode = 'th'+sc[0]+'_'+fgm_mode[0]
+
+time_av        = 3.
+old_name       = thscs_fgm_mode[0]+'_'+coord[0]
+new_name       = thscs_fgm_mode[0]+'_'+coord[0]+'_av'
+avg_data,old_name[0],time_av[0],NEWNAME=new_name[0]
+; => interpolate
+tinterpol_mxn,new_name[0],old_name[0]
+; => define rotation matrix
+thm_fac_matrix_make, thscs_fgm_mode+'_'+coord+'_av_interp'
+new_name2      = new_name[0]+'_interp_fac_mat'
+
+
+;-----------------------------------------------------
+; => rotate SCF data
+;-----------------------------------------------------
+suffx          = '_dsl_L2'
+mode           = 'scf'
+thscf_name     = 'th'+sc[0]+'_'+mode[0]+suffx[0]
+scf_wave_fac   = thscf_name[0]+'_fac'
+tvector_rotate,new_name2[0],thscf_name[0],NEWNAME=scf_wave_fac[0]
+;-----------------------------------------------------
+; => rotate SCP data
+;-----------------------------------------------------
+suffx          = '_dsl_L2'
+mode           = 'scp'
+thscp_name     = 'th'+sc[0]+'_'+mode[0]+suffx[0]
+scp_wave_fac   = thscp_name[0]+'_fac'
+tvector_rotate,new_name2[0],thscp_name[0],NEWNAME=scp_wave_fac[0]
+;-----------------------------------------------------
+; => rotate SCW data
+;-----------------------------------------------------
+suffx          = '_dsl_L2'
+mode           = 'scw'
+thscw_name     = 'th'+sc[0]+'_'+mode[0]+suffx[0]
+scw_wave_fac   = thscw_name[0]+'_fac'
+tvector_rotate,new_name2[0],thscw_name[0],NEWNAME=scw_wave_fac[0]
+; => collect all names
+scm_wave_fac   = [scf_wave_fac[0],scp_wave_fac[0],scw_wave_fac[0]]
+
+
+;-----------------------------------------------------
+; => rotate EFF data
+;-----------------------------------------------------
+mode           = 'eff'
+coord          = 'dsl'
+theff_mode     = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+eff_wave_fac   = theff_mode[0]+'_fac'
+tvector_rotate,new_name2[0],theff_mode[0],NEWNAME=eff_wave_fac[0]
+;-----------------------------------------------------
+; => rotate EFP data
+;-----------------------------------------------------
+mode           = 'efp'
+coord          = 'dsl'
+thefp_mode     = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+efp_wave_fac   = thefp_mode[0]+'_fac'
+tvector_rotate,new_name2[0],thefp_mode[0],NEWNAME=efp_wave_fac[0]
+;-----------------------------------------------------
+; => rotate EFW data
+;-----------------------------------------------------
+mode           = 'efw'
+coord          = 'dsl'
+thefw_mode     = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+efw_wave_fac   = thefw_mode[0]+'_fac'
+tvector_rotate,new_name2[0],thefw_mode[0],NEWNAME=efw_wave_fac[0]
+; => collect all names
+efi_wave_fac   = [eff_wave_fac[0],efp_wave_fac[0],efw_wave_fac[0]]
+
+
+options,[scm_wave_fac,efi_wave_fac],'COLORS',[250,150, 50],/DEF
+options,[scm_wave_fac,efi_wave_fac],'LABELS',['(Bo x Xgse) x Bo','Bo x Xgse','Bo'],/DEF
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+mode    = 'fgl'
+names   = ['th'+sc[0]+'_'+mode[0]+['_mag','_gsm'],scm_wave_fac,efi_wave_fac]
+tplot,names,TRANGE=time_double(tr_00),/NOM
+
+;-----------------------------------------------------
+; => clip SCW and EFW data into specified range
+;-----------------------------------------------------
+nefi           = N_ELEMENTS(tr_all_efi[0,*])
+nscm           = N_ELEMENTS(tr_all_scm[0,*])
+scm_wave_nms   = scm_wave_fac[2]+'_'+STRING(FORMAT='(I2.2)',LINDGEN(nscm))
+efi_wave_nms   = efi_wave_fac[2]+'_'+STRING(FORMAT='(I2.2)',LINDGEN(nefi))
+
+FOR j=0L, nscm - 1L DO BEGIN $
+  time_clip,scm_wave_fac[2],tr_all_scm[0,j],tr_all_scm[1,j],NEWNAME=scm_wave_nms[j]
+
+FOR j=0L, nefi - 1L DO BEGIN $
+  time_clip,efi_wave_fac[2],tr_all_efi[0,j],tr_all_efi[1,j],NEWNAME=efi_wave_nms[j]
+
+options,[scm_wave_nms,efi_wave_nms],'COLORS',[250,150, 50],/DEF
+options,[scm_wave_nms,efi_wave_nms],'LABELS',['(Bo x Xgse) x Bo','Bo x Xgse','Bo'],/DEF
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+;-----------------------------------------------------
+; Wave polarization analysis
+;-----------------------------------------------------
+mode             = 'scw'
+nopfft_input     = 512L
+steplength_input = nopfft_input[0]/2
+thresh           = 0.80
+FOR j=0L, nscm - 1L DO BEGIN $
+  wavpol_to_tplot,scm_wave_nms[j],NOPFFT=nopfft_input,STEPLENGTH=steplength_input,DEGTHRESH=thresh[0]
+
+mode             = 'efw'
+nopfft_input     = 1024L
+steplength_input = nopfft_input[0]/2
+FOR j=0L, nefi - 1L DO BEGIN $
+  wavpol_to_tplot,efi_wave_nms[j],NOPFFT=nopfft_input,STEPLENGTH=steplength_input,DEGTHRESH=thresh[0]
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_efw_'
+pows_efi_nm    = tnames(pref[0]+'*_powspec')
+degp_efi_nm    = tnames(pref[0]+'*_degpol')
+wava_efi_nm    = tnames(pref[0]+'*_waveangle')
+ellp_efi_nm    = tnames(pref[0]+'*_elliptict')
+helc_efi_nm    = tnames(pref[0]+'*_helict')
+names_efi_all  = [pows_efi_nm,degp_efi_nm,wava_efi_nm,ellp_efi_nm,helc_efi_nm]
+options,names_efi_all,'YLOG',1,/DEF
+options,names_efi_all,'YRANGE',[3d1,8200d0],/DEF
+
+pref           = 'th'+sc[0]+'_scw_'
+pows_scm_nm    = tnames(pref[0]+'*_powspec')
+degp_scm_nm    = tnames(pref[0]+'*_degpol')
+wava_scm_nm    = tnames(pref[0]+'*_waveangle')
+ellp_scm_nm    = tnames(pref[0]+'*_elliptict')
+helc_scm_nm    = tnames(pref[0]+'*_helict')
+names_scm_all = [pows_scm_nm,degp_scm_nm,wava_scm_nm,ellp_scm_nm,helc_scm_nm]
+options,names_scm_all,'YLOG',1,/DEF
+options,names_scm_all,'YRANGE',[3d1,4100d0],/DEF
+
+;-----------------------------------------------------
+; Plot wave polarization analysis
+;-----------------------------------------------------
+;  EFI
+j              = 3L
+names          = [efi_wave_nms[j]+['','_powspec','_degpol','_waveangle','_elliptict','_helict']]
+tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_efi[*,j]))
+
+;  SCM
+j              = 3L
+names          = [scm_wave_nms[j]+['','_powspec','_degpol','_waveangle','_elliptict','_helict']]
+tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_scm[*,j]))
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Load ESA data
+;-----------------------------------------------------------------------------------------
+; => Load level 2 densities and SC potentials
+sc      = probe[0]
+thm_load_esa,PROBE=sc[0],DATAT=' peer_avgtemp pe?r_density peer_sc_pot ',LEVEL=2
+
+
+;-----------------------------------------------------------------------------------------
+; => Load ESA Save Files
+;-----------------------------------------------------------------------------------------
+sc      = probe[0]
+enames  = 'EESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+inames  = 'IESA_Burst_THEMIS_'+sc[0]+'_Structures_'+tdate[0]+'_lz_counts.sav'
+mdir    = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_esa_save/'+tdate[0]+'/')
+efiles  = FILE_SEARCH(mdir,enames[0])
+ifiles  = FILE_SEARCH(mdir,inames[0])
+
+RESTORE,efiles[0]
+RESTORE,ifiles[0]
+;-----------------------------------------------------------------------------------------
+; => Set up plot windows and defaults
+;-----------------------------------------------------------------------------------------
+WINDOW,1,RETAIN=2,XSIZE=800,YSIZE=1100
+WINDOW,2,RETAIN=2,XSIZE=800,YSIZE=1100
+WINDOW,3,RETAIN=2,XSIZE=800,YSIZE=1100
+
+; => setup colors
+LOADCT,39
+DEVICE,DECOMPOSED=0
+
+
+;-----------------------------------------------------
+; IESA
+;-----------------------------------------------------
+i_time0 = peib_df_arr_a.TIME
+i_time1 = peib_df_arr_a.END_TIME
+tbow    = time_double(tdate[0]+'/'+['15:45:00.000','16:00:00.000'])
+tslams  = time_double(tdate[0]+'/'+['17:15:30.000','17:26:30.000'])
+good_ib = WHERE(i_time0 GE tbow[0] AND i_time1 LE tbow[1],gdib)
+good_is = WHERE(i_time0 GE tslams[0] AND i_time1 LE tslams[1],gdis)
+PRINT,';', gdib, gdis
+;         197         196
+
+dat_ib  = peib_df_arr_a[good_ib]
+dat_is  = peib_df_arr_a[good_is]
+
+ngrid   = 30L
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+gnorm   = [0.,1.,0.]
+normnm  = 'Y-GSE'
+xname   = 'B!Do!N'
+yname   = 'V!Dsw!N'
+
+vlim    = 25e2
+vcirc   = 750d0             ; => Put a circle of constant energy at  750 km/s on contours
+ns      = 7L
+smc     = 1
+smct    = 1
+dfmin   = 1d-14
+dfmax   = 1d-5
+
+;j       = 102L
+j       = 23L
+tr_ie   = tbow
+dat_i   = dat_ib[j]
+;tr_ie   = tslams
+;dat_i   = dat_is[j]
+WSET,0
+mode    = 'fgh'
+names   = 'th'+sc[0]+'_'+[mode[0]+['_mag','_gsm'],'efw_cal_gsm']
+  tplot,names,/NOM,TRANGE=tr_ie
+  time_bar,dat_i[0].TIME,VARNAME=names,COLOR=250L
+  time_bar,dat_i[0].END_TIME,VARNAME=names,COLOR= 50L
+; => Add necessary tags to allow structure format testing routines in
+;      contour_3d_1plane.pro etc. to think the input structure is a Wind 3DP structure
+modify_themis_esa_struc,dat_i
+
+vec1    = dat_i.MAGF
+vec2    = dat_i.VSW
+
+WSET,1
+contour_3d_1plane,dat_i,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,    $
+                      YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,        $
+                      DFRA=dfra,VCIRC=vcirc[0],PLANE='xy',EX_VEC1=sunv, $
+                      EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],    $
+                      SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0],$
+                      DFMAX=dfmax[0]
+
+WSET,2
+contour_3d_1plane,dat_i,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,    $
+                      YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,        $
+                      DFRA=dfra,VCIRC=vcirc[0],PLANE='xz',EX_VEC1=sunv, $
+                      EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],    $
+                      SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0],$
+                      DFMAX=dfmax[0]
+
+WSET,3
+contour_3d_1plane,dat_i,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,    $
+                      YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,        $
+                      DFRA=dfra,VCIRC=vcirc[0],PLANE='yz',EX_VEC1=sunv, $
+                      EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],    $
+                      SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0],$
+                      DFMAX=dfmax[0]
+
+;-----------------------------------------------------
+; => Save plots
+;-----------------------------------------------------
+ngrid   = 30L
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+gnorm   = [0.,1.,0.]
+normnm  = 'Y-GSE'
+xname   = 'B!Do!N'
+yname   = 'V!Dsw!N'
+
+vlim    = 25e2
+vcirc   = 750d0             ; => Put a circle of constant energy at  750 km/s on contours
+ns      = 7L
+smc     = 1
+smct    = 1
+dfmin   = 1d-14
+dfmax   = 1d-5
+
+;dat_aa  = dat_ib
+dat_aa  = dat_is
+niesa   = N_ELEMENTS(dat_aa)
+fnm     = file_name_times(dat_aa.TIME,PREC=3)
+ftimes  = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+; => Add necessary tags to allow structure format testing routines in
+;      contour_3d_1plane.pro etc. to think the input structure is a Wind 3DP structure
+modify_themis_esa_struc,dat_aa
+
+scu     = STRUPCASE(probe[0])
+df_sfxa = STRCOMPRESS(STRING(dfmin[0],FORMAT='(E10.1)'),/REMOVE_ALL)
+vlim_st = STRING(vlim[0],FORMAT='(I5.5)')
+xyzvecs = ['(V.B)','(BxV)xB','(BxV)']
+planes  = ['xy','xz','yz']
+xy_suff = '_'+xyzvecs[1]+'_vs_'+xyzvecs[0]
+xz_suff = '_'+xyzvecs[0]+'_vs_'+xyzvecs[2]
+yz_suff = '_'+xyzvecs[2]+'_vs_'+xyzvecs[1]
+midstr  = '_Cuts-DF-Above_'
+
+pref_a  = 'IESA_TH-'+scu[0]+'_'+ftimes+'_30Grids_'+vlim_st[0]+'km-s'
+fnamexy = pref_a+xy_suff[0]+midstr[0]+df_sfxa
+fnamexz = pref_a+xz_suff[0]+midstr[0]+df_sfxa
+fnameyz = pref_a+yz_suff[0]+midstr[0]+df_sfxa
+fnames  = [[fnamexy],[fnamexz],[fnameyz]]
+
+FOR j=0L, niesa - 1L DO BEGIN                                                    $
+  dat_i   = dat_aa[j]                                                          & $
+  vec1    = dat_i.MAGF                                                         & $
+  vec2    = dat_i.VSW                                                          & $
+  FOR k=0L, 2L DO BEGIN                                                          $
+    popen,fnames[j,k],/PORT                                                    & $
+      contour_3d_1plane,dat_i,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,       $
+                        YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,               $
+                        DFRA=dfra,VCIRC=vcirc[0],PLANE=planes[k],EX_VEC1=sunv,   $
+                        EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],           $
+                        SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0],       $
+                        DFMAX=dfmax[0]                                         & $
+    pclose
+
+;-----------------------------------------------------
+; EESA
+;-----------------------------------------------------
+e_time0 = peeb_df_arr_a.TIME
+e_time1 = peeb_df_arr_a.END_TIME
+tbow    = time_double(tdate[0]+'/'+['15:45:00.000','16:00:00.000'])
+tslams  = time_double(tdate[0]+'/'+['17:15:30.000','17:26:30.000'])
+good_eb = WHERE(e_time0 GE tbow[0] AND e_time1 LE tbow[1],gdeb)
+good_es = WHERE(e_time0 GE tslams[0] AND e_time1 LE tslams[1],gdes)
+PRINT,';', gdeb, gdes
+;         197         197
+
+dat_eb  = peeb_df_arr_a[good_eb]
+dat_es  = peeb_df_arr_a[good_es]
+; => Add SC Potential to structures
+scname  = 'th'+sc[0]+'_'+'peer_sc_pot'
+add_scpot,dat_eb,scname[0]
+add_scpot,dat_es,scname[0]
+
+
+j       = 78L
+;tr_ee   = tbow
+;dat_e   = dat_eb[j]
+tr_ee   = tslams
+dat_e   = dat_es[j]
+WSET,0
+mode    = 'fgh'
+names   = 'th'+sc[0]+'_'+[mode[0]+['_mag','_gsm'],'efw_cal_gsm']
+  tplot,names,/NOM,TRANGE=tr_ee
+  time_bar,dat_e[0].TIME,VARNAME=names,COLOR=250L
+  time_bar,dat_e[0].END_TIME,VARNAME=names,COLOR= 50L
+; => Add necessary tags to allow structure format testing routines in
+;      contour_3d_1plane.pro etc. to think the input structure is a Wind 3DP structure
+modify_themis_esa_struc,dat_e
+
+ngrid   = 30L
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+gnorm   = [0.,1.,0.]
+normnm  = 'Y-GSE'
+xname   = 'B!Do!N'
+yname   = 'V!Dsw!N'
+planes  = ['xy','xz','yz']
+
+;vlim    = 100e3
+vlim    = 30e3
+; => Put circles every 5,000 km/s
+vcirc   = 5d3*[1d0,2d0,3d0,4d0];,5d0]
+vec1    = dat_e.MAGF
+vec2    = dat_e.VSW
+ns      = 3L
+smc     = 1
+smct    = 1
+dfmin   = 1d-18
+inter   = 0
+
+WSET,1
+WSHOW,1
+contour_3d_1plane,dat_e,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,      $
+                      YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,          $
+                      DFRA=dfra,VCIRC=vcirc,PLANE=planes[0],EX_VEC1=sunv, $
+                      EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],      $
+                      SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0]
+
+WSET,2
+WSHOW,2
+contour_3d_1plane,dat_e,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,      $
+                      YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,          $
+                      DFRA=dfra,VCIRC=vcirc,PLANE=planes[1],EX_VEC1=sunv, $
+                      EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],      $
+                      SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0]
+
+WSET,3
+WSHOW,3
+contour_3d_1plane,dat_e,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,      $
+                      YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,          $
+                      DFRA=dfra,VCIRC=vcirc,PLANE=planes[2],EX_VEC1=sunv, $
+                      EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],      $
+                      SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0]
+
+;-----------------------------------------------------
+; => Save plots
+;-----------------------------------------------------
+ngrid   = 30L
+sunv    = [1.,0.,0.]
+sunn    = 'Sun Dir.'
+gnorm   = [0.,1.,0.]
+normnm  = 'Y-GSE'
+xname   = 'B!Do!N'
+yname   = 'V!Dsw!N'
+planes  = ['xy','xz','yz']
+
+vlim    = 30e3
+; => Put circles every 5,000 km/s
+vcirc   = 5d3*[1d0,2d0,3d0,4d0];,5d0]
+vec1    = dat_e.MAGF
+vec2    = dat_e.VSW
+ns      = 3L
+smc     = 1
+smct    = 1
+dfmin   = 1d-18
+inter   = 0
+
+;dat_aa  = dat_eb
+dat_aa  = dat_es
+neesa   = N_ELEMENTS(dat_aa)
+fnm     = file_name_times(dat_aa.TIME,PREC=3)
+ftimes  = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
+; => Add necessary tags to allow structure format testing routines in
+;      contour_3d_1plane.pro etc. to think the input structure is a Wind 3DP structure
+modify_themis_esa_struc,dat_aa
+
+scu     = STRUPCASE(probe[0])
+df_sfxa = STRCOMPRESS(STRING(dfmin[0],FORMAT='(E10.1)'),/REMOVE_ALL)
+vlim_st = STRING(vlim[0],FORMAT='(I5.5)')
+xyzvecs = ['(V.B)','(BxV)xB','(BxV)']
+planes  = ['xy','xz','yz']
+xy_suff = '_'+xyzvecs[1]+'_vs_'+xyzvecs[0]
+xz_suff = '_'+xyzvecs[0]+'_vs_'+xyzvecs[2]
+yz_suff = '_'+xyzvecs[2]+'_vs_'+xyzvecs[1]
+midstr  = '_no-interp_Cuts-DF-Above_'
+
+pref_a  = 'EESA_TH-'+scu[0]+'_'+ftimes+'_30Grids_'+vlim_st[0]+'km-s'
+fnamexy = pref_a+xy_suff[0]+midstr[0]+df_sfxa
+fnamexz = pref_a+xz_suff[0]+midstr[0]+df_sfxa
+fnameyz = pref_a+yz_suff[0]+midstr[0]+df_sfxa
+fnames  = [[fnamexy],[fnamexz],[fnameyz]]
+
+FOR j=0L, neesa - 1L DO BEGIN                                                    $
+  dat_e   = dat_aa[j]                                                          & $
+  vec1    = dat_e.MAGF                                                         & $
+  vec2    = dat_e.VSW                                                          & $
+  FOR k=0L, 2L DO BEGIN                                                          $
+    popen,fnames[j,k],/PORT                                                    & $
+      contour_3d_1plane,dat_e,vec1,vec2,VLIM=vlim,NGRID=ngrid,XNAME=xname,       $
+                        YNAME=yname,SM_CUTS=smc,NSMOOTH=ns,/ONE_C,               $
+                        DFRA=dfra,VCIRC=vcirc[0],PLANE=planes[k],EX_VEC1=sunv,   $
+                        EX_VN1=sunn[0],EX_VEC0=gnorm,EX_VN0=normnm[0],           $
+                        SM_CONT=smct,/NO_REDF,INTERP=inter,DFMIN=dfmin[0]      & $
+    pclose
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

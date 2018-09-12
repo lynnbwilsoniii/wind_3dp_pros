@@ -1,0 +1,259 @@
+date = '040900'
+;date = '061000'
+;date = '062600'
+mydate = my_str_date(DATE=date)
+date   = mydate.S_DATE[0]  ; -('MMDDYY')
+mdate  = mydate.DATE[0]    ; -('YYYYMMDD')
+ldate  = STRMID(mdate,4L,4L)+STRMID(mdate,0L,4L)
+tdate  = mydate.TDATE[0]
+;-----------------------------------------------------------------------------------------
+; => Find Wind/3DP IDL Save Files
+;-----------------------------------------------------------------------------------------
+default_extension = '/wind_3dp_pros/wind_data_dir/Wind_3DP_DATA/IDL_Save_Files/'
+default_location  = default_extension+date+'/'
+
+DEFSYSV,'!wind3dp_umn',EXISTS=exists
+IF NOT KEYWORD_SET(exists) THEN mdir  = FILE_EXPAND_PATH('')+default_location
+IF     KEYWORD_SET(exists) THEN mdir  = !wind3dp_umn.WIND_3DP_SAVE_FILE_DIR+date+'/'
+IF (mdir EQ '')            THEN mdir = default_location
+mfiles = FILE_SEARCH(mdir,'*.sav')
+
+
+RESTORE,mfiles[0]
+RESTORE,mfiles[1]
+;-----------------------------------------------------------------------------------------
+; => Load mag data
+;-----------------------------------------------------------------------------------------
+t = ['2000-04-09/00:00:00','2000-04-10/20:00:00']
+;t = ['2000-06-09/23:00:00','2000-06-11/03:00:00']
+;t = ['2000-06-26/10:00:00','2000-06-27/02:00:00']
+tr3 = time_double(t)
+mag3  = read_wind_mfi(TRANGE=tr3)
+t3x   = mag3.MAG.X
+bmag4 = mag3.MAG.Y
+magf4 = mag3.BGSE.Y
+nt    = N_ELEMENTS(t3x) 
+store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}
+store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}
+nn0 =['wi_B3_MAG(GSE)','wi_B3(GSE)']
+options,'wi_B3_MAG(GSE)',"YTITLE","|B| (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)',"YTITLE","B (nT)!C[GSE,3s]"
+options,'wi_B3(GSE)','COLORS',[250,150,50]
+tplot,nn0
+;-----------------------------------------------------------------------------------------
+; => Load orbit data
+;-----------------------------------------------------------------------------------------
+tds_magneto_orbits,DATE=date
+options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
+tplot_options, var_label=['Wind_Radial_Distance','Wind_L-Shell','Wind_MLT']
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Calc Density, temp, etc... for ions
+;-----------------------------------------------------------------------------------------
+pesa_low_moment_calibrate,DATE=date,/NOLOAD,PLM=apl,PLBM=aplb,TRANGE=tr3
+pesa_high_moment_calibrate,DATE=date,/NOLOAD,PHM=aph,PHBM=aphb,TRANGE=tr3
+
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Constants and dummy variables
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+kB     = 1.380658d-23      ; -Boltzmann Constant (J/K)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+K_eV   = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo    = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me     = 9.1093897d-31     ; -Electron mass (kg)
+mp     = 1.6726231d-27     ; -Proton mass (kg)
+qq     = 1.60217733d-19    ; -Fundamental charge (C)
+c      = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+c2     = (c*1d-3)^2        ; -" " squared (km/s)^2
+me_ev  = 0.5109906d6       ; -Electron mass in eV/c^2
+me_3dp = me_ev/c2          ; -Electron mass [eV/(km/s)^2]
+mp_ev  = 938.27231d6       ; -Proton mass in eV/c^2
+mp_3dp = mp_ev/c2          ; -Proton mass [eV/(km/s)^2]
+;-----------------------------------------------------------------------------------------
+; => fix Pesa Low data
+;-----------------------------------------------------------------------------------------
+get_data,'N_i2',DATA=ions,DLIM=dlim
+idens      = ions.Y
+test       = idens
+IF (date EQ '040900') THEN i_max = 100.
+IF (date EQ '061000') THEN i_max = 150.  ; => never gets above this
+IF (date EQ '062600') THEN i_max = 150.  ; => never gets above this
+badd       = WHERE(idens GT i_max,bdd,COMPLEMENT=goodd)
+IF (bdd GT 0L) THEN test[badd] = f
+test2      = interp(test[goodd],ions.X[goodd],ions.X,/NO_EXTRAP)
+store_data,'N_i2',DATA={X:ions.X,Y:test2},DLIM=dlim
+
+tbad_o     = [time_double('2000-04-10/01:40:00'),time_double('2000-04-10/05:30:00')]
+;tbad_o     = [time_double('2000-06-10/08:00:00'),time_double('2000-06-10/16:00:00')]
+;tbad_o     = [time_double('2000-06-26/18:00:00'),time_double('2000-06-26/21:30:00')]
+
+get_data,'sc_pot_2',DATA=scpots,DLIM=dlimsp
+scpot      = scpots.Y
+badscp     = WHERE(scpots.X LT tbad_o[1] AND scpots.X GT tbad_o[0] AND scpot LT 10.,bdsp)
+;IF (bdsp GT 0L) THEN scpot[badscp] = 12.
+IF (bdsp GT 0L) THEN scpot[badscp] = 15.
+
+sm_scpot   = SMOOTH(scpot,5L,/EDGE_TRUNCATE,/NAN)
+store_data,'sc_pot_3',DATA={X:scpots.X,Y:sm_scpot},DLIM=dlimsp
+nnw = tnames()
+options,nnw,"YSTYLE",1
+options,nnw,"PANEL_SIZE",2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+;-----------------------------------------------------------------------------------------
+; => Look at EL moments in Magnetosphere
+;-----------------------------------------------------------------------------------------
+t_o       = ['2000-04-09/20:20:00','2000-04-10/14:00:00']
+;t_o       = ['2000-06-10/01:00:00','2000-06-11/03:00:00']
+;t_o       = ['2000-06-26/13:00:00','2000-06-27/02:00:00']
+t_u       = time_double(t_o)
+el_times  = REFORM(ael.TIME)
+elb_times = REFORM(aelb.TIME)
+g_el      = WHERE(el_times LE MAX(t_u,/NAN) AND el_times GE MIN(t_u,/NAN),g_l)
+g_elb     = WHERE(elb_times LE MAX(t_u,/NAN) AND elb_times GE MIN(t_u,/NAN),g_lb)
+eh_times  = REFORM(aeh.TIME)
+ehb_times = REFORM(aehb.TIME)
+g_eh      = WHERE(eh_times LE MAX(t_u,/NAN) AND eh_times GE MIN(t_u,/NAN),g_h)
+g_ehb     = WHERE(ehb_times LE MAX(t_u,/NAN) AND ehb_times GE MIN(t_u,/NAN),g_hb)
+
+IF (g_l GT 0)  THEN gael  = ael[g_el]   ELSE gael  = 0
+IF (g_lb GT 0) THEN gaelb = aelb[g_elb] ELSE gaelb = 0
+IF (g_h GT 0)  THEN gaeh  = aeh[g_eh]   ELSE gaeh  = 0
+IF (g_hb GT 0) THEN gaehb = aehb[g_ehb] ELSE gaehb = 0
+
+add_scpot,gael,'sc_pot_3'
+add_scpot,gaelb,'sc_pot_3'
+add_scpot,gaeh,'sc_pot_3'
+add_scpot,gaehb,'sc_pot_3'
+
+moments_array_3dp,PLM=gael,PLBM=gaelb,AVGTEMP=avtempe,T_PERP=tperp_e, $
+                  T_PARA=tpara_e,V_THERM=vtherme,VELOCITY=elb_vels,   $
+                  PRESSURE=press_e,MOMS=moms,/TO_TPLOT,SUFFX='el'
+
+moments_array_3dp,PLM=gaeh,PLBM=gaehb,AVGTEMP=avtempeh,T_PERP=tperp_eh, $
+                  T_PARA=tpara_eh,V_THERM=vthermeh,VELOCITY=ehb_vels,   $
+                  PRESSURE=press_eh,MOMS=momsh,/TO_TPLOT,SUFFX='eh'
+
+add_vsw2,gael,'Velocity_el'
+add_vsw2,gaelb,'Velocity_el'
+
+add_vsw2,gaeh,'Velocity_eh'
+add_vsw2,gaehb,'Velocity_eh'
+;-----------------------------------------------------------------------------------------
+; => Plot special event to ASCII file
+;-----------------------------------------------------------------------------------------
+; => EL at 2000-04-10/02:46:58
+temp = gael[233]
+; => EL at 2000-06-10/23:42:00
+;temp = gael[817]
+;temp.sc_pot = 15.
+; => EL at 2000-06-26/20:30:49
+;temp = gael[270]
+del  = convert_vframe(temp,/INTERP)
+pd   = pad(del,NUM_PA=24)
+df    = distfunc(pd.ENERGY,pd.ANGLES,MASS=pd.MASS,DF=pd.DATA)
+extract_tags,del,df
+
+ngrid   = 30
+vlim    = 2d4
+vout    = (DINDGEN(2L*ngrid + 1L)/ngrid - 1L) * vlim
+cont2d,del,NGRID=30,VLIM=2d4,/HEAT_F,/V_TH,/ANI_TEMP,MYONEC=temp
+
+dfpar   = distfunc(vout,0.,PARAM=del)
+dfper   = distfunc(0.,vout,PARAM=del)
+; => EH at 2000-04-10/02:46:58
+temp   = gaeh[212]
+; => EH at 2000-06-10/23:42:00
+;temp   = gaeh[784]
+; => EH at 2000-06-26/20:30:49
+;temp   = gaeh[233]
+ngrid  = 20
+vlim   = 6d4
+ns     = 3
+tad    = temp
+add_df2d_to_ph,tad,VLIM=vlim,NGRID=ngrid,VBROT=test_n,NSMOOTH=ns
+dfpara = SMOOTH(tad.DF_PARA,3L,/EDGE_TRUNCATE,/NAN)
+dfperp = SMOOTH(tad.DF_PERP,3L,/EDGE_TRUNCATE,/NAN)
+
+ndf     = N_ELEMENTS(dfpara)
+vout2   = tad.VX2D
+
+; => Combine EL and EH
+tad   = temp
+bad   = WHERE(ABS(vout2) LE velocity(MIN(tad.ENERGY,/NAN),me_3dp,/TRUE),bd)
+dfpara2 = dfpara
+dfperp2 = dfperp
+dfpara2[bad] = d
+dfperp2[bad] = d
+
+vv2   = [vout,vout2]
+dfpa2 = [dfpar,dfpara2]
+dfpe2 = [dfper,dfperp2]
+sp    = SORT(vv2)
+vv2   = vv2[sp]
+dfpa2 = dfpa2[sp]
+dfpe2 = dfpe2[sp]
+
+dfpa3 = SMOOTH(dfpa2,7L,/EDGE_TRUNCATE,/NAN)
+dfpe3 = SMOOTH(dfpe2,7L,/EDGE_TRUNCATE,/NAN)
+plot,vv2,dfpa3,/nodata,/ystyle,/xstyle,/ylog,yminor=9
+oplot,vv2,dfpa3,color=250
+oplot,vv2,dfpe3,color=50
+
+
+dfpa4 = SMOOTH(dfpa3,7L,/EDGE_TRUNCATE,/NAN)
+dfpe4 = SMOOTH(dfpe3,7L,/EDGE_TRUNCATE,/NAN)
+plot,vv2,dfpa4,/nodata,/ystyle,/xstyle,/ylog,yminor=9
+oplot,vv2,dfpa4,color=250
+oplot,vv2,dfpe4,color=50
+
+
+; yra  = [5e-19,2e-11]
+;ytn  = ['10!U-18!N','10!U-17!N','10!U-16!N','10!U-15!N',$
+;           '10!U-14!N','10!U-13!N','10!U-12!N','10!U-11!N']
+;ytv  = [1e-18,1e-17,1e-16,1e-15,1e-14,1e-13,1e-12,1e-11]
+yra  = [7e-17,2e-11]
+xra  = [-60e3,60e3]
+
+ytn  = ['10!U-16!N','10!U-15!N','10!U-14!N','10!U-13!N','10!U-12!N','10!U-11!N']
+ytv  = [1e-16,1e-15,1e-14,1e-13,1e-12,1e-11]
+yts     = N_ELEMENTS(ytv) - 1L
+xtn  = ['-60','-40','-20','0','20','40','60']
+xtv  = [-6e4,-4e4,-2e4,0e0,2e4,4e4,6e4]
+xts  = N_ELEMENTS(xtv) - 1L
+
+xttl = 'Velocity (1000 km/s)'
+yttl = 'df (sec!U3!N km!U-3!N cm!U-3!N)'
+ttle = 'Cuts of DF on'+'!C'+STRTRIM(time_string(del.TIME),2)
+!P.MULTI = 0
+pstr = {XRANGE:xra,YRANGE:yra,XTITLE:xttl,YTITLE:yttl,YSTYLE:1,XSTYLE:1,YLOG:1, $
+        NODATA:1,TITLE:ttle,YTICKNAME:ytn,YTICKV:ytv,YTICKS:yts,XTICKNAME:xtn,  $
+        XTICKV:xtv,XTICKS:xts,YMINOR:9,XMINOR:10}
+
+fname   = 'EL_and_EH_2000-04-10_024658_para-perp-cuts'
+;fname   = 'EL_and_EH_2000-06-10_234200_para-perp-cuts'
+;fname   = 'EL_and_EH_2000-06-26_203049_para-perp-cuts'
+
+PLOT,vv2,dfpa4,_EXTRA=pstr
+  OPLOT,vv2,dfpa4,COLOR=250L
+  OPLOT,vv2,dfpe4,COLOR=50L
+
+popen,fname,/PORT
+  PLOT,vv2,dfpa4,_EXTRA=pstr
+    OPLOT,vv2,dfpa4,COLOR=250L
+    OPLOT,vv2,dfpe4,COLOR=50L
+pclose
+

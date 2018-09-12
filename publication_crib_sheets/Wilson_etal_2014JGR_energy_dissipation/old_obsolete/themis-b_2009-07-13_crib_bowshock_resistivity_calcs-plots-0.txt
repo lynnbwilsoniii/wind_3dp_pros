@@ -1,0 +1,535 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+; => Compile necessary routines
+@comp_lynn_pros
+; => Load all relevant data
+tdate     = '2009-07-13'
+tr_00     = tdate[0]+'/'+['07:50:00','10:10:00']
+date      = '071309'
+probe     = 'b'
+themis_load_all_inst,DATE=date[0],PROBE=probe[0],/LOAD_EFI,/LOAD_SCM,/TCLIP_FIELDS, $
+                     SE_T_EFI_OUT=tr_all_efi,SE_T_SCM_OUT=tr_all_scm
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+
+nefi           = N_ELEMENTS(REFORM(tr_all_efi[0,*]))
+nscm           = N_ELEMENTS(REFORM(tr_all_scm[0,*]))
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+efisuff        = 'efw_cal_facx_*'
+scmsuff        = 'scw_facx_L2_*'
+;; => define names of clipped tplot data
+efi_wave_nms   = tnames(pref[0]+efisuff[0])
+scm_wave_nms   = tnames(pref[0]+scmsuff[0])
+
+kstr_e         = STRING(FORMAT='(I2.2)',LINDGEN(nefi))
+efi_names      = 'th'+sc[0]+'_efw_cal_*_'+kstr_e
+
+kstr_b         = STRING(FORMAT='(I2.2)',LINDGEN(nscm))
+scm_names      = 'th'+sc[0]+'_scw_*_'+kstr_b
+;;----------------------------------------------------------------------------------------
+;; => Change Y-Titles
+;;----------------------------------------------------------------------------------------
+tr_rr   = tdate[0]+'/'+['07:25:00','10:10:00']
+sc      = probe[0]
+pref    = 'th'+sc[0]+'_'
+frbsuf  = ['b','r','f']
+frbytt  = ['Burst','Reduced','Full']
+ei_mid  = ['e','i']
+emid    = 'pee'+frbsuf
+imid    = 'pei'+frbsuf
+dens_sx = '_density'
+temp_sx = '_avgtemp'
+cols    = [250,150,50]
+
+coord   = 'gse'
+fgmnm   = pref[0]+'fgl_'+['mag',coord[0]]
+;; => get rid of ylog for density and temp
+dens_en = pref[0]+emid+dens_sx[0]
+dens_in = pref[0]+imid+dens_sx[0]
+temp_en = pref[0]+emid+temp_sx[0]
+temp_in = pref[0]+imid+temp_sx[0]
+options,[dens_en,dens_in,temp_en,temp_in],'YLOG'
+options,[dens_en,dens_in,temp_en,temp_in],'YLOG',/DEF
+options,[dens_en,dens_in,temp_en,temp_in],'LOG'
+options,[dens_en,dens_in,temp_en,temp_in],'LOG',/DEF
+;; => fix ytitle for density and temp
+dens_aa = [[dens_en],[dens_in]]
+temp_aa = [[temp_en],[temp_in]]
+options,[dens_en,dens_in,temp_en,temp_in],'YTITLE'
+options,[dens_en,dens_in,temp_en,temp_in],'YTITLE',/DEF
+options,[dens_en,dens_in,temp_en,temp_in],'YSUBTITLE'
+options,[dens_en,dens_in,temp_en,temp_in],'YSUBTITLE',/DEF
+
+FOR j=0L, 2L DO BEGIN  $
+  FOR k=0L, 1L DO BEGIN  $
+    ytt0  = 'N!D'+ei_mid[k]+'!N ['+frbytt[j]+']'    & $
+    ysub0 = '[th'+sc[0]+', cm!U-3!N'+', All Qs]'    & $
+    options,dens_aa[j,k],'YTITLE',ytt0[0],/DEF      & $
+    options,dens_aa[j,k],'COLORS',cols[j],/DEF      & $
+    options,dens_aa[j,k],'LABELS',frbytt[j],/DEF    & $
+    options,dens_aa[j,k],'YSUBTITLE',ysub0[0],/DEF  & $
+    ytt0  = 'T!D'+ei_mid[k]+'!N ['+frbytt[j]+']'    & $
+    ysub0 = '[th'+sc[0]+', Avg., eV, All Qs]'       & $
+    options,temp_aa[j,k],'YTITLE',ytt0[0],/DEF      & $
+    options,temp_aa[j,k],'COLORS',cols[j],/DEF      & $
+    options,temp_aa[j,k],'LABELS',frbytt[j],/DEF    & $
+    options,temp_aa[j,k],'YSUBTITLE',ysub0[0],/DEF
+
+
+;; => Plot electron densities [cm^(-3)]
+names   = [fgmnm,dens_en]
+tplot,names,/NOM,TRANGE=tr_rr
+
+;; => Plot electron temperatures [eV]
+names   = [fgmnm,temp_en]
+tplot,names,/NOM,TRANGE=tr_rr
+
+;; => Plot ion densities [cm^(-3)]
+names   = [fgmnm,dens_in]
+tplot,names,/NOM,TRANGE=tr_rr
+
+;; => Plot ion temperatures [eV]
+names   = [fgmnm,temp_in]
+tplot,names,/NOM,TRANGE=tr_rr
+;;-------------------------------------------------
+;; => combine densities and temps
+;;-------------------------------------------------
+FOR k=0L, 1L DO BEGIN  $
+  nname = pref[0]+'pe'+ei_mid[k]+'_all'+dens_sx[0]   & $
+  store_data,nname[0],DATA=REFORM(dens_aa[*,k])      & $
+  ytt0  = 'N!D'+ei_mid[k]+'!N [All Combined]'        & $
+  ysub0 = '[th'+sc[0]+', cm!U-3!N'+', All Qs]'       & $
+  options,nname[0],'YTITLE',ytt0[0],/DEF             & $
+  options,nname[0],'YSUBTITLE',ysub0[0],/DEF
+
+FOR k=0L, 1L DO BEGIN  $
+  nname = pref[0]+'pe'+ei_mid[k]+'_all'+temp_sx[0]   & $
+  store_data,nname[0],DATA=REFORM(temp_aa[*,k])      & $
+  ytt0  = 'N!D'+ei_mid[k]+'!N [All Combined]'        & $
+  ysub0 = '[th'+sc[0]+', Avg., eV'+', All Qs]'       & $
+  options,nname[0],'YTITLE',ytt0[0],/DEF             & $
+  options,nname[0],'YSUBTITLE',ysub0[0],/DEF
+
+
+;; => Plot electron densities [cm^(-3)] and temperatures [eV]
+names   = [fgmnm,pref[0]+'pe'+ei_mid[0]+'_all'+[dens_sx[0],temp_sx[0]]]
+tplot,names,/NOM,TRANGE=tr_rr
+
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+;;----------------------------------------------------------------------------------------
+;; => Calculate resistivities
+;;----------------------------------------------------------------------------------------
+;;-------------------------------------------------
+;; => define some defaults
+;;-------------------------------------------------
+r_struct     = 0
+labs_rat     = ['IAW','LHD','LHDI','ECDI']
+cols_rat     = [250,200,100,30]
+yttl         = 'Anomalous/Classical Resistivities'
+dlim         = {LABELS:labs_rat,COLORS:cols_rat,YTITLE:yttl,YLOG:1,YMINOR:9}
+lim          = {YSTYLE:1,PANEL_SIZE:2.0,XMINOR:5,XTICKLEN:0.04,YTICKLEN:0.01}
+name0        = 'Resistivity_Ratios'
+;; use burst data
+get_data,dens_in[0],DATA=iesa_dens
+get_data,temp_en[0],DATA=eesa_temp
+get_data,temp_in[0],DATA=iesa_temp
+get_data,fgmnm[1],  DATA=fgm_bmag
+
+coord        = 'gse'
+pref         = 'th'+sc[0]+'_'
+kstr_e       = STRING(FORMAT='(I2.2)',LINDGEN(nefi))
+de_names     = pref[0]+'efw_cal_'+coord[0]+'_'+kstr_e
+rat_name     = pref[0]+name0[0]+'_'+kstr_e
+FOR j=0L, nefi - 1L DO BEGIN                                                     $
+  de_name  = de_names[j]                                                       & $
+  bo_name  = fgmnm[0]                                                          & $
+  resistivity_calc_wrapper,dens_in[0],temp_en[0],DE_NAME=de_name[0],BO_NAME=bo_name[0],$
+                           TI_NAME=temp_in[0],R_STRUCT=r_struct                & $
+  IF (SIZE(r_struct,/TYPE) NE 8L) THEN CONTINUE                                & $
+  times        = r_struct.ABSCISSA                                             & $
+  spitzer_res  = r_struct.ELECTRONION_RESISTIVITY_SH1953                       & $
+  iaws_to_sh   = r_struct.IAW_RESISTIVITY_LT1988/spitzer_res                   & $
+  lhd__to_sh   = r_struct.LHD_RESISTIVITY_C1985/spitzer_res                    & $
+  lhdi_to_sh   = r_struct.LHDI_RESISTIVITY_C1985/spitzer_res                   & $
+  ecdi_to_sh   = r_struct.ECDI_RESISTIVITY_C1985/spitzer_res                   & $
+  all_ratios   = [[iaws_to_sh],[lhd__to_sh],[lhdi_to_sh],[ecdi_to_sh]]         & $
+  store_data,rat_name[j],DATA={X:times,Y:all_ratios},DLIM=dlim,LIM=lim         & $
+  r_struct     = 0
+
+
+tr_r2   = tdate[0]+'/'+['08:55:00','10:10:00']
+names   = [fgmnm,rat_name]
+tplot,names,/NOM,TRANGE=tr_r2
+;;-------------------------------------------------
+;; => Fix Y-Axis tick marks
+;;-------------------------------------------------
+exp_val    = LINDGEN(50) - 25L                    ; => Array of exponent values
+ytns       = '10!U'+STRTRIM(exp_val[*],2L)+'!N'   ; => Y-Axis tick names
+ytvs       = 1d1^FLOAT(exp_val[*])                ; => Y-Axis tick values
+
+pref       = 'th'+sc[0]+'_'
+name0      = 'Resistivity_Ratios'
+rat_name   = pref[0]+name0[0]+'_'+kstr_e
+
+FOR j=0L, nefi - 1L DO BEGIN                                                     $
+  get_data,rat_name[j],DATA=temp0                                              & $
+  IF (SIZE(temp0,/TYPE) NE 8L) THEN CONTINUE                                   & $
+  yra_00 = [0.95d0,1.05d0]*[MIN(ABS(temp0.Y),/NAN),MAX(ABS(temp0.Y),/NAN)]     & $
+  good   = WHERE(ytvs GT yra_00[0] AND ytvs LT yra_00[1],gd)                   & $
+  IF (gd EQ 0) THEN CONTINUE                                                   & $
+  options,rat_name[j],'YTICKNAME',ytns[good],/DEF                              & $
+  options,rat_name[j],'YTICKV'   ,ytvs[good],/DEF                              & $
+  options,rat_name[j],'YTICKS'   ,gd - 1L   ,/DEF
+
+
+;;----------------------------------------------------------------------------------------
+;; => Calculate Current Density [Ohm's Law] and then (j . E)
+;;----------------------------------------------------------------------------------------
+;;-------------------------------------------------
+;; => define some defaults
+;;-------------------------------------------------
+r_struct     = 0
+labs_rat     = ['IAW','LHD','LHDI','ECDI']
+cols_rat     = [250,200,100,30]
+yttl         = '|!7g!3 j!U2!N'+'| [!7l!3'+'W cm!U-3!N'+']'
+ysub         = '[Ohms Law -> j = !7r!3 !7d!3'+'E ]'
+dlim         = {LABELS:labs_rat,COLORS:cols_rat,YTITLE:yttl,YLOG:1,YMINOR:9,YSUBTITLE:ysub[0]}
+lim          = {YSTYLE:1,PANEL_SIZE:2.0,XMINOR:5,XTICKLEN:0.04,YTICKLEN:0.01}
+name0        = 'OhmsLaw_to_Coulomb_j_dot_E'
+
+;;  1.0 W m^(-3) = 1.0 µW cm^(-3)
+
+coord        = 'gse'
+pref         = 'th'+sc[0]+'_'
+kstr_e       = STRING(FORMAT='(I2.2)',LINDGEN(nefi))
+de_names     = pref[0]+'efw_cal_'+coord[0]+'_'+kstr_e
+rat_name     = pref[0]+name0[0]+'_'+kstr_e
+FOR j=0L, nefi - 1L DO BEGIN                                                     $
+  de_name  = de_names[j]                                                       & $
+  bo_name  = fgmnm[0]                                                          & $
+  resistivity_calc_wrapper,dens_in[0],temp_en[0],DE_NAME=de_name[0],BO_NAME=bo_name[0],$
+                           TI_NAME=temp_in[0],R_STRUCT=r_struct                & $
+  IF (SIZE(r_struct,/TYPE) NE 8L) THEN CONTINUE                                & $
+  get_data,de_name[0],DATA=temp0                                               & $
+  IF (SIZE(temp0,/TYPE) NE 8L) THEN CONTINUE                                   & $
+  emag0        = SQRT(TOTAL(temp0.Y^2,2L,/NAN))*1d-3                           & $
+  times        = r_struct.ABSCISSA                                             & $
+  iaws_to_cur  = 1d0/r_struct.IAW_RESISTIVITY_LT1988*emag0^2                   & $
+  lhd__to_cur  = 1d0/r_struct.LHD_RESISTIVITY_C1985*emag0^2                    & $
+  lhdi_to_cur  = 1d0/r_struct.LHDI_RESISTIVITY_C1985*emag0^2                   & $
+  ecdi_to_cur  = 1d0/r_struct.ECDI_RESISTIVITY_C1985*emag0^2                   & $
+  all_currs    = [[iaws_to_cur],[lhd__to_cur],[lhdi_to_cur],[ecdi_to_cur]]     & $
+  store_data,rat_name[j],DATA={X:times,Y:all_currs},DLIM=dlim,LIM=lim          & $
+  r_struct     = 0
+
+tr_r2   = tdate[0]+'/'+['08:55:00','10:10:00']
+names   = [fgmnm,rat_name[3]]
+tplot,names,/NOM,TRANGE=tr_r2
+;;-------------------------------------------------
+;; => Fix Y-Axis tick marks
+;;-------------------------------------------------
+exp_val    = LINDGEN(50) - 25L                    ; => Array of exponent values
+ytns       = '10!U'+STRTRIM(exp_val[*],2L)+'!N'   ; => Y-Axis tick names
+ytvs       = 1d1^FLOAT(exp_val[*])                ; => Y-Axis tick values
+
+pref       = 'th'+sc[0]+'_'
+name0      = 'OhmsLaw_to_Coulomb_j_dot_E'
+rat_name   = pref[0]+name0[0]+'_'+kstr_e
+
+FOR j=0L, nefi - 1L DO BEGIN                                                     $
+  get_data,rat_name[j],DATA=temp0                                              & $
+  IF (SIZE(temp0,/TYPE) NE 8L) THEN CONTINUE                                   & $
+  yra_00 = [0.95d0,1.05d0]*[MIN(ABS(temp0.Y),/NAN),MAX(ABS(temp0.Y),/NAN)]     & $
+  good   = WHERE(ytvs GT yra_00[0] AND ytvs LT yra_00[1],gd)                   & $
+  IF (gd EQ 0) THEN CONTINUE                                                   & $
+  options,rat_name[j],'YTICKNAME',ytns[good],/DEF                              & $
+  options,rat_name[j],'YTICKV'   ,ytvs[good],/DEF                              & $
+  options,rat_name[j],'YTICKS'   ,gd - 1L   ,/DEF
+
+;;----------------------------------------------------------------------------------------
+;; => Calculate Collision Frequency Ratios
+;;----------------------------------------------------------------------------------------
+;;-------------------------------------------------
+;; => define some defaults
+;;-------------------------------------------------
+r_struct     = 0
+labs_rat     = ['IAW','LHD','LHDI','ECDI']
+cols_rat     = [250,200,100,30]
+yttl         = '!7m!3'+'!Dcoll!N'+'/!7X!3'+'!D'+['ci','lh','ce']+'!N'
+ysub         = '[Collision Frequency Ratio]'
+dlim         = {LABELS:labs_rat,COLORS:cols_rat,YTITLE:yttl[0],YLOG:1,YMINOR:9,YSUBTITLE:ysub[0]}
+lim          = {YSTYLE:1,PANEL_SIZE:2.0,XMINOR:5,XTICKLEN:0.04,YTICKLEN:0.01}
+name0        = 'CollisionFreq-to-f'+['ci','lh','ce']+'_Ratios'
+
+pref         = 'th'+sc[0]+'_'
+suff         = '_fci_flh_fce'
+frname       = pref[0]+'fgh'+suff[0]
+get_data,frname[0],DATA=freqs_str
+freqt        = freqs_str.X
+freqs        = freqs_str.Y
+
+coord         = 'gse'
+pref          = 'th'+sc[0]+'_'
+kstr_e        = STRING(FORMAT='(I2.2)',LINDGEN(nefi))
+de_names      = pref[0]+'efw_cal_'+coord[0]+'_'+kstr_e
+rat_name      = STRARR(nefi,3L)
+FOR k=0L, 2L DO  rat_name[*,k] = pref[0]+name0[k]+'_'+kstr_e
+
+FOR j=0L, nefi - 1L DO BEGIN                                                     $
+  r_struct = 0                                                                 & $
+  de_name  = de_names[j]                                                       & $
+  bo_name  = fgmnm[0]                                                          & $
+  resistivity_calc_wrapper,dens_in[0],temp_en[0],DE_NAME=de_name[0],BO_NAME=bo_name[0],$
+                           TI_NAME=temp_in[0],R_STRUCT=r_struct                & $
+  IF (SIZE(r_struct,/TYPE) NE 8L) THEN CONTINUE                                & $
+  times        = r_struct.ABSCISSA                                             & $
+  FOR k=0L, 2L DO BEGIN                                                          $
+    str_element,dlim,'YTITLE',yttl[k],/ADD_REPLACE                             & $
+    freq_efi     = interp(freqs[*,k],freqt,times,/NO_EXTRAP)                   & $
+    iaws_to_frq  = r_struct.IAW_COLL_FREQ_LT1988/freq_efi                      & $
+    lhd__to_frq  = r_struct.LHD_COLL_FREQ_C1985/freq_efi                       & $
+    lhdi_to_frq  = r_struct.LHDI_COLL_FREQ_C1985/freq_efi                      & $
+    ecdi_to_frq  = r_struct.ECDI_COLL_FREQ_C1985/freq_efi                      & $
+    all_ratios   = [[iaws_to_frq],[lhd__to_frq],[lhdi_to_frq],[ecdi_to_frq]]   & $
+    store_data,rat_name[j,k],DATA={X:times,Y:all_ratios},DLIM=dlim,LIM=lim
+
+
+
+tr_r2   = tdate[0]+'/'+['08:55:00','10:10:00']
+names   = [fgmnm,rat_name[2:5,0]]
+tplot,names,/NOM,TRANGE=tr_r2
+
+;;-------------------------------------------------
+;; => Fix Y-Axis tick marks
+;;-------------------------------------------------
+exp_val    = LINDGEN(50) - 25L                    ; => Array of exponent values
+ytns       = '10!U'+STRTRIM(exp_val[*],2L)+'!N'   ; => Y-Axis tick names
+ytvs       = 1d1^FLOAT(exp_val[*])                ; => Y-Axis tick values
+
+pref       = 'th'+sc[0]+'_'
+name0      = 'CollisionFreq-to-f'+['ci','lh','ce']+'_Ratios'
+rat_name   = STRARR(nefi,3L)
+FOR k=0L, 2L DO  rat_name[*,k] = pref[0]+name0[k]+'_'+kstr_e
+
+FOR j=0L, nefi - 1L DO BEGIN                                                     $
+  FOR k=0L, 2L DO BEGIN                                                          $
+    get_data,rat_name[j,k],DATA=temp0                                          & $
+    IF (SIZE(temp0,/TYPE) NE 8L) THEN CONTINUE                                 & $
+    yra_00 = [0.95d0,1.05d0]*[MIN(ABS(temp0.Y),/NAN),MAX(ABS(temp0.Y),/NAN)]   & $
+    good   = WHERE(ytvs GT yra_00[0] AND ytvs LT yra_00[1],gd)                 & $
+    IF (gd EQ 0) THEN CONTINUE                                                 & $
+    options,rat_name[j,k],'YTICKNAME',ytns[good],/DEF                          & $
+    options,rat_name[j,k],'YTICKV'   ,ytvs[good],/DEF                          & $
+    options,rat_name[j,k],'YTICKS'   ,gd - 1L   ,/DEF
+
+
+
+;;-------------------------------------------------
+;; => Plot specific zoomed in views
+;;-------------------------------------------------
+name0            = 'Resistivity_Ratios'
+res_rat_name     = pref[0]+name0[0]+'_'+kstr_e
+fpref            = 'TH-B_efw_gse_Resistivity_Ratios_'
+
+name0            = 'CollisionFreq-to-f'+['ci','lh','ce']+'_Ratios'
+fprefs           = 'TH-B_efw_gse_CollisionFreq-to-f'+['ci','lh','ce']+'_Ratios'
+fc_rat_name      = pref[0]+name0[0]+'_'+kstr_e
+fpref            = fprefs[0]
+
+;rat_name         = res_rat_name
+rat_name         = fc_rat_name
+
+j                = 2L
+temp0            = tdate[0]+'/'+['08:59:43.488','08:59:43.789']
+temp1            = tdate[0]+'/'+['08:59:43.982','08:59:44.460']
+temp2            = tdate[0]+'/'+['08:59:44.580','08:59:44.769']
+temp3            = tdate[0]+'/'+['08:59:44.761','08:59:44.894']
+temp4            = tdate[0]+'/'+['08:59:44.911','08:59:45.057']
+temp5            = tdate[0]+'/'+['08:59:45.246','08:59:45.414']
+temp6            = tdate[0]+'/'+['08:59:45.496','08:59:45.616']
+temp7            = tdate[0]+'/'+['08:59:45.616','08:59:45.909']
+temp8            = tdate[0]+'/'+['08:59:45.943','08:59:46.235']
+temp9            = tdate[0]+'/'+['08:59:46.240','08:59:46.566']
+temp10           = tdate[0]+'/'+['08:59:46.661','08:59:47.087']
+temp11           = tdate[0]+'/'+['08:59:47.087','08:59:47.332']
+temp12           = tdate[0]+'/'+['08:59:47.383','08:59:47.590']
+temp13           = tdate[0]+'/'+['08:59:47.740','08:59:48.020']
+temp14           = tdate[0]+'/'+['08:59:48.015','08:59:48.243']
+temp15           = tdate[0]+'/'+['08:59:48.299','08:59:48.544']
+temp16           = tdate[0]+'/'+['08:59:48.652','08:59:48.940']
+temp17           = tdate[0]+'/'+['08:59:48.948','08:59:49.232']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],[temp7],[temp8],[temp9],$
+                    [temp10],[temp11],[temp12],[temp13],[temp14],[temp15],[temp16],[temp17]])
+names            = [de_names[j],rat_name[j]]
+
+
+j                = 3L
+temp0            = tdate[0]+'/'+['08:59:49.326','08:59:50.241']
+temp1            = tdate[0]+'/'+['08:59:50.301','08:59:50.605']
+temp2            = tdate[0]+'/'+['08:59:50.635','08:59:50.905']
+temp3            = tdate[0]+'/'+['08:59:51.080','08:59:51.392']
+temp4            = tdate[0]+'/'+['08:59:51.422','08:59:51.504']
+temp5            = tdate[0]+'/'+['08:59:51.555','08:59:51.630']
+temp6            = tdate[0]+'/'+['08:59:51.683','08:59:51.876']
+temp7            = tdate[0]+'/'+['08:59:51.987','08:59:52.252']
+temp8            = tdate[0]+'/'+['08:59:52.496','08:59:52.595']
+temp9            = tdate[0]+'/'+['08:59:52.864','08:59:52.945']
+temp10           = tdate[0]+'/'+['08:59:53.574','08:59:53.771']
+temp11           = tdate[0]+'/'+['08:59:54.370','08:59:54.570']
+temp12           = tdate[0]+'/'+['08:59:54.875','08:59:55.055']
+temp13           = tdate[0]+'/'+['08:59:55.393','08:59:55.701']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],[temp7],[temp8],[temp9],$
+                    [temp10],[temp11],[temp12],[temp13]])
+names            = [de_names[j],rat_name[j]]
+
+
+j                = 7L
+temp0            = tdate[0]+'/'+['09:19:01.322','09:19:01.695']
+temp1            = tdate[0]+'/'+['09:19:02.080','09:19:02.824']
+temp2            = tdate[0]+'/'+['09:19:03.042','09:19:03.830']
+temp3            = tdate[0]+'/'+['09:19:03.851','09:19:04.754']
+temp4            = tdate[0]+'/'+['09:19:04.835','09:19:05.567']
+temp5            = tdate[0]+'/'+['09:19:05.571','09:19:05.956']
+temp6            = tdate[0]+'/'+['09:19:05.965','09:19:06.354']
+temp7            = tdate[0]+'/'+['09:19:06.362','09:19:06.833']
+temp8            = tdate[0]+'/'+['09:19:06.893','09:19:07.000']
+temp9            = tdate[0]+'/'+['09:19:07.090','09:19:07.171']
+temp10           = tdate[0]+'/'+['09:19:07.338','09:19:07.513']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],$
+                              [temp7],[temp8],[temp9],[temp10]])
+names            = [de_names[j],rat_name[j]]
+
+
+j                = 9L
+temp0            = tdate[0]+'/'+['09:19:56.581','09:19:57.601']
+temp1            = tdate[0]+'/'+['09:19:57.605','09:19:57.896']
+temp2            = tdate[0]+'/'+['09:19:57.917','09:19:58.469']
+temp3            = tdate[0]+'/'+['09:19:58.625','09:19:58.912']
+temp4            = tdate[0]+'/'+['09:19:58.908','09:19:58.984']
+temp5            = tdate[0]+'/'+['09:19:58.979','09:19:59.768']
+temp6            = tdate[0]+'/'+['09:19:59.848','09:20:00.236']
+temp7            = tdate[0]+'/'+['09:20:00.417','09:20:00.809']
+temp8            = tdate[0]+'/'+['09:20:00.906','09:20:01.277']
+temp9            = tdate[0]+'/'+['09:20:01.285','09:20:01.884']
+temp10           = tdate[0]+'/'+['09:20:02.124','09:20:02.263']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],$
+                              [temp7],[temp8],[temp9],[temp10]])
+names            = [de_names[j],rat_name[j]]
+
+
+j                = 12L
+temp0            = tdate[0]+'/'+['09:32:10.888','09:32:11.778']
+temp1            = tdate[0]+'/'+['09:32:12.399','09:32:13.186']
+temp2            = tdate[0]+'/'+['09:32:13.327','09:32:14.521']
+temp3            = tdate[0]+'/'+['09:32:15.009','09:32:16.228']
+temp4            = tdate[0]+'/'+['09:32:16.335','09:32:17.028']
+temp5            = tdate[0]+'/'+['09:32:17.049','09:32:17.260']
+temp6            = tdate[0]+'/'+['09:32:10.916','09:32:11.062']
+temp7            = tdate[0]+'/'+['09:32:11.282','09:32:11.401']
+temp8            = tdate[0]+'/'+['09:32:11.404','09:32:11.441']
+temp9            = tdate[0]+'/'+['09:32:11.442','09:32:11.482']
+temp10           = tdate[0]+'/'+['09:32:11.483','09:32:11.499']
+temp11           = tdate[0]+'/'+['09:32:11.499','09:32:11.518']
+temp12           = tdate[0]+'/'+['09:32:11.617','09:32:11.638']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],[temp7],[temp8],[temp9],$
+                              [temp10],[temp11],[temp12]])
+names            = [de_names[j],rat_name[j]]
+
+
+
+
+
+;; => temporarily remove YRANGE
+options,names[0],'YRANGE'
+options,names[0],'YRANGE',/DEF
+
+get_data,names[0],DATA=temp0
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  yra_00      = 0                                                            & $
+  tr_all      = time_double(REFORM(temp_a[i,*]))                             & $
+  fnm         = file_name_times(tr_all,PREC=3)                               & $
+  ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                  & $
+  IF (SIZE(temp0,/TYPE) NE 8L) THEN CONTINUE                                 & $
+  good        = WHERE(temp0.X GE tr_all[0] AND temp0.X LE tr_all[1],gd)      & $
+  IF (gd EQ 0) THEN CONTINUE                                                 & $
+  IF (gd GT 0) THEN ydata    = temp0.Y[good,*]                               & $
+  IF (gd GT 0) THEN yra_00   = [-1d0,1d0]*1.05d0*MAX(ABS(ydata),/NAN)        & $
+  test        = (gd GT 0) AND (N_ELEMENTS(yra_00) EQ 2)                      & $
+  IF (test) THEN options,names[0],'YRANGE',yra_00,/DEF                       & $
+  IF (NOT test) THEN options,names[0],'YRANGE',/DEF                          & $
+  fname       = fpref[0]+ftimes[0]                                           & $
+    tplot,names,/NOM,TRANGE=tr_all                                           & $
+  popen,fname[0],/LAND                                                       & $
+    tplot,names,/NOM,TRANGE=tr_all                                           & $
+  pclose
+
+
+;;-------------------------------------------------
+;; => Example calculation
+;;-------------------------------------------------
+j        = 0L
+de_name  = de_names[j]
+bo_name  = fgmnm[0]
+resistivity_calc_wrapper,dens_in[0],temp_en[0],DE_NAME=de_name[0],BO_NAME=bo_name[0],$
+                         TI_NAME=temp_in[0],R_STRUCT=r_struct
+
+spitzer_res  = r_struct.ELECTRONION_RESISTIVITY_SH1953
+
+iaws_res     = r_struct.IAW_RESISTIVITY_LT1988
+lhd__res     = r_struct.LHD_RESISTIVITY_C1985
+lhdi_res     = r_struct.LHDI_RESISTIVITY_C1985
+ecdi_res     = r_struct.ECDI_RESISTIVITY_C1985
+;; => define ratios with respect to classical electron-ion collision resistivity
+;;      [Spitzer and Harm, 1953]
+iaws_to_sh   = iaws_res/spitzer_res
+lhd__to_sh   = lhd__res/spitzer_res
+lhdi_to_sh   = lhdi_res/spitzer_res
+ecdi_to_sh   = ecdi_res/spitzer_res
+
+all_ratios   = [[iaws_to_sh],[lhd__to_sh],[lhdi_to_sh],[ecdi_to_sh]]
+times        = r_struct.ABSCISSA
+labs_rat     = ['IAW','LHD','LHDI','ECDI']
+cols_rat     = [250,200,100,30]
+yttl         = 'Anomalous/Classical Resistivity'
+dlim         = {LABELS:labs_rat,COLORS:cols_rat,YTITLE:yttl,YLOG:1,YMINOR:9}
+lim          = {YSTYLE:1,PANEL_SIZE:2.0,XMINOR:5,XTICKLEN:0.04,YTICKLEN:0.01}
+name         = 'Resistivity_Ratios'
+store_data,name[0],DATA={X:times,Y:all_ratios},DLIM=dlim,LIM=lim
+
+names   = [fgmnm,name[0]]
+tplot,names,/NOM,TRANGE=tr_rr
+
+
+
+
+
+

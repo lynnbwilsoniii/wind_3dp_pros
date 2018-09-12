@@ -1,0 +1,923 @@
+;-----------------------------------------------------------------------------------------
+; => Define dummy variables and constants
+;-----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+; => Estimate the equitorial cyclotron frequency
+R_E        = 6.37814d6                ; => Earth's Equitorial Radius (m)
+mu_E       = 7.84d15                  ; => Earth's magnetic moment as of 1990 (T m^3)
+magnfactor = mu_E/R_E^3
+me         = 9.1093897d-31            ; -Electron mass (kg)
+mp         = 1.6726231d-27            ; -Proton mass (kg)
+qq         = 1.60217733d-19           ; -Fundamental charge (C)
+fcefac     = qq/me/(2d0*!DPI)
+;-----------------------------------------------------------------------------------------
+; => ALL TDS whistlers [Suffix Def:  '' = ALL, 'an' = Anisotropy, 'bm' = Beam/Flattop]
+;-----------------------------------------------------------------------------------------
+aniso_test = whistler_insta_read(FREE_ESOURCE='aniso')
+beam_test  = whistler_insta_read(FREE_ESOURCE='beams')
+temp       = whistler_insta_read()
+
+; => Phase Velocities
+Vph_fln   = temp.VPH_FLOW_MN
+Vph_flx   = temp.VPH_FLOW_MX
+Vph_fhn   = temp.VPH_FHIGH_MN
+Vph_fhx   = temp.VPH_FHIGH_MX
+Vph_flnan = aniso_test.VPH_FLOW_MN
+Vph_flxan = aniso_test.VPH_FLOW_MX
+Vph_fhnan = aniso_test.VPH_FHIGH_MN
+Vph_fhxan = aniso_test.VPH_FHIGH_MX
+Vph_flnbm = beam_test.VPH_FLOW_MN
+Vph_flxbm = beam_test.VPH_FLOW_MX
+Vph_fhnbm = beam_test.VPH_FHIGH_MN
+Vph_fhxbm = beam_test.VPH_FHIGH_MX
+; => Define L-Shell and MLT
+w_lsh     = temp.WIND_L_SHELL
+w_mlt     = temp.WIND_MLT
+w_lshan   = aniso_test.WIND_L_SHELL
+w_mltan   = aniso_test.WIND_MLT
+w_lshbm   = beam_test.WIND_L_SHELL
+w_mltbm   = beam_test.WIND_MLT
+; => Define radial distance and invariant latitude
+w_rad     = temp.WIND_RAD_DIST
+w_inv     = temp.WIND_INV_LAT
+w_radan   = aniso_test.WIND_RAD_DIST
+w_invan   = aniso_test.WIND_INV_LAT
+w_radbm   = beam_test.WIND_RAD_DIST
+w_invbm   = beam_test.WIND_INV_LAT
+; => Define frequencies
+bmag_eq   = magnfactor[0]/(w_lsh)^3
+bmag_eqan = magnfactor[0]/(w_lshan)^3
+bmag_eqbm = magnfactor[0]/(w_lshbm)^3
+fce_eq    = fcefac[0]*bmag_eq
+fce_eqan  = fcefac[0]*bmag_eqan
+fce_eqbm  = fcefac[0]*bmag_eqbm
+fw_low    = temp.FLOW_PEAK
+fw_high   = temp.FHIGH_PEAK
+fw_lowan  = aniso_test.FLOW_PEAK
+fw_highan = aniso_test.FHIGH_PEAK
+fw_lowbm  = beam_test.FLOW_PEAK
+fw_highbm = beam_test.FHIGH_PEAK
+fw_peak   = (fw_high   + fw_low)/2d0
+fw_peakan = (fw_highan + fw_lowan)/2d0
+fw_peakbm = (fw_highbm + fw_lowbm)/2d0
+del_f     = (fw_high   - fw_low)
+del_fan   = (fw_highan - fw_lowan)
+del_fbm   = (fw_highbm - fw_lowbm)
+delf_f    = del_f/fw_peak
+delf_fan  = del_fan/fw_peakan
+delf_fbm  = del_fbm/fw_peakbm
+
+fpe       = temp.FPE
+fpean     = aniso_test.FPE
+fpebm     = beam_test.FPE
+flh       = temp.FLH
+flhan     = aniso_test.FLH
+flhbm     = beam_test.FLH
+
+fw_fce    = fw_peak/fce_eq
+fw_fpe    = fw_peak/fpe
+fw_flh    = fw_peak/flh
+fw_fcean  = fw_peakan/fce_eqan
+fw_fpean  = fw_peakan/fpean
+fw_flhan  = fw_peakan/flhan
+fw_fcebm  = fw_peakbm/fce_eqbm
+fw_fpebm  = fw_peakbm/fpebm
+fw_flhbm  = fw_peakbm/flhbm
+
+fpe_fce   = fpe/fce_eq
+fpe_fcean = fpean/fce_eqan
+fpe_fcebm = fpebm/fce_eqbm
+
+units     = STRTRIM(temp.UNITS,2)
+unitsan   = STRTRIM(aniso_test.UNITS,2)
+unitsbm   = STRTRIM(beam_test.UNITS,2)
+;-----------------------------------------------------------------------------------------
+; => Define separation tests (by finite Vph and L-Shell)
+;-----------------------------------------------------------------------------------------
+test_f    = FINITE(Vph_fln) AND FINITE(Vph_flx) AND FINITE(Vph_fhn) AND FINITE(Vph_fhx)
+test_l    = (w_lsh LE 20.)
+;test_l    = (w_lsh LE 10.)
+test      = test_f AND test_l
+good      = WHERE(test,gd)
+test_fan  = FINITE(Vph_flnan) AND FINITE(Vph_flxan) AND FINITE(Vph_fhnan) AND FINITE(Vph_fhxan)
+test_lan  = (w_lshan LE 20.)
+;test_lan  = (w_lshan LE 10.)
+testan    = test_fan AND test_lan
+goodan    = WHERE(testan,gdan)
+test_fbm  = FINITE(Vph_flnbm) AND FINITE(Vph_flxbm) AND FINITE(Vph_fhnbm) AND FINITE(Vph_fhxbm)
+test_lbm  = (w_lshbm LE 20.)
+;test_lbm  = (w_lshbm LE 10.)
+testbm    = test_fbm AND test_lbm
+goodbm    = WHERE(testbm,gdbm)
+
+nn        = gd
+units     = units[good]
+w_lsh     = w_lsh[good]
+w_mlt     = w_mlt[good]
+w_rad     = w_rad[good]
+w_inv     = w_inv[good]
+bmag_eq   = bmag_eq[good]
+fce_eq    = fce_eq[good]
+fw_low    = fw_low[good]
+fw_high   = fw_high[good]
+fw_peak   = fw_peak[good]
+del_f     = del_f[good]
+delf_f    = delf_f[good]
+fw_fce    = fw_fce[good]
+fw_fpe    = fw_fpe[good]
+fpe_fce   = fpe_fce[good]
+
+nnan      = gdan
+unitsan   = unitsan[goodan]
+w_lshan   = w_lshan[goodan]
+w_mltan   = w_mltan[goodan]
+w_radan   = w_radan[goodan]
+w_invan   = w_invan[goodan]
+bmag_eqan = bmag_eqan[goodan]
+fce_eqan  = fce_eqan[goodan]
+fw_lowan  = fw_lowan[goodan]
+fw_highan = fw_highan[goodan]
+fw_peakan = fw_peakan[goodan]
+del_fan   = del_fan[goodan]
+delf_fan  = delf_fan[goodan]
+fw_fcean  = fw_fcean[goodan]
+fw_fpean  = fw_fpean[goodan]
+fpe_fcean = fpe_fcean[goodan]
+
+nnbm      = gdbm
+unitsbm   = unitsbm[goodbm]
+w_lshbm   = w_lshbm[goodbm]
+w_mltbm   = w_mltbm[goodbm]
+w_radbm   = w_radbm[goodbm]
+w_invbm   = w_invbm[goodbm]
+bmag_eqbm = bmag_eqbm[goodbm]
+fce_eqbm  = fce_eqbm[goodbm]
+fw_lowbm  = fw_lowbm[goodbm]
+fw_highbm = fw_highbm[goodbm]
+fw_peakbm = fw_peakbm[goodbm]
+del_fbm   = del_fbm[goodbm]
+delf_fbm  = delf_fbm[goodbm]
+fw_fcebm  = fw_fcebm[goodbm]
+fw_fpebm  = fw_fpebm[goodbm]
+fpe_fcebm = fpe_fcebm[goodbm]
+;-----------------------------------------------------------------------------------------
+; => Convert MLT to Longitude
+;-----------------------------------------------------------------------------------------
+mlt_lon   = w_mlt*36d1/24d0 - 9d1
+mlt_lonan = w_mltan*36d1/24d0 - 9d1
+mlt_lonbm = w_mltbm*36d1/24d0 - 9d1
+; => Shift MLTs to make them appropriate for Polar Coordinate outputs
+bad_20   = WHERE(mlt_lon LT 0d0,bd20)
+bad_21    = WHERE(mlt_lonan LT 0d0,bd21)
+bad_22    = WHERE(mlt_lonbm LT 0d0,bd22)
+IF (bd20 GT 0) THEN mlt_lon[bad_20] = mlt_lon[bad_20] + 36d1
+IF (bd21 GT 0) THEN mlt_lonan[bad_21] = mlt_lonan[bad_21] + 36d1
+IF (bd22 GT 0) THEN mlt_lonbm[bad_22] = mlt_lonbm[bad_22] + 36d1
+
+numw      = STRTRIM(N_ELEMENTS(w_lsh),2)
+numwan    = STRTRIM(N_ELEMENTS(w_lshan),2)
+numwbm    = STRTRIM(N_ELEMENTS(w_lshbm),2)
+
+
+WINDOW,0,XSIZE=800,YSIZE=800,RETAIN=2
+!X.MARGIN  = [10.,3.]
+!Y.MARGIN  = [4.,2.]
+
+xchsz      = !D.X_CH_SIZE
+ychsz      = !D.Y_CH_SIZE
+coord      = CONVERT_COORD(xchsz,ychsz,/DEVICE,/TO_DATA)
+
+xxo        = FINDGEN(17)*(!PI*2./16.)
+USERSYM,6d0*COS(xxo),6d0*SIN(xxo),/FILL
+
+
+radius     = REPLICATE(1d0,gd)
+thetas     = (DINDGEN(gd)*36d1/(gd - 1))*!DPI/18d1
+ttll       = 'Wind Whistler Wave Observations/Locations (ALL TDS)'
+xttl       = 'Total Number of Whistlers:  '+numw[0]
+pstr       = {POLAR:1,NODATA:1,XSTYLE:1,YSTYLE:1,XRANGE:[-2e1,2e1],YRANGE:[-2e1,2e1],$
+              XMINOR:5,YMINOR:5,XTICKLEN:0.04,YTICKLEN:0.04,TITLE:ttll,XTITLE:xttl}
+
+PLOT,w_lsh,mlt_lon*!DPI/18d1,_EXTRA=pstr
+  OPLOT,w_lsh,mlt_lon*!DPI/18d1,PSYM=6,COLOR=50,/POLAR
+  OPLOT,[0.,0.],[0.,0.],PSYM=8,COLOR=250
+  OPLOT,[-20.,20.],[-20.,20.]
+  OPLOT,[-20.,20.],[20.,-20.]
+  OPLOT,[-20.,20.],[0.,0.]
+  OPLOT,[0.,0.],[20.,-20.]
+  OPLOT,5d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,1d1*radius,thetas,COLOR=50,/POLAR
+  OPLOT,15d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,2d1*radius,thetas,COLOR=50,/POLAR
+  XYOUTS,-2.,18.,'Noon',CHARSIZE=3.0,/DATA
+  XYOUTS,-3.,-18.,'Midnight',CHARSIZE=3.0,/DATA
+  XYOUTS,14.,1.,'Dawn',CHARSIZE=3.0,/DATA
+  XYOUTS,-18.,-2.,'Dusk',CHARSIZE=3.0,/DATA
+  XYOUTS,5d0*COS(225d0*!DPI/18d1)-2d0,5d0*SIN(225d0*!DPI/18d1)-1d0,'L = 5',CHARSIZE=2.0,/DATA
+  XYOUTS,1d1*COS(225d0*!DPI/18d1)-1d0,1d1*SIN(225d0*!DPI/18d1),'L = 10',CHARSIZE=2.0,/DATA
+  XYOUTS,15d0*COS(225d0*!DPI/18d1)-1d0,15d0*SIN(225d0*!DPI/18d1),'L = 15',CHARSIZE=2.0,/DATA
+  XYOUTS,2d1*COS(225d0*!DPI/18d1)-1d0,2d1*SIN(225d0*!DPI/18d1),'L = 20',CHARSIZE=2.0,/DATA
+  
+  
+popen,'TDS-ALL_polar-plot_whistler-locations',/LAND
+PLOT,w_lsh,mlt_lon*!DPI/18d1,_EXTRA=pstr
+  OPLOT,w_lsh,mlt_lon*!DPI/18d1,PSYM=6,COLOR=50,/POLAR
+  OPLOT,[0.,0.],[0.,0.],PSYM=8,COLOR=250
+  OPLOT,[-20.,20.],[-20.,20.]
+  OPLOT,[-20.,20.],[20.,-20.]
+  OPLOT,[-20.,20.],[0.,0.]
+  OPLOT,[0.,0.],[20.,-20.]
+  OPLOT,5d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,1d1*radius,thetas,COLOR=50,/POLAR
+  OPLOT,15d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,2d1*radius,thetas,COLOR=50,/POLAR
+  XYOUTS,-2.,18.,'Noon',CHARSIZE=3.0,/DATA
+  XYOUTS,-3.,-18.,'Midnight',CHARSIZE=3.0,/DATA
+  XYOUTS,14.,1.,'Dawn',CHARSIZE=3.0,/DATA
+  XYOUTS,-18.,-2.,'Dusk',CHARSIZE=3.0,/DATA
+  XYOUTS,5d0*COS(225d0*!DPI/18d1)-2d0,5d0*SIN(225d0*!DPI/18d1)-1d0,'L = 5',CHARSIZE=2.0,/DATA
+  XYOUTS,1d1*COS(225d0*!DPI/18d1)-1d0,1d1*SIN(225d0*!DPI/18d1),'L = 10',CHARSIZE=2.0,/DATA
+  XYOUTS,15d0*COS(225d0*!DPI/18d1)-1d0,15d0*SIN(225d0*!DPI/18d1),'L = 15',CHARSIZE=2.0,/DATA
+  XYOUTS,2d1*COS(225d0*!DPI/18d1)-1d0,2d1*SIN(225d0*!DPI/18d1),'L = 20',CHARSIZE=2.0,/DATA
+pclose
+
+
+radius     = REPLICATE(1d0,gd)
+thetas     = (DINDGEN(gd)*36d1/(gd - 1))*!DPI/18d1
+ttll       = 'Wind Whistler Wave Observations/Locations (Ani = Blue, Beam/Flat = Red)'
+xttl       = 'Total Number of:  Anisotropy Whistlers = '+numwan[0]+'!C'+'Beam/Flattop Whistlers = '+numwbm[0]
+pstr       = {POLAR:1,NODATA:1,XSTYLE:1,YSTYLE:1,XRANGE:[-2e1,2e1],YRANGE:[-2e1,2e1],$
+              XMINOR:5,YMINOR:5,XTICKLEN:0.04,YTICKLEN:0.04,TITLE:ttll,XTITLE:xttl}
+
+popen,'TDS_Anisotropy-Blue_BeamFlat-Red_polar-plot_whistler-locations',/LAND
+PLOT,w_lsh,mlt_lon*!DPI/18d1,_EXTRA=pstr
+  OPLOT,w_lshan,mlt_lonan*!DPI/18d1,PSYM=4,COLOR=50,/POLAR
+  OPLOT,w_lshbm,mlt_lonbm*!DPI/18d1,PSYM=6,COLOR=250,/POLAR
+  OPLOT,[0.,0.],[0.,0.],PSYM=8,COLOR=250
+  OPLOT,[-20.,20.],[-20.,20.]
+  OPLOT,[-20.,20.],[20.,-20.]
+  OPLOT,[-20.,20.],[0.,0.]
+  OPLOT,[0.,0.],[20.,-20.]
+  OPLOT,5d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,1d1*radius,thetas,COLOR=50,/POLAR
+  OPLOT,15d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,2d1*radius,thetas,COLOR=50,/POLAR
+  XYOUTS,-2.,18.,'Noon',CHARSIZE=3.0,/DATA
+  XYOUTS,-3.,-18.,'Midnight',CHARSIZE=3.0,/DATA
+  XYOUTS,14.,1.,'Dawn',CHARSIZE=3.0,/DATA
+  XYOUTS,-18.,-2.,'Dusk',CHARSIZE=3.0,/DATA
+  XYOUTS,5d0*COS(225d0*!DPI/18d1)-2d0,5d0*SIN(225d0*!DPI/18d1)-1d0,'L = 5',CHARSIZE=2.0,/DATA
+  XYOUTS,1d1*COS(225d0*!DPI/18d1)-1d0,1d1*SIN(225d0*!DPI/18d1),'L = 10',CHARSIZE=2.0,/DATA
+  XYOUTS,15d0*COS(225d0*!DPI/18d1)-1d0,15d0*SIN(225d0*!DPI/18d1),'L = 15',CHARSIZE=2.0,/DATA
+  XYOUTS,2d1*COS(225d0*!DPI/18d1)-1d0,2d1*SIN(225d0*!DPI/18d1),'L = 20',CHARSIZE=2.0,/DATA
+pclose
+
+;-----------------------------------------------------------------------------------------
+; => Create a polar histogram by bins
+;-----------------------------------------------------------------------------------------
+mlt_lon   = w_mlt*36d1/24d0 - 9d1
+mlt_lonan = w_mltan*36d1/24d0 - 9d1
+mlt_lonbm = w_mltbm*36d1/24d0 - 9d1
+; => Shift MLTs to make them appropriate for Polar Coordinate outputs
+bad_20   = WHERE(mlt_lon LT 0d0,bd20)
+bad_21    = WHERE(mlt_lonan LT 0d0,bd21)
+bad_22    = WHERE(mlt_lonbm LT 0d0,bd22)
+IF (bd20 GT 0) THEN mlt_lon[bad_20] = mlt_lon[bad_20] + 36d1
+IF (bd21 GT 0) THEN mlt_lonan[bad_21] = mlt_lonan[bad_21] + 36d1
+IF (bd22 GT 0) THEN mlt_lonbm[bad_22] = mlt_lonbm[bad_22] + 36d1
+
+
+; w_lsh,w_lshan,w_lshbm,
+nb        = 20L + LONG(36d1/24d0)
+nlsh      = 20L
+nmlt      = 20L
+; => Location of inside edge of each histogram bin
+lsh_lft   = DINDGEN(nlsh) + 1d0
+; => Location of "left" azimuthal edge of each histogram bin
+mlt_lft   = DINDGEN(nmlt)*36d1/(nmlt - 1L)
+
+; => Find elements which fall in each bin
+up_lsh = LINDGEN(nlsh - 1L) + 1L
+dn_lsh = LINDGEN(nlsh - 1L)
+up_mlt = LINDGEN(nmlt - 1L) + 1L
+dn_mlt = LINDGEN(nmlt - 1L)
+
+num_bn = REPLICATE(0d0,nlsh,nmlt)
+FOR i=0L, nlsh - 2L DO BEGIN                               $
+  upl = lsh_lft[up_lsh[i]]                               & $
+  dnl = lsh_lft[dn_lsh[i]]                               & $
+  FOR j=0L, nmlt - 2L DO BEGIN                             $
+    upm  = mlt_lft[up_mlt[j]]                            & $
+    dnm  = mlt_lft[dn_mlt[j]]                            & $
+    test = (w_lsh LT upl[0]) AND (w_lsh GE dnl[0]) AND     $
+           (mlt_lon LT upm[0]) AND (mlt_lon GE dnm[0])   & $
+    good = WHERE(test,gd)                                & $
+    IF (gd GT 0) THEN num_bn[i,j] = DOUBLE(gd)
+
+;
+;
+;
+;        C     
+;       /     D
+;      /     .
+;     B    .
+;    /    A
+;   /   .
+;  /  .
+
+;xpt_A = lsh_lft[dn_lsh]*COS(mlt_lft[dn_mlt]*!DPI/18d1)
+;ypt_A = lsh_lft[dn_lsh]*SIN(mlt_lft[dn_mlt]*!DPI/18d1)
+;xpt_B = lsh_lft[dn_lsh]*COS(mlt_lft[up_mlt]*!DPI/18d1)
+;ypt_B = lsh_lft[dn_lsh]*SIN(mlt_lft[up_mlt]*!DPI/18d1)
+;xpt_D = lsh_lft[up_lsh]*COS(mlt_lft[dn_mlt]*!DPI/18d1)
+;ypt_D = lsh_lft[up_lsh]*SIN(mlt_lft[dn_mlt]*!DPI/18d1)
+;xpt_C = lsh_lft[up_lsh]*COS(mlt_lft[up_mlt]*!DPI/18d1)
+;ypt_C = lsh_lft[up_lsh]*SIN(mlt_lft[up_mlt]*!DPI/18d1)
+
+
+
+xpt_A = DBLARR(nlsh - 1L,nmlt - 1L)
+xpt_B = DBLARR(nlsh - 1L,nmlt - 1L)
+xpt_C = DBLARR(nlsh - 1L,nmlt - 1L)
+xpt_D = DBLARR(nlsh - 1L,nmlt - 1L)
+
+ypt_A = DBLARR(nlsh - 1L,nmlt - 1L)
+ypt_B = DBLARR(nlsh - 1L,nmlt - 1L)
+ypt_C = DBLARR(nlsh - 1L,nmlt - 1L)
+ypt_D = DBLARR(nlsh - 1L,nmlt - 1L)
+FOR i=0L, nlsh - 2L DO BEGIN                               $
+  upl = lsh_lft[up_lsh[i]]                               & $
+  dnl = lsh_lft[dn_lsh[i]]                               & $
+  FOR j=0L, nmlt - 2L DO BEGIN                             $
+    upm  = mlt_lft[up_mlt[j]]                            & $
+    dnm  = mlt_lft[dn_mlt[j]]                            & $
+    xpt_A[i,j] = dnl[0]*COS(dnm[0]*!DPI/18d1)            & $
+    xpt_B[i,j] = dnl[0]*COS(upm[0]*!DPI/18d1)            & $
+    xpt_C[i,j] = upl[0]*COS(upm[0]*!DPI/18d1)            & $
+    xpt_D[i,j] = upl[0]*COS(dnm[0]*!DPI/18d1)            & $
+    ypt_A[i,j] = dnl[0]*SIN(dnm[0]*!DPI/18d1)            & $
+    ypt_B[i,j] = dnl[0]*SIN(upm[0]*!DPI/18d1)            & $
+    ypt_C[i,j] = upl[0]*SIN(upm[0]*!DPI/18d1)            & $
+    ypt_D[i,j] = upl[0]*SIN(dnm[0]*!DPI/18d1)
+
+
+
+
+
+xx1   = [[xpt_A],[xpt_B],[xpt_C],[xpt_D]]
+yy1c  = [[ypt_A],[ypt_B],[ypt_C],[ypt_D]]
+
+cols  = LINDGEN(255L)*(MAX(num_bn,/NAN) - MIN(num_bn,/NAN))/254L
+vals  = BYTSCL(num_bn,MAX=MAX(num_bn,/NAN),MIN=1.,/NAN,TOP=254L)
+bad   = WHERE(num_bn EQ 0.,bd)
+bind  = ARRAY_INDICES(num_bn,bad)
+vals[bind[0,*],bind[1,*]] = 255b
+
+image  = num_bn
+zrange = [0d0,0d0]
+IF (zrange[0] EQ zrange[1]) THEN zrange = minmax(num_bn,MAX=mx,MIN=mn)
+image2 = bytescale(image,BOTTOM=bottom,TOP=top,RANGE=zrange)
+bad    = WHERE(num_bn EQ 0.,bd)
+bind   = ARRAY_INDICES(num_bn,bad)
+image2[bind[0,*],bind[1,*]] = 255b
+
+
+mxnum = STRING(MAX(num_bn,/NAN),FORMAT='(f10.1)')
+ttll  = 'Wind Whistler Wave Observations/Locations (ALL TDS)'
+xttl  = 'Total Number of Whistlers:  '+numw[0]+'!C'
+xttl  = xttl[0]+'White = No Data'
+zttl  = 'Number of Events Observed'
+pstr  = {POLAR:1,NODATA:1,XSTYLE:1,YSTYLE:1,XRANGE:[-2e1,2e1],YRANGE:[-2e1,2e1],$
+         XMINOR:5,YMINOR:5,XTICKLEN:0.04,YTICKLEN:0.04,TITLE:ttll,XTITLE:xttl,  $
+         YMARGIN:[4.,2.],XMARGIN:[12.,15.]}
+; => Set up plot area
+PLOT,w_lsh,mlt_lon*!DPI/18d1,_EXTRA=pstr
+FOR i=0L, nlsh - 2L DO BEGIN                                $
+  FOR j=0L, nmlt - 2L DO BEGIN                              $
+    cc    = image2[i,j]                                   & $
+    xlocs = [REFORM(xpt_A[i,j]),REFORM(xpt_B[i,j]),REFORM(xpt_C[i,j]),REFORM(xpt_D[i,j])]  & $
+    ylocs = [REFORM(ypt_A[i,j]),REFORM(ypt_B[i,j]),REFORM(ypt_C[i,j]),REFORM(ypt_D[i,j])]  & $
+    POLYFILL,xlocs,ylocs,COLOR=cc
+
+  OPLOT,[-20.,20.],[-20.,20.]
+  OPLOT,[-20.,20.],[20.,-20.]
+  OPLOT,[-20.,20.],[0.,0.]
+  OPLOT,[0.,0.],[20.,-20.]
+  OPLOT,5d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,1d1*radius,thetas,COLOR=50,/POLAR
+  OPLOT,15d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,2d1*radius,thetas,COLOR=50,/POLAR
+  XYOUTS,-2.,18.,'Noon',CHARSIZE=3.0,/DATA
+  XYOUTS,-3.,-18.,'Midnight',CHARSIZE=3.0,/DATA
+  XYOUTS,14.,1.,'Dawn',CHARSIZE=3.0,/DATA
+  XYOUTS,-18.,-2.,'Dusk',CHARSIZE=3.0,/DATA
+  XYOUTS,5d0*COS(225d0*!DPI/18d1)-2d0,5d0*SIN(225d0*!DPI/18d1)-1d0,'L = 5',CHARSIZE=2.0,/DATA
+  XYOUTS,1d1*COS(225d0*!DPI/18d1)-1d0,1d1*SIN(225d0*!DPI/18d1),'L = 10',CHARSIZE=2.0,/DATA
+  XYOUTS,15d0*COS(225d0*!DPI/18d1)-1d0,15d0*SIN(225d0*!DPI/18d1),'L = 15',CHARSIZE=2.0,/DATA
+  XYOUTS,2d1*COS(225d0*!DPI/18d1)-1d0,2d1*SIN(225d0*!DPI/18d1),'L = 20',CHARSIZE=2.0,/DATA
+
+  draw_color_scale,BRANGE=[bottom,top],RANGE=zrange,LOG=0,TITLE=zttl,      $
+                   CHARSIZE=charsize,YTICKS=4,POSITION=zposition,          $
+                   OFFSET=zoffset
+
+
+popen,'TDS-ALL_polar-plot_whistler-locations_polyfill-test',/LAND
+PLOT,w_lsh,mlt_lon*!DPI/18d1,_EXTRA=pstr
+FOR i=0L, nlsh - 2L DO BEGIN                                $
+  FOR j=0L, nmlt - 2L DO BEGIN                              $
+    cc    = vals[i,j]                                     & $
+    xlocs = [REFORM(xpt_A[i,j]),REFORM(xpt_B[i,j]),REFORM(xpt_C[i,j]),REFORM(xpt_D[i,j])]  & $
+    ylocs = [REFORM(ypt_A[i,j]),REFORM(ypt_B[i,j]),REFORM(ypt_C[i,j]),REFORM(ypt_D[i,j])]  & $
+    POLYFILL,xlocs,ylocs,COLOR=cc
+
+  OPLOT,[-20.,20.],[-20.,20.]
+  OPLOT,[-20.,20.],[20.,-20.]
+  OPLOT,[-20.,20.],[0.,0.]
+  OPLOT,[0.,0.],[20.,-20.]
+  OPLOT,5d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,1d1*radius,thetas,COLOR=50,/POLAR
+  OPLOT,15d0*radius,thetas,COLOR=50,/POLAR
+  OPLOT,2d1*radius,thetas,COLOR=50,/POLAR
+  XYOUTS,-2.,18.,'Noon',CHARSIZE=3.0,/DATA
+  XYOUTS,-3.,-18.,'Midnight',CHARSIZE=3.0,/DATA
+  XYOUTS,14.,1.,'Dawn',CHARSIZE=3.0,/DATA
+  XYOUTS,-18.,-2.,'Dusk',CHARSIZE=3.0,/DATA
+  XYOUTS,5d0*COS(225d0*!DPI/18d1)-2d0,5d0*SIN(225d0*!DPI/18d1)-1d0,'L = 5',CHARSIZE=2.0,/DATA
+  XYOUTS,1d1*COS(225d0*!DPI/18d1)-1d0,1d1*SIN(225d0*!DPI/18d1),'L = 10',CHARSIZE=2.0,/DATA
+  XYOUTS,15d0*COS(225d0*!DPI/18d1)-1d0,15d0*SIN(225d0*!DPI/18d1),'L = 15',CHARSIZE=2.0,/DATA
+  XYOUTS,2d1*COS(225d0*!DPI/18d1)-1d0,2d1*SIN(225d0*!DPI/18d1),'L = 20',CHARSIZE=2.0,/DATA
+
+  draw_color_scale,BRANGE=[bottom,top],RANGE=zrange,LOG=0,TITLE=zttl,      $
+                   CHARSIZE=charsize,YTICKS=4,POSITION=zposition,          $
+                   OFFSET=zoffset
+pclose
+
+
+;-----------------------------------------------------------------------------------------
+; => Test polar_histogram_plot.pro
+;-----------------------------------------------------------------------------------------
+WINDOW,0,XSIZE=800,YSIZE=800,RETAIN=2
+!X.MARGIN  = [10.,3.]
+!Y.MARGIN  = [4.,2.]
+
+mlt_lon   = w_mlt*36d1/24d0 - 9d1
+; => Shift MLTs to make them appropriate for Polar Coordinate outputs
+bad_2     = WHERE(mlt_lon LT 0d0,bd2)
+IF (bd2 GT 0) THEN mlt_lon[bad_2] = mlt_lon[bad_2] + 36d1
+
+
+
+
+ttll      = 'Wind Whistler Wave Observations/Locations (ALL TDS)'
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+polar_histogram_plot,w_rad,mlt_lon,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                     NBIN_R=10,NBIN_T=15,/LABELS,/POLAR
+
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+popen,'TDS-ALL_polar-plot_whistler-locations_polarhistogram_20-Radial_20-Angle',/LAND
+  polar_histogram_plot,w_rad,mlt_lon,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                       NBIN_R=20,NBIN_T=20,/LABELS,/POLAR
+pclose
+
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+popen,'TDS-ALL_polar-plot_whistler-locations_polarhistogram_30-Radial_15-Angle',/LAND
+  polar_histogram_plot,w_rad,mlt_lon,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                       NBIN_R=30,NBIN_T=15,/LABELS,/POLAR
+pclose
+
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+popen,'TDS-ALL_polar-plot_whistler-locations_polarhistogram_10-Radial_15-Angle',/LAND
+  polar_histogram_plot,w_rad,mlt_lon,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                       NBIN_R=10,NBIN_T=15,/LABELS,/POLAR
+pclose
+
+
+bins_wave = polar_histogram_bins(w_rad,mlt_lon,NBIN_R=10,NBIN_T=15,XRANGE=xra,YRANGE=xra)
+
+;-----------------------------------------------------------------------------------------
+; => Look at statistics of Wind SC locations frequency
+;-----------------------------------------------------------------------------------------
+gdates = ['111398','040900','050300','052600','061000','062600','071000','072300',$
+          '080400','081500','100301','102401','101002']
+gd_t   = [['1998-11-13/13:00:00','1998-11-14/05:00:00'],$
+          ['2000-04-09/00:00:00','2000-04-10/20:00:00'],$
+          ['2000-05-02/20:00:00','2000-05-03/10:00:00'],$
+          ['2000-05-25/10:00:00','2000-05-26/20:00:00'],$
+          ['2000-06-09/23:00:00','2000-06-11/03:00:00'],$
+          ['2000-06-26/10:00:00','2000-06-27/02:00:00'],$
+          ['2000-07-09/23:00:00','2000-07-10/12:00:00'],$
+          ['2000-07-23/04:30:00','2000-07-25/00:00:00'],$
+          ['2000-08-03/15:00:00','2000-08-05/00:00:00'],$
+          ['2000-08-15/11:30:00','2000-08-18/00:00:00'],$
+          ['2001-10-03/00:00:00','2001-10-04/14:00:00'],$
+          ['2001-10-23/06:00:00','2001-10-25/10:00:00'],$
+          ['2002-10-09/20:00:00','2002-10-10/04:00:00'] ]
+nd     = N_ELEMENTS(gdates)
+FOR j=0L, nd - 1L DO BEGIN                                   $
+  date0 = gdates[j]                                        & $
+  t0    = time_double(REFORM(gd_t[*,j]))                   & $
+  mag3  = read_wind_mfi(TRANGE=t0)                         & $
+  t3x   = mag3.MAG.X                                       & $
+  magf4 = mag3.BGSE.Y                                      & $
+  bmag4 = mag3.MAG.Y                                       & $
+  store_data,'wi_B3_MAG(GSE)',DATA={X:mag3.MAG.X,Y:bmag4}  & $
+  store_data,'wi_B3(GSE)',DATA={X:mag3.MAG.X,Y:magf4}      & $
+  tds_magneto_orbits,DATE=date0                            & $
+  mts   = my_time_string(t3x,UNIX=1,PREC=3)                & $
+  ymdb  = mts.DATE_TIME                                    & $
+  get_data,'Wind_L-Shell',DATA=wind_lsh                    & $
+  get_data,'Wind_MLT',DATA=wind_mlt                        & $
+  get_data,'Wind_Radial_Distance',DATA=wind_rad            & $
+  jstr  = 'T'+STRTRIM(j,2)                                 & $
+  dstr  = {SCET:ymdb,LSHELL:wind_lsh.Y,MLT:wind_mlt.Y,RAD:wind_rad.Y}  & $
+  str_element,orbit_str,jstr,dstr,/ADD_REPLACE             & $
+  store_data,DELETE=tnames()
+
+
+
+;-----------------------------------------------------------------------------------------
+; => write to ASCII file
+;-----------------------------------------------------------------------------------------
+mform = '(a30,3f15.3)'
+fname = 'Wind_Locations_Stats_L-Shell_MLT_Radial-Dist.txt'
+OPENW,gunit,fname,/GET_LUN
+
+FOR j=0L, nd - 1L DO BEGIN                                   $
+  ymdb  = orbit_str.(j).SCET                               & $
+  nn    = N_ELEMENTS(ymdb)                                 & $
+  wlsh  = orbit_str.(j).LSHELL                             & $
+  wmlt  = orbit_str.(j).MLT                                & $
+  wrad  = orbit_str.(j).RAD                                & $
+  FOR k=0L, nn - 1L DO BEGIN                                 $
+    PRINTF,gunit,FORMAT=mform,ymdb[k],wlsh[k],wmlt[k],wrad[k]
+
+FREE_LUN,gunit
+
+
+
+; => Read file back in
+mdir  = FILE_EXPAND_PATH('')
+fname = FILE_SEARCH(mdir,'Wind_Locations_Stats_L-Shell_MLT_Radial-Dist.txt')
+nn    = FILE_LINES(fname[0])
+
+ymdb  = STRARR(nn)
+wlsh  = FLTARR(nn)
+wmlt  = FLTARR(nn)
+wrad  = FLTARR(nn)
+
+a     = ''
+dat   = [0.,0.,0.]
+mform = '(a30,3f15.3)'
+OPENR,gunit,fname[0],/GET_LUN
+  FOR k=0L, nn - 1L DO BEGIN          $
+    READF,gunit,FORMAT=mform,a,dat  & $
+    ymdb[k] = a                     & $
+    wlsh[k] = dat[0]                & $
+    wmlt[k] = dat[1]                & $
+    wrad[k] = dat[2]
+
+FREE_LUN,gunit
+
+good      = where(wrad LE 20.,gd)
+wlsh2     = wlsh[good]
+; => Shift MLTs to make them appropriate for Polar Coordinate outputs
+mlt_lon2  = wmlt[good]*36d1/24d0 - 9d1
+bad_2       = WHERE(mlt_lon2 LT 0d0,bd2)
+IF (bd2 GT 0) THEN mlt_lon2[bad_2] = mlt_lon2[bad_2] + 36d1
+wrad2     = wrad[good]
+
+WINDOW,0,XSIZE=800,YSIZE=800,RETAIN=2
+!P.MULTI  = 0
+ttll      = 'Wind Spacecraft Locations (ALL TDS Times)'
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+zra       = [1e0,6e3]
+polar_histogram_plot,wrad2,mlt_lon2,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                     ZRANGE=zra,NBIN_R=10,NBIN_T=15,/LABELS,/POLAR
+
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+zra       = [1e0,6e3]
+zttl      = 'Number of 3s Samples'
+popen,'TDS-ALL_Wind-Spacecraft-locations_polarhistogram_10-Radial_15-Angle',/LAND
+  polar_histogram_plot,wrad2,mlt_lon2,TTLE=ttll,XRANGE=xra,YRANGE=yra,  $
+                       ZRANGE=zra,NBIN_R=10,NBIN_T=15,ZTTL=zttl,/LABELS,$
+                       /POLAR
+pclose
+
+;-----------------------------------------------------------------------------------------
+; => look at frequency of occurrence
+;-----------------------------------------------------------------------------------------
+f         = !VALUES.F_NAN
+d         = !VALUES.D_NAN
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+gd        = 100
+mxra      = 2e1
+radius    = REPLICATE(1d0,gd)            ; => Dummy radius for circles
+thetas    = (DINDGEN(gd)*36d1/(gd - 1))*!DPI/18d1 ; => Dummy angles for circles
+nb_r      = 10L
+nb_t      = 15L
+bins_wave = polar_histogram_bins(w_rad,mlt_lon,NBIN_R=nb_r,NBIN_T=nb_t,XRANGE=xra,$
+                                 YRANGE=yra,/POLAR)
+bins_wind = polar_histogram_bins(wrad2,mlt_lon2,NBIN_R=nb_r,NBIN_T=nb_t,XRANGE=xra,$
+                                 YRANGE=yra,/POLAR)
+
+n_bin_wave = bins_wave.COUNTS
+n_bin_wind = bins_wind.COUNTS*3d0
+
+FOR i=0L, nb_r - 1L DO BEGIN        $
+  FOR j=0L, nb_t - 1L DO BEGIN      $
+    t_wave = n_bin_wave[i,j]      & $
+    t_wind = n_bin_wind[i,j]      & $
+;    IF (t_wave EQ 0.) THEN n_bin_wave[i,j] = f  & $
+    IF (t_wind EQ 0.) THEN n_bin_wind[i,j] = f
+
+freq_wave = n_bin_wave/n_bin_wind*1d3
+xpt_A  = bins_wave.XPT_A
+xpt_B  = bins_wave.XPT_B
+xpt_C  = bins_wave.XPT_C
+xpt_D  = bins_wave.XPT_D
+ypt_A  = bins_wave.YPT_A
+ypt_B  = bins_wave.YPT_B
+ypt_C  = bins_wave.YPT_C
+ypt_D  = bins_wave.YPT_D
+
+r1     = REFORM(wrad2)
+t1     = REFORM(mlt_lon2)
+zra    = [1e-4,2e-3]*1d3
+nd_c   = 255b
+zrange = zra
+vals   = bytescale(freq_wave,BOTTOM=bottom,TOP=top,RANGE=zrange)
+bad    = WHERE(FINITE(freq_wave) EQ 0 OR freq_wave EQ 0.,bd)
+bind   = ARRAY_INDICES(freq_wave,bad)
+vals[bind[0,*],bind[1,*]] = nd_c[0]
+
+ttll  = 'Wind Spacecraft Locations (ALL TDS Times)'
+rstr  = STRTRIM(nb_r,2)
+tstr  = STRTRIM(nb_t,2)
+xttl  = ''
+yttl  = ''
+xttl  = xttl[0]+'!C'+'Number of R!Dbins!N = '+rstr[0]+', Number of Angle Bins = '+tstr[0]
+yttl  = yttl[0]+'!C'+'White Bins = No Data'
+xran  = [-2e1,2e1]
+yran  = xran
+pstr  = {POLAR:1,NODATA:1,XSTYLE:1,YSTYLE:1,XRANGE:xran,YRANGE:yran,XMINOR:5,YMINOR:5,$
+         XTICKLEN:0.04,YTICKLEN:0.04,YMARGIN:[4.,2.],XMARGIN:[12.,15.],  $
+         TITLE:ttll,XTITLE:xttl,YTITLE:yttl}
+
+popen,'TDS-ALL_Wave-Frequency-Locations_polarhistogram_10-Radial_15-Angle',/LAND
+
+; => Set up plot area
+PLOT,r1,t1*!DPI/18d1,_EXTRA=pstr
+; => Plot polar histogram
+FOR i=0L, nb_r - 1L DO BEGIN         $
+  FOR j=0L, nb_t - 1L DO BEGIN        $
+    cc    = vals[i,j]      & $
+    xlocs = [REFORM(xpt_A[i,j]),REFORM(xpt_B[i,j]),REFORM(xpt_C[i,j]),REFORM(xpt_D[i,j])]      & $
+    ylocs = [REFORM(ypt_A[i,j]),REFORM(ypt_B[i,j]),REFORM(ypt_C[i,j]),REFORM(ypt_D[i,j])]      & $
+    POLYFILL,xlocs,ylocs,COLOR=cc
+
+; => Plot labels on polar histogram if desired
+FOR i=0L, nb_r - 1L DO BEGIN         $
+  FOR j=0L, nb_t - 1L DO BEGIN        $
+    cc    = vals[i,j]      & $
+    xlocs = [REFORM(xpt_A[i,j]),REFORM(xpt_B[i,j]),REFORM(xpt_C[i,j]),REFORM(xpt_D[i,j])]      & $
+    ylocs = [REFORM(ypt_A[i,j]),REFORM(ypt_B[i,j]),REFORM(ypt_C[i,j]),REFORM(ypt_D[i,j])]      & $
+    xminpos = MIN(xlocs,/NAN,lnx)      & $
+    yminpos = MIN(ylocs,/NAN,lny)      & $
+    ymaxpos = MAX(ylocs,/NAN,lxy)      & $
+    g_levn  = WHERE(ABS(ylocs)*1d3 LE 1d0,g_lvn,COMPLEMENT=b_levn,NCOMPLEMENT=b_lvn)      & $
+    xposi_0 = xlocs[lnx] + 0.05*ABS(xlocs[lnx])      & $
+    yposi_0 = (MAX(ylocs,/NAN) + MIN(ylocs,/NAN))/2e0      & $
+    num_str = 'N = '+STRTRIM(STRING(FORMAT='(f15.2)',freq_wave[i,j]),2)      & $
+    XYOUTS,xposi_0[0],yposi_0[0],num_str[0],CHARSIZE=0.5,/DATA
+
+str_element,pstr,'NOERASE',1,/ADD_REPLACE
+PLOT,r1,t1*!DPI/18d1,_EXTRA=pstr
+    ; => Plot lines at +/-45 deg and horizontal/vertical
+    OPLOT,[-1e0*mxra,1e0*mxra],[-1e0*mxra,1e0*mxra]
+    OPLOT,[-1e0*mxra,1e0*mxra],[1e0*mxra,-1e0*mxra]
+    OPLOT,[-1e0*mxra,1e0*mxra],[0e0,0e0]
+    OPLOT,[0e0,0e0],[1e0*mxra,-1e0*mxra]
+    ; => Plot circles at 1/4, 1/2, 3/4 of max data range
+    fac_0 = (1d0*mxra/4d0)
+    fac_1 = (1d0*mxra/2d0)
+    fac_2 = (3d0*mxra/4d0)
+    fac_3 = (1d0*mxra)
+    
+    OPLOT,fac_0*radius,thetas,COLOR=50,/POLAR
+    OPLOT,fac_1*radius,thetas,COLOR=50,/POLAR
+    OPLOT,fac_2*radius,thetas,COLOR=50,/POLAR
+    OPLOT,fac_3*radius,thetas,COLOR=50,/POLAR
+    ; => If desired, plot radii labels
+    dx_posi = [fac_0*COS(225d0*!DPI/18d1)-fac_3/1d1,fac_1*COS(225d0*!DPI/18d1)-fac_3/2d1,$
+               fac_2*COS(225d0*!DPI/18d1)-fac_3/2d1,fac_3*COS(225d0*!DPI/18d1)-fac_3/2d1]
+    dy_posi = [fac_0*SIN(225d0*!DPI/18d1)-fac_3/2d1,fac_1*SIN(225d0*!DPI/18d1),          $
+               fac_2*SIN(225d0*!DPI/18d1),          fac_3*SIN(225d0*!DPI/18d1)]
+    r_str   = ['R = 1/4 Total','R = 1/2 Total','R = 3/4 Total','R = 1 Total']
+    
+    XYOUTS,dx_posi[0],dy_posi[0],r_str[0],CHARSIZE=2.0,/DATA
+    XYOUTS,dx_posi[1],dy_posi[1],r_str[1],CHARSIZE=2.0,/DATA
+    XYOUTS,dx_posi[2],dy_posi[2],r_str[2],CHARSIZE=2.0,/DATA
+    XYOUTS,dx_posi[3],dy_posi[3],r_str[3],CHARSIZE=2.0,/DATA
+; => Draw in color scale
+zttl = 'Frequency of Wave Observations (10!U-3!N Samples/Second)'
+draw_color_scale,BRANGE=[bottom,top],RANGE=zrange,LOG=0,TITLE=zttl,      $
+                 CHARSIZE=charsize,YTICKS=6,POSITION=zposition,          $
+                 OFFSET=zoffset
+
+
+pclose
+
+
+;-----------------------------------------------------------------------------------------
+; => look at wave amplitudes versus radial distance and MLT
+;-----------------------------------------------------------------------------------------
+test_all         = whistler_insta_loc_read()
+magnet_beam_test = whistler_insta_loc_read(LOC_ESOURCE='magneto',FREE_ESOURCE='beams')
+magnet_anis_test = whistler_insta_loc_read(LOC_ESOURCE='magneto',FREE_ESOURCE='aniso')
+plasma_anis_test = whistler_insta_loc_read(LOC_ESOURCE='radbelt',FREE_ESOURCE='aniso')
+
+; => Define parameters
+
+; => Phase Velocities
+Vph_fln     = test_all.VPH_FLOW_MN
+Vph_flx     = test_all.VPH_FLOW_MX
+Vph_fhn     = test_all.VPH_FHIGH_MN
+Vph_fhx     = test_all.VPH_FHIGH_MX
+
+; => Define L-Shell, Radial Distance, and MLT
+w_lsh       = test_all.WIND_L_SHELL
+w_rad       = test_all.WIND_RAD_DIST
+w_mlt       = test_all.WIND_MLT
+; => Define separation tests (by finite Vph and Radial Distance)
+lshell      = 20.
+;lshell      = 15.
+;lshell      = 10.
+l_string    = STRTRIM(STRING(lshell,FORMAT='(f12.1)'),2L)
+; => Make sure we only look at cases with finite phase velocity estimates from 
+;      cold plasma dispersion estimates
+test_f      = FINITE(Vph_fln) AND FINITE(Vph_flx) AND FINITE(Vph_fhn) $
+               AND FINITE(Vph_fhx)
+; => Make sure we only look at cases within a specific L-shell
+test_l      = (w_lsh LE lshell)
+; => Combine two tests
+test        = test_f AND test_l
+good        = WHERE(test,gd)
+
+
+scets       = test_all.SCETS[good]
+; => Wave RMS Amplitudes
+rms_mag     = test_all.RMS[good,3L]
+
+w_lsh       = w_lsh[good]
+w_rad       = w_rad[good]
+w_mlt       = w_mlt[good]
+
+; => RMS Units
+units       = STRTRIM(test_all.UNITS[good],2)
+; => Define separation tests (by units)
+good_nt     = WHERE(STRLOWCASE(units) EQ 'nt',gdnt,COMPLEMENT=good_mv,NCOMPLEMENT=gdmv)
+PRINT, gdnt, gdmv
+; => For L < 20
+;          68         186
+
+
+w_lsh_nt    = w_lsh[good_nt]
+w_rad_nt    = w_rad[good_nt]
+w_mlt_nt    = w_mlt[good_nt]
+rms_mag_nt  = rms_mag[good_nt]
+scets_nt    = scets[good_nt]
+
+w_lsh_mv    = w_lsh[good_mv]
+w_rad_mv    = w_rad[good_mv]
+w_mlt_mv    = w_mlt[good_mv]
+rms_mag_mv  = rms_mag[good_mv]
+scets_mv    = scets[good_mv]
+
+; => Shift MLTs to make them appropriate for Polar Coordinate outputs
+mlt_lon_nt  = w_mlt_nt*36d1/24d0 - 9d1
+mlt_lon_mv  = w_mlt_mv*36d1/24d0 - 9d1
+
+bad_nt      = WHERE(mlt_lon_nt LT 0d0,bdnt)
+bad_mv      = WHERE(mlt_lon_mv LT 0d0,bdmv)
+IF (bdnt GT 0) THEN mlt_lon_nt[bad_nt] = mlt_lon_nt[bad_nt] + 36d1
+IF (bdmv GT 0) THEN mlt_lon_mv[bad_mv] = mlt_lon_mv[bad_mv] + 36d1
+
+
+WINDOW,0,XSIZE=800,YSIZE=800,RETAIN=2
+!P.MULTI  = 0
+ttll      = 'Wind Spacecraft Whistler RMS Amplitudes (TDSS-nT Locations)'
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+zra       = [3e-2,5e-1]
+zttl      = 'RMS Amplitudes (nT)'
+polar_histogram_plot,w_rad_nt,mlt_lon_nt,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                     ZRANGE=zra,NBIN_R=10,NBIN_T=15,DATA=rms_mag_nt,     $
+                     ZTTL=zttl,/POLAR
+
+;zra  = [1e0,6e3]
+ttll      = 'Wind Spacecraft Whistler RMS Amplitudes (TDSS-nT Locations)'
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+zra       = [3e-2,5e-1]
+zttl      = 'RMS Amplitudes (nT)'
+popen,'TDS-nT_Wind-Spacecraft-RMS-Amplitudes_polarhistogram_10-Radial_15-Angle',/LAND
+  polar_histogram_plot,w_rad_nt,mlt_lon_nt,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                       ZRANGE=zra,NBIN_R=10,NBIN_T=15,DATA=rms_mag_nt,     $
+                       ZTTL=zttl,/POLAR
+pclose
+
+ttll      = 'Wind Spacecraft Whistler RMS Amplitudes (TDSS-nT Locations)'
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+zra       = [3e-2,5e-1]
+zttl      = 'RMS Amplitudes (nT)'
+popen,'TDS-nT_Wind-Spacecraft-RMS-Amplitudes_polarhistogram_10-Radial_15-Angle_Labels',/LAND
+  polar_histogram_plot,w_rad_nt,mlt_lon_nt,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                       ZRANGE=zra,NBIN_R=10,NBIN_T=15,DATA=rms_mag_nt,     $
+                       ZTTL=zttl,/POLAR,/LABELS
+pclose
+
+
+ttll      = 'Wind Spacecraft Whistler RMS Amplitudes (TDS-mV/m Locations)'
+xra       = [-2e1,2e1]
+zra       = [6e-2,4e1]
+zttl      = 'RMS Amplitudes (mV/m)'
+polar_histogram_plot,w_rad_mv,mlt_lon_mv,TTLE=ttll,XRANGE=xra,YRANGE=xra,$
+                     ZRANGE=zra,NBIN_R=10,NBIN_T=15,DATA=rms_mag_mv,ZTTL=zttl
+
+ttll      = 'Wind Spacecraft Whistler RMS Amplitudes (TDS-mV/m Locations)'
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+zttl      = 'RMS Amplitudes (mV/m)'
+polar_histogram_plot,w_rad_mv,mlt_lon_mv,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                     ZRANGE=zra,NBIN_R=10,NBIN_T=15,DATA=rms_mag_mv,     $
+                     ZTTL=zttl,/POLAR
+
+
+; => Without labels
+ttll      = 'Wind Spacecraft Whistler RMS Amplitudes (TDS-mV/m Locations)'
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+zra       = [6e-2,4e1]
+zttl      = 'RMS Amplitudes (mV/m)'
+popen,'TDS-mVm_Wind-Spacecraft-RMS-Amplitudes_polarhistogram_10-Radial_15-Angle_R20',/LAND
+  polar_histogram_plot,w_rad_mv,mlt_lon_mv,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                       ZRANGE=zra,NBIN_R=10,NBIN_T=15,DATA=rms_mag_mv,     $
+                       ZTTL=zttl,/POLAR
+pclose
+
+ttll      = 'Wind Spacecraft Whistler RMS Amplitudes (TDS-mV/m Locations)'
+xra       = [1e0,1e1]
+yra       = [0d0,36d1]
+zra       = [6e-2,4e1]
+zttl      = 'RMS Amplitudes (mV/m)'
+popen,'TDS-mVm_Wind-Spacecraft-RMS-Amplitudes_polarhistogram_10-Radial_15-Angle_R10',/LAND
+  polar_histogram_plot,w_rad_mv,mlt_lon_mv,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                       ZRANGE=zra,NBIN_R=10,NBIN_T=15,DATA=rms_mag_mv,     $
+                       ZTTL=zttl,/POLAR
+pclose
+
+; => With labels
+ttll      = 'Wind Spacecraft Whistler RMS Amplitudes (TDS-mV/m Locations)'
+xra       = [1e0,2e1]
+yra       = [0d0,36d1]
+zra       = [6e-2,4e1]
+zttl      = 'RMS Amplitudes (mV/m)'
+popen,'TDS-mVm_Wind-Spacecraft-RMS-Amplitudes_polarhistogram_10-Radial_15-Angle_R20_Labels',/LAND
+  polar_histogram_plot,w_rad_mv,mlt_lon_mv,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                       ZRANGE=zra,NBIN_R=10,NBIN_T=15,DATA=rms_mag_mv,ZTTL=zttl,$
+                       /LABELS,/POLAR
+pclose
+
+ttll      = 'Wind Spacecraft Whistler RMS Amplitudes (TDS-mV/m Locations)'
+xra       = [1e0,1e1]
+yra       = [0d0,36d1]
+zra       = [6e-2,4e1]
+zttl      = 'RMS Amplitudes (mV/m)'
+popen,'TDS-mVm_Wind-Spacecraft-RMS-Amplitudes_polarhistogram_10-Radial_15-Angle_R10_Labels',/LAND
+  polar_histogram_plot,w_rad_mv,mlt_lon_mv,TTLE=ttll,XRANGE=xra,YRANGE=yra,$
+                       ZRANGE=zra,NBIN_R=10,NBIN_T=15,DATA=rms_mag_mv,ZTTL=zttl,$
+                       /LABELS,/POLAR
+pclose
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,816 @@
+;-----------------------------------------------------------------------------------------
+; => Plot TDSS examples in FACs  [V2 = +X-GSE direction or Earth-Sun Vector]
+;-----------------------------------------------------------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+c        = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+kB       = 1.380658d-23      ; -Boltzmann Constant (J/K)
+epo      = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo      = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me       = 9.1093897d-31     ; -Electron mass (kg)
+mp       = 1.6726231d-27     ; -Proton mass (kg)
+qq       = 1.60217733d-19    ; => Fundamental charge (C)
+; => Set up dummy plot structure variables
+xtv      = [0e0,2e2,4e2,6e2,8e2,1e3]
+xtn      = ['0','200','400','600','800','1000']
+xts      = N_ELEMENTS(xtv) - 1L
+vec      = ['x','y','z']
+coords   = 'WAVES'
+yttles   = 'E'+vec+' [mV/m, '+coords[0]+']'
+yttlbs   = 'B'+vec+' [nT, '+coords[0]+']'
+yttlss   = 'S'+vec+' [!7l!3'+'W/m!U2!N'+', '+coords[0]+']'
+xttls    = 'Time (ms)'
+suffx    = '_unfiltered'
+;-----------------------------------------------------
+; => 1997-12-10
+;-----------------------------------------------------
+date     = '121097'
+tramp    = '1997-12-10/04:33:14.664'
+vshn     = 391.2                    ; => Up/Downstream normal flow speed [SC frame] RHO8
+vec2     = [-0.903, 0.168,-0.397]   ; => Using shock normal with RH08 from JCK's site
+;-----------------------------------------------------
+; => 1998-08-26
+;-----------------------------------------------------
+date     = '082698'
+tramp    = '1998-08-26/06:40:24.972'
+vshn     = 687.4                    ; => Up/Downstream normal flow speed [SC frame] RHO8
+vec2     = [-0.655, 0.040,-0.754]   ; => Using shock normal with RH08 from JCK's site
+;-----------------------------------------------------
+; => 1998-09-24
+;-----------------------------------------------------
+date     = '092498'
+tramp    = '1998-09-24/23:20:37.374'
+vshn     = 772.4                    ; => Up/Downstream normal flow speed [SC frame] RHO8
+vec2     = [-0.914,-0.220,-0.341]   ; => Using shock normal with RH08 from JCK's site
+;-----------------------------------------------------
+; => 2000-02-11
+;-----------------------------------------------------
+date     = '021100'
+tramp    = '2000-02-11/23:33:55.319'
+vshn     = 641.4                    ; => Up/Downstream normal flow speed [SC frame] RHO8
+vec2     = [-0.914,-0.220,-0.341]   ; => Using shock normal with RH08 from JCK's site
+
+
+test0    = tdss_lhw_stats_read(DATE=date)
+evn0     = test0.EVENT_N
+unq      = UNIQ(evn0,SORT(evn0))    ; => Find unique elements of Event #'s
+gnq      = N_ELEMENTS(unq)
+unq_evns = evn0[unq]
+; => Get HTR MFI Data
+myhtr0   = htr_mfi_read(DATE=date,UNIX=1)
+; => Get TDSS Data
+waves0   = tdss_sort_relevant(DATE=date,/FIXFILE)
+
+sceta0   = waves0.SCETS
+event0   = waves0.EVENT_N
+gtd0     = N_ELEMENTS(event0)
+sf0      = DBLARR(gtd0,2048L,3L)     ; => Poynting flux [micro Watts m^(-2)]
+bf0      = REFORM(waves0.BFIELD)     ; => [ x , y , z ]-WAVES B-field (nT)
+ef0      = REFORM(waves0.EFIELD)     ;    [ x , y , z ]-WAVES E-field (mV/m)
+tt0      = REFORM(waves0.TIMES)      ; => Times (ms)
+good0    = array_WHERE(event0,unq_evns,/N_UNIQ,NCOMP1=ncomp10,NCOMP2=ncomp20)
+FOR j=0L, gtd0 - 1L DO BEGIN                                                    $
+  creb       = my_crossp_2(REFORM(ef0[j,*,*]),REFORM(bf0[j,*,*]),/NOM)*1d-12  & $
+  temp       = creb/muo*1d6                                                   & $
+  sf0[j,*,*] = temp
+
+ttle0    = 'TDSS: '+sceta0+' UT, Event #: '+STRTRIM(STRING(event0,FORMAT='(I8.8)'),2)
+ftimes   = file_name_times(sceta0,PREC=3,FORMFN=2)
+fnames0  = 'E-Fields_'+coords[0]+'_'+ftimes.F_TIME+suffx[0]
+fnambs0  = 'B-Fields_'+coords[0]+'_'+ftimes.F_TIME+suffx[0]
+fnamss0  = 'S-Fields_'+coords[0]+'_'+ftimes.F_TIME+suffx[0]
+pstr     = {XSTYLE:1,YSTYLE:1,XTITLE:xttls[0],XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,$
+            XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5}
+
+; => Plot data
+pcharsold   = !P.CHARSIZE
+pthickold   = !P.THICK
+!P.MULTI    = [0,1,3]
+!P.CHARSIZE = 1.2
+!P.THICK    = 2.0
+ntd         = gtd0
+t_time      = tt0
+; => Define Fields
+ewavex      = REFORM(ef0[*,*,0])
+ewavey      = REFORM(ef0[*,*,1])
+ewavez      = REFORM(ef0[*,*,2])
+bwavex      = REFORM(bf0[*,*,0])
+bwavey      = REFORM(bf0[*,*,1])
+bwavez      = REFORM(bf0[*,*,2])
+swavex      = REFORM(sf0[*,*,0])
+swavey      = REFORM(sf0[*,*,1])
+swavez      = REFORM(sf0[*,*,2])
+
+titles      = ttle0
+yttle       = yttles
+yttlb       = yttlbs
+yttls       = yttlss
+enames      = fnames0
+bnames      = fnambs0
+snames      = fnamss0
+
+FOR j=0L, ntd - 1L DO BEGIN                                                          $
+  t_ef   = TRANSPOSE([ewavex[j,*],ewavey[j,*],ewavez[j,*]])                        & $
+  t_bf   = TRANSPOSE([bwavex[j,*],bwavey[j,*],bwavez[j,*]])                        & $
+  t_sf   = TRANSPOSE([swavex[j,*],swavey[j,*],swavez[j,*]])                        & $
+  time   = REFORM(t_time[j,*])                                                     & $
+  yraef0 = [-1d0,1d0]*MAX(ABS(t_ef),/NAN)*1.1                                      & $
+  yrabf0 = [-1d0,1d0]*MAX(ABS(t_bf),/NAN)*1.1                                      & $
+  yrasf0 = [-1d0,1d0]*MAX(ABS(t_sf),/NAN)*1.1                                      & $
+  ptitle = titles[j]                                                               & $
+  IF (yraef0[0] EQ yraef0[1]) THEN GOTO,JUMP_SKIPE                                 & $
+  !P.MULTI    = [0,1,3]                                                            & $
+  popen,enames[j],/LAND                                                            & $
+    PLOT,time,t_ef[*,0],YRANGE=yraef0,TITLE=ptitle,YTITLE=yttle[0],_EXTRA=pstr     & $
+      OPLOT,time,t_ef[*,0],COLOR=250L                                              & $
+    PLOT,time,t_ef[*,1],YRANGE=yraef0,TITLE=ptitle,YTITLE=yttle[1],_EXTRA=pstr     & $
+      OPLOT,time,t_ef[*,1],COLOR=150L                                              & $
+    PLOT,time,t_ef[*,2],YRANGE=yraef0,TITLE=ptitle,YTITLE=yttle[2],_EXTRA=pstr     & $
+      OPLOT,time,t_ef[*,2],COLOR= 50L                                              & $
+  pclose                                                                           & $
+  JUMP_SKIPE:                                                                      & $
+  IF (yrabf0[0] EQ yrabf0[1]) THEN GOTO,JUMP_SKIPB                                 & $
+  !P.MULTI    = [0,1,3]                                                            & $
+  popen,bnames[j],/LAND                                                            & $
+    PLOT,time,t_bf[*,0],YRANGE=yrabf0,TITLE=ptitle,YTITLE=yttlb[0],_EXTRA=pstr     & $
+      OPLOT,time,t_bf[*,0],COLOR=250L                                              & $
+    PLOT,time,t_bf[*,1],YRANGE=yrabf0,TITLE=ptitle,YTITLE=yttlb[1],_EXTRA=pstr     & $
+      OPLOT,time,t_bf[*,1],COLOR=150L                                              & $
+    PLOT,time,t_bf[*,2],YRANGE=yrabf0,TITLE=ptitle,YTITLE=yttlb[2],_EXTRA=pstr     & $
+      OPLOT,time,t_bf[*,2],COLOR= 50L                                              & $
+  pclose                                                                           & $
+  JUMP_SKIPB:                                                                      & $
+  IF (yrasf0[0] EQ yrasf0[1]) THEN GOTO,JUMP_SKIPS                                 & $
+  !P.MULTI    = [0,1,3]                                                            & $
+  popen,snames[j],/LAND                                                            & $
+    PLOT,time,t_sf[*,0],YRANGE=yrasf0,TITLE=ptitle,YTITLE=yttls[0],_EXTRA=pstr     & $
+      OPLOT,time,t_sf[*,0],COLOR=250L                                              & $
+    PLOT,time,t_sf[*,1],YRANGE=yrasf0,TITLE=ptitle,YTITLE=yttls[1],_EXTRA=pstr     & $
+      OPLOT,time,t_sf[*,1],COLOR=150L                                              & $
+    PLOT,time,t_sf[*,2],YRANGE=yrasf0,TITLE=ptitle,YTITLE=yttls[2],_EXTRA=pstr     & $
+      OPLOT,time,t_sf[*,2],COLOR= 50L                                              & $
+  pclose                                                                           & $
+  JUMP_SKIPS:
+
+
+!P.MULTI    = 0
+!P.CHARSIZE = pcharsold
+!P.THICK    = pthickold
+; => Plot hodograms
+nplts       = 9L
+nepts       = (2048L - 1L)/9
+dumbtl      = REPLICATE('',nplts)
+dumbpre     = REPLICATE('',nplts)
+FOR jj=0L, 8L DO BEGIN                                                             $
+  nump0 = jj*nepts                                                               & $
+  nump1 = nump0 + nepts                                                          & $
+  tttl  = 'Points : '+STRTRIM(nump0,2)+'-'+STRTRIM(nump1,2)+' Event : '          & $
+  IF (dumbpre[jj] EQ '') THEN dumbpre[jj] = tttl[0]
+
+
+tttlbs      = 'B'+vec
+yttlbs      = tttlbs+' [nT, '+coords[0]+']'
+pcharsold   = !P.CHARSIZE
+pthickold   = !P.THICK
+!P.CHARSIZE = 1.2
+!P.THICK    = 2.0
+
+ntd         = gtd0
+scet_0      = sceta0
+evn_0       = event0
+bprefs      = fnambs0+'_'
+suffh       = '_hodogram'+suffx[0]
+bwavex      = REFORM(bf0[*,*,0])
+bwavey      = REFORM(bf0[*,*,1])
+bwavez      = REFORM(bf0[*,*,2])
+
+FOR j=0L, ntd - 1L DO BEGIN                                                                                     $
+  t_bf      = TRANSPOSE([bwavex[j,*],bwavey[j,*],bwavez[j,*]])                                                & $
+  yrabf0    = [-1d0,1d0]*MAX(ABS(t_bf),/NAN)*1.1                                                              & $
+  IF (yrabf0[0] EQ yrabf0[1]) THEN GOTO,JUMP_SKIPB                                                            & $
+  dumbtl    = dumbpre+STRING(evn_0[j],FORMAT='(I8.8)')                                                        & $
+  dumbtl[4] = tttlbs[1]+' vs. '+tttlbs[0]+' at '+scet_0[j]+' UT'                                              & $
+  dumbtl[8] = '!7D!3 = Start,  !9V!3 = End'                                                                   & $
+  fname     = bprefs[j]+tttlbs[1]+'-vs-'+tttlbs[0]+suffh[0]                                                   & $
+  xdat      = REFORM(bwavex[j,*])                                                                             & $
+  ydat      = REFORM(bwavey[j,*])                                                                             & $
+  pstr      = {XSTYLE:1,YSTYLE:1,XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5,YRANGE:yrabf0,XRANGE:yrabf0}        & $
+  !P.MULTI  = [0,3,3]                                                                                         & $
+  popen,fname[0],ENCAPSULATED=1,XSIZE=10.25,YSIZE=11.0,/LAND                                                  & $
+  FOR jj=0L, 8L DO BEGIN                                                                                        $
+    nump0 = jj*nepts                                                                                          & $
+    nump1 = nump0 + nepts                                                                                     & $
+    PLOT,xdat[nump0:nump1],ydat[nump0:nump1],_EXTRA=pstr,XTITLE=yttlbs[0],YTITLE=yttlbs[1],TITLE=dumbtl[jj]   & $
+      OPLOT,xdat[nump0:nump1],ydat[nump0:nump1],COLOR= 50L,THICK=2.5                                          & $
+      OPLOT,[xdat[nump0]],[ydat[nump0]],PSYM=5,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[xdat[nump1]],[ydat[nump1]],PSYM=4,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[0],[0],COLOR=250,PSYM=7,SYMSIZE=2.0,THICK=2.5                                                    & $
+  ENDFOR                                                                                                      & $
+  pclose                                                                                                      & $
+  JUMP_SKIPB:
+
+FOR j=0L, ntd - 1L DO BEGIN                                                                                     $
+  t_bf      = TRANSPOSE([bwavex[j,*],bwavey[j,*],bwavez[j,*]])                                                & $
+  yrabf0    = [-1d0,1d0]*MAX(ABS(t_bf),/NAN)*1.1                                                              & $
+  IF (yrabf0[0] EQ yrabf0[1]) THEN GOTO,JUMP_SKIPB                                                            & $
+  dumbtl    = dumbpre+STRING(evn_0[j],FORMAT='(I8.8)')                                                        & $
+  dumbtl[4] = tttlbs[0]+' vs. '+tttlbs[2]+' at '+scet_0[j]+' UT'                                              & $
+  dumbtl[8] = '!7D!3 = Start,  !9V!3 = End'                                                                   & $
+  fname     = bprefs[j]+tttlbs[0]+'-vs-'+tttlbs[2]+suffh[0]                                                   & $
+  xdat      = REFORM(bwavez[j,*])                                                                             & $
+  ydat      = REFORM(bwavex[j,*])                                                                             & $
+  pstr      = {XSTYLE:1,YSTYLE:1,XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5,YRANGE:yrabf0,XRANGE:yrabf0}        & $
+  !P.MULTI  = [0,3,3]                                                                                         & $
+  popen,fname[0],ENCAPSULATED=1,XSIZE=10.25,YSIZE=11.0,/LAND                                                  & $
+  FOR jj=0L, 8L DO BEGIN                                                                                        $
+    nump0 = jj*nepts                                                                                          & $
+    nump1 = nump0 + nepts                                                                                     & $
+    PLOT,xdat[nump0:nump1],ydat[nump0:nump1],_EXTRA=pstr,XTITLE=yttlbs[2],YTITLE=yttlbs[0],TITLE=dumbtl[jj]   & $
+      OPLOT,xdat[nump0:nump1],ydat[nump0:nump1],COLOR= 50L,THICK=2.5                                          & $
+      OPLOT,[xdat[nump0]],[ydat[nump0]],PSYM=5,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[xdat[nump1]],[ydat[nump1]],PSYM=4,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[0],[0],COLOR=250,PSYM=7,SYMSIZE=2.0,THICK=2.5                                                    & $
+  ENDFOR                                                                                                      & $
+  pclose                                                                                                      & $
+  JUMP_SKIPB:
+
+FOR j=0L, ntd - 1L DO BEGIN                                                                                     $
+  t_bf      = TRANSPOSE([bwavex[j,*],bwavey[j,*],bwavez[j,*]])                                                & $
+  yrabf0    = [-1d0,1d0]*MAX(ABS(t_bf),/NAN)*1.1                                                              & $
+  IF (yrabf0[0] EQ yrabf0[1]) THEN GOTO,JUMP_SKIPB                                                            & $
+  dumbtl    = dumbpre+STRING(evn_0[j],FORMAT='(I8.8)')                                                        & $
+  dumbtl[4] = tttlbs[2]+' vs. '+tttlbs[1]+' at '+scet_0[j]+' UT'                                              & $
+  dumbtl[8] = '!7D!3 = Start,  !9V!3 = End'                                                                   & $
+  fname     = bprefs[j]+tttlbs[2]+'-vs-'+tttlbs[1]+suffh[0]                                                   & $
+  xdat      = REFORM(bwavey[j,*])                                                                             & $
+  ydat      = REFORM(bwavez[j,*])                                                                             & $
+  pstr      = {XSTYLE:1,YSTYLE:1,XMINOR:5,XTICKLEN:0.04,NODATA:1,YMINOR:5,YRANGE:yrabf0,XRANGE:yrabf0}        & $
+  !P.MULTI  = [0,3,3]                                                                                         & $
+  popen,fname[0],ENCAPSULATED=1,XSIZE=10.25,YSIZE=11.0,/LAND                                                  & $
+  FOR jj=0L, 8L DO BEGIN                                                                                        $
+    nump0 = jj*nepts                                                                                          & $
+    nump1 = nump0 + nepts                                                                                     & $
+    PLOT,xdat[nump0:nump1],ydat[nump0:nump1],_EXTRA=pstr,XTITLE=yttlbs[1],YTITLE=yttlbs[2],TITLE=dumbtl[jj]   & $
+      OPLOT,xdat[nump0:nump1],ydat[nump0:nump1],COLOR= 50L,THICK=2.5                                          & $
+      OPLOT,[xdat[nump0]],[ydat[nump0]],PSYM=5,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[xdat[nump1]],[ydat[nump1]],PSYM=4,COLOR=250,SYMSIZE=2.0,THICK=2.5                                & $
+      OPLOT,[0],[0],COLOR=250,PSYM=7,SYMSIZE=2.0,THICK=2.5                                                    & $
+  ENDFOR                                                                                                      & $
+  pclose                                                                                                      & $
+  JUMP_SKIPB:
+
+!P.MULTI    = 0
+!P.CHARSIZE = pcharsold
+!P.THICK    = pthickold
+;-----------------------------------------------------------------------------------------
+; => Plot TDSS examples in WAVES Coordinates with wavelet
+;-----------------------------------------------------------------------------------------
+lim      = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',1.5)
+to       = time_double('1970-01-01/12:00:00.000')
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+c        = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+kB       = 1.380658d-23      ; -Boltzmann Constant (J/K)
+epo      = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo      = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me       = 9.1093897d-31     ; -Electron mass (kg)
+mp       = 1.6726231d-27     ; -Proton mass (kg)
+qq       = 1.60217733d-19    ; => Fundamental charge (C)
+; => Set up dummy plot structure variables
+xtv      = [0e0,2e2,4e2,6e2,8e2,1e3]
+xtn      = ['0','200','400','600','800','1000']
+xts      = N_ELEMENTS(xtv) - 1L
+vec      = ['x','y','z']
+coords   = 'WAVES'
+yttles   = 'E'+vec+' [mV/m, '+coords[0]+']'
+yttlbs   = 'B'+vec+' [nT, '+coords[0]+']'
+yttlss   = 'S'+vec+' [!7l!3'+'W/m!U2!N'+', '+coords[0]+']'
+xttls    = 'Time (ms)'
+suffx    = '_unfiltered'
+powsttl  = 'Power [(!7l!3'+'W!U2!N'+'m!U-4!N'+')/Hz]'
+
+
+;-----------------------------------------------------
+; => 1997-12-10
+;-----------------------------------------------------
+date     = '121097'
+tramp    = '1997-12-10/04:33:14.664'
+vshn     = 391.2                    ; => Up/Downstream normal flow speed [SC frame] RHO8
+vec2     = [-0.903, 0.168,-0.397]   ; => Using shock normal with RH08 from JCK's site
+;-----------------------------------------------------
+; => 1998-08-26
+;-----------------------------------------------------
+date     = '082698'
+tramp    = '1998-08-26/06:40:24.972'
+vshn     = 687.4                    ; => Up/Downstream normal flow speed [SC frame] RHO8
+vec2     = [-0.655, 0.040,-0.754]   ; => Using shock normal with RH08 from JCK's site
+;-----------------------------------------------------
+; => 1998-09-24
+;-----------------------------------------------------
+date     = '092498'
+tramp    = '1998-09-24/23:20:37.374'
+vshn     = 772.4                    ; => Up/Downstream normal flow speed [SC frame] RHO8
+vec2     = [-0.914,-0.220,-0.341]   ; => Using shock normal with RH08 from JCK's site
+;-----------------------------------------------------
+; => 2000-02-11
+;-----------------------------------------------------
+date     = '021100'
+tramp    = '2000-02-11/23:33:55.319'
+vshn     = 641.4                    ; => Up/Downstream normal flow speed [SC frame] RHO8
+vec2     = [-0.914,-0.220,-0.341]   ; => Using shock normal with RH08 from JCK's site
+
+
+
+; => Plot and save the wavelets
+;temp_tdss_wavelet_plots,DATE=date,/FIXFILE
+temp_tdss_wavelet_plots,DATE=date,/FIXFILE,COORD='wav',/CLEAN
+temp_tdsf_wavelet_plots,DATE=date,/FIXFILE,COORD='wav',/CLEAN
+
+temp_tdss_wavelet_plots,DATE=date,/FIXFILE,COORD='gse',/CLEAN
+temp_tdsf_wavelet_plots,DATE=date,/FIXFILE,COORD='gse',/CLEAN
+
+temp_tdss_wavelet_plots,DATE=date,/FIXFILE,COORD='fac',/CLEAN
+temp_tdsf_wavelet_plots,DATE=date,/FIXFILE,COORD='fac',/CLEAN
+
+temp_tdss_wavelet_plots,DATE=date,/FIXFILE,COORD='mvc',/CLEAN
+
+;-----------------------------------------------------------------------------------------
+; => Special for 1998-08-26 [WAVES]
+;-----------------------------------------------------------------------------------------
+lim        = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',1.5)
+date       = '082698'
+temp_tdss_wavelet_plots,DATE=date,/FIXFILE
+
+mybfh      = htr_mfi_read(DATE=date,UNIX=1)
+omagf      = mybfh.BGSE.Y
+otmag      = mybfh.BGSE.X
+scet0      = '1998-08-26/06:40:24.472'
+unix0      = time_double(scet0)
+
+; => Get appropriate TPLOT Handles
+nnw        = tnames()
+ftimes     = file_name_times(scet0[0],PREC=3,FORMFN=2)
+mats       = ftimes.F_TIME[0]
+gposi      = STRPOS(nnw,mats[0]) GE 0
+good       = WHERE(gposi,gd)
+gnnw       = nnw[good]         ; => ALL TPLOT Handles associated with SCET of interest
+leng0      = STRLEN(gnnw[0])
+lengall    = STRLEN(gnnw)
+
+gposi_ex   = STRPOS(gnnw,'Ex') GE 0
+good_ex    = WHERE(gposi_ex,gdex)
+gnnw_ex    = gnnw[good_ex]     ; => ONLY TPLOT Handles with Ex*
+gposi_bf   = (STRPOS(gnnw,'Bx') GE 0) OR (STRPOS(gnnw,'By') GE 0) OR (STRPOS(gnnw,'Bz') GE 0)
+good_bf    = WHERE(gposi_bf,gdbf)
+gnnw_bf    = gnnw[good_bf]     ; => ONLY TPLOT Handles with Bx* or By* or Bz*
+gposi_fr   = (STRPOS(gnnw,'Freqs_') GE 0)
+good_fr    = WHERE(gposi_fr,gdfr)
+gnnw_fr    = gnnw[good_fr]     ; => ONLY TPLOT Handles with Freqs_*
+
+good_shor0 = WHERE(lengall LE leng0,gdsh)
+bad_short  = array_where(good_shor0,good_fr,/N_UNIQ,NCOMP1=comp1,NCOMP2=comp2)
+good_short = good_shor0[comp1]
+
+good_shex  = array_where(good_short,good_ex,/N_UNIQ,NCOMP1=comp1_ex,NCOMP2=comp2_ex)
+good_shbf  = array_where(good_short,good_bf,/N_UNIQ,NCOMP1=comp1_bf,NCOMP2=comp2_bf)
+
+; => ONLY TPLOT Handles for time series
+gnnw_exdat = gnnw[good_short[good_shex[*,0]]]
+gnnw_bfdat = gnnw[good_short[good_shbf[*,0]]]
+
+get_data,gnnw_exdat[0],DATA=temp
+unx_00     = (temp.X - MIN(temp.X,/NAN)) + unix0[0]
+tr3        = minmax(temp.X)
+; => interpolate B-field
+good_tr    = WHERE(otmag LE MAX(unx_00,/NAN) AND otmag GE MIN(unx_00,/NAN),gdtr)
+PRINT,';  ', MIN(omagf[good_tr,0],/NAN), MIN(omagf[good_tr,1],/NAN), MIN(omagf[good_tr,2],/NAN)
+;        -7.7080600       8.6425600       1.1582300
+PRINT,';  ', MAX(omagf[good_tr,0],/NAN), MAX(omagf[good_tr,1],/NAN), MAX(omagf[good_tr,2],/NAN)
+;       -0.39315000       21.042200       7.5559100
+
+testbx     = interp(omagf[*,0],otmag,unx_00)
+testby     = interp(omagf[*,1],otmag,unx_00)
+testbz     = interp(omagf[*,2],otmag,unx_00)
+testmagf   = [[testbx],[testby],[testbz]]
+PRINT,';  ', MIN(testbx,/NAN), MIN(testby,/NAN), MIN(testbz,/NAN)
+;        -9.8041690       8.6120712       1.1585817
+PRINT,';  ', MAX(testbx,/NAN), MAX(testby,/NAN), MAX(testbz,/NAN)
+;       -0.39399530       21.041292       7.5552811
+
+testbmag   = SQRT(TOTAL(testmagf^2,2L,/NAN))
+PRINT,';  ', MIN(testbmag,/NAN), MAX(testbmag,/NAN)
+;         9.1962771       22.368429
+me         = 9.1093897d-31     ; -Electron mass (kg)
+mp         = 1.6726231d-27     ; -Proton mass (kg)
+qq         = 1.60217733d-19    ; => Fundamental charge (C)
+fcefac     = qq*1d-9/(2d0*!DPI*me)
+fce        = fcefac[0]*testbmag
+fcp        = fce*(me[0]/mp[0])
+flh        = fce*SQRT(me[0]/mp[0])
+PRINT,';  ', MIN(fcp,/NAN), MIN(flh,/NAN), MIN(fce,/NAN)
+PRINT,';  ', MAX(fcp,/NAN), MAX(flh,/NAN), MAX(fce,/NAN)
+;        0.14019892       6.0075733       257.42664
+;        0.34101078       14.612432       626.14788
+
+WSET,1
+!P.MULTI = [0,1,2]
+;PLOT,testbmag,/NODATA,YRANGE=[-1e1,25e0],/YSTYLE,YLOG=0,/XSTYLE
+PLOT,testbmag,/NODATA,YRANGE=[15e0,22e0],/YSTYLE,YLOG=0,/XSTYLE
+  OPLOT,testbmag,LINESTYLE=4,THICK=3
+  OPLOT,testmagf[*,0],COLOR=250,THICK=2
+  OPLOT,testmagf[*,1],COLOR=150,THICK=2
+  OPLOT,testmagf[*,2],COLOR= 50,THICK=2
+PLOT,fcp,/NODATA,YRANGE=[1e0,1e3],/YSTYLE,/YLOG,/XSTYLE
+  OPLOT,fcp,COLOR=250
+  OPLOT,flh,COLOR=150
+  OPLOT,fce,COLOR= 50
+!P.MULTI = 0
+
+; => Store new fce
+get_data,'Freqs_'+mats[0]+'_unfiltered',DATA=dummy,DLIM=dlimd,LIM=limd
+freqs = [[fcp],[flh],[fce]]
+store_data,'Freqs_'+mats[0]+'_unfiltered',DATA={X:temp.X,Y:freqs},DLIM=dlimd,LIM=limd
+
+
+; => ALL TPLOT Handles Ex associated w/ wavelet
+gnnw_exwaa = gnnw[good_ex[comp2_ex]]
+len_exall  = STRLEN(gnnw_exwaa)
+mnlen      = MIN(len_exall,/NAN,lmn)
+good_wav   = WHERE(len_exall EQ len_exall[lmn],gdwav,COMPLEMENT=bad_wav,NCOMPLEMENT=bdwav)
+; => ONLY wavelet TPLOT Handles for Ex
+gnnw_exwav = gnnw_exwaa[good_wav]
+gnnw_exex  = gnnw_exwaa[bad_wav]   ; => Extra TPLOT Handles associated w/ wavelet
+gnnw_exex  = [gnnw_exex,gnnw_fr[0]]
+
+; => ALL TPLOT Handles B-field associated w/ wavelet
+gnnw_bfwaa = gnnw[good_bf[comp2_bf]]
+len_bfall  = STRLEN(gnnw_bfwaa)
+mnlen      = MIN(len_bfall,/NAN,lmn)
+good_wav   = WHERE(len_bfall EQ len_bfall[lmn],gdwav,COMPLEMENT=bad_wav,NCOMPLEMENT=bdwav)
+; => ONLY wavelet TPLOT Handles for B-field
+gnnw_bfwav = gnnw_bfwaa[good_wav]
+gnnw_bfex  = gnnw_bfwaa[bad_wav]   ; => Extra TPLOT Handles associated w/ wavelet
+gposi_bfx  = (STRPOS(gnnw_bfex,'Bx') GE 0)
+gposi_bfy  = (STRPOS(gnnw_bfex,'By') GE 0)
+gposi_bfz  = (STRPOS(gnnw_bfex,'Bz') GE 0)
+good_bfx   = WHERE(gposi_bfx,gdbfx)
+good_bfy   = WHERE(gposi_bfy,gdbfy)
+good_bfz   = WHERE(gposi_bfz,gdbfz)
+gnnw_bfexx = gnnw_bfex[good_bfx]   ; => Extra TPLOT Handles associated w/ Bx wavelet
+gnnw_bfexy = gnnw_bfex[good_bfy]   ; => Extra TPLOT Handles associated w/ By wavelet
+gnnw_bfexz = gnnw_bfex[good_bfz]   ; => Extra TPLOT Handles associated w/ Bz wavelet
+gnnw_bfexa = [[gnnw_bfexx,gnnw_fr[0]],[gnnw_bfexy,gnnw_fr[0]],[gnnw_bfexz,gnnw_fr[0]]]
+
+
+; => Force a unified Z-Range
+WSET,0
+tzra1      = [1e-6,1e0]
+suffx_1    = '_2nd-ZRANGE'
+options,gnnw_exwav,'ZRANGE',tzra1
+options,gnnw_bfwav,'ZRANGE',tzra1
+
+nnae  = [gnnw_exdat[0],gnnw_exwav[0]]
+nnoe  = gnnw_exex
+fname = gnnw_exwav[0]+suffx_1[0]
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+
+popen,fname[0],/LAND
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+pclose
+
+FOR k=0L, 2L DO BEGIN                                         $
+  nnae  = [gnnw_bfdat[k],gnnw_bfwav[k]]                     & $
+  nnoe  = gnnw_bfexa[*,k]                                   & $
+  fname = gnnw_bfwav[k]+suffx_1[0]                          & $
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM     & $
+  popen,fname[0],/LAND                                      & $
+    oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM   & $
+  pclose
+
+
+
+; => Use Linear Y-Range
+WSET,0
+suffx_1    = '_2nd-ZRANGE_LinearY'
+options,[gnnw_exwav,gnnw_exex],'YLOG',0
+options,[gnnw_bfwav,gnnw_bfexa[*,0]],'YLOG',0
+options,[gnnw_bfwav,gnnw_bfexa[*,1]],'YLOG',0
+options,[gnnw_bfwav,gnnw_bfexa[*,2]],'YLOG',0
+; => Change Y-Range
+yra_new = [0e0,30e1]
+options,[gnnw_exwav,gnnw_exex],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,0]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,1]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,2]],'YRANGE',yra_new
+
+nnae  = [gnnw_exdat[0],gnnw_exwav[0]]
+nnoe  = gnnw_exex
+fname = gnnw_exwav[0]+suffx_1[0]
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+popen,fname[0],/LAND
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+pclose
+
+FOR k=0L, 2L DO BEGIN                                         $
+  nnae  = [gnnw_bfdat[k],gnnw_bfwav[k]]                     & $
+  nnoe  = gnnw_bfexa[*,k]                                   & $
+  fname = gnnw_bfwav[k]+suffx_1[0]                          & $
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM     & $
+  popen,fname[0],/LAND                                      & $
+    oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM   & $
+  pclose
+
+; => Change Linear Y-Range
+suffx_1 = '_2nd-ZRANGE_LinearY_2nd-YRANGE'
+yra_new = [0e0,10e1]
+options,[gnnw_exwav,gnnw_exex],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,0]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,1]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,2]],'YRANGE',yra_new
+
+nnae  = [gnnw_exdat[0],gnnw_exwav[0]]
+nnoe  = gnnw_exex
+fname = gnnw_exwav[0]+suffx_1[0]
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+popen,fname[0],/LAND
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+pclose
+
+FOR k=0L, 2L DO BEGIN                                         $
+  nnae  = [gnnw_bfdat[k],gnnw_bfwav[k]]                     & $
+  nnoe  = gnnw_bfexa[*,k]                                   & $
+  fname = gnnw_bfwav[k]+suffx_1[0]                          & $
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM     & $
+  popen,fname[0],/LAND                                      & $
+    oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM   & $
+  pclose
+
+; => Change Linear Y-Range again
+suffx_1 = '_2nd-ZRANGE_LinearY_3rd-YRANGE'
+yra_new = [0e0,40e0]
+options,[gnnw_exwav,gnnw_exex],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,0]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,1]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,2]],'YRANGE',yra_new
+
+nnae  = [gnnw_exdat[0],gnnw_exwav[0]]
+nnoe  = gnnw_exex
+fname = gnnw_exwav[0]+suffx_1[0]
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+popen,fname[0],/LAND
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+pclose
+
+FOR k=0L, 2L DO BEGIN                                         $
+  nnae  = [gnnw_bfdat[k],gnnw_bfwav[k]]                     & $
+  nnoe  = gnnw_bfexa[*,k]                                   & $
+  fname = gnnw_bfwav[k]+suffx_1[0]                          & $
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM     & $
+  popen,fname[0],/LAND                                      & $
+    oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM   & $
+  pclose
+
+;-----------------------------------------------------------------------------------------
+; => Special for 1998-08-26 [FACs]
+;-----------------------------------------------------------------------------------------
+lim        = CREATE_STRUCT('LEVELS',1.0,'C_ANNOTATION','95%','YLOG',1,'C_THICK',1.5)
+date       = '082698'
+temp_tdss_wavelet_plots,DATE=date,/FIXFILE,COORD='fac'
+
+mybfh      = htr_mfi_read(DATE=date,UNIX=1)
+omagf      = mybfh.BGSE.Y
+otmag      = mybfh.BGSE.X
+scet0      = '1998-08-26/06:40:24.472'
+unix0      = time_double(scet0)
+
+; => Get appropriate TPLOT Handles
+nnw        = tnames()
+ftimes     = file_name_times(scet0[0],PREC=3,FORMFN=2)
+mats       = ftimes.F_TIME[0]
+gposi      = STRPOS(nnw,mats[0]) GE 0
+good       = WHERE(gposi,gd)
+gnnw       = nnw[good]         ; => ALL TPLOT Handles associated with SCET of interest
+leng0      = STRLEN(gnnw[0])
+lengall    = STRLEN(gnnw)
+
+;gposi_ex   = STRPOS(gnnw,'Ex') GE 0
+;good_ex    = WHERE(gposi_ex,gdex)
+;gnnw_ex    = gnnw[good_ex]     ; => ONLY TPLOT Handles with Ex*
+gposi_bf   = (STRPOS(gnnw,'Bpara_0') GE 0) OR (STRPOS(gnnw,'Bperp_1') GE 0) OR $
+             (STRPOS(gnnw,'Bperp_2') GE 0)
+good_bf    = WHERE(gposi_bf,gdbf)
+gnnw_bf    = gnnw[good_bf]     ; => ONLY TPLOT Handles with Bx* or By* or Bz*
+gposi_fr   = (STRPOS(gnnw,'Freqs_') GE 0)
+good_fr    = WHERE(gposi_fr,gdfr)
+gnnw_fr    = gnnw[good_fr]     ; => ONLY TPLOT Handles with Freqs_*
+
+good_shor0 = WHERE(lengall LE leng0,gdsh)
+bad_short  = array_where(good_shor0,good_fr,/N_UNIQ,NCOMP1=comp1,NCOMP2=comp2)
+good_short = good_shor0[comp1]
+
+;good_shex  = array_where(good_short,good_ex,/N_UNIQ,NCOMP1=comp1_ex,NCOMP2=comp2_ex)
+good_shbf  = array_where(good_short,good_bf,/N_UNIQ,NCOMP1=comp1_bf,NCOMP2=comp2_bf)
+
+; => ONLY TPLOT Handles for time series
+;gnnw_exdat = gnnw[good_short[good_shex[*,0]]]
+gnnw_bfdat = gnnw[good_short[good_shbf[*,0]]]
+
+get_data,gnnw_bfdat[0],DATA=temp
+unx_00     = (temp.X - MIN(temp.X,/NAN)) + unix0[0]
+tr3        = minmax(temp.X)
+; => interpolate B-field
+good_tr    = WHERE(otmag LE MAX(unx_00,/NAN) AND otmag GE MIN(unx_00,/NAN),gdtr)
+PRINT,';  ', MIN(omagf[good_tr,0],/NAN), MIN(omagf[good_tr,1],/NAN), MIN(omagf[good_tr,2],/NAN)
+;        -7.7080600       8.6425600       1.1582300
+PRINT,';  ', MAX(omagf[good_tr,0],/NAN), MAX(omagf[good_tr,1],/NAN), MAX(omagf[good_tr,2],/NAN)
+;       -0.39315000       21.042200       7.5559100
+
+testbx     = interp(omagf[*,0],otmag,unx_00)
+testby     = interp(omagf[*,1],otmag,unx_00)
+testbz     = interp(omagf[*,2],otmag,unx_00)
+testmagf   = [[testbx],[testby],[testbz]]
+PRINT,';  ', MIN(testbx,/NAN), MIN(testby,/NAN), MIN(testbz,/NAN)
+;        -9.8041690       8.6120712       1.1585817
+PRINT,';  ', MAX(testbx,/NAN), MAX(testby,/NAN), MAX(testbz,/NAN)
+;       -0.39399530       21.041292       7.5552811
+
+testbmag   = SQRT(TOTAL(testmagf^2,2L,/NAN))
+PRINT,';  ', MIN(testbmag,/NAN), MAX(testbmag,/NAN)
+;         9.1962771       22.368429
+me         = 9.1093897d-31     ; -Electron mass (kg)
+mp         = 1.6726231d-27     ; -Proton mass (kg)
+qq         = 1.60217733d-19    ; => Fundamental charge (C)
+fcefac     = qq*1d-9/(2d0*!DPI*me)
+fce        = fcefac[0]*testbmag
+fcp        = fce*(me[0]/mp[0])
+flh        = fce*SQRT(me[0]/mp[0])
+PRINT,';  ', MIN(fcp,/NAN), MIN(flh,/NAN), MIN(fce,/NAN)
+PRINT,';  ', MAX(fcp,/NAN), MAX(flh,/NAN), MAX(fce,/NAN)
+;        0.14019892       6.0075733       257.42664
+;        0.34101078       14.612432       626.14788
+
+WSET,1
+!P.MULTI = [0,1,2]
+;PLOT,testbmag,/NODATA,YRANGE=[-1e1,25e0],/YSTYLE,YLOG=0,/XSTYLE
+PLOT,testbmag,/NODATA,YRANGE=[15e0,22e0],/YSTYLE,YLOG=0,/XSTYLE
+  OPLOT,testbmag,LINESTYLE=4,THICK=3
+  OPLOT,testmagf[*,0],COLOR=250,THICK=2
+  OPLOT,testmagf[*,1],COLOR=150,THICK=2
+  OPLOT,testmagf[*,2],COLOR= 50,THICK=2
+PLOT,fcp,/NODATA,YRANGE=[1e0,1e3],/YSTYLE,/YLOG,/XSTYLE
+  OPLOT,fcp,COLOR=250
+  OPLOT,flh,COLOR=150
+  OPLOT,fce,COLOR= 50
+!P.MULTI = 0
+
+; => Store new fce
+get_data,'Freqs_'+mats[0]+'_unfiltered',DATA=dummy,DLIM=dlimd,LIM=limd
+freqs = [[fcp],[flh],[fce]]
+store_data,'Freqs_'+mats[0]+'_unfiltered',DATA={X:temp.X,Y:freqs},DLIM=dlimd,LIM=limd
+
+
+; => ALL TPLOT Handles Ex associated w/ wavelet
+;gnnw_exwaa = gnnw[good_ex[comp2_ex]]
+;len_exall  = STRLEN(gnnw_exwaa)
+;mnlen      = MIN(len_exall,/NAN,lmn)
+;good_wav   = WHERE(len_exall EQ len_exall[lmn],gdwav,COMPLEMENT=bad_wav,NCOMPLEMENT=bdwav)
+; => ONLY wavelet TPLOT Handles for Ex
+;gnnw_exwav = gnnw_exwaa[good_wav]
+;gnnw_exex  = gnnw_exwaa[bad_wav]   ; => Extra TPLOT Handles associated w/ wavelet
+;gnnw_exex  = [gnnw_exex,gnnw_fr[0]]
+
+; => ALL TPLOT Handles B-field associated w/ wavelet
+gnnw_bfwaa = gnnw[good_bf[comp2_bf]]
+len_bfall  = STRLEN(gnnw_bfwaa)
+mnlen      = MIN(len_bfall,/NAN,lmn)
+good_wav   = WHERE(len_bfall EQ len_bfall[lmn],gdwav,COMPLEMENT=bad_wav,NCOMPLEMENT=bdwav)
+; => ONLY wavelet TPLOT Handles for B-field
+gnnw_bfwav = gnnw_bfwaa[good_wav]
+gnnw_bfex  = gnnw_bfwaa[bad_wav]   ; => Extra TPLOT Handles associated w/ wavelet
+gposi_bfx  = (STRPOS(gnnw_bfex,'Bpara_0') GE 0)
+gposi_bfy  = (STRPOS(gnnw_bfex,'Bperp_1') GE 0)
+gposi_bfz  = (STRPOS(gnnw_bfex,'Bperp_2') GE 0)
+good_bfx   = WHERE(gposi_bfx,gdbfx)
+good_bfy   = WHERE(gposi_bfy,gdbfy)
+good_bfz   = WHERE(gposi_bfz,gdbfz)
+gnnw_bfexx = gnnw_bfex[good_bfx]   ; => Extra TPLOT Handles associated w/ Bx wavelet
+gnnw_bfexy = gnnw_bfex[good_bfy]   ; => Extra TPLOT Handles associated w/ By wavelet
+gnnw_bfexz = gnnw_bfex[good_bfz]   ; => Extra TPLOT Handles associated w/ Bz wavelet
+gnnw_bfexa = [[gnnw_bfexx,gnnw_fr[0]],[gnnw_bfexy,gnnw_fr[0]],[gnnw_bfexz,gnnw_fr[0]]]
+
+
+; => Force a unified Z-Range
+WSET,0
+tzra1      = [1e-6,1e0]
+suffx_1    = '_2nd-ZRANGE'
+;options,gnnw_exwav,'ZRANGE',tzra1
+options,gnnw_bfwav,'ZRANGE',tzra1
+
+;nnae  = [gnnw_exdat[0],gnnw_exwav[0]]
+;nnoe  = gnnw_exex
+;fname = gnnw_exwav[0]+suffx_1[0]
+;  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+;popen,fname[0],/LAND
+;  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+;pclose
+
+FOR k=0L, 2L DO BEGIN                                         $
+  nnae  = [gnnw_bfdat[k],gnnw_bfwav[k]]                     & $
+  nnoe  = gnnw_bfexa[*,k]                                   & $
+  fname = gnnw_bfwav[k]+suffx_1[0]                          & $
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM     & $
+  popen,fname[0],/LAND                                      & $
+    oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM   & $
+  pclose
+
+
+
+; => Use Linear Y-Range
+WSET,0
+suffx_1    = '_2nd-ZRANGE_LinearY'
+;options,[gnnw_exwav,gnnw_exex],'YLOG',0
+options,[gnnw_bfwav,gnnw_bfexa[*,0]],'YLOG',0
+options,[gnnw_bfwav,gnnw_bfexa[*,1]],'YLOG',0
+options,[gnnw_bfwav,gnnw_bfexa[*,2]],'YLOG',0
+; => Change Y-Range
+yra_new = [0e0,30e1]
+;options,[gnnw_exwav,gnnw_exex],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,0]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,1]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,2]],'YRANGE',yra_new
+
+;nnae  = [gnnw_exdat[0],gnnw_exwav[0]]
+;nnoe  = gnnw_exex
+;fname = gnnw_exwav[0]+suffx_1[0]
+;  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+;popen,fname[0],/LAND
+;  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+;pclose
+
+FOR k=0L, 2L DO BEGIN                                         $
+  nnae  = [gnnw_bfdat[k],gnnw_bfwav[k]]                     & $
+  nnoe  = gnnw_bfexa[*,k]                                   & $
+  fname = gnnw_bfwav[k]+suffx_1[0]                          & $
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM     & $
+  popen,fname[0],/LAND                                      & $
+    oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM   & $
+  pclose
+
+; => Change Linear Y-Range
+suffx_1 = '_2nd-ZRANGE_LinearY_2nd-YRANGE'
+yra_new = [0e0,10e1]
+;options,[gnnw_exwav,gnnw_exex],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,0]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,1]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,2]],'YRANGE',yra_new
+
+;nnae  = [gnnw_exdat[0],gnnw_exwav[0]]
+;nnoe  = gnnw_exex
+;fname = gnnw_exwav[0]+suffx_1[0]
+;  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+;popen,fname[0],/LAND
+;  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+;pclose
+
+FOR k=0L, 2L DO BEGIN                                         $
+  nnae  = [gnnw_bfdat[k],gnnw_bfwav[k]]                     & $
+  nnoe  = gnnw_bfexa[*,k]                                   & $
+  fname = gnnw_bfwav[k]+suffx_1[0]                          & $
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM     & $
+  popen,fname[0],/LAND                                      & $
+    oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM   & $
+  pclose
+
+; => Change Linear Y-Range again
+suffx_1 = '_2nd-ZRANGE_LinearY_3rd-YRANGE'
+yra_new = [0e0,40e0]
+;options,[gnnw_exwav,gnnw_exex],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,0]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,1]],'YRANGE',yra_new
+options,[gnnw_bfwav,gnnw_bfexa[*,2]],'YRANGE',yra_new
+
+;nnae  = [gnnw_exdat[0],gnnw_exwav[0]]
+;nnoe  = gnnw_exex
+;fname = gnnw_exwav[0]+suffx_1[0]
+;  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+;popen,fname[0],/LAND
+;  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM
+;pclose
+
+FOR k=0L, 2L DO BEGIN                                         $
+  nnae  = [gnnw_bfdat[k],gnnw_bfwav[k]]                     & $
+  nnoe  = gnnw_bfexa[*,k]                                   & $
+  fname = gnnw_bfwav[k]+suffx_1[0]                          & $
+  oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM     & $
+  popen,fname[0],/LAND                                      & $
+    oplot_tplot_spec,nnae,nnoe,TRANGE=tr3,LIMITS=lim,/NOM   & $
+  pclose
+
+
+
+
+
+
+
+
+

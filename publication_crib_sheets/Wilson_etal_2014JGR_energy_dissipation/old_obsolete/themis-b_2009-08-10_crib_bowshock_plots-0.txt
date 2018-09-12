@@ -1,0 +1,783 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+; => Compile necessary routines
+@comp_lynn_pros
+
+;-----------------------------------------------------------------------------------------
+; => Date/Times/Probes
+;-----------------------------------------------------------------------------------------
+tdate     = '2009-08-10'
+tr_00     = tdate[0]+'/'+['17:10:00','21:30:00']
+probe     = 'b'
+probef    = 'b'
+gprobes   = 'b'
+
+; Data parameters, load data, and set color table:
+;
+dur       = 1.0   ; # of days
+
+timespan,tdate[0],dur[0],/DAY
+tr        = timerange()
+probes    = ['a','b','c','d','e']
+
+tplot_options,'XMARGIN',[ 20, 15]
+tplot_options,'YMARGIN',[ 5, 5]
+; => initialize themis routines and default parameters
+thm_init
+;-----------------------------------------------------------------------------------------
+; => Load TPLOT data
+;-----------------------------------------------------------------------------------------
+mdir   = FILE_EXPAND_PATH('IDL_stuff/themis_data_dir/themis_tplot_save/')
+mfiles = FILE_SEARCH(mdir,'tplot_state_fgm_scm_efi_basic_thm-*.tplot')
+
+test   = STRMATCH(mfiles,'*'+tdate[0]+'*')
+good   = WHERE(test,gd)
+
+gfile  = mfiles[good[0]]
+
+tplot_restore,FILENAME=gfile[0]
+loadct2, 39
+; => Delete tplot variables for THEMIS A
+del_data, 'tha_*'
+
+sc     = probe[0]
+bad_nm = tnames('th'+sc[0]+'_ef*_dot0*')
+del_data, bad_nm
+bad_nm = tnames('th'+sc[0]+'_ef*_e*')
+del_data, bad_nm
+bad_nm = tnames('th'+sc[0]+'_ef*_0')
+del_data, bad_nm
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+names  = tnames([25,26,28,29,31,32,34])
+tplot,names
+
+;-----------------------------------------------------------------------------------------
+; => Calculate Magnetic Local Time (MLT), Magnetic Latitude (MLAT), L-Shell, and 
+;      Invariant Latitude (ILAT)
+;-----------------------------------------------------------------------------------------
+
+;-----------------------------------------------------
+; => Convert GSM SC position to SM position
+;-----------------------------------------------------
+; => call again so that spin model common blocks are loaded...
+sc        = probe[0]
+thm_load_state,PROBE=sc[0],/GET_SUPPORT_DATA
+
+sc      = probe[0]
+pos_gsm = 'th'+sc[0]+'_state_pos_gsm'
+pos__sm = 'th'+sc[0]+'_state_pos__sm'
+cotrans,pos_gsm[0],pos__sm[0],/GSM2SM
+posnm          = pos__sm[0]
+get_data,posnm[0],DATA=temp,DLIM=dlim,LIM=lim
+th_pos_time    = temp.X
+th_pos_vec__sm = temp.Y
+th_pos_rad__sm = SQRT(TOTAL(th_pos_vec__sm^2,2,/NAN))
+;-----------------------------------------------------
+; => MLT (hours)
+;-----------------------------------------------------
+t_x            = th_pos_vec__sm[*,0]
+t_y            = th_pos_vec__sm[*,1]
+t_z            = th_pos_vec__sm[*,2]
+th_mlt         = ATAN(t_y/t_x)*18d1/!DPI/15d0 + 12d0
+; => Check for negative X-SM coordinate points
+low_tmp        = WHERE(th_pos_vec__sm[*,0] LT 0d0,lwtp)
+IF (lwtp GT 0L) THEN th_mlt[low_tmp] = (ATAN(t_y[low_tmp]/t_x[low_tmp]) + !DPI)*18d1/(!DPI*15d0) + 12d0
+; => make sure LT 24
+th_mlt         = th_mlt MOD 24d0
+;-----------------------------------------------------
+; => MLAT (deg)
+;-----------------------------------------------------
+t_ratio        = t_z/th_pos_rad__sm
+th_mlat        = ATAN(t_ratio)*18d1/!DPI
+;-----------------------------------------------------
+; => L-Shell (Re)
+;-----------------------------------------------------
+cmlat          = COS(th_mlat*!DPI/18d1)
+th_lshell      = th_pos_rad__sm/(R_E[0]*cmlat^2)
+;-----------------------------------------------------
+; => ILAT (deg)
+;-----------------------------------------------------
+irt_lsh        = SQRT(1d0/th_lshell)
+th_ilat        = ACOS(irt_lsh)*18d1/!DPI
+
+; => send to TPLOT
+pref           = 'th'+sc[0]+'_'
+store_data,pref[0]+'_MLT',DATA={X:th_pos_time,Y:th_mlt}
+store_data,pref[0]+'MLAT',DATA={X:th_pos_time,Y:th_mlat}
+store_data,pref[0]+'_LSH',DATA={X:th_pos_time,Y:th_lshell}
+store_data,pref[0]+'ILAT',DATA={X:th_pos_time,Y:th_ilat}
+
+pref           = 'th'+sc[0]+'_'
+tpref          = 'th'+sc[0]+' '
+options,pref[0]+'_MLT','YTITLE',tpref[0]+'MLT [Hr]',/DEF
+options,pref[0]+'MLAT','YTITLE',tpref[0]+'MLAT [Deg]',/DEF
+options,pref[0]+'_LSH','YTITLE',tpref[0]+'LShell [Re]',/DEF
+options,pref[0]+'ILAT','YTITLE',tpref[0]+'ILAT [Deg]',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+; => Add SC position to TPLOT plots
+names          = [pref[0]+'_LSH',pref[0]+'_MLT',pref[0]+'MLAT',pref[0]+'ILAT']
+tplot_options,VAR_LABEL=names
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+;-----------------------------------------------------
+; => Create |B| TPLOT variable
+;-----------------------------------------------------
+sc     = probe[0]
+mode   = 'fgs'
+; => rotate DSL to GSE
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_dsl',OUT_SUFFIX='_gse',OUT_COORD='gse'
+; => rotate GSE to GSM
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_gse',OUT_SUFFIX='_gsm',OUT_COORD='gsm'
+
+pref    = 'th'+sc[0]+'_fg*'
+names   = tnames(pref[0])
+hed_nm  = tnames('*_hed')
+good_nm = array_where(names,hed_nm,/N_UNIQ,NCOMP1=comp1,NCOMP2=comp2)
+names   = names[comp1]
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+mode    = 'fgs'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+mode    = 'fgl'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+mode    = 'fgh'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+mode    = 'fgs'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+
+mode    = 'fgl'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+
+mode    = 'fgh'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+
+
+mode    = 'fgs'
+names   = 'th'+sc[0]+'_'+mode[0]+['_mag','_gsm']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+mode[0]+['_mag','_gsm']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+;-----------------------------------------------------------------------------------------
+; => EFI TPLOT notes
+;-----------------------------------------------------------------------------------------
+;  v[a,b]{f,p,w}   :  Voltage processor [A,B] {fast survey, particle burst, wave burst}
+;  ef{f,p,w}_dot0  :  E-field {" "} [DSL coords] using (E . B) = 0
+;  ef{f,p,w}_0     :  E-field {" "} [DSL coords] using Ez = 0
+;-----------------------------------------------------------------------------------------
+;  X (V1, V2, E12) :  49.6 m [tip-to-tip]
+;  Y (V3, V4, E34) :  40.4 m [tip-to-tip]
+;  Z (V5, V6, E56) :  6.93 m [tip-to-tip]
+;                      [0.76 m whip length]
+;
+;  0.1 - 4000 Hz is covered in the same manner as SCM
+;-----------------------------------------------------------------------------------------
+;   Data Product       Range         Bits         Resolution        Sample Rates
+;                    Unadjusted                                         (sps)
+;=========================================================================================
+;    V1,...,V6         ±100 V         16          3.2 mV/ADC           2 - 8192
+;  EDC12 (49.6 m)      ±300 mV/m      16        (9.2 µV/m)/ADC         2 - 8192
+;  EAC12 (49.6 m)      ± 51 mV/m      16        (1.6 µV/m)/ADC          16,384
+;
+;  EDC34 (40.4 m)      ±370 mV/m      16        (11. µV/m)/ADC         2 - 8192
+;  EAC34 (40.4 m)      ± 63 mV/m      16        (1.9 µV/m)/ADC          16,384
+;
+;  EDC56 ( 6.2 m)      ±2.7  V/m      16        (81. µV/m)/ADC         2 - 8192
+;  EAC34 ( 6.2 m)      ±450 mV/m      16        (14. µV/m)/ADC          16,384
+;-----------------------------------------------------------------------------------------
+;   Data Quantity      Slow               Fast             Particle               Wave
+;                     Survey             Survey              Burst                Burst
+;=========================================================================================
+;  Vn (n=1,..,6)    0,2,or 4 sps         2 sps              16 sps               8192 sps
+;                       vaf               vaf                 vap                  vaw
+;
+;      Enm          0,2,or 4 sps         4 sps             128 sps               8192 sps
+; (nm = 12,34,56)       eff               eff                 efp                  efw
+;                    DC-Coupled        DC-Coupled         DC-Coupled            DC-Coupled
+;-----------------------------------------------------------------------------------------
+sc     = probe[0]
+mode   = 'eff efp efw'
+; => rotate GSE to GSM
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_gse',OUT_SUFFIX='_gsm',OUT_COORD='gsm'
+
+; => change colors
+names   = tnames('th'+sc[0]+['_eff','_efp','_efw'])
+options,names,'COLORS',[250,150, 50],/DEF
+names   = tnames('th'+sc[0]+['_eff','_efp','_efw']+'_dsl')
+options,names,'COLORS',[250,150, 50],/DEF
+names   = tnames('th'+sc[0]+['_eff','_efp','_efw']+'_gse')
+options,names,'COLORS',[250,150, 50],/DEF
+names   = tnames('th'+sc[0]+['_eff','_efp','_efw']+'_gsm')
+options,names,'COLORS',[250,150, 50],/DEF
+
+
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+mode[0]+['_mag','_gsm']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+
+; => EFI Wave Burst times
+tr_all_efi     = tdate[0]+'/'+[['17:43:18.300','17:43:24.700'],['17:45:30.500','17:45:37.000'],$
+                               ['19:13:46.400','19:13:48.800'],['19:13:51.400','19:13:57.000'],$
+                               ['19:26:42.400','19:26:46.500'],['19:27:04.100','19:27:10.500'],$
+                               ['19:45:18.000','19:45:24.500'],['19:45:37.600','19:45:43.900'],$
+                               ['20:13:13.600','20:13:20.000'],['20:14:46.500','20:14:53.000'] ]
+; => Fix the Y-Axis Titles
+mode    = 'ef'+['f','p','w']
+coord   = ['dsl','gse','gsm']
+modeu   = STRUPCASE(mode)
+coordu  = STRUPCASE(coord)
+
+FOR j=0L, 2L DO BEGIN                                                               $
+  FOR k=0L, 2L DO BEGIN                                                             $
+    pref    = 'th'+sc[0]+'_'+mode[j]+'_'+coord[k]                                 & $
+    names   = tnames(pref[0])                                                     & $
+    get_data,names[0],DATA=temp,DLIM=dlim,LIM=lim                                 & $
+    smrate  = sample_rate(temp.X,GAP_THRESH=2d0,/AVE)                             & $
+    strsmr  = STRTRIM(STRING(FORMAT='(f15.0)',smrate[0]),2L)                      & $
+    yttl    = 'E ['+modeu[j]+', '+coordu[k]+', mV/m]'                             & $
+    ysubt   = '[th'+sc[0]+' '+strsmr[0]+' sps, L2]'                               & $
+    str_element,dlim,'YTITLE',yttl[0],/ADD_REPLACE                                & $
+    str_element,dlim,'YSUBTITLE',ysubt[0],/ADD_REPLACE                            & $
+    store_data,names[0],DATA=temp,DLIM=dlim,LIM=lim
+
+; => Remove EFI data spikes
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+[mode[0]+['_mag','_gsm'],'ef'+['f','p','w']+'_dsl']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+
+
+badnms  = tnames('th'+sc[0]+'_ef*'+['_dsl','_gse','_gsm'])
+j       = 0L
+tlimit,time_double(REFORM(tr_all_efi[*,j]))
+kill_data_tr,NAMES=badnms
+;------------------------------------------------------------------
+; => j = 0
+;------------------------------------------------------------------
+;   0       thb_efp_gsm:       2009-08-10/17:43:19.449      4.637
+;   1       thb_efp_gsm:       2009-08-10/17:43:19.455      4.283
+;
+;   0       thb_efp_gsm:       2009-08-10/17:43:20.933      4.637
+;   1       thb_efp_gsm:       2009-08-10/17:43:20.938      4.283
+;
+;   0       thb_efw_gsm:       2009-08-10/17:43:22.428      18.66
+;   1       thb_efw_gsm:       2009-08-10/17:43:22.433      18.42
+;
+;   0              Null:       2009-08-10/17:43:23.911        NaN
+;   1              Null:       2009-08-10/17:43:23.917        NaN
+;
+;   0       thb_efp_gsm:       2009-08-10/17:43:23.174      7.817
+;   1       thb_efp_gsm:       2009-08-10/17:43:23.180      6.250
+;------------------------------------------------------------------
+; => j = 1
+;------------------------------------------------------------------
+;   0       thb_efw_gsm:       2009-08-10/17:45:31.981      27.38
+;   1       thb_efw_gsm:       2009-08-10/17:45:31.987      27.19
+;
+;   0       thb_efw_gsm:       2009-08-10/17:45:34.960      31.56
+;   1       thb_efw_gsm:       2009-08-10/17:45:34.965      31.56
+;
+;   0       thb_efp_dsl:       2009-08-10/17:45:35.487     -25.21
+;   1       thb_efp_dsl:       2009-08-10/17:45:35.490     -24.91
+;------------------------------------------------------------------
+; => j = 2
+;------------------------------------------------------------------
+;   0       thb_efp_dsl:       2009-08-10/19:13:46.791     -6.923
+;   1       thb_efp_dsl:       2009-08-10/19:13:46.797     -7.995
+;
+;   0       thb_efp_dsl:       2009-08-10/19:13:47.528     -10.55
+;   1       thb_efp_dsl:       2009-08-10/19:13:47.534     -12.10
+;------------------------------------------------------------------
+; => j = 3
+;------------------------------------------------------------------
+;   0       thb_efp_dsl:       2009-08-10/19:13:52.001     -16.95
+;   1       thb_efp_dsl:       2009-08-10/19:13:52.006     -18.09
+;
+;   0       thb_efp_dsl:       2009-08-10/19:13:53.485     -6.855
+;   1       thb_efp_dsl:       2009-08-10/19:13:53.491     -6.961
+;
+;   0       thb_efp_dsl:       2009-08-10/19:13:54.979     -19.62
+;   1       thb_efp_dsl:       2009-08-10/19:13:54.985     -20.15
+;
+;   0       thb_eff_dsl:       2009-08-10/19:13:55.725     -13.91
+;   1       thb_eff_dsl:       2009-08-10/19:13:55.732     -14.36
+;
+;   0       thb_eff_dsl:       2009-08-10/19:13:56.463     -9.425
+;   1       thb_eff_dsl:       2009-08-10/19:13:56.469     -9.672
+;------------------------------------------------------------------
+; => j = 4
+;------------------------------------------------------------------
+;
+;
+;
+;
+
+;-----------------------------------------------------------------------------------------
+; => SCM notes
+;-----------------------------------------------------------------------------------------
+;  Bandwidth  :  0.1 - 4000 Hz
+;  NEMI       :  Noise Equivalent Magnetic Induction
+;                  [ = 0.76 pT/Hz^(1/2) at 10 Hz]
+;                  [ = 20.0 fT/Hz^(1/2) at 1 kHz]
+;
+;  0.1 - 4000 Hz is covered in the same manner as EFI
+;-----------------------------------------------------------------------------------------
+;   Data Quantity      Slow               Fast             Particle               Wave
+;                     Survey             Survey              Burst                Burst
+;=========================================================================================
+;   SCM Waveform                       2 - 256 sps          128 sps              8192 sps
+;                                     [nominal = 8]        [nominal]            [nominal]
+;-----------------------------------------------------------------------------------------
+
+;-----------------------------------------------------------------------------------------
+; => SCM calibration
+;-----------------------------------------------------------------------------------------
+
+del_data, 'thb_sc*'
+; => try loading level 2 data
+;     [Level 2 data exists]
+thm_load_scm,PROBE=sc[0],LEVEL='l2',TRANGE=tr,/GET_SUPPORT,SUFFIX='_L2'
+
+pref    = 'th'+sc[0]+'_sc*'+['_dsl','_gse','_gsm']+'_L2'
+names   = tnames(pref)
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+options,names,'YSUBTITLE',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+; => Fix the Y-Axis Titles
+mode    = 'sc'+['f','p','w']
+coord   = ['dsl','gse','gsm']
+modeu   = STRUPCASE(mode)
+coordu  = STRUPCASE(coord)
+
+FOR j=0L, 2L DO BEGIN                                                               $
+  FOR k=0L, 2L DO BEGIN                                                             $
+    pref    = 'th'+sc[0]+'_'+mode[j]+'_'+coord[k]+'_L2'                           & $
+    names   = tnames(pref[0])                                                     & $
+    get_data,names[0],DATA=temp,DLIM=dlim,LIM=lim                                 & $
+    smrate  = sample_rate(temp.X,GAP_THRESH=2d0,/AVE)                             & $
+    strsmr  = STRTRIM(STRING(FORMAT='(f15.0)',smrate[0]),2L)                      & $
+    yttl    = 'B ['+modeu[j]+', '+coordu[k]+', nT]'                               & $
+    ysubt   = '[th'+sc[0]+' '+strsmr[0]+' sps, L2]'                               & $
+    str_element,dlim,'YTITLE',yttl[0],/ADD_REPLACE                                & $
+    str_element,dlim,'YSUBTITLE',ysubt[0],/ADD_REPLACE                            & $
+    store_data,names[0],DATA=temp,DLIM=dlim,LIM=lim
+
+
+; => SCM Wave Burst times
+tr_all_scm     = tdate[0]+'/'+[['17:43:18.900','17:43:24.200'],['17:45:31.100','17:45:36.400'],$
+                               ['19:13:45.700','19:13:50.900'],['19:13:52.100','19:13:57.400'],$
+                               ['19:26:42.900','19:26:48.200'],['19:35:08.900','19:35:14.200'],$
+                               ['19:35:15.400','19:35:20.600'],['19:45:18.600','19:45:23.800'],$
+                               ['19:45:38.100','19:45:43.400'],['20:13:14.200','20:13:19.400'] ]
+
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+[mode[0]+['_mag','_gsm'],['efw_gsm','scf_gsm_L2','scp_gsm_L2','scw_gsm_L2']]
+tplot,names,TRANGE=time_double(tr_00),/NOM
+;-----------------------------------------------------------------------------------------
+; => Transform into Xgse field aligned coordinates 
+;      built from time averaged fgm data
+;-----------------------------------------------------------------------------------------
+coord          = 'dsl'
+fgm_mode       = 'fgl'
+thscs_fgm_mode = 'th'+sc[0]+'_'+fgm_mode[0]
+
+time_av        = 3.
+old_name       = thscs_fgm_mode[0]+'_'+coord[0]
+new_name       = thscs_fgm_mode[0]+'_'+coord[0]+'_av'
+avg_data,old_name[0],time_av[0],NEWNAME=new_name[0]
+; => interpolate
+tinterpol_mxn,new_name[0],old_name[0]
+; => define rotation matrix
+thm_fac_matrix_make, thscs_fgm_mode+'_'+coord+'_av_interp'
+new_name2      = new_name[0]+'_interp_fac_mat'
+
+
+;-----------------------------------------------------
+; => rotate SCF data
+;-----------------------------------------------------
+suffx          = '_dsl_L2'
+mode           = 'scf'
+thscf_name     = 'th'+sc[0]+'_'+mode[0]+suffx[0]
+scf_wave_fac   = thscf_name[0]+'_fac'
+tvector_rotate,new_name2[0],thscf_name[0],NEWNAME=scf_wave_fac[0]
+;-----------------------------------------------------
+; => rotate SCP data
+;-----------------------------------------------------
+suffx          = '_dsl_L2'
+mode           = 'scp'
+thscp_name     = 'th'+sc[0]+'_'+mode[0]+suffx[0]
+scp_wave_fac   = thscp_name[0]+'_fac'
+tvector_rotate,new_name2[0],thscp_name[0],NEWNAME=scp_wave_fac[0]
+;-----------------------------------------------------
+; => rotate SCW data
+;-----------------------------------------------------
+suffx          = '_dsl_L2'
+mode           = 'scw'
+thscw_name     = 'th'+sc[0]+'_'+mode[0]+suffx[0]
+scw_wave_fac   = thscw_name[0]+'_fac'
+tvector_rotate,new_name2[0],thscw_name[0],NEWNAME=scw_wave_fac[0]
+; => collect all names
+scm_wave_fac   = [scf_wave_fac[0],scp_wave_fac[0],scw_wave_fac[0]]
+
+
+;-----------------------------------------------------
+; => rotate EFF data
+;-----------------------------------------------------
+mode           = 'eff'
+coord          = 'dsl'
+theff_mode     = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+eff_wave_fac   = theff_mode[0]+'_fac'
+tvector_rotate,new_name2[0],theff_mode[0],NEWNAME=eff_wave_fac[0]
+;-----------------------------------------------------
+; => rotate EFP data
+;-----------------------------------------------------
+mode           = 'efp'
+coord          = 'dsl'
+thefp_mode     = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+efp_wave_fac   = thefp_mode[0]+'_fac'
+tvector_rotate,new_name2[0],thefp_mode[0],NEWNAME=efp_wave_fac[0]
+;-----------------------------------------------------
+; => rotate EFW data
+;-----------------------------------------------------
+mode           = 'efw'
+coord          = 'dsl'
+thefw_mode     = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+efw_wave_fac   = thefw_mode[0]+'_fac'
+tvector_rotate,new_name2[0],thefw_mode[0],NEWNAME=efw_wave_fac[0]
+; => collect all names
+efi_wave_fac   = [eff_wave_fac[0],efp_wave_fac[0],efw_wave_fac[0]]
+
+
+options,[scm_wave_fac,efi_wave_fac],'COLORS',[250,150, 50],/DEF
+options,[scm_wave_fac,efi_wave_fac],'LABELS',['(Bo x Xgse) x Bo','Bo x Xgse','Bo'],/DEF
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+mode    = 'fgl'
+names   = ['th'+sc[0]+'_'+mode[0]+['_mag','_gsm'],scm_wave_fac,efi_wave_fac]
+tplot,names,TRANGE=time_double(tr_00),/NOM
+
+;-----------------------------------------------------
+; => clip SCW and EFW data into specified range
+;-----------------------------------------------------
+nefi           = N_ELEMENTS(tr_all_efi[0,*])
+nscm           = N_ELEMENTS(tr_all_scm[0,*])
+scm_wave_nms   = scm_wave_fac[2]+'_'+STRING(FORMAT='(I2.2)',LINDGEN(nscm))
+efi_wave_nms   = efi_wave_fac[2]+'_'+STRING(FORMAT='(I2.2)',LINDGEN(nefi))
+
+FOR j=0L, nscm - 1L DO BEGIN $
+  time_clip,scm_wave_fac[2],tr_all_scm[0,j],tr_all_scm[1,j],NEWNAME=scm_wave_nms[j]
+
+FOR j=0L, nefi - 1L DO BEGIN $
+  time_clip,efi_wave_fac[2],tr_all_efi[0,j],tr_all_efi[1,j],NEWNAME=efi_wave_nms[j]
+
+options,[scm_wave_nms,efi_wave_nms],'COLORS',[250,150, 50],/DEF
+options,[scm_wave_nms,efi_wave_nms],'LABELS',['(Bo x Xgse) x Bo','Bo x Xgse','Bo'],/DEF
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+;-----------------------------------------------------
+; Wave polarization analysis
+;-----------------------------------------------------
+mode             = 'scw'
+nopfft_input     = 512L
+steplength_input = nopfft_input[0]/2
+thresh           = 0.80
+FOR j=0L, nscm - 1L DO BEGIN $
+  wavpol_to_tplot,scm_wave_nms[j],NOPFFT=nopfft_input,STEPLENGTH=steplength_input,DEGTHRESH=thresh[0]
+
+mode             = 'efw'
+nopfft_input     = 1024L
+steplength_input = nopfft_input[0]/2
+FOR j=0L, nefi - 1L DO BEGIN $
+  wavpol_to_tplot,efi_wave_nms[j],NOPFFT=nopfft_input,STEPLENGTH=steplength_input,DEGTHRESH=thresh[0]
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_efw_'
+pows_efi_nm    = tnames(pref[0]+'*_powspec')
+degp_efi_nm    = tnames(pref[0]+'*_degpol')
+wava_efi_nm    = tnames(pref[0]+'*_waveangle')
+ellp_efi_nm    = tnames(pref[0]+'*_elliptict')
+helc_efi_nm    = tnames(pref[0]+'*_helict')
+names_efi_all  = [pows_efi_nm,degp_efi_nm,wava_efi_nm,ellp_efi_nm,helc_efi_nm]
+options,names_efi_all,'YLOG',1,/DEF
+options,names_efi_all,'YRANGE',[3d1,8200d0],/DEF
+
+pref           = 'th'+sc[0]+'_scw_'
+pows_scm_nm    = tnames(pref[0]+'*_powspec')
+degp_scm_nm    = tnames(pref[0]+'*_degpol')
+wava_scm_nm    = tnames(pref[0]+'*_waveangle')
+ellp_scm_nm    = tnames(pref[0]+'*_elliptict')
+helc_scm_nm    = tnames(pref[0]+'*_helict')
+names_scm_all = [pows_scm_nm,degp_scm_nm,wava_scm_nm,ellp_scm_nm,helc_scm_nm]
+options,names_scm_all,'YLOG',1,/DEF
+options,names_scm_all,'YRANGE',[3d1,4100d0],/DEF
+
+;-----------------------------------------------------
+; Plot wave polarization analysis
+;-----------------------------------------------------
+;  EFI
+j              = 3L
+names          = [efi_wave_nms[j]+['','_powspec','_degpol','_waveangle','_elliptict','_helict']]
+tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_efi[*,j]))
+
+;  SCM
+j              = 3L
+names          = [scm_wave_nms[j]+['','_powspec','_degpol','_waveangle','_elliptict','_helict']]
+tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all_scm[*,j]))
+
+
+
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Load Plasma velocities
+;-----------------------------------------------------------------------------------------
+
+; decide if you want magnetosheath (sheath=1) or plasmasheet (sheath=0) limits, default is sheath=1
+;	sheath=0
+;	if sheath then nmax=100. else nmax=10.
+sheath  = 1
+nmax    = 100.
+emin    = 15
+sc      = probe[0]
+typ     = 'f'
+
+thm_esa_specmom_calc,date=tdate[0],DUR=1,PROBE=sc[0],MTYPES='spectrogram velocity density temperature', $
+                     DISTRIBUTION_TYPE='full',SPECIES='ion'
+
+thm_esa_specmom_calc,date=tdate[0],DUR=1,PROBE=sc[0],MTYPES='spectrogram velocity density temperature', $
+                     DISTRIBUTION_TYPE='full',SPECIES='electron'
+
+vel_nms = tnames('th*_pe*_velocity_dsl')
+vel_out = STRMID(vel_nms,0L,17L)+'_gse'
+options,[vel_nms,vel_out],'COLORS',[250,150, 50],/DEF
+options,[vel_nms,vel_out],'LABELS',['x','y','z'],/DEF
+FOR j=0L, N_ELEMENTS(vel_nms) - 1L DO BEGIN             $
+  thm_cotrans,vel_nms[j],vel_out[j],IN_COORD='dsl',OUT_COORD='gse'
+
+
+vel_nms = tnames('th*_pe*_velocity_dsl_interp')
+vel_out = STRMID(vel_nms,0L,17L)+'_gse_interp'
+options,[vel_nms,vel_out],'COLORS',[250,150, 50],/DEF
+FOR j=0L, N_ELEMENTS(vel_nms) - 1L DO BEGIN             $
+  thm_cotrans,vel_nms[j],vel_out[j],IN_COORD='dsl',OUT_COORD='gse'
+
+FOR j=0L, N_ELEMENTS(vel_nms) - 1L DO BEGIN            $
+  get_data,vel_nms[j],DATA=temp,DLIM=dlim,LIM=lim    & $
+  vmag  = SQRT(TOTAL(temp.Y^2,2L,/NAN))              & $
+  nvec  = [[temp.Y],[vmag]]                          & $
+  nstrc = {X:temp.X,Y:nvec,V:[1,2,3,4]}              & $
+  store_data,vel_nms[j],DATA=nstrc,DLIM=dlim,LIM=lim & $
+  options,vel_nms[j],'COLORS',[250,200,75,30],/DEF        & $
+  options,vel_nms[j],'LABELS',['x','y','z','mag'],/DEF
+
+FOR j=0L, N_ELEMENTS(vel_out) - 1L DO BEGIN            $
+  get_data,vel_out[j],DATA=temp,DLIM=dlim,LIM=lim    & $
+  vmag  = SQRT(TOTAL(temp.Y^2,2L,/NAN))              & $
+  nvec  = [[temp.Y],[vmag]]                          & $
+  nstrc = {X:temp.X,Y:nvec,V:[1,2,3,4]}              & $
+  store_data,vel_out[j],DATA=nstrc,DLIM=dlim,LIM=lim & $
+  options,vel_out[j],'COLORS',[250,200,75,30],/DEF        & $
+  options,vel_out[j],'LABELS',['x','y','z','mag'],/DEF
+
+options,[vel_nms,vel_out],'COLORS',[250,200,75,30],/DEF
+options,[tem_nms,tem_out],'LABELS',['x','y','z','Avg'],/DEF
+
+
+tem_nms = tnames('th*_pe*_T_dsl')
+tem_out = STRMID(tem_nms,0L,17L)+'_gse'
+FOR j=0L, N_ELEMENTS(tem_nms) - 1L DO BEGIN             $
+  thm_cotrans,tem_nms[j],tem_out[j],IN_COORD='dsl',OUT_COORD='gse'
+
+options,[tem_nms,tem_out],'COLORS',[250,200,75,30],/DEF
+options,[tem_nms,tem_out],'LABELS',['x','y','z','Avg'],/DEF
+; => Load level 2 densities and SC potentials
+thm_load_esa,PROBE=sc[0],DATAT=' peer_avgtemp pe?r_density peer_sc_pot ',LEVEL=2
+
+FOR j=0L, N_ELEMENTS(gprobes) - 1L DO BEGIN                   $
+  get_data,'th'+gprobes[j]+'_peer_density',DATA=temp        & $
+  dens_e      = temp.Y                                      & $
+  dens_e_time = temp.X                                      & $
+  get_data,'th'+gprobes[j]+'_peir_density',DATA=temp        & $
+  dens_i      = temp.Y                                      & $
+  dens_i_time = temp.X                                      & $
+  get_data,'th'+gprobes[j]+'_peer_sc_pot',DATA=temp         & $
+  sc_pot      = temp.Y                                      & $
+  sc_pot_time = temp.X                                      & $
+  get_data,'th'+gprobes[j]+'_peer_avgtemp',DATA=temp        & $
+  Te          = temp.Y                                      & $
+  Te_time     = temp.X                                      & $
+  Npot = thm_scpot2dens(sc_pot,sc_pot_time,Te,Te_time,dens_e,dens_e_time,dens_i,dens_i_time,gprobes[j])  & $
+  store_data,'th'+gprobes[j]+'_Npot',DATA={X:sc_pot_time,Y:Npot}  & $
+  store_data,'density_pseudovar_'+gprobes[j],DATA=['th'+gprobes[j]+'_Npot','th'+gprobes[j]+'_peer_density','th'+gprobes[j]+'_peir_density']
+
+edens_nm = tnames('th'+gprobes+'_peer_density')
+idens_nm = tnames('th'+gprobes+'_peir_density')
+
+options,edens_nm,'COLOR',0,/DEF
+options,edens_nm,'COLORS',2,/DEF
+options,edens_nm,'LABELS','Ne',/DEF
+options,idens_nm,'COLOR',0,/DEF
+options,idens_nm,'COLORS',4,/DEF
+options,idens_nm,'LABELS','Ni',/DEF
+
+scpot_nm = tnames('th'+gprobes+'_Npot')
+options,scpot_nm,'COLOR',0,/DEF
+options,scpot_nm,'COLORS',0,/DEF
+options,scpot_nm,'YLOG',1,/DEF
+FOR j=0L, N_ELEMENTS(scpot_nm) - 1L DO BEGIN                   $
+  options,scpot_nm[j],'LABELS','th'+gprobes[j]+'_Npot',/DEF
+
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Old commands
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+
+
+
+
+;-----------------------------------------------------------------------------------------
+;; Select MODE (scf, scp, scw)
+;sc        = probe[0]
+;mode      = 'scf scp scw'
+;thm_load_scm,PROBE=sc[0],LEVEL=1,TYPE='raw',TRANGE=tr,/GET_SUPPORT
+;
+; => Output is in DSL coordinates
+;mode      = 'scf scp'
+;thm_cal_scm,PROBE=sc[0],DATATYPE=mode[0]+'*',OUT_SUFFIX='_cal',TRANGE=tr, $
+;            CLEANUP='none',Fmin=0.45,/EDGE_ZERO,N_SPINFIT=1,NGOOD=0
+;-----------------------------------------------------
+; => The following did NOT work
+;mode      = 'scf scp scw'
+;thm_cal_scm,PROBE=sc[0],DATATYPE=mode[0]+'*',OUT_SUFFIX='_cal',TRANGE=tr, $
+;            CLEANUP='full',Fmin=0.45,/EDGE_ZERO
+;-----------------------------------------------------
+;mode      = 'scw'
+;thm_cal_scm,PROBE=sc[0],DATATYPE=mode[0]+'*',OUT_SUFFIX='_cal',TRANGE=tr, $
+;            CLEANUP='none',Fmin=0.45,/EDGE_ZERO,N_SPINFIT=1,NGOOD=0
+;-----------------------------------------------------------------------------------------
+
+
+; => rotate DSL to GSE
+;sc        = probe[0]
+;mode      = 'scf scp scw'
+;pref      = 'th'+sc[0]+'_sc*_cal'
+;pref      = 'th'+sc[0]+'_sc*_dsl'
+;names     = tnames(pref[0])
+;thm_cotrans,names,names+'_gse',PROBE=sc[0],DATATYPE=mode[0],IN_COORD='dsl',OUT_COORD='gse'
+; => rotate GSE to GSM
+;thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_gse',OUT_SUFFIX='_gsm',OUT_COORD='gsm'
+;
+;nnw = tnames()
+;options,nnw,'YSTYLE',1
+;options,nnw,'PANEL_SIZE',2.
+;options,nnw,'XMINOR',5
+;options,nnw,'XTICKLEN',0.04
+;options,nnw,'YTICKLEN',0.01
+;
+;pref    = 'th'+sc[0]+'_sc*_cal_*'
+;names   = tnames(pref[0])
+;options,names,'COLORS',[250,150, 50]
+;options,names,'LABELS',['x','y','z']
+

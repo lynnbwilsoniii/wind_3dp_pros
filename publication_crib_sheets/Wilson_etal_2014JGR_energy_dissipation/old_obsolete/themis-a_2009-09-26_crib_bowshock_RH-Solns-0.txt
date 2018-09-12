@@ -1,0 +1,260 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+; => Compile necessary routines
+@comp_lynn_pros
+
+;-----------------------------------------------------------------------------------------
+; => Date/Times/Probes
+;-----------------------------------------------------------------------------------------
+tdate     = '2009-09-26'
+probe     = 'a'
+probef    = 'a'
+gprobes   = 'a'
+tr_00     = tdate[0]+'/'+['12:00:00','17:40:00']
+; => initialize themis routines and default parameters
+thm_init
+
+; Data parameters, load data, and set color table:
+;
+dur       = 1.0   ; # of days
+
+timespan,tdate[0],dur[0],/DAY
+tr        = timerange()
+probes    = ['a','b','c','d','e']
+
+tplot_options,'XMARGIN',[ 20, 15]
+tplot_options,'YMARGIN',[ 5, 5]
+;;=================================================================
+;; Load state stuff
+;;=================================================================
+sc        = probe[0]
+thm_load_state,PROBE=sc[0],/GET_SUPPORT_DATA
+;;=================================================================
+;; Load magnetic field and level 2 velocity data (for coord rotation).
+;;=================================================================
+mode   = 'fg?'
+sc     = probe[0]
+thm_load_fgm,PROBE=sc[0],DATATYPE=mode[0],LEVEL=2,COORD='all',TRANGE=tr
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+sc     = probe[0]
+pref   = 'th'+sc[0]+'_fgl'+['_dsl','_gse','_gsm']
+names  = tnames(pref)
+tplot,names
+;-----------------------------------------------------------------------------------------
+; => Convert GSM SC position to SM position
+;-----------------------------------------------------------------------------------------
+sc      = probe[0]
+pos_gsm = 'th'+sc[0]+'_state_pos_gsm'
+pos__sm = 'th'+sc[0]+'_state_pos__sm'
+cotrans,pos_gsm[0],pos__sm[0],/GSM2SM
+posnm          = pos__sm[0]
+get_data,posnm[0],DATA=temp,DLIM=dlim,LIM=lim
+th_pos_time    = temp.X
+th_pos_vec__sm = temp.Y
+th_pos_rad__sm = SQRT(TOTAL(th_pos_vec__sm^2,2,/NAN))
+;-----------------------------------------------------------------------------------------
+; => Calculate Magnetic Local Time (MLT), Magnetic Latitude (MLAT), L-Shell, and 
+;      Invariant Latitude (ILAT)
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------
+; => MLT (hours)
+;-----------------------------------------------------
+t_x            = th_pos_vec__sm[*,0]
+t_y            = th_pos_vec__sm[*,1]
+t_z            = th_pos_vec__sm[*,2]
+th_mlt         = ATAN(t_y/t_x)*18d1/!DPI/15d0 + 12d0
+; => Check for negative X-SM coordinate points
+low_tmp        = WHERE(th_pos_vec__sm[*,0] LT 0d0,lwtp)
+IF (lwtp GT 0L) THEN th_mlt[low_tmp] = (ATAN(t_y[low_tmp]/t_x[low_tmp]) + !DPI)*18d1/(!DPI*15d0) + 12d0
+; => make sure LT 24
+th_mlt         = th_mlt MOD 24d0
+;-----------------------------------------------------
+; => MLAT (deg)
+;-----------------------------------------------------
+t_ratio        = t_z/th_pos_rad__sm
+th_mlat        = ATAN(t_ratio)*18d1/!DPI
+;-----------------------------------------------------
+; => L-Shell (Re)
+;-----------------------------------------------------
+cmlat          = COS(th_mlat*!DPI/18d1)
+th_lshell      = th_pos_rad__sm/(R_E[0]*cmlat^2)
+;-----------------------------------------------------
+; => ILAT (deg)
+;-----------------------------------------------------
+irt_lsh        = SQRT(1d0/th_lshell)
+th_ilat        = ACOS(irt_lsh)*18d1/!DPI
+
+; => send to TPLOT
+pref           = 'th'+sc[0]+'_'
+store_data,pref[0]+'_MLT',DATA={X:th_pos_time,Y:th_mlt}
+store_data,pref[0]+'MLAT',DATA={X:th_pos_time,Y:th_mlat}
+store_data,pref[0]+'_LSH',DATA={X:th_pos_time,Y:th_lshell}
+store_data,pref[0]+'ILAT',DATA={X:th_pos_time,Y:th_ilat}
+
+pref           = 'th'+sc[0]+'_'
+tpref          = 'th'+sc[0]+' '
+options,pref[0]+'_MLT','YTITLE',tpref[0]+'MLT [Hr]',/DEF
+options,pref[0]+'MLAT','YTITLE',tpref[0]+'MLAT [Deg]',/DEF
+options,pref[0]+'_LSH','YTITLE',tpref[0]+'LShell [Re]',/DEF
+options,pref[0]+'ILAT','YTITLE',tpref[0]+'ILAT [Deg]',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+; => Add SC position to TPLOT plots
+names          = [pref[0]+'_LSH',pref[0]+'_MLT',pref[0]+'MLAT',pref[0]+'ILAT']
+tplot_options,VAR_LABEL=names
+;-----------------------------------------------------
+; => Create |B| TPLOT variable
+;-----------------------------------------------------
+sc      = probe[0]
+pref    = 'th'+sc[0]+'_fg*'
+names   = tnames(pref[0])
+hed_nm  = tnames('*_hed')
+good_nm = array_where(names,hed_nm,/N_UNIQ,NCOMP1=comp1,NCOMP2=comp2)
+names   = names[comp1]
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+mode    = 'fgl'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+mode    = 'fgh'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]',/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+mode    = 'fgl'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+
+mode    = 'fgh'
+fgm_nm  = 'th'+STRMID(sc[0],0L,1L)+'_'+mode[0]+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B ['+mode[0]+', GSM, nT]',/DEF
+options,fgm_nm[0],'YSUBTITLE',/DEF
+;-----------------------------------------------------
+; => Fix the Y-Axis Titles
+;-----------------------------------------------------
+mode    = 'fg'+['s','l','h']
+coord   = ['dsl','gse','gsm','mag']
+modeu   = STRUPCASE(mode)
+coordu  = STRUPCASE(coord)
+
+FOR j=0L, 2L DO BEGIN                                                               $
+  FOR k=0L, 3L DO BEGIN                                                             $
+    pref    = 'th'+sc[0]+'_'+mode[j]+'_'+coord[k]                                 & $
+    names   = tnames(pref[0])                                                     & $
+    get_data,names[0],DATA=temp,DLIM=dlim,LIM=lim                                 & $
+    smrate  = sample_rate(temp.X,GAP_THRESH=2d0,/AVE)                             & $
+    strsmr  = STRTRIM(STRING(FORMAT='(f15.0)',smrate[0]),2L)                      & $
+    yttl    = 'B ['+modeu[j]+', '+coordu[k]+', nT]'                               & $
+    ysubt   = '[th'+sc[0]+' '+strsmr[0]+' sps, L2]'                               & $
+    str_element,dlim,'YTITLE',yttl[0],/ADD_REPLACE                                & $
+    str_element,dlim,'YSUBTITLE',ysubt[0],/ADD_REPLACE                            & $
+    store_data,names[0],DATA=temp,DLIM=dlim,LIM=lim
+
+
+mode    = 'fgl'
+names   = 'th'+sc[0]+'_'+mode[0]+['_mag','_gsm']
+tplot,names,TRANGE=time_double(tr_00),/NOM
+;-----------------------------------------------------------------------------------------
+; => Load ESA data
+;-----------------------------------------------------------------------------------------
+; => Load level 2 densities and SC potentials
+sc      = probe[0]
+thm_load_esa,PROBE=sc[0],DATAT=' peer_avgtemp peir_avgtemp pe?r_density peer_sc_pot ',LEVEL=2
+thm_load_esa,PROBE=sc[0],DATAT=' pee?_density pee?_avgtemp ',LEVEL=2
+thm_load_esa,PROBE=sc[0],DATAT=' pei?_density pei?_avgtemp ',LEVEL=2
+thm_load_esa,PROBE=sc[0],DATAT=' pee?_velocity_dsl pei?_velocity_dsl ',LEVEL=2
+; => rotate DSL to GSE
+partn     = ['e','i']
+coords    = ['dsl','gse']
+in_suffe  = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[0]
+out_suffe = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[1]
+in_suffi  = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[0]
+out_suffi = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[1]
+in_name   = 'th'+sc[0]+'_'+[[in_suffe],[in_suffi]]
+out_name  = 'th'+sc[0]+'_'+[[out_suffe],[out_suffi]]
+FOR j=0L, 1L DO BEGIN                                                              $
+  thm_cotrans,in_name[0,j],out_name[0,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[1,j],out_name[1,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[2,j],out_name[2,j],OUT_COORD=coords[1],IN_COORD=coords[0]
+
+names     = tnames([REFORM(in_name,3*2),REFORM(out_name,3*2)])
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+; => rotate GSE to GSM
+partn     = ['e','i']
+coords    = ['gse','gsm']
+in_suffe  = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[0]
+out_suffe = 'pe'+partn[0]+['b','r','f']+'_velocity_'+coords[1]
+in_suffi  = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[0]
+out_suffi = 'pe'+partn[1]+['b','r','f']+'_velocity_'+coords[1]
+in_name   = 'th'+sc[0]+'_'+[[in_suffe],[in_suffi]]
+out_name  = 'th'+sc[0]+'_'+[[out_suffe],[out_suffi]]
+FOR j=0L, 1L DO BEGIN                                                              $
+  thm_cotrans,in_name[0,j],out_name[0,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[1,j],out_name[1,j],OUT_COORD=coords[1],IN_COORD=coords[0]  & $
+  thm_cotrans,in_name[2,j],out_name[2,j],OUT_COORD=coords[1],IN_COORD=coords[0]
+
+names     = tnames([REFORM(in_name,3*2),REFORM(out_name,3*2)])
+options,names,'COLORS',[250,150, 50],/DEF
+options,names,'LABELS',['x','y','z'],/DEF
+
+dens_nm = tnames('*b_density')
+temp_nm = tnames('*b_avgtemp')
+options,dens_nm,'YLOG',0,/DEF
+options,temp_nm,'YLOG',0,/DEF
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+
+
+
+
+
+
+

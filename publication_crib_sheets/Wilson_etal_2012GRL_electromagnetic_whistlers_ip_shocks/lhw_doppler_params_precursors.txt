@@ -1,0 +1,2090 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f        = !VALUES.F_NAN
+d        = !VALUES.D_NAN
+c        = 2.99792458d8      ; -Speed of light in vacuum (m/s)
+kB       = 1.380658d-23      ; -Boltzmann Constant (J/K)
+K_eV     = 1.160474d4        ; -Conversion = degree Kelvin/eV
+epo      = 8.854187817d-12   ; -Permittivity of free space (F/m)
+muo      = 4d0*!DPI*1d-7     ; -Permeability of free space (N/A^2 or H/m)
+me       = 9.1093897d-31     ; -Electron mass (kg)
+mp       = 1.6726231d-27     ; -Proton mass (kg)
+qq       = 1.60217733d-19    ; => Fundamental charge (C)
+
+vae_fac2 = (1d-9^2)/(me[0]*muo[0]*1d6)
+val_fac2 = (1d-9^2)/(mp[0]*muo[0]*1d6)
+; => Define multiplication factor for plasma beta
+beta_fac = 1d6*(kB[0]*K_eV[0])*(2d0*muo[0])
+
+; => Define relative species abundances [electrons]
+nc_ne    = 9d-1              ; => core fraction
+nh_ne    = 1d-1              ; => halo fraction
+ne_ne    = 1d0
+;-----------------------------------------------------------------------------------------
+; => Load Parameters
+;-----------------------------------------------------------------------------------------
+date     = '121097'
+tramp    = '1997-12-10/04:33:14.664'
+vshn     = 391.2                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test0    = tdss_lhw_stats_read(DATE=date)
+evn0     = test0.EVENT_N
+scet0    = test0.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t0   = time_double(scet0) - time_double(tramp)
+dist_0   = del_t0*vshn[0]
+avg_lfk0 = (test0.K_ST_LOWF_MP + test0.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk0 = (test0.K_ST_highF_MP + test0.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql0   = test0.FREQ_LOW_HIGH[*,0]
+freqh0   = test0.FREQ_LOW_HIGH[*,1]
+pkamp0   = test0.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp0 = test0.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+thkbs0   = test0.THETA_KB[*,0]       ; => Theta_kB at start [deg]
+thkbe0   = test0.THETA_KB[*,1]       ; => Theta_kB at end   [deg]
+thkvs0   = test0.THETA_KV[*,0]       ; => Theta_kV at start [deg]
+thkve0   = test0.THETA_KV[*,1]       ; => Theta_kV at end   [deg]
+wce0     = (test0.WCE_SE[*,0] + test0.WCE_SE[*,1])/2d0
+wpe0     = (test0.WPE_SE[*,0] + test0.WPE_SE[*,1])/2d0
+wlh0     = (test0.WLH_SE[*,0] + test0.WLH_SE[*,1])/2d0
+vte0     = (test0.VTE_SE[*,0] + test0.VTE_SE[*,1])/2d0
+rhoe0    = (test0.RHO_VTCE_SE[*,0] + test0.RHO_VTCE_SE[*,1])/2d0
+vsw0     = (test0.VSW_ST + test0.VSW_EN)/2d0
+vdr0     = (test0.VDRIFT_ST + test0.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf0    = (test0.MAGF_ST + test0.MAGF_EN)/2d0
+dens0    = (test0.NE_SE[*,0] + test0.NE_SE[*,1])/2d0
+bmag0    = SQRT(TOTAL(magf0^2,2L,/NAN))
+betapa0  = (test0.BETA_PARCE_SE[*,0] + test0.BETA_PARCE_SE[*,1])/2d0
+teavg0   = (test0.TE_AVG_SE[*,0] + test0.TE_AVG_SE[*,1])/2d0
+tiavg0   = (test0.TI_AVG_SE[*,0] + test0.TI_AVG_SE[*,1])/2d0
+vti0     = SQRT(2d0*tiavg0*K_eV*kB/mp)
+tecavg0  = (test0.TEC_SE[*,0] + test0.TEC_SE[*,1])/2d0
+tehavg0  = (test0.TEH_SE[*,0] + test0.TEH_SE[*,1])/2d0
+tparc0   = (test0.TPAR_EC_SE[*,0] + test0.TPAR_EC_SE[*,1])/2d0
+tperc0   = (test0.TPER_EC_SE[*,0] + test0.TPER_EC_SE[*,1])/2d0
+tparh0   = (test0.TPAR_EH_SE[*,0] + test0.TPAR_EH_SE[*,1])/2d0
+tperh0   = (test0.TPER_EH_SE[*,0] + test0.TPER_EH_SE[*,1])/2d0
+qmag0    = (test0.QMAG_SE[*,0] + test0.QMAG_SE[*,1])/2d0
+kvec0    = test0.KVEC
+eg23_0   = test0.EIG_MID_MIN
+eg12_0   = test0.EIG_MAX_MID
+gnorm80  = [-0.903, 0.168,-0.397]   ; => Using RH08 from JCK's site
+gnorm90  = [-0.971, 0.094,-0.218]   ; => Using RH08 from JCK's site
+thkn80   = ACOS(my_dot_prod(kvec0,gnorm80,/NOM))*18d1/!DPI
+thkn90   = ACOS(my_dot_prod(kvec0,gnorm90,/NOM))*18d1/!DPI
+thbn80   = REPLICATE(70.9,N_ELEMENTS(evn0))
+thbn90   = REPLICATE(71.9,N_ELEMENTS(evn0))
+
+date     = '082698'
+tramp    = '1998-08-26/06:40:24.972'
+vshn     = 687.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test1    = tdss_lhw_stats_read(DATE=date)
+evn1     = test1.EVENT_N
+scet1    = test1.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t1   = time_double(scet1) - time_double(tramp)
+dist_1   = del_t1*vshn[0]
+avg_lfk1 = (test1.K_ST_LOWF_MP + test1.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk1 = (test1.K_ST_highF_MP + test1.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql1   = test1.FREQ_LOW_HIGH[*,0]
+freqh1   = test1.FREQ_LOW_HIGH[*,1]
+thkbs1   = test1.THETA_KB[*,0]
+thkbe1   = test1.THETA_KB[*,1]
+thkvs1   = test1.THETA_KV[*,0]
+thkve1   = test1.THETA_KV[*,1]
+pkamp1   = test1.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp1 = test1.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce1     = (test1.WCE_SE[*,0] + test1.WCE_SE[*,1])/2d0
+wpe1     = (test1.WPE_SE[*,0] + test1.WPE_SE[*,1])/2d0
+wlh1     = (test1.WLH_SE[*,0] + test1.WLH_SE[*,1])/2d0
+vte1     = (test1.VTE_SE[*,0] + test1.VTE_SE[*,1])/2d0
+rhoe1    = (test1.RHO_VTCE_SE[*,0] + test1.RHO_VTCE_SE[*,1])/2d0
+vsw1     = (test1.VSW_ST + test1.VSW_EN)/2d0
+vdr1     = (test1.VDRIFT_ST + test1.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf1    = (test1.MAGF_ST + test1.MAGF_EN)/2d0
+dens1    = (test1.NE_SE[*,0] + test1.NE_SE[*,1])/2d0
+bmag1    = SQRT(TOTAL(magf1^2,2L,/NAN))
+betapa1  = (test1.BETA_PARCE_SE[*,0] + test1.BETA_PARCE_SE[*,1])/2d0
+teavg1   = (test1.TE_AVG_SE[*,0] + test1.TE_AVG_SE[*,1])/2d0
+tiavg1   = (test1.TI_AVG_SE[*,0] + test1.TI_AVG_SE[*,1])/2d0
+vti1     = SQRT(2d0*tiavg1*K_eV*kB/mp)
+tecavg1  = (test1.TEC_SE[*,0] + test1.TEC_SE[*,1])/2d0
+tehavg1  = (test1.TEH_SE[*,0] + test1.TEH_SE[*,1])/2d0
+tparc1   = (test1.TPAR_EC_SE[*,0] + test1.TPAR_EC_SE[*,1])/2d0
+tperc1   = (test1.TPER_EC_SE[*,0] + test1.TPER_EC_SE[*,1])/2d0
+tparh1   = (test1.TPAR_EH_SE[*,0] + test1.TPAR_EH_SE[*,1])/2d0
+tperh1   = (test1.TPER_EH_SE[*,0] + test1.TPER_EH_SE[*,1])/2d0
+qmag1    = (test1.QMAG_SE[*,0] + test1.QMAG_SE[*,1])/2d0
+kvec1    = test1.KVEC
+eg23_1   = test1.EIG_MID_MIN
+eg12_1   = test1.EIG_MAX_MID
+gnorm81  = [-0.655,0.040,-0.754]   ; => Using RH08 from JCK's site
+gnorm91  = [-0.822,0.138,-0.553]   ; => Using RH09 from JCK's site
+thkn81   = ACOS(my_dot_prod(kvec1,gnorm81,/NOM))*18d1/!DPI
+thkn91   = ACOS(my_dot_prod(kvec1,gnorm91,/NOM))*18d1/!DPI
+thbn81   = REPLICATE(82.2,N_ELEMENTS(evn1))
+thbn91   = REPLICATE(78.7,N_ELEMENTS(evn1))
+
+date     = '092498'
+tramp    = '1998-09-24/23:20:37.374'
+vshn     = 772.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test2    = tdss_lhw_stats_read(DATE=date)
+evn2     = test2.EVENT_N
+scet2    = test2.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t2   = time_double(scet2) - time_double(tramp)
+dist_2   = del_t2*vshn[0]
+avg_lfk2 = (test2.K_ST_LOWF_MP + test2.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk2 = (test2.K_ST_highF_MP + test2.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql2   = test2.FREQ_LOW_HIGH[*,0]
+freqh2   = test2.FREQ_LOW_HIGH[*,1]
+thkbs2   = test2.THETA_KB[*,0]
+thkbe2   = test2.THETA_KB[*,1]
+thkvs2   = test2.THETA_KV[*,0]
+thkve2   = test2.THETA_KV[*,1]
+pkamp2   = test2.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp2 = test2.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce2     = (test2.WCE_SE[*,0] + test2.WCE_SE[*,1])/2d0
+wpe2     = (test2.WPE_SE[*,0] + test2.WPE_SE[*,1])/2d0
+wlh2     = (test2.WLH_SE[*,0] + test2.WLH_SE[*,1])/2d0
+vte2     = (test2.VTE_SE[*,0] + test2.VTE_SE[*,1])/2d0
+rhoe2    = (test2.RHO_VTCE_SE[*,0] + test2.RHO_VTCE_SE[*,1])/2d0
+vsw2     = (test2.VSW_ST + test2.VSW_EN)/2d0
+vdr2     = (test2.VDRIFT_ST + test2.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf2    = (test2.MAGF_ST + test2.MAGF_EN)/2d0
+dens2    = (test2.NE_SE[*,0] + test2.NE_SE[*,1])/2d0
+bmag2    = SQRT(TOTAL(magf2^2,2L,/NAN))
+betapa2  = (test2.BETA_PARCE_SE[*,0] + test2.BETA_PARCE_SE[*,1])/2d0
+teavg2   = (test2.TE_AVG_SE[*,0] + test2.TE_AVG_SE[*,1])/2d0
+tiavg2   = (test2.TI_AVG_SE[*,0] + test2.TI_AVG_SE[*,1])/2d0
+vti2     = SQRT(2d0*tiavg2*K_eV*kB/mp)
+tecavg2  = (test2.TEC_SE[*,0] + test2.TEC_SE[*,1])/2d0
+tehavg2  = (test2.TEH_SE[*,0] + test2.TEH_SE[*,1])/2d0
+tparc2   = (test2.TPAR_EC_SE[*,0] + test2.TPAR_EC_SE[*,1])/2d0
+tperc2   = (test2.TPER_EC_SE[*,0] + test2.TPER_EC_SE[*,1])/2d0
+tparh2   = (test2.TPAR_EH_SE[*,0] + test2.TPAR_EH_SE[*,1])/2d0
+tperh2   = (test2.TPER_EH_SE[*,0] + test2.TPER_EH_SE[*,1])/2d0
+qmag2    = (test2.QMAG_SE[*,0] + test2.QMAG_SE[*,1])/2d0
+kvec2    = test2.KVEC
+eg23_2   = test2.EIG_MID_MIN
+eg12_2   = test2.EIG_MAX_MID
+gnorm82  = [-0.914,-0.220,-0.341]   ; => Using RH08 from JCK's site
+gnorm92  = [-0.939,-0.175,-0.296]   ; => Using RH09 from JCK's site
+thkn82   = ACOS(my_dot_prod(kvec2,gnorm82,/NOM))*18d1/!DPI
+thkn92   = ACOS(my_dot_prod(kvec2,gnorm92,/NOM))*18d1/!DPI
+thbn82   = REPLICATE(82.1,N_ELEMENTS(evn2))
+thbn92   = REPLICATE(78.6,N_ELEMENTS(evn2))
+
+date     = '021100'
+tramp    = '2000-02-11/23:33:55.319'
+vshn     = 641.4                   ; => Up/Downstream normal flow speed [SC frame] RHO8
+test3    = tdss_lhw_stats_read(DATE=date)
+evn3     = test3.EVENT_N
+scet3    = test3.SCET_SE[*,0]
+; => Calc. dist. from ramp
+del_t3   = time_double(scet3) - time_double(tramp)
+dist_3   = del_t3*vshn[0]
+avg_lfk3 = (test3.K_ST_LOWF_MP + test3.K_EN_LOWF_MP)/2d0      ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk3 = (test3.K_ST_highF_MP + test3.K_EN_highF_MP)/2d0    ; => [Avg. |k| from high freq. end of bandpass]
+freql3   = test3.FREQ_LOW_HIGH[*,0]
+freqh3   = test3.FREQ_LOW_HIGH[*,1]
+thkbs3   = test3.THETA_KB[*,0]
+thkbe3   = test3.THETA_KB[*,1]
+thkvs3   = test3.THETA_KV[*,0]
+thkve3   = test3.THETA_KV[*,1]
+pkamp3   = test3.PEAK_AMP            ; => [Unfiltered] Peak-to-Peak wave amplitude (nT) from TDSS
+ftpkamp3 = test3.PEAK_AMP_FILT       ; => [Filtered]   Peak wave amplitude (nT) from TDSS
+wce3     = (test3.WCE_SE[*,0] + test3.WCE_SE[*,1])/2d0
+wpe3     = (test3.WPE_SE[*,0] + test3.WPE_SE[*,1])/2d0
+wlh3     = (test3.WLH_SE[*,0] + test3.WLH_SE[*,1])/2d0
+vte3     = (test3.VTE_SE[*,0] + test3.VTE_SE[*,1])/2d0
+rhoe3    = (test3.RHO_VTCE_SE[*,0] + test3.RHO_VTCE_SE[*,1])/2d0
+vsw3     = (test3.VSW_ST + test3.VSW_EN)/2d0
+vdr3     = (test3.VDRIFT_ST + test3.VDRIFT_EN)/2d0   ; => (Vsw - Ve) (km/s) [SC-Frame]
+magf3    = (test3.MAGF_ST + test3.MAGF_EN)/2d0
+dens3    = (test3.NE_SE[*,0] + test3.NE_SE[*,1])/2d0
+bmag3    = SQRT(TOTAL(magf3^2,2L,/NAN))
+betapa3  = (test3.BETA_PARCE_SE[*,0] + test3.BETA_PARCE_SE[*,1])/2d0
+teavg3   = (test3.TE_AVG_SE[*,0] + test3.TE_AVG_SE[*,1])/2d0
+tiavg3   = (test3.TI_AVG_SE[*,0] + test3.TI_AVG_SE[*,1])/2d0
+vti3     = SQRT(2d0*tiavg3*K_eV*kB/mp)
+tecavg3  = (test3.TEC_SE[*,0] + test3.TEC_SE[*,1])/2d0
+tehavg3  = (test3.TEH_SE[*,0] + test3.TEH_SE[*,1])/2d0
+tparc3   = (test3.TPAR_EC_SE[*,0] + test3.TPAR_EC_SE[*,1])/2d0
+tperc3   = (test3.TPER_EC_SE[*,0] + test3.TPER_EC_SE[*,1])/2d0
+tparh3   = (test3.TPAR_EH_SE[*,0] + test3.TPAR_EH_SE[*,1])/2d0
+tperh3   = (test3.TPER_EH_SE[*,0] + test3.TPER_EH_SE[*,1])/2d0
+qmag3    = (test3.QMAG_SE[*,0] + test3.QMAG_SE[*,1])/2d0
+kvec3    = test3.KVEC
+eg23_3   = test3.EIG_MID_MIN
+eg12_3   = test3.EIG_MAX_MID
+gnorm83  = [-0.865,-0.452,0.218]   ; => Using RH08 from JCK's site
+gnorm93  = [-0.930,-0.367,-0.028]   ; => Using RH09 from JCK's site
+thkn83   = ACOS(my_dot_prod(kvec3,gnorm83,/NOM))*18d1/!DPI
+thkn93   = ACOS(my_dot_prod(kvec3,gnorm93,/NOM))*18d1/!DPI
+thbn83   = REPLICATE(86.5,N_ELEMENTS(evn3))
+thbn93   = REPLICATE(89.9,N_ELEMENTS(evn3))
+;-----------------------------------------------------------------------------------------
+; => Combine terms
+;-----------------------------------------------------------------------------------------
+vshn0    = REPLICATE(391.2,N_ELEMENTS(evn0))
+vshn1    = REPLICATE(687.4,N_ELEMENTS(evn1))
+vshn2    = REPLICATE(772.4,N_ELEMENTS(evn2))
+vshn3    = REPLICATE(641.4,N_ELEMENTS(evn3))
+vshn_a   = [vshn0,vshn1,vshn2,vshn3]
+evns     = [evn0,evn1,evn2,evn3]
+n_all    = N_ELEMENTS(evns)
+scets    = [scet0,scet1,scet2,scet3]
+scete    = [test0.SCET_SE[*,1],test1.SCET_SE[*,1],test2.SCET_SE[*,1],test3.SCET_SE[*,1]]
+del_ts   = time_double(scets) - time_double(tramp)
+del_te   = time_double(scete) - time_double(tramp)
+del_t    = time_double(scete) - time_double(scets)
+;--------------------------------------------
+; => Define wave vector directions [GSE]
+;--------------------------------------------
+kvecs    = [kvec0,kvec1,kvec2,kvec3]
+kvecx    = [test0.KVEC[*,0],test1.KVEC[*,0],test2.KVEC[*,0],test3.KVEC[*,0]]
+kvecy    = [test0.KVEC[*,1],test1.KVEC[*,1],test2.KVEC[*,1],test3.KVEC[*,1]]
+kvecz    = [test0.KVEC[*,2],test1.KVEC[*,2],test2.KVEC[*,2],test3.KVEC[*,2]]
+eig_23   = [eg23_0,eg23_1,eg23_2,eg23_3]              ; => Eigenvalue ratio [Mid/Min]
+eig_12   = [eg12_0,eg12_1,eg12_2,eg12_3]              ; => Eigenvalue ratio [Max/Mid]
+pkamps   = [pkamp0,pkamp1,pkamp2,pkamp3]              ; => Peak-to-Peak amplitudes
+filtamp  = [ftpkamp0,ftpkamp1,ftpkamp2,ftpkamp3]*2d0  ; => Filtered amplitudes [change to Peak-to-Peak]
+dist_rs  = del_ts*vshn_a
+dist_re  = del_te*vshn_a
+dist_r   = [dist_0,dist_1,dist_2,dist_3]              ; => normal distance from shock ramp (km)
+; => Define SC-Frame frequencies
+freql    = [freql0,freql1,freql2,freql3]          ; => (Hz) low  freq. end of bandpass
+freqh    = [freqh0,freqh1,freqh2,freqh3]          ; => (Hz) high freq. end of bandpass
+; => Define wave number estimates [km^(-1)]
+avg_lfk  = [avg_lfk0,avg_lfk1,avg_lfk2,avg_lfk3]  ; => [Avg. |k| from low  freq. end of bandpass]
+avg_hfk  = [avg_hfk0,avg_hfk1,avg_hfk2,avg_hfk3]  ; => [Avg. |k| from high freq. end of bandpass]
+;--------------------------------------------
+; => Define relevant background parameters
+;--------------------------------------------
+; => Define relevant frequencies
+wce      = [wce0,wce1,wce2,wce3]                  ; => Electron cyclotron frequency (rad/s)
+wcp      = wce*me/mp                              ; => Proton   cyclotron frequency (rad/s)
+wpe      = [wpe0,wpe1,wpe2,wpe3]                  ; => Electron plasma    frequency (rad/s)
+wlh      = [wlh0,wlh1,wlh2,wlh3]                  ; => ES lower hybrid resonance frequency (rad/s)
+; => Define ambient magnetic fields [GSE, nT]
+magf_s   = [test0.MAGF_ST,test1.MAGF_ST,test2.MAGF_ST,test3.MAGF_ST]
+magf_e   = [test0.MAGF_EN,test1.MAGF_EN,test2.MAGF_EN,test3.MAGF_EN]
+magf     = [magf0,magf1,magf2,magf3]
+bmag_s   = SQRT(TOTAL(magf_s^2,2L,/NAN))
+bmag_e   = SQRT(TOTAL(magf_e^2,2L,/NAN))
+bmag     = [bmag0,bmag1,bmag2,bmag3]              ; => Magnitude of the B-field (nT)
+;--------------------------------------------
+; => Define wave normal angles [deg]
+;--------------------------------------------
+thbn8    = [thbn80,thbn81,thbn82,thbn83]          ; => Theta_Bn (deg) [RH08 JCK's]
+thbn9    = [thbn90,thbn91,thbn92,thbn93]          ; => Theta_Bn (deg) [RH09 JCK's]
+thkn8    = [thkn80,thkn81,thkn82,thkn83]          ; => Theta_kn (deg) [RH08 JCK's]
+thkn9    = [thkn90,thkn91,thkn92,thkn93]          ; => Theta_kn (deg) [RH09 JCK's]
+thkvs    = [thkvs0,thkvs1,thkvs2,thkvs3]          ; => Theta_kV (deg) [at start of TDSS]
+thkbs    = [thkbs0,thkbs1,thkbs2,thkbs3]          ; => Theta_kB (deg) [at start of TDSS]
+thkve    = [thkve0,thkve1,thkve2,thkve3]          ; => Theta_kV (deg) [at end   of TDSS]
+thkbe    = [thkbe0,thkbe1,thkbe2,thkbe3]          ; => Theta_kB (deg) [at end   of TDSS]
+thkba    = (thkbs + thkbe)/2d0                    ; => Theta_kB (deg) [Avg.]
+thkva    = (thkvs + thkve)/2d0                    ; => Theta_kV (deg) [Avg.]
+;--------------------------------------------
+; => Define (Vsw - Ve) [km/s, SC-Frame]
+;--------------------------------------------
+vdrft_s  = [test0.VDRIFT_ST,test1.VDRIFT_ST,test2.VDRIFT_ST,test3.VDRIFT_ST]
+vdrft_e  = [test0.VDRIFT_EN,test1.VDRIFT_EN,test2.VDRIFT_EN,test3.VDRIFT_EN]
+vdrft    = [vdr0,vdr1,vdr2,vdr3]                  ; => (Vsw - Ve) (km/s) [SC-Frame]
+vdrmg_s  = SQRT(TOTAL(vdrft_s^2,2L,/NAN))
+vdrmg_e  = SQRT(TOTAL(vdrft_e^2,2L,/NAN))
+vdrmg    = SQRT(TOTAL(vdrft^2,2L,/NAN))
+del_vd   = vdrft_e - vdrft_s
+delvdmg  = SQRT(TOTAL(del_vd^2,2L,/NAN))
+; => Calculate k . (Vsw - Ve)/|(Vsw - Ve)|
+v_dot_ks = my_dot_prod(vdrft_s,kvecs,/NOM)/vdrmg_s
+v_dot_ke = my_dot_prod(vdrft_e,kvecs,/NOM)/vdrmg_e
+vd_dot_k = my_dot_prod(vdrft,kvecs,/NOM)/vdrmg
+dv_dot_k = my_dot_prod(del_vd,kvecs,/NOM)/delvdmg
+; => Calculate k . (Vsw - Ve)/|(Vsw - Ve)| angle [deg]
+thekv_s  = ACOS(v_dot_ks)*18d1/!DPI
+thekv_e  = ACOS(v_dot_ke)*18d1/!DPI
+thekv_ss = thekv_s < (18d1 - thekv_s)             ; => 0 < Theta_kVd < 90
+thekv_es = thekv_e < (18d1 - thekv_e)             ; => 0 < Theta_kVd < 90
+the_kvd  = ACOS(vd_dot_k)*18d1/!DPI
+the_kvds = the_kvd < (18d1 - the_kvd)             ; => 0 < Theta_kVd < 90
+the_dv   = ACOS(dv_dot_k)*18d1/!DPI
+the_dvs  = the_dv < (18d1 - the_dv)
+;--------------------------------------------
+; => Define electron moments [All  Electrons]
+;--------------------------------------------
+; => Define electron density [cm^(-3)] from TNR
+dens_s   = [test0.NE_SE[*,0],test1.NE_SE[*,0],test2.NE_SE[*,0],test3.NE_SE[*,0]]
+dens_e   = [test0.NE_SE[*,1],test1.NE_SE[*,1],test2.NE_SE[*,1],test3.NE_SE[*,1]]
+dens     = [dens0,dens1,dens2,dens3]              ; => Electron density [cm^(-3)] from TNR
+; => Define Avg. electron temperatures [eV]
+teavg_s  = [test0.TE_AVG_SE[*,0],test1.TE_AVG_SE[*,0],test2.TE_AVG_SE[*,0],test3.TE_AVG_SE[*,0]]
+teavg_e  = [test0.TE_AVG_SE[*,1],test1.TE_AVG_SE[*,1],test2.TE_AVG_SE[*,1],test3.TE_AVG_SE[*,1]]
+teavg    = [teavg0,teavg1,teavg2,teavg3]          ; => EL electron avg. temp (eV)
+; => Define Avg. parallel/perpendicular electron temperatures [eV]
+tpare_s  = [test0.TPAR_EA_SE[*,0],test1.TPAR_EA_SE[*,0],test2.TPAR_EA_SE[*,0],test3.TPAR_EA_SE[*,0]]
+tpare_e  = [test0.TPAR_EA_SE[*,1],test1.TPAR_EA_SE[*,1],test2.TPAR_EA_SE[*,1],test3.TPAR_EA_SE[*,1]]
+tpare    = (tpare_s + tpare_e)/2d0
+tpere_s  = [test0.TPER_EA_SE[*,0],test1.TPER_EA_SE[*,0],test2.TPER_EA_SE[*,0],test3.TPER_EA_SE[*,0]]
+tpere_e  = [test0.TPER_EA_SE[*,1],test1.TPER_EA_SE[*,1],test2.TPER_EA_SE[*,1],test3.TPER_EA_SE[*,1]]
+tpere    = (tpere_s + tpere_e)/2d0
+; => Define electron thermal speeds [km/s]
+vte_s    = [test0.VTE_SE[*,0],test1.VTE_SE[*,0],test2.VTE_SE[*,0],test3.VTE_SE[*,0]]
+vte_e    = [test0.VTE_SE[*,1],test1.VTE_SE[*,1],test2.VTE_SE[*,1],test3.VTE_SE[*,1]]
+vte      = [vte0,vte1,vte2,vte3]                  ; => Electron thermal speed (km/s)
+; => Define electron thermal gyroradii [km]
+rhoe_s   = [test0.RHO_VTCE_SE[*,0],test1.RHO_VTCE_SE[*,0],test2.RHO_VTCE_SE[*,0],test3.RHO_VTCE_SE[*,0]]
+rhoe_e   = [test0.RHO_VTCE_SE[*,1],test1.RHO_VTCE_SE[*,1],test2.RHO_VTCE_SE[*,1],test3.RHO_VTCE_SE[*,1]]
+rhoe     = [rhoe0,rhoe1,rhoe2,rhoe3]              ; => Electron thermal gyroradius (km)
+; => Define electron betas [unitless]
+betaaves = beta_fac[0]*(dens_s*ne_ne[0])*teavg_s/((bmag_s*1d-9)^2)
+betaavee = beta_fac[0]*(dens_e*ne_ne[0])*teavg_e/((bmag_e*1d-9)^2)
+betaavge = beta_fac[0]*(dens*ne_ne[0])*teavg/((bmag*1d-9)^2)
+; => Parallel
+betapaes = beta_fac[0]*(dens_s*ne_ne[0])*tpare_s/((bmag_s*1d-9)^2)
+betapaee = beta_fac[0]*(dens_e*ne_ne[0])*tpare_e/((bmag_e*1d-9)^2)
+beta_pae = beta_fac[0]*(dens*ne_ne[0])*tpare/((bmag*1d-9)^2)
+; => Perpendicular
+betapees = beta_fac[0]*(dens_s*ne_ne[0])*tpere_s/((bmag_s*1d-9)^2)
+betapeee = beta_fac[0]*(dens_e*ne_ne[0])*tpere_e/((bmag_e*1d-9)^2)
+beta_pee = beta_fac[0]*(dens*ne_ne[0])*tpere/((bmag*1d-9)^2)
+; => Define electron heat flux [eV km/s cm^(-3)]
+qmag_s   = [test0.QMAG_SE[*,0],test1.QMAG_SE[*,0],test2.QMAG_SE[*,0],test3.QMAG_SE[*,0]]
+qmag_e   = [test0.QMAG_SE[*,1],test1.QMAG_SE[*,1],test2.QMAG_SE[*,1],test3.QMAG_SE[*,1]]
+qmag     = [qmag0,qmag1,qmag2,qmag3]
+;--------------------------------------------
+; => Define electron moments [Core Electrons]
+;--------------------------------------------
+; => Define Avg. electron temperatures [eV]
+tecavg_s = [test0.TEC_SE[*,0],test1.TEC_SE[*,0],test2.TEC_SE[*,0],test3.TEC_SE[*,0]]
+tecavg_e = [test0.TEC_SE[*,1],test1.TEC_SE[*,1],test2.TEC_SE[*,1],test3.TEC_SE[*,1]]
+tecavg   = [tecavg0,tecavg1,tecavg2,tecavg3]      ; => core avg.  temp (eV)
+; => Define Avg. parallel/perpendicular electron temperatures [eV]
+tparc_s  = [test0.TPAR_EC_SE[*,0],test1.TPAR_EC_SE[*,0],test2.TPAR_EC_SE[*,0],test3.TPAR_EC_SE[*,0]]
+tparc_e  = [test0.TPAR_EC_SE[*,1],test1.TPAR_EC_SE[*,1],test2.TPAR_EC_SE[*,1],test3.TPAR_EC_SE[*,1]]
+tparc    = [tparc0,tparc1,tparc2,tparc3]          ; => core para. temp (eV)
+tperc_s  = [test0.TPER_EC_SE[*,0],test1.TPER_EC_SE[*,0],test2.TPER_EC_SE[*,0],test3.TPER_EC_SE[*,0]]
+tperc_e  = [test0.TPER_EC_SE[*,1],test1.TPER_EC_SE[*,1],test2.TPER_EC_SE[*,1],test3.TPER_EC_SE[*,1]]
+tperc    = [tperc0,tperc1,tperc2,tperc3]          ; => core perp. temp (eV)
+; => Define electron betas [unitless]
+betaavcs = beta_fac[0]*(dens_s*nc_ne[0])*tecavg_s/((bmag_s*1d-9)^2)
+betaavce = beta_fac[0]*(dens_e*nc_ne[0])*tecavg_s/((bmag_e*1d-9)^2)
+betaavgc = beta_fac[0]*(dens*nc_ne[0])*tecavg/((bmag*1d-9)^2)
+; => Parallel
+betapacs = beta_fac[0]*(dens_s*nc_ne[0])*tparc_s/((bmag_s*1d-9)^2)
+betapace = beta_fac[0]*(dens_e*nc_ne[0])*tparc_e/((bmag_e*1d-9)^2)
+beta_pac = beta_fac[0]*(dens*nc_ne[0])*tparc/((bmag*1d-9)^2)
+; => Perpendicular
+betapecs = beta_fac[0]*(dens_s*nc_ne[0])*tperc_s/((bmag_s*1d-9)^2)
+betapece = beta_fac[0]*(dens_e*nc_ne[0])*tperc_e/((bmag_e*1d-9)^2)
+beta_pec = beta_fac[0]*(dens*nc_ne[0])*tperc/((bmag*1d-9)^2)
+;--------------------------------------------
+; => Define electron moments [Halo Electrons]
+;--------------------------------------------
+; => Define Avg. electron temperatures [eV]
+tehavg_s = [test0.TEH_SE[*,0],test1.TEH_SE[*,0],test2.TEH_SE[*,0],test3.TEH_SE[*,0]]
+tehavg_e = [test0.TEH_SE[*,1],test1.TEH_SE[*,1],test2.TEH_SE[*,1],test3.TEH_SE[*,1]]
+tehavg   = [tehavg0,tehavg1,tehavg2,tehavg3]      ; => halo avg.  temp (eV)
+; => Define Avg. parallel/perpendicular electron temperatures [eV]
+tparh_s  = [test0.TPAR_EH_SE[*,0],test1.TPAR_EH_SE[*,0],test2.TPAR_EH_SE[*,0],test3.TPAR_EH_SE[*,0]]
+tparh_e  = [test0.TPAR_EH_SE[*,1],test1.TPAR_EH_SE[*,1],test2.TPAR_EH_SE[*,1],test3.TPAR_EH_SE[*,1]]
+tparh    = [tparh0,tparh1,tparh2,tparh3]          ; => halo para. temp (eV)
+tperh_s  = [test0.TPER_EH_SE[*,0],test1.TPER_EH_SE[*,0],test2.TPER_EH_SE[*,0],test3.TPER_EH_SE[*,0]]
+tperh_e  = [test0.TPER_EH_SE[*,1],test1.TPER_EH_SE[*,1],test2.TPER_EH_SE[*,1],test3.TPER_EH_SE[*,1]]
+tperh    = [tperh0,tperh1,tperh2,tperh3]          ; => halo perp. temp (eV)
+; => Define electron betas [unitless]
+betaavhs = beta_fac[0]*(dens_s*nh_ne[0])*tehavg_s/((bmag_s*1d-9)^2)
+betaavhe = beta_fac[0]*(dens_e*nh_ne[0])*tehavg_e/((bmag_e*1d-9)^2)
+betaavgh = beta_fac[0]*(dens*nh_ne[0])*tehavg/((bmag*1d-9)^2)
+; => Parallel
+betapahs = beta_fac[0]*(dens_s*nh_ne[0])*tparh_s/((bmag_s*1d-9)^2)
+betapahe = beta_fac[0]*(dens_e*nh_ne[0])*tparh_e/((bmag_e*1d-9)^2)
+beta_pah = beta_fac[0]*(dens*nh_ne[0])*tparh/((bmag*1d-9)^2)
+; => Perpendicular
+betapehs = beta_fac[0]*(dens_s*nh_ne[0])*tperh_s/((bmag_s*1d-9)^2)
+betapehe = beta_fac[0]*(dens_e*nh_ne[0])*tperh_e/((bmag_e*1d-9)^2)
+beta_peh = beta_fac[0]*(dens*nh_ne[0])*tperh/((bmag*1d-9)^2)
+;--------------------------------------------
+; => Define ion moments [All  Ions]
+;--------------------------------------------
+; => Define Avg. ion temperatures [eV]
+tiavg_s  = [test0.TI_AVG_SE[*,0],test1.TI_AVG_SE[*,0],test2.TI_AVG_SE[*,0],test3.TI_AVG_SE[*,0]]
+tiavg_e  = [test0.TI_AVG_SE[*,1],test1.TI_AVG_SE[*,1],test2.TI_AVG_SE[*,1],test3.TI_AVG_SE[*,1]]
+tiavg    = [tiavg0,tiavg1,tiavg2,tiavg3]          ; => PL ion avg. temp (eV)
+; => Define ion thermal speeds [km/s]
+vti_s    = SQRT(2d0*tiavg_s*K_eV[0]*kB[0]/mp[0])
+vti_e    = SQRT(2d0*tiavg_e*K_eV[0]*kB[0]/mp[0])
+vti      = [vti0,vti1,vti2,vti3]                  ; => Proton thermal speed (km/s)
+; => Define proton thermal gyroradii [km]
+rhop_s   = rhoe_s*SQRT(mp[0]/me[0])
+rhop_e   = rhoe_e*SQRT(mp[0]/me[0])
+rhop     = rhoe*SQRT(mp[0]/me[0])
+; => Define ion bulk speeds [km/s]
+vsw_s    = [test0.VSW_ST,test1.VSW_ST,test2.VSW_ST,test3.VSW_ST]
+vsw_e    = [test0.VSW_EN,test1.VSW_EN,test2.VSW_EN,test3.VSW_EN]
+vsw      = [vsw0,vsw1,vsw2,vsw3]                  ; => PL solar wind velocity (km/s) [GSE]
+vmag_s   = SQRT(TOTAL(vsw_s^2,2L,/NAN))
+vmag_e   = SQRT(TOTAL(vsw_e^2,2L,/NAN))
+vmag     = SQRT(TOTAL(vsw^2,2L,/NAN))
+;--------------------------------------------
+; => Calc. relevant speeds
+;--------------------------------------------
+v_ae_s   = SQRT(vae_fac2[0]*bmag_s^2/dens_s)*1d-3  ; => Electron Alfven speed (km/s) [at start of TDSS]
+v_ae_e   = SQRT(vae_fac2[0]*bmag_e^2/dens_e)*1d-3  ; => Electron Alfven speed (km/s) [at end   of TDSS]
+v_a_s    = SQRT(val_fac2[0]*bmag_s^2/dens_s)*1d-3  ; => Alfven speed (km/s) [at start of TDSS]
+v_a_e    = SQRT(val_fac2[0]*bmag_e^2/dens_e)*1d-3  ; => Alfven speed (km/s) [at end   of TDSS]
+;--------------------------------------------
+; => Calc. temperature ratios
+;--------------------------------------------
+teti_s   = teavg_s/tiavg_s
+teti_e   = teavg_e/tiavg_e
+te_tiav  = teavg/tiavg
+tanis_cs = tperc_s/tparc_s
+tanis_ce = tperc_e/tparc_e
+tanis_c  = tperc/tparc
+tanis_hs = tperh_s/tparh_s
+tanis_he = tperh_e/tparh_e
+tanis_h  = tperh/tparh
+thc_pars = tparh_s/tparc_s
+thc_pare = tparh_e/tparc_e
+thc_pers = tperh_s/tperc_s
+thc_pere = tperh_e/tperc_e
+thc_par  = tparh/tparc
+thc_per  = tperh/tperc
+tehc_avs = tehavg_s/tecavg_s
+tehc_ave = tehavg_e/tecavg_e
+tehc_avg = tehavg/tecavg
+; => Normalize the wave number by the electron inertial length
+kcwpelfm = avg_lfk[*,0]*c*1d-3/wpe
+kcwpelfp = avg_lfk[*,1]*c*1d-3/wpe
+kcwpehfm = avg_hfk[*,0]*c*1d-3/wpe
+kcwpehfp = avg_hfk[*,1]*c*1d-3/wpe
+; => Normalize the wave number by the electron thermal gyroradius
+krhoelfm = avg_lfk[*,0]*rhoe
+krhoelfp = avg_lfk[*,1]*rhoe
+krhoehfm = avg_hfk[*,0]*rhoe
+krhoehfp = avg_hfk[*,1]*rhoe
+;---------------------------------------------------------------------
+; => Wave number estimates from:
+;
+; => Calculations of Eq. 4 from Coroniti et al., [1982]
+;  Coroniti, F. V., C. F. Kennel, F. L. Scarf, and E. J. Smith (1982),
+;    Whistler mode turbulence in the disturbed solar wind, J. Geophys.
+;    Res., 87, 6029–6044, doi:10.1029/JA087iA08p06029.
+;---------------------------------------------------------------------
+; => Separate by plus and minus sign
+avg_lfkm = avg_lfk[*,0]  ; => [Avg. |k| (- sign) from low  freq. end of bandpass]
+avg_lfkp = avg_lfk[*,1]  ; => [Avg. |k| (+ sign) from low  freq. end of bandpass]
+avg_hfkm = avg_hfk[*,0]  ; => [Avg. |k| (- sign) from high freq. end of bandpass]
+avg_hfkp = avg_hfk[*,1]  ; => [Avg. |k| (+ sign) from high freq. end of bandpass]
+; => Calculate rest frame frequencies from wave number estimates
+ckm        = (c*1d-3)
+fac0l      = wce*ABS(COS(thkbs*!DPI/18d1))
+fac0h      = wce*ABS(COS(thkbe*!DPI/18d1))
+fac1lm     = (wpe/(ckm*avg_lfkm))^2
+fac1lp     = (wpe/(ckm*avg_lfkp))^2
+fac1hm     = (wpe/(ckm*avg_hfkm))^2
+fac1hp     = (wpe/(ckm*avg_hfkp))^2
+frest_lfkm = fac0l/(1d0 + fac1lm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from low  freq. end of bandpass]
+frest_lfkp = fac0l/(1d0 + fac1lp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from low  freq. end of bandpass]
+frest_hfkm = fac0h/(1d0 + fac1hm)  ; => Rest frame freq. (rad/s) [|k| (- sign) from high freq. end of bandpass]
+frest_hfkp = fac0h/(1d0 + fac1hp)  ; => Rest frame freq. (rad/s) [|k| (+ sign) from high freq. end of bandpass]
+
+; => Define parallel/perpendicular k-vector components [km^(-1)]
+avg_lfkm_par = avg_lfkm*COS(thkba*!DPI/18d1)
+avg_lfkp_par = avg_lfkp*COS(thkba*!DPI/18d1)
+avg_hfkm_par = avg_hfkm*COS(thkba*!DPI/18d1)
+avg_hfkp_par = avg_hfkp*COS(thkba*!DPI/18d1)
+avg_lfkm_per = avg_lfkm*SIN(thkba*!DPI/18d1)
+avg_lfkp_per = avg_lfkp*SIN(thkba*!DPI/18d1)
+avg_hfkm_per = avg_hfkm*SIN(thkba*!DPI/18d1)
+avg_hfkp_per = avg_hfkp*SIN(thkba*!DPI/18d1)
+; => Normalize parallel/perpendicular k-vector components by electron inertial length
+kcwpelfm_par = avg_lfkm_par*c*1d-3/wpe
+kcwpelfp_par = avg_lfkp_par*c*1d-3/wpe
+kcwpehfm_par = avg_hfkm_par*c*1d-3/wpe
+kcwpehfp_par = avg_hfkp_par*c*1d-3/wpe
+kcwpelfm_per = avg_lfkm_per*c*1d-3/wpe
+kcwpelfp_per = avg_lfkp_per*c*1d-3/wpe
+kcwpehfm_per = avg_hfkm_per*c*1d-3/wpe
+kcwpehfp_per = avg_hfkp_per*c*1d-3/wpe
+; => Normalize parallel/perpendicular k-vector components by electron thermal gyroradius
+krhoelfm_par = avg_lfkm_par*rhoe
+krhoelfp_par = avg_lfkp_par*rhoe
+krhoehfm_par = avg_hfkm_par*rhoe
+krhoehfp_par = avg_hfkp_par*rhoe
+krhoelfm_per = avg_lfkm_per*rhoe
+krhoelfp_per = avg_lfkp_per*rhoe
+krhoehfm_per = avg_hfkm_per*rhoe
+krhoehfp_per = avg_hfkp_per*rhoe
+
+PRINT,';  ',  MIN(kcwpelfm,/NAN),    MAX(kcwpelfm,/NAN), $
+             MEAN(kcwpelfm,/NAN), STDDEV(kcwpelfm,/NAN)
+;       0.019315006      0.33633576      0.10907426     0.096031347
+PRINT,';  ',  MIN(kcwpelfp,/NAN),    MAX(kcwpelfp,/NAN), $
+             MEAN(kcwpelfp,/NAN), STDDEV(kcwpelfp,/NAN)
+;       0.054050483       4.0111910      0.36799450      0.49964598
+PRINT,';  ',  MIN(kcwpehfm,/NAN),    MAX(kcwpehfm,/NAN), $
+             MEAN(kcwpehfm,/NAN), STDDEV(kcwpehfm,/NAN)
+;        0.10420530      0.65612310      0.30273660      0.16844181
+PRINT,';  ',  MIN(kcwpehfp,/NAN),    MAX(kcwpehfp,/NAN), $
+             MEAN(kcwpehfp,/NAN), STDDEV(kcwpehfp,/NAN)
+;        0.13629427       4.2756883      0.56094612      0.51783990
+
+PRINT,';  ',  MIN(krhoelfm,/NAN),    MAX(krhoelfm,/NAN), $
+             MEAN(krhoelfm,/NAN), STDDEV(krhoelfm,/NAN)
+;       0.011476048      0.49423372      0.10406571     0.091776650
+PRINT,';  ',  MIN(krhoelfp,/NAN),    MAX(krhoelfp,/NAN), $
+             MEAN(krhoelfp,/NAN), STDDEV(krhoelfp,/NAN)
+;       0.026891861       4.6963204      0.36256134      0.53772461
+PRINT,';  ',  MIN(krhoehfm,/NAN),    MAX(krhoehfm,/NAN), $
+             MEAN(krhoehfm,/NAN), STDDEV(krhoehfm,/NAN)
+;       0.051845502      0.89538532      0.28232267      0.16490871
+PRINT,';  ',  MIN(krhoehfp,/NAN),    MAX(krhoehfp,/NAN), $
+             MEAN(krhoehfp,/NAN), STDDEV(krhoehfp,/NAN)
+;       0.067810800       5.0059950      0.53911588      0.56716390
+
+; => Calculate phase speed, Vph [km/s]
+vph_lfm      = frest_lfkm/avg_lfkm
+vph_lfp      = frest_lfkp/avg_lfkp
+vph_hfm      = frest_hfkm/avg_hfkm
+vph_hfp      = frest_hfkp/avg_hfkp
+; => Calculate index of refraction [c/Vph]
+n_lfm        = ckm[0]/vph_lfm
+n_lfp        = ckm[0]/vph_lfp
+n_hfm        = ckm[0]/vph_hfm
+n_hfp        = ckm[0]/vph_hfp
+; => Assuming EM plane wave, then:  n = cB/E, so estimate E
+cbfilt       = c[0]*(filtamp*1d-9)
+cbpeak       = c[0]*(pkamps*1d-9)
+; filtered E-field estimates [mV/m, peak-to-peak]
+efilt_lfm    = cbfilt/n_lfm*1d3
+efilt_lfp    = cbfilt/n_lfp*1d3
+efilt_hfm    = cbfilt/n_hfm*1d3
+efilt_hfp    = cbfilt/n_hfp*1d3
+; peak E-field estimates [mV/m, peak-to-peak]
+epeak_lfm    = cbpeak/n_lfm*1d3
+epeak_lfp    = cbpeak/n_lfp*1d3
+epeak_hfm    = cbpeak/n_hfm*1d3
+epeak_hfp    = cbpeak/n_hfp*1d3
+
+; => Calculate cold plasma parameters
+cold_lfm     = cold_plasma_params_2d(bmag,dens,FREQF=frest_lfkm/(2d0*!DPI),ANGLE=thkba,/ONED)
+n2_1_lfm     = cold_lfm.INDEX_REF_1
+sterm_lfm    = cold_lfm.S_TERM
+dterm_lfm    = cold_lfm.D_TERM
+pterm_lfm    = cold_lfm.P_TERM
+; => Calculate E- and B-field estimates [Mosier and Gurnett, 1971]
+fac0_lfm     = dterm_lfm/(sterm_lfm - n2_1_lfm)
+fac1_lfm     = pterm_lfm - n2_1_lfm*SIN(thkba*!DPI/18d1)^2
+ex_lfm       = 1d0
+ey_lfm       = fac0_lfm
+ez_lfm       = -1d0*(n2_1_lfm*COS(thkba*!DPI/18d1)*SIN(thkba*!DPI/18d1))/fac1_lfm
+bx_lfm       = -1d0*(n2_1_lfm*COS(thkba*!DPI/18d1)/c[0])*fac0_lfm
+by_lfm       =  (n2_1_lfm*COS(thkba*!DPI/18d1)/c[0])*pterm_lfm/fac1_lfm
+bz_lfm       =  (n2_1_lfm*SIN(thkba*!DPI/18d1)/c[0])*fac0_lfm
+em_lfm       = SQRT(ex_lfm^2 + ey_lfm^2 + ez_lfm^2)
+bm_lfm       = SQRT(bx_lfm^2 + by_lfm^2 + bz_lfm^2)
+; renormalize
+ex_lfm       = ex_lfm/em_lfm
+ey_lfm       = ey_lfm/em_lfm
+ez_lfm       = ez_lfm/em_lfm
+bx_lfm       = bx_lfm/bm_lfm
+by_lfm       = by_lfm/bm_lfm
+bz_lfm       = bz_lfm/bm_lfm
+
+cold_lfp     = cold_plasma_params_2d(bmag,dens,FREQF=frest_lfkp/(2d0*!DPI),ANGLE=thkba,/ONED)
+n2_1_lfp     = cold_lfp.INDEX_REF_1
+sterm_lfp    = cold_lfp.S_TERM
+dterm_lfp    = cold_lfp.D_TERM
+pterm_lfp    = cold_lfp.P_TERM
+; => Calculate E- and B-field estimates [Mosier and Gurnett, 1971]
+fac0_lfp     = dterm_lfp/(sterm_lfp - n2_1_lfp)
+fac1_lfp     = pterm_lfp - n2_1_lfp*SIN(thkba*!DPI/18d1)^2
+ex_lfp       = 1d0
+ey_lfp       = fac0_lfp
+ez_lfp       = -1d0*(n2_1_lfp*COS(thkba*!DPI/18d1)*SIN(thkba*!DPI/18d1))/fac1_lfp
+bx_lfp       = -1d0*(n2_1_lfp*COS(thkba*!DPI/18d1)/c[0])*fac0_lfp
+by_lfp       =  (n2_1_lfp*COS(thkba*!DPI/18d1)/c[0])*pterm_lfp/fac1_lfp
+bz_lfp       =  (n2_1_lfp*SIN(thkba*!DPI/18d1)/c[0])*fac0_lfp
+em_lfp       = SQRT(ex_lfp^2 + ey_lfp^2 + ez_lfp^2)
+bm_lfp       = SQRT(bx_lfp^2 + by_lfp^2 + bz_lfp^2)
+; renormalize
+ex_lfp       = ex_lfp/em_lfp
+ey_lfp       = ey_lfp/em_lfp
+ez_lfp       = ez_lfp/em_lfp
+bx_lfp       = bx_lfp/bm_lfp
+by_lfp       = by_lfp/bm_lfp
+bz_lfp       = bz_lfp/bm_lfp
+
+cold_hfm     = cold_plasma_params_2d(bmag,dens,FREQF=frest_hfkm/(2d0*!DPI),ANGLE=thkba,/ONED)
+n2_1_hfm     = cold_hfm.INDEX_REF_1
+sterm_hfm    = cold_hfm.S_TERM
+dterm_hfm    = cold_hfm.D_TERM
+pterm_hfm    = cold_hfm.P_TERM
+; => Calculate E- and B-field estimates [Mosier and Gurnett, 1971]
+fac0_hfm     = dterm_hfm/(sterm_hfm - n2_1_hfm)
+fac1_hfm     = pterm_hfm - n2_1_hfm*SIN(thkba*!DPI/18d1)^2
+ex_hfm       = 1d0
+ey_hfm       = fac0_hfm
+ez_hfm       = -1d0*(n2_1_hfm*COS(thkba*!DPI/18d1)*SIN(thkba*!DPI/18d1))/fac1_hfm
+bx_hfm       = -1d0*(n2_1_hfm*COS(thkba*!DPI/18d1)/c[0])*fac0_hfm
+by_hfm       =  (n2_1_hfm*COS(thkba*!DPI/18d1)/c[0])*pterm_hfm/fac1_hfm
+bz_hfm       =  (n2_1_hfm*SIN(thkba*!DPI/18d1)/c[0])*fac0_hfm
+em_hfm       = SQRT(ex_hfm^2 + ey_hfm^2 + ez_hfm^2)
+bm_hfm       = SQRT(bx_hfm^2 + by_hfm^2 + bz_hfm^2)
+; renormalize
+ex_hfm       = ex_hfm/em_hfm
+ey_hfm       = ey_hfm/em_hfm
+ez_hfm       = ez_hfm/em_hfm
+bx_hfm       = bx_hfm/bm_hfm
+by_hfm       = by_hfm/bm_hfm
+bz_hfm       = bz_hfm/bm_hfm
+
+cold_hfp     = cold_plasma_params_2d(bmag,dens,FREQF=frest_hfkp/(2d0*!DPI),ANGLE=thkba,/ONED)
+n2_1_hfp     = cold_hfp.INDEX_REF_1
+sterm_hfp    = cold_hfp.S_TERM
+dterm_hfp    = cold_hfp.D_TERM
+pterm_hfp    = cold_hfp.P_TERM
+; => Calculate E- and B-field estimates [Mosier and Gurnett, 1971]
+fac0_hfp     = dterm_hfp/(sterm_hfp - n2_1_hfp)
+fac1_hfp     = pterm_hfp - n2_1_hfp*SIN(thkba*!DPI/18d1)^2
+ex_hfp       = 1d0
+ey_hfp       = fac0_hfp
+ez_hfp       = -1d0*(n2_1_hfp*COS(thkba*!DPI/18d1)*SIN(thkba*!DPI/18d1))/fac1_hfp
+bx_hfp       = -1d0*(n2_1_hfp*COS(thkba*!DPI/18d1)/c[0])*fac0_hfp
+by_hfp       =  (n2_1_hfp*COS(thkba*!DPI/18d1)/c[0])*pterm_hfp/fac1_hfp
+bz_hfp       =  (n2_1_hfp*SIN(thkba*!DPI/18d1)/c[0])*fac0_hfp
+em_hfp       = SQRT(ex_hfp^2 + ey_hfp^2 + ez_hfp^2)
+bm_hfp       = SQRT(bx_hfp^2 + by_hfp^2 + bz_hfp^2)
+; renormalize
+ex_hfp       = ex_hfp/em_hfp
+ey_hfp       = ey_hfp/em_hfp
+ez_hfp       = ez_hfp/em_hfp
+bx_hfp       = bx_hfp/bm_hfp
+by_hfp       = by_hfp/bm_hfp
+bz_hfp       = bz_hfp/bm_hfp
+
+
+
+; => Look at only the 1998-08-26 precursor
+evns_pre     = [00010488L]
+good_pre     = array_where(evns,evns_pre,/N_UNIQ)
+good_pre     = good_pre[*,0]
+
+PRINT,';  ', MIN(efilt_lfm[good_pre],/NAN), MAX(efilt_lfm[good_pre],/NAN), MEAN(efilt_lfm[good_pre],/NAN), STDDEV(efilt_lfm[good_pre],/NAN)
+PRINT,';  ', MIN(efilt_lfp[good_pre],/NAN), MAX(efilt_lfp[good_pre],/NAN), MEAN(efilt_lfp[good_pre],/NAN), STDDEV(efilt_lfp[good_pre],/NAN)
+PRINT,';  ', MIN(efilt_hfm[good_pre],/NAN), MAX(efilt_hfm[good_pre],/NAN), MEAN(efilt_hfm[good_pre],/NAN), STDDEV(efilt_hfm[good_pre],/NAN)
+PRINT,';  ', MIN(efilt_hfp[good_pre],/NAN), MAX(efilt_hfp[good_pre],/NAN), MEAN(efilt_hfp[good_pre],/NAN), STDDEV(efilt_hfp[good_pre],/NAN)
+;---------------------------------------------------------------------
+; => Results for peak wave amplitudes [mV/m, Peak-to-Peak, filtered]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;      0.0093393761      0.87288060      0.31600706      0.28337336
+;       0.077503233       10.016443       2.6817834       3.1901516
+;       0.046351768       4.3363107       1.3647907       1.3729672
+;       0.097757355       13.085135       3.7018287       4.2576376
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(epeak_lfm[good_pre],/NAN),  MAX(epeak_lfm[good_pre],/NAN),  MEAN(epeak_lfm[good_pre],/NAN),  STDDEV(epeak_lfm[good_pre],/NAN)
+PRINT,';  ', MIN(epeak_lfp[good_pre],/NAN),  MAX(epeak_lfp[good_pre],/NAN),  MEAN(epeak_lfp[good_pre],/NAN),  STDDEV(epeak_lfp[good_pre],/NAN)
+PRINT,';  ', MIN(epeak_hfm[good_pre],/NAN),  MAX(epeak_hfm[good_pre],/NAN),  MEAN(epeak_hfm[good_pre],/NAN),  STDDEV(epeak_hfm[good_pre],/NAN)
+PRINT,';  ', MIN(epeak_hfp[good_pre],/NAN),  MAX(epeak_hfp[good_pre],/NAN),  MEAN(epeak_hfp[good_pre],/NAN),  STDDEV(epeak_hfp[good_pre],/NAN)
+;---------------------------------------------------------------------
+; => Results for peak wave amplitudes [mV/m, Peak-to-Peak, unfiltered]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.029569960       5.2288478       2.1530356       1.7774062
+;         2.3977620       12.690461       8.7190449       2.8935194
+;         1.1744536       10.683630       6.4531125       2.8051055
+;         2.7768878       17.399025       12.882890       3.1888308
+;---------------------------------------------------------------------
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Look at only the 1998-08-26 precursor
+;-----------------------------------------------------------------------------------------
+evns_pre   = [00010488L]
+good_pre   = array_where(evns,evns_pre,/N_UNIQ)
+good_pre   = good_pre[*,0]
+
+good_high  = WHERE(frest_lfkm[good_pre]/(2d0*!DPI) GT 1d0,gdhg,COMPLEMENT=good_low,NCOMPLEMENT=gdlw)
+PRINT,';  ',  gdhg, gdlw
+;            12          23
+good_prelw = good_pre[good_low]
+good_prehg = good_pre[good_high]
+
+
+all_k_kmm  = [avg_lfkm[good_pre],avg_hfkm[good_pre]]
+all_kcwpem = [kcwpelfm[good_pre],kcwpehfm[good_pre]]
+all_krhoem = [krhoelfm[good_pre],krhoehfm[good_pre]]
+all_frestm = [frest_lfkm[good_pre],frest_hfkm[good_pre]]
+all_thkbm  = ([thkbs[good_pre],thkbs[good_pre]] + [thkbe[good_pre],thkbe[good_pre]])/2d0
+all_wcpm   = [wcp[good_pre],wcp[good_pre]]
+all_wcem   = [wce[good_pre],wce[good_pre]]
+all_wlhm   = [wlh[good_pre],wlh[good_pre]]
+all_vphmlw = [frest_lfkm[good_prelw],frest_hfkm[good_prelw]]/[avg_lfkm[good_prelw],avg_hfkm[good_prelw]]
+all_vphmhg = [frest_lfkm[good_prehg],frest_hfkm[good_prehg]]/[avg_lfkm[good_prehg],avg_hfkm[good_prehg]]
+PRINT,';  ',  MIN(all_k_kmm,/NAN),              MAX(all_k_kmm,/NAN)
+PRINT,';  ',  MIN(all_kcwpem,/NAN),             MAX(all_kcwpem,/NAN)
+PRINT,';  ',  MIN(all_krhoem,/NAN),             MAX(all_krhoem,/NAN)
+PRINT,';  ',  MIN(all_frestm,/NAN)/(2d0*!DPI),  MAX(all_frestm,/NAN)/(2d0*!DPI)
+PRINT,';  ',  MIN(all_vphmlw,/NAN),             MAX(all_vphmlw,/NAN)
+PRINT,';  ',  MIN(all_vphmhg,/NAN),             MAX(all_vphmhg,/NAN)
+PRINT,';  ',  MIN(all_frestm/all_wcpm,/NAN),    MAX(all_frestm/all_wcpm,/NAN)
+PRINT,';  ',  MIN(all_frestm/all_wcem,/NAN),    MAX(all_frestm/all_wcem,/NAN)
+PRINT,';  ',  MIN(all_frestm/all_wlhm,/NAN),    MAX(all_frestm/all_wlhm,/NAN)
+;----------------------------------------
+; => Results for (- sign)
+;========================================
+;       0.030735500      0.19816600
+;       0.036989289      0.23848707
+;       0.059105747      0.38108212
+;      0.0084144439       17.378872
+;         1.5770645       379.20447
+;         151.11686       569.79358
+;       0.039214294       80.991711
+;     2.1356771e-05     0.044109462
+;     0.00091514074       1.8900969
+;----------------------------------------
+
+all_kpar_m = ABS([avg_lfkm_par[good_pre],avg_hfkm_par[good_pre]])
+all_kper_m = ABS([avg_lfkm_per[good_pre],avg_hfkm_per[good_pre]])
+all_kparcm = ABS([kcwpelfm_par[good_pre],kcwpehfm_par[good_pre]])
+all_kparrm = ABS([krhoelfm_par[good_pre],krhoehfm_par[good_pre]])
+all_kpercm = ABS([kcwpelfm_per[good_pre],kcwpehfm_per[good_pre]])
+all_kperrm = ABS([krhoelfm_per[good_pre],krhoehfm_per[good_pre]])
+PRINT,';  ',  MIN(all_kpar_m,/NAN),             MAX(all_kpar_m,/NAN)
+PRINT,';  ',  MIN(all_kper_m,/NAN),             MAX(all_kper_m,/NAN)
+PRINT,';  ',  MIN(all_kparcm,/NAN),             MAX(all_kparcm,/NAN)
+PRINT,';  ',  MIN(all_kpercm,/NAN),             MAX(all_kpercm,/NAN)
+PRINT,';  ',  MIN(all_kparrm,/NAN),             MAX(all_kparrm,/NAN)
+PRINT,';  ',  MIN(all_kperrm,/NAN),             MAX(all_kperrm,/NAN)
+;----------------------------------------
+; => Results for (- sign)
+;========================================
+;      0.0043412408      0.17786259
+;       0.014719398      0.15965657
+;      0.0052245582      0.21405250
+;       0.017714371      0.19214209
+;      0.0083484010      0.34203775
+;       0.028306063      0.30702676
+;----------------------------------------
+
+
+all_k_kmp  = [avg_lfkp[good_pre],avg_hfkp[good_pre]]
+all_kcwpep = [kcwpelfp[good_pre],kcwpehfp[good_pre]]
+all_krhoep = [krhoelfp[good_pre],krhoehfp[good_pre]]
+all_frestp = [frest_lfkp[good_pre],frest_hfkp[good_pre]]
+all_wcpp   = [wcp[good_pre],wcp[good_pre]]
+all_wcep   = [wce[good_pre],wce[good_pre]]
+all_wlhp   = [wlh[good_pre],wlh[good_pre]]
+all_vphplw = [frest_lfkp[good_prelw],frest_hfkp[good_prelw]]/[avg_lfkp[good_prelw],avg_hfkp[good_prelw]]
+all_vphphg = [frest_lfkp[good_prehg],frest_hfkp[good_prehg]]/[avg_lfkp[good_prehg],avg_hfkp[good_prehg]]
+PRINT,';  ',  MIN(all_k_kmp,/NAN),              MAX(all_k_kmp,/NAN)
+PRINT,';  ',  MIN(all_kcwpep,/NAN),             MAX(all_kcwpep,/NAN)
+PRINT,';  ',  MIN(all_krhoep,/NAN),             MAX(all_krhoep,/NAN)
+PRINT,';  ',  MIN(all_frestp,/NAN)/(2d0*!DPI),  MAX(all_frestp,/NAN)/(2d0*!DPI)
+PRINT,';  ',  MIN(all_vphplw,/NAN),             MAX(all_vphplw,/NAN)
+PRINT,';  ',  MIN(all_vphphg,/NAN),             MAX(all_vphphg,/NAN)
+PRINT,';  ',  MIN(all_frestp/all_wcpp,/NAN),    MAX(all_frestp/all_wcpp,/NAN)
+PRINT,';  ',  MIN(all_frestp/all_wcep,/NAN),    MAX(all_frestp/all_wcep,/NAN)
+PRINT,';  ',  MIN(all_frestp/all_wlhp,/NAN),    MAX(all_frestp/all_wlhp,/NAN)
+;----------------------------------------
+; => Results for (+ sign)
+;========================================
+;       0.099037997       1.6549085
+;        0.11918938       1.9916347
+;        0.19045452       3.1824635
+;         5.3412964       99.672507
+;         127.88064       927.94798
+;         338.86343       823.07897
+;         24.892336       464.50924
+;       0.013556790      0.25297963
+;        0.58091040       10.840214
+;----------------------------------------
+
+all_kpar_p = ABS([avg_lfkp_par[good_pre],avg_hfkp_par[good_pre]])
+all_kper_p = ABS([avg_lfkp_per[good_pre],avg_hfkp_per[good_pre]])
+all_kparcp = ABS([kcwpelfp_par[good_pre],kcwpehfp_par[good_pre]])
+all_kparrp = ABS([krhoelfp_par[good_pre],krhoehfp_par[good_pre]])
+all_kpercp = ABS([kcwpelfp_per[good_pre],kcwpehfp_per[good_pre]])
+all_kperrp = ABS([krhoelfp_per[good_pre],krhoehfp_per[good_pre]])
+PRINT,';  ',  MIN(all_kpar_p,/NAN),             MAX(all_kpar_p,/NAN)
+PRINT,';  ',  MIN(all_kper_p,/NAN),             MAX(all_kper_p,/NAN)
+PRINT,';  ',  MIN(all_kparcp,/NAN),             MAX(all_kparcp,/NAN)
+PRINT,';  ',  MIN(all_kpercp,/NAN),             MAX(all_kpercp,/NAN)
+PRINT,';  ',  MIN(all_kparrp,/NAN),             MAX(all_kparrp,/NAN)
+PRINT,';  ',  MIN(all_kperrp,/NAN),             MAX(all_kperrp,/NAN)
+;----------------------------------------
+; => Results for (+ sign)
+;========================================
+;       0.091918421      0.32454206
+;       0.027895367       1.6227738
+;        0.11062117      0.39057702
+;       0.033571270       1.9529615
+;        0.17676325      0.62410897
+;       0.053644043       3.1206669
+;----------------------------------------
+
+
+;-----------------------------------------------------------------------------------------
+; => Look at only the precursors
+;-----------------------------------------------------------------------------------------
+evns_pre   = [03408599L,00010488L,02011249L,23145465L]
+good_pre   = array_where(evns,evns_pre,/N_UNIQ)
+good_pre   = good_pre[*,0]
+
+all_k_kmm  = [avg_lfkm[good_pre],avg_hfkm[good_pre]]
+all_kcwpem = [kcwpelfm[good_pre],kcwpehfm[good_pre]]
+all_krhoem = [krhoelfm[good_pre],krhoehfm[good_pre]]
+all_frestm = [frest_lfkm[good_pre],frest_hfkm[good_pre]]
+all_wcpm   = [wcp[good_pre],wcp[good_pre]]
+all_wcem   = [wce[good_pre],wce[good_pre]]
+all_wlhm   = [wlh[good_pre],wlh[good_pre]]
+PRINT,';  ',  MIN(all_k_kmm,/NAN),              MAX(all_k_kmm,/NAN)
+PRINT,';  ',  MIN(all_kcwpem,/NAN),             MAX(all_kcwpem,/NAN)
+PRINT,';  ',  MIN(all_krhoem,/NAN),             MAX(all_krhoem,/NAN)
+PRINT,';  ',  MIN(all_frestm,/NAN)/(2d0*!DPI),  MAX(all_frestm,/NAN)/(2d0*!DPI)
+PRINT,';  ',  MIN(all_frestm/all_wcpm,/NAN),    MAX(all_frestm/all_wcpm,/NAN)
+PRINT,';  ',  MIN(all_frestm/all_wcem,/NAN),    MAX(all_frestm/all_wcem,/NAN)
+PRINT,';  ',  MIN(all_frestm/all_wlhm,/NAN),    MAX(all_frestm/all_wlhm,/NAN)
+;----------------------------------------
+; => Results for (- sign)
+;========================================
+;       0.022280999      0.53691304
+;       0.030146192      0.56762698
+;       0.020198952      0.85525603
+;      0.0036809690       18.203783
+;       0.018519545       91.136616
+;     1.0086059e-05     0.049634550
+;     0.00043219393       2.1268715
+;----------------------------------------
+
+
+all_k_kmp  = [avg_lfkp[good_pre],avg_hfkp[good_pre]]
+all_kcwpep = [kcwpelfp[good_pre],kcwpehfp[good_pre]]
+all_krhoep = [krhoelfp[good_pre],krhoehfp[good_pre]]
+all_frestp = [frest_lfkp[good_pre],frest_hfkp[good_pre]]
+all_wcpp   = [wcp[good_pre],wcp[good_pre]]
+all_wcep   = [wce[good_pre],wce[good_pre]]
+all_wlhp   = [wlh[good_pre],wlh[good_pre]]
+PRINT,';  ',  MIN(all_k_kmp,/NAN),              MAX(all_k_kmp,/NAN)
+PRINT,';  ',  MIN(all_kcwpep,/NAN),             MAX(all_kcwpep,/NAN)
+PRINT,';  ',  MIN(all_krhoep,/NAN),             MAX(all_krhoep,/NAN)
+PRINT,';  ',  MIN(all_frestp,/NAN)/(2d0*!DPI),  MAX(all_frestp,/NAN)/(2d0*!DPI)
+PRINT,';  ',  MIN(all_frestp/all_wcpp,/NAN),    MAX(all_frestp/all_wcpp,/NAN)
+PRINT,';  ',  MIN(all_frestp/all_wcep,/NAN),    MAX(all_frestp/all_wcep,/NAN)
+PRINT,';  ',  MIN(all_frestp/all_wlhp,/NAN),    MAX(all_frestp/all_wlhp,/NAN)
+;----------------------------------------
+; => Results for (+ sign)
+;========================================
+;       0.058149502       4.0448470
+;       0.084220471       4.2762312
+;       0.052715725       5.0063881
+;         3.2130983       99.672507
+;         12.625374       464.50924
+;      0.0068759935      0.25297963
+;        0.29463871       10.840214
+;----------------------------------------
+
+; => Define wave amplitudes [nT]
+filtamp_0  = filtamp[good_pre]                    ; => Filtered amplitudes [nT]
+pkamps_0   = DOUBLE(pkamps[good_pre])             ; => Peak-to-Peak amplitudes [nT]
+dist_r_0   = dist_r[good_pre]                     ; => normal distance from shock ramp (km)
+; => Define wave normal angles with respect to Bo, Vsw, and n
+th_kn_rh08 = thkn8[good_pre]                      ; => Theta_kn (deg) [RH08 JCK's]
+th_kn_rh09 = thkn9[good_pre]                      ; => Theta_kn (deg) [RH09 JCK's]
+th_kV_st   = thkvs[good_pre]                      ; => Theta_kV (deg) [at start of TDSS]
+th_kV_en   = thkve[good_pre]                      ; => Theta_kV (deg) [at end   of TDSS]
+th_kV_av   = thkva[good_pre]                      ; => Theta_kV (deg) [Avg.]
+th_kB_st   = thkbs[good_pre]                      ; => Theta_kB (deg) [at start of TDSS]
+th_kB_en   = thkbe[good_pre]                      ; => Theta_kB (deg) [at end   of TDSS]
+th_kB_av   = thkba[good_pre]                      ; => Theta_kB (deg) [Avg.]
+; => Force angles to be from 0-90 degrees
+th_kn_rh08 = th_kn_rh08 < (18d1 - th_kn_rh08)
+th_kn_rh09 = th_kn_rh09 < (18d1 - th_kn_rh09)
+th_kV_st   = th_kV_st   < (18d1 -   th_kV_st)
+th_kV_en   = th_kV_en   < (18d1 -   th_kV_en)
+th_kV_av   = th_kV_av   < (18d1 -   th_kV_av)
+th_kB_st   = th_kB_st   < (18d1 -   th_kB_st)
+th_kB_en   = th_kB_en   < (18d1 -   th_kB_en)
+th_kB_av   = th_kB_av   < (18d1 -   th_kB_av)
+
+PRINT,';  ', MIN(filtamp_0,/NAN), MAX(filtamp_0,/NAN), MEAN(filtamp_0,/NAN), STDDEV(filtamp_0,/NAN)
+PRINT,';  ', MIN(pkamps_0,/NAN),  MAX(pkamps_0,/NAN),  MEAN(pkamps_0,/NAN),  STDDEV(pkamps_0,/NAN)
+PRINT,';  ', MIN(dist_r_0,/NAN),  MAX(dist_r_0,/NAN),  MEAN(dist_r_0,/NAN),  STDDEV(dist_r_0,/NAN)
+;---------------------------------------------------------------------
+; => Results for peak wave amplitudes [nT, Peak-to-Peak, filtered]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.026000001       29.208000       3.4679048       5.9231848
+;---------------------------------------------------------------------
+; => Results for peak wave amplitudes [nT, Peak-to-Peak, unfiltered]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         4.5700002       30.000000       13.676786       7.6614234
+;---------------------------------------------------------------------
+; => Results for normal distance from shock ramp [km]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;        -343.70001      -139.03196      -297.18754       56.434707
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(th_kn_rh08,/NAN), MAX(th_kn_rh08,/NAN), MEAN(th_kn_rh08,/NAN), STDDEV(th_kn_rh08,/NAN)
+PRINT,';  ', MIN(th_kn_rh09,/NAN), MAX(th_kn_rh09,/NAN), MEAN(th_kn_rh09,/NAN), STDDEV(th_kn_rh09,/NAN)
+;---------------------------------------------------------------------
+; => Results for Theta_kn [RH08, degrees]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         10.081844       89.671197       49.876967       22.103013
+;---------------------------------------------------------------------
+; => Results for Theta_kn [RH09, degrees]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         6.8984178       88.510948       47.147797       23.985588
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(th_kV_st,/NAN), MAX(th_kV_st,/NAN), MEAN(th_kV_st,/NAN), STDDEV(th_kV_st,/NAN)
+PRINT,';  ', MIN(th_kV_en,/NAN), MAX(th_kV_en,/NAN), MEAN(th_kV_en,/NAN), STDDEV(th_kV_en,/NAN)
+PRINT,';  ', MIN(th_kV_av,/NAN), MAX(th_kV_av,/NAN), MEAN(th_kV_av,/NAN), STDDEV(th_kV_av,/NAN)
+;---------------------------------------------------------------------
+; => Results for Theta_kV [degrees]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         11.592000       89.170998       48.018738       25.789922
+;         9.9340057       89.857002       48.313190       25.835393
+;         12.618500       89.656998       48.167666       25.736008
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(th_kB_st,/NAN), MAX(th_kB_st,/NAN), MEAN(th_kB_st,/NAN), STDDEV(th_kB_st,/NAN)
+PRINT,';  ', MIN(th_kB_en,/NAN), MAX(th_kB_en,/NAN), MEAN(th_kB_en,/NAN), STDDEV(th_kB_en,/NAN)
+PRINT,';  ', MIN(th_kB_av,/NAN), MAX(th_kB_av,/NAN), MEAN(th_kB_av,/NAN), STDDEV(th_kB_av,/NAN)
+;---------------------------------------------------------------------
+; => Results for Theta_kB [degrees]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         6.0010071       89.467003       50.356202       23.629144
+;         8.1709995       88.402000       51.876548       19.902713
+;         12.369500       89.086502       51.130042       21.281579
+;---------------------------------------------------------------------
+
+
+
+evns_pre   = [03408599L,00010488L,02011249L,23145465L]
+good_pre   = array_where(evns,evns_pre,/N_UNIQ)
+good_pre   = good_pre[*,0]
+
+; => Define low/high frequency by SC-frame frequencies
+good_lowf  = WHERE(freqh[good_pre] LT 1e2,gdlwf,COMPLEMENT=good_higf,NCOMPLEMENT=gdhgf)
+PRINT,';  ',  gdlwf, gdhgf
+;            29          55
+good_prelf = good_pre[good_lowf]
+good_prehf = good_pre[good_higf]
+
+gels       = good_prelf
+gels       = good_prehf
+; => Define wave normal angles with respect to Bo, Vsw, and n
+th_kn_rh08 = thkn8[gels]                      ; => Theta_kn (deg) [RH08 JCK's]
+th_kn_rh09 = thkn9[gels]                      ; => Theta_kn (deg) [RH09 JCK's]
+th_kV_st   = thkvs[gels]                      ; => Theta_kV (deg) [at start of TDSS]
+th_kV_en   = thkve[gels]                      ; => Theta_kV (deg) [at end   of TDSS]
+th_kV_av   = thkva[gels]                      ; => Theta_kV (deg) [Avg.]
+th_kB_st   = thkbs[gels]                      ; => Theta_kB (deg) [at start of TDSS]
+th_kB_en   = thkbe[gels]                      ; => Theta_kB (deg) [at end   of TDSS]
+th_kB_av   = thkba[gels]                      ; => Theta_kB (deg) [Avg.]
+; => Force angles to be from 0-90 degrees
+th_kn_rh08 = th_kn_rh08 < (18d1 - th_kn_rh08)
+th_kn_rh09 = th_kn_rh09 < (18d1 - th_kn_rh09)
+th_kV_st   = th_kV_st   < (18d1 -   th_kV_st)
+th_kV_en   = th_kV_en   < (18d1 -   th_kV_en)
+th_kV_av   = th_kV_av   < (18d1 -   th_kV_av)
+th_kB_st   = th_kB_st   < (18d1 -   th_kB_st)
+th_kB_en   = th_kB_en   < (18d1 -   th_kB_en)
+th_kB_av   = th_kB_av   < (18d1 -   th_kB_av)
+
+
+PRINT,';  ', MIN(th_kn_rh08,/NAN), MAX(th_kn_rh08,/NAN), MEAN(th_kn_rh08,/NAN), STDDEV(th_kn_rh08,/NAN)
+PRINT,';  ', MIN(th_kn_rh09,/NAN), MAX(th_kn_rh09,/NAN), MEAN(th_kn_rh09,/NAN), STDDEV(th_kn_rh09,/NAN)
+;---------------------------------------------------------------------
+; => Results for Theta_kn [RH08, degrees]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         10.390859       58.771401       36.950743       11.646664     => For Low  Frequencies
+;         10.081844       89.671197       56.692612       23.313715     => For High Frequencies
+;---------------------------------------------------------------------
+; => Results for Theta_kn [RH09, degrees]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         6.8984178       72.041407       30.016670       15.622980     => For Low  Frequencies
+;         10.630675       88.510948       56.180572       22.737688     => For High Frequencies
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(th_kV_st,/NAN), MAX(th_kV_st,/NAN), MEAN(th_kV_st,/NAN), STDDEV(th_kV_st,/NAN)
+PRINT,';  ', MIN(th_kV_en,/NAN), MAX(th_kV_en,/NAN), MEAN(th_kV_en,/NAN), STDDEV(th_kV_en,/NAN)
+PRINT,';  ', MIN(th_kV_av,/NAN), MAX(th_kV_av,/NAN), MEAN(th_kV_av,/NAN), STDDEV(th_kV_av,/NAN)
+;---------------------------------------------------------------------
+; => Results for Theta_kV [degrees]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;     => For Low  Frequencies
+;         12.537994       69.400002       31.273413       15.709351
+;         9.9340057       68.670998       30.284930       16.016034
+;         12.618500       69.035500       30.779171       15.667106
+;---------------------------------------------------------------------
+;     => For High Frequencies
+;         11.592000       89.170998       56.848091       25.775236
+;         13.216000       89.857002       57.819000       25.026683
+;         13.445999       89.656998       57.336146       25.352981
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(th_kB_st,/NAN), MAX(th_kB_st,/NAN), MEAN(th_kB_st,/NAN), STDDEV(th_kB_st,/NAN)
+PRINT,';  ', MIN(th_kB_en,/NAN), MAX(th_kB_en,/NAN), MEAN(th_kB_en,/NAN), STDDEV(th_kB_en,/NAN)
+PRINT,';  ', MIN(th_kB_av,/NAN), MAX(th_kB_av,/NAN), MEAN(th_kB_av,/NAN), STDDEV(th_kB_av,/NAN)
+;---------------------------------------------------------------------
+; => Results for Theta_kB [degrees]
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;     => For Low  Frequencies
+;         37.320007       89.385002       59.503035       14.735671
+;         36.846001       87.557999       57.622379       14.308802
+;         37.539001       89.086502       58.583914       13.939155
+;---------------------------------------------------------------------
+;     => For High Frequencies
+;         6.0010071       89.467003       45.533327       26.018664
+;         8.1709995       88.402000       48.846928       21.808415
+;         12.369500       88.501999       47.199818       23.448111
+;---------------------------------------------------------------------
+
+xr         = [0d0,9d1]
+nb         = 7
+
+gels       = good_prelf
+xtt_fr     = ', Low F]'
+gels       = good_prehf
+xtt_fr     = ', High F]'
+
+angs       = thkva
+xtt_sf     = '_kV [deg'
+angs       = thkba
+xtt_sf     = '_kB [deg'
+angs       = thkn8
+xtt_sf     = '_kn [deg, RH08'
+
+xttl       = 'Theta'+xtt_sf[0]+xtt_fr[0]
+xdat       = angs[gels] < (18d1 - angs[gels])
+
+my_histogram_plot,xdat,NBINS=nb,XTTL=xttl,TTLE=ttle,DRANGE=xr
+
+
+;-----------------------------------------------------------------------------------------
+; => Look at particle parameters
+;-----------------------------------------------------------------------------------------
+; => Define electron and ion thermal speeds (km/s)
+vte_0      = vte[good_pre]
+vti_0      = vti[good_pre]
+; => Define electron-ion drift, (Vsw - Ve), speed (km/s)
+vdrmg_0    = vdrmg[good_pre]
+; => Define electron and ion avg. temperatures (eV)
+teavg_0    = teavg[good_pre]
+tiavg_0    = tiavg[good_pre]
+; => Define core and halo electron temperatures (eV)
+tec_avg_0  = tecavg[good_pre]
+teh_avg_0  = tehavg[good_pre]
+; => Define parallel and perpendicular core electron temperatures (eV)
+tpara_ec_0 = tparc[good_pre]
+tperp_ec_0 = tperc[good_pre]
+; => Define parallel and perpendicular halo electron temperatures (eV)
+tpara_eh_0 = tparh[good_pre]
+tperp_eh_0 = tperh[good_pre]
+; => Define k . (Vsw - Ve)/|(Vsw - Ve)| angle [deg]
+th_kvd_0   = the_kvds[good_pre]
+; => Define electron heat flux magnitude [eV km/s cm^(-3)]
+qmag_0     = qmag[good_pre]
+; => Define parallel core electron plasma beta
+beta_pac_0 = beta_pac[good_pre]
+
+; => Define electron-to-ion temperature ratio
+te_ti_0    = te_tiav[good_pre]
+; => Define halo-to-core avg. electron temperature ratio
+teh_tec_0  = tehc_avg[good_pre]
+; => Define halo-to-core parallel and perpendicular electron temperature ratio
+thc_para_0 = thc_par[good_pre]
+thc_perp_0 = thc_per[good_pre]
+; => Define halo and core electron temperature anisotropy
+tanis_ce_0 = tanis_c[good_pre]
+tanis_he_0 = tanis_h[good_pre]
+
+; => Only look at unique elements
+unq        = UNIQ(vte_0,SORT(vte_0))
+PRINT,';  ', N_ELEMENTS(unq)
+;             4
+vte_0      = vte_0[unq]
+vti_0      = vti_0[unq]
+vdrmg_0    = vdrmg_0[unq]
+teavg_0    = teavg_0[unq]
+tiavg_0    = tiavg_0[unq]
+tec_avg_0  = tec_avg_0[unq]
+teh_avg_0  = teh_avg_0[unq]
+tpara_ec_0 = tpara_ec_0[unq]
+tperp_ec_0 = tperp_ec_0[unq]
+tpara_eh_0 = tpara_eh_0[unq]
+tperp_eh_0 = tperp_eh_0[unq]
+qmag_0     = qmag_0[unq]
+beta_pac_0 = beta_pac_0[unq]
+te_ti_0    = te_ti_0[unq]
+teh_tec_0  = teh_tec_0[unq]
+thc_para_0 = thc_para_0[unq]
+thc_perp_0 = thc_perp_0[unq]
+tanis_ce_0 = tanis_ce_0[unq]
+tanis_he_0 = tanis_he_0[unq]
+
+Vdr_vte    = vdrmg_0*1d3/vte_0
+Vdr_vti    = vdrmg_0*1d3/vti_0
+
+PRINT,';  ', MIN(Vdr_vte,/NAN), MAX(Vdr_vte,/NAN), MEAN(Vdr_vte,/NAN), STDDEV(Vdr_vte,/NAN)
+PRINT,';  ', MIN(Vdr_vti,/NAN), MAX(Vdr_vti,/NAN), MEAN(Vdr_vti,/NAN), STDDEV(Vdr_vti,/NAN)
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.032260811      0.15247692     0.090752179     0.050049859
+;         1.1175572       6.6430829       4.8409942       2.5820099
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(tiavg_0,/NAN),   MAX(tiavg_0,/NAN),   MEAN(tiavg_0,/NAN),   STDDEV(tiavg_0,/NAN)
+PRINT,';  ', MIN(teavg_0,/NAN),   MAX(teavg_0,/NAN),   MEAN(teavg_0,/NAN),   STDDEV(teavg_0,/NAN)
+PRINT,';  ', MIN(te_ti_0,/NAN),   MAX(te_ti_0,/NAN),   MEAN(te_ti_0,/NAN),   STDDEV(te_ti_0,/NAN)
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         7.9934998       51.896000       34.293874       21.360379
+;         18.856499       60.641502       41.622125       18.368912
+;        0.68565016       2.3589791       1.5982288      0.88234952
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(tec_avg_0,/NAN), MAX(tec_avg_0,/NAN), MEAN(tec_avg_0,/NAN), STDDEV(tec_avg_0,/NAN)
+PRINT,';  ', MIN(teh_avg_0,/NAN), MAX(teh_avg_0,/NAN), MEAN(teh_avg_0,/NAN), STDDEV(teh_avg_0,/NAN)
+PRINT,';  ', MIN(teh_tec_0,/NAN), MAX(teh_tec_0,/NAN), MEAN(teh_tec_0,/NAN), STDDEV(teh_tec_0,/NAN)
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         16.546501       40.972500       30.479750       10.655004
+;         121.78200       291.45401       203.43988       85.425173
+;         4.9188138       7.3599848       6.6577378       1.1636455
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(tpara_ec_0,/NAN), MAX(tpara_ec_0,/NAN), MEAN(tpara_ec_0,/NAN), STDDEV(tpara_ec_0,/NAN)
+PRINT,';  ', MIN(tperp_ec_0,/NAN), MAX(tperp_ec_0,/NAN), MEAN(tperp_ec_0,/NAN), STDDEV(tperp_ec_0,/NAN)
+PRINT,';  ', MIN(tanis_ce_0,/NAN), MAX(tanis_ce_0,/NAN), MEAN(tanis_ce_0,/NAN), STDDEV(tanis_ce_0,/NAN)
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         16.617001       38.661499       31.102750       10.388003
+;         16.511999       42.151501       30.168375       10.963812
+;        0.89090218       1.0916119      0.96921466     0.093829290
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(tpara_eh_0,/NAN), MAX(tpara_eh_0,/NAN), MEAN(tpara_eh_0,/NAN), STDDEV(tpara_eh_0,/NAN)
+PRINT,';  ', MIN(tperp_eh_0,/NAN), MAX(tperp_eh_0,/NAN), MEAN(tperp_eh_0,/NAN), STDDEV(tperp_eh_0,/NAN)
+PRINT,';  ', MIN(tanis_he_0,/NAN), MAX(tanis_he_0,/NAN), MEAN(tanis_he_0,/NAN), STDDEV(tanis_he_0,/NAN)
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         116.68900       289.82501       208.01013       92.869115
+;         113.02650       294.06500       201.15500       83.822383
+;        0.81142706       1.2893374      0.99515770      0.21732144
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(qmag_0,/NAN),     MAX(qmag_0,/NAN),     MEAN(qmag_0,/NAN),     STDDEV(qmag_0,/NAN)
+PRINT,';  ', MIN(beta_pac_0,/NAN), MAX(beta_pac_0,/NAN), MEAN(beta_pac_0,/NAN), STDDEV(beta_pac_0,/NAN)
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         29897.008       579400.12       245077.64       251084.56
+;        0.51824999       1.7992500       1.3503125      0.60133328
+;---------------------------------------------------------------------
+
+PRINT,';  ', MIN(thc_para_0,/NAN), MAX(thc_para_0,/NAN), MEAN(thc_para_0,/NAN), STDDEV(thc_para_0,/NAN)
+PRINT,';  ', MIN(thc_perp_0,/NAN), MAX(thc_perp_0,/NAN), MEAN(thc_perp_0,/NAN), STDDEV(thc_perp_0,/NAN)
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         3.8235496       8.3825891       6.7788224       2.0184566
+;         5.5335429       7.0956320       6.6126677      0.72665547
+;---------------------------------------------------------------------
+
+;-----------------------------------------------------------------------------------------
+; => Look at only the precursors
+;-----------------------------------------------------------------------------------------
+evns_pre   = [03408599L,00010488L,02011249L,23145465L]
+good_pre   = array_where(evns,evns_pre,/N_UNIQ)
+good_pre   = good_pre[*,0]
+
+; => Define low/high frequency by SC-frame frequencies
+good_lowf  = WHERE(freqh[good_pre] LT 1e2,gdlwf,COMPLEMENT=good_higf,NCOMPLEMENT=gdhgf)
+PRINT,';  ',  gdlwf, gdhgf
+;            29          55
+
+good_prelf = good_pre[good_lowf]
+good_prehf = good_pre[good_higf]
+; => Define parameters for all frequencies
+all_k_km   = [avg_lfkm[good_pre],avg_lfkp[good_pre],avg_hfkm[good_pre],avg_hfkp[good_pre]]
+all_kcwpe  = [kcwpelfm[good_pre],kcwpelfp[good_pre],kcwpehfm[good_pre],kcwpehfp[good_pre]]
+all_krhoe  = [krhoelfm[good_pre],krhoelfp[good_pre],krhoehfm[good_pre],krhoehfp[good_pre]]
+all_frest  = [frest_lfkm[good_pre],frest_lfkp[good_pre],frest_hfkm[good_pre],frest_hfkp[good_pre]]
+all_wcp    = [wcp[good_pre],wcp[good_pre],wcp[good_pre],wcp[good_pre]]
+all_wce    = [wce[good_pre],wce[good_pre],wce[good_pre],wce[good_pre]]
+all_wlh    = [wlh[good_pre],wlh[good_pre],wlh[good_pre],wlh[good_pre]]
+all_vph    = all_frest/all_k_km
+
+
+PRINT,';  ',  MIN(all_k_km,/NAN),  MAX(all_k_km,/NAN),  MEAN(all_k_km,/NAN),  STDDEV(all_k_km,/NAN)
+PRINT,';  ',  MIN(all_kcwpe,/NAN), MAX(all_kcwpe,/NAN), MEAN(all_kcwpe,/NAN), STDDEV(all_kcwpe,/NAN)
+PRINT,';  ',  MIN(all_krhoe,/NAN), MAX(all_krhoe,/NAN), MEAN(all_krhoe,/NAN), STDDEV(all_krhoe,/NAN)
+PRINT,';  ',  MIN(all_vph,/NAN),   MAX(all_vph,/NAN),   MEAN(all_vph,/NAN),   STDDEV(all_vph,/NAN)
+;---------------------------------------------------------------------
+; => Results for (both signs), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.022280999       4.0448470      0.30417052      0.43551747
+;       0.030146192       4.2762312      0.35266774      0.48136245
+;       0.020198952       5.0063881      0.48722768      0.65334125
+;        0.74216893       1173.1943       372.63681       253.13153
+;---------------------------------------------------------------------
+
+PRINT,';  ',  [MIN(all_frest,/NAN),MAX(all_frest,/NAN),MEAN(all_frest,/NAN),STDDEV(all_frest,/NAN)]/(2d0*!DPI)
+PRINT,';  ',  MIN(all_frest/all_wcp,/NAN), MAX(all_frest/all_wcp,/NAN), MEAN(all_frest/all_wcp,/NAN), STDDEV(all_frest/all_wcp,/NAN)
+PRINT,';  ',  MIN(all_frest/all_wce,/NAN), MAX(all_frest/all_wce,/NAN), MEAN(all_frest/all_wce,/NAN), STDDEV(all_frest/all_wce,/NAN)
+PRINT,';  ',  MIN(all_frest/all_wlh,/NAN), MAX(all_frest/all_wlh,/NAN), MEAN(all_frest/all_wlh,/NAN), STDDEV(all_frest/all_wlh,/NAN)
+;---------------------------------------------------------------------
+; => Results for (both signs), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;      0.0036809690       99.672507       18.552011       20.799833
+;       0.018519545       464.50924       86.864984       98.082410
+;     1.0086059e-05      0.25297963     0.047308147     0.053417348
+;     0.00043219393       10.840214       2.0271686       2.2889471
+;---------------------------------------------------------------------
+
+
+; => Define parameters for low frequencies
+lf_k_km    = [avg_lfkm[good_prelf],avg_lfkp[good_prelf],avg_hfkm[good_prelf],avg_hfkp[good_prelf]]
+lf_kcwpe   = [kcwpelfm[good_prelf],kcwpelfp[good_prelf],kcwpehfm[good_prelf],kcwpehfp[good_prelf]]
+lf_krhoe   = [krhoelfm[good_prelf],krhoelfp[good_prelf],krhoehfm[good_prelf],krhoehfp[good_prelf]]
+lf_frest   = [frest_lfkm[good_prelf],frest_lfkp[good_prelf],frest_hfkm[good_prelf],frest_hfkp[good_prelf]]
+lf_wcp     = [wcp[good_prelf],wcp[good_prelf],wcp[good_prelf],wcp[good_prelf]]
+lf_wce     = [wce[good_prelf],wce[good_prelf],wce[good_prelf],wce[good_prelf]]
+lf_wlh     = [wlh[good_prelf],wlh[good_prelf],wlh[good_prelf],wlh[good_prelf]]
+lf_vph     = lf_frest/lf_k_km
+
+PRINT,';  ',  MIN(lf_k_km,/NAN),  MAX(lf_k_km,/NAN),  MEAN(lf_k_km,/NAN),  STDDEV(lf_k_km,/NAN)
+PRINT,';  ',  MIN(lf_kcwpe,/NAN), MAX(lf_kcwpe,/NAN), MEAN(lf_kcwpe,/NAN), STDDEV(lf_kcwpe,/NAN)
+PRINT,';  ',  MIN(lf_krhoe,/NAN), MAX(lf_krhoe,/NAN), MEAN(lf_krhoe,/NAN), STDDEV(lf_krhoe,/NAN)
+PRINT,';  ',  MIN(lf_vph,/NAN),   MAX(lf_vph,/NAN),   MEAN(lf_vph,/NAN),   STDDEV(lf_vph,/NAN)
+;---------------------------------------------------------------------
+; => Results for (both signs), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.022280999       1.6549085      0.29522587      0.30932518
+;       0.030146192       1.9916347      0.35129174      0.37990395
+;       0.020198952       3.1824635      0.50557966      0.61204051
+;         1.5770645       1173.1943       378.19520       295.63974
+;---------------------------------------------------------------------
+
+PRINT,';  ',  [MIN(lf_frest,/NAN),MAX(lf_frest,/NAN),MEAN(lf_frest,/NAN),STDDEV(lf_frest,/NAN)]/(2d0*!DPI)
+PRINT,';  ',  MIN(lf_frest/lf_wcp,/NAN), MAX(lf_frest/lf_wcp,/NAN), MEAN(lf_frest/lf_wcp,/NAN), STDDEV(lf_frest/lf_wcp,/NAN)
+PRINT,';  ',  MIN(lf_frest/lf_wce,/NAN), MAX(lf_frest/lf_wce,/NAN), MEAN(lf_frest/lf_wce,/NAN), STDDEV(lf_frest/lf_wce,/NAN)
+PRINT,';  ',  MIN(lf_frest/lf_wlh,/NAN), MAX(lf_frest/lf_wlh,/NAN), MEAN(lf_frest/lf_wlh,/NAN), STDDEV(lf_frest/lf_wlh,/NAN)
+;---------------------------------------------------------------------
+; => Results for (both signs), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;      0.0084144439       90.543445       22.018217       23.523872
+;       0.039214294       421.96457       101.06535       109.62332
+;     2.1356771e-05      0.22980908     0.055041908     0.059702722
+;     0.00091514074       9.8473525       2.3585603       2.5582727
+;---------------------------------------------------------------------
+
+
+; => Define parameters for High frequencies
+hf_k_km    = [avg_lfkm[good_prehf],avg_lfkp[good_prehf],avg_hfkm[good_prehf],avg_hfkp[good_prehf]]
+hf_kcwpe   = [kcwpelfm[good_prehf],kcwpelfp[good_prehf],kcwpehfm[good_prehf],kcwpehfp[good_prehf]]
+hf_krhoe   = [krhoelfm[good_prehf],krhoelfp[good_prehf],krhoehfm[good_prehf],krhoehfp[good_prehf]]
+hf_frest   = [frest_lfkm[good_prehf],frest_lfkp[good_prehf],frest_hfkm[good_prehf],frest_hfkp[good_prehf]]
+hf_wcp     = [wcp[good_prehf],wcp[good_prehf],wcp[good_prehf],wcp[good_prehf]]
+hf_wce     = [wce[good_prehf],wce[good_prehf],wce[good_prehf],wce[good_prehf]]
+hf_wlh     = [wlh[good_prehf],wlh[good_prehf],wlh[good_prehf],wlh[good_prehf]]
+hf_vph     = hf_frest/hf_k_km
+
+PRINT,';  ',  MIN(hf_k_km,/NAN),  MAX(hf_k_km,/NAN),  MEAN(hf_k_km,/NAN),  STDDEV(hf_k_km,/NAN)
+PRINT,';  ',  MIN(hf_kcwpe,/NAN), MAX(hf_kcwpe,/NAN), MEAN(hf_kcwpe,/NAN), STDDEV(hf_kcwpe,/NAN)
+PRINT,';  ',  MIN(hf_krhoe,/NAN), MAX(hf_krhoe,/NAN), MEAN(hf_krhoe,/NAN), STDDEV(hf_krhoe,/NAN)
+PRINT,';  ',  MIN(hf_vph,/NAN),   MAX(hf_vph,/NAN),   MEAN(hf_vph,/NAN),   STDDEV(hf_vph,/NAN)
+;---------------------------------------------------------------------
+; => Results for (both signs), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.023682501       4.0448470      0.30876594      0.48843281
+;       0.031126222       4.2762312      0.35337467      0.52675822
+;       0.021469491       5.0063881      0.47779914      0.67475286
+;        0.74216893       1023.7873       369.78113       228.94174
+;---------------------------------------------------------------------
+
+PRINT,';  ',  [MIN(hf_frest,/NAN),MAX(hf_frest,/NAN),MEAN(hf_frest,/NAN),STDDEV(hf_frest,/NAN)]/(2d0*!DPI)
+PRINT,';  ',  MIN(hf_frest/hf_wcp,/NAN), MAX(hf_frest/hf_wcp,/NAN), MEAN(hf_frest/hf_wcp,/NAN), STDDEV(hf_frest/hf_wcp,/NAN)
+PRINT,';  ',  MIN(hf_frest/hf_wce,/NAN), MAX(hf_frest/hf_wce,/NAN), MEAN(hf_frest/hf_wce,/NAN), STDDEV(hf_frest/hf_wce,/NAN)
+PRINT,';  ',  MIN(hf_frest/hf_wlh,/NAN), MAX(hf_frest/hf_wlh,/NAN), MEAN(hf_frest/hf_wlh,/NAN), STDDEV(hf_frest/hf_wlh,/NAN)
+;---------------------------------------------------------------------
+; => Results for (both signs), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;      0.0036809690       99.672507       16.771208       19.065126
+;       0.018519545       464.50924       79.569382       90.998737
+;     1.0086059e-05      0.25297963     0.043334838     0.049559459
+;     0.00043219393       10.840214       1.8569124       2.1236384
+;---------------------------------------------------------------------
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Look at only the precursors
+;-----------------------------------------------------------------------------------------
+evns_pre   = [03408599L,00010488L,02011249L,23145465L]
+good_pre   = array_where(evns,evns_pre,/N_UNIQ)
+good_pre   = good_pre[*,0]
+
+; => Define low/high frequency by rest frame frequencies
+test0      = (frest_lfkm/wlh LT 1) AND (frest_lfkp/wlh LT 1)
+test1      = (frest_hfkm/wlh LT 1) OR (frest_hfkp/wlh LT 1)
+test2      = (frest_lfkm/wlh LT 1) AND (frest_hfkm/wlh LT 1)
+test3      = (frest_lfkp/wlh LT 1) OR (frest_hfkp/wlh LT 1)
+HELP, WHERE(test0[good_pre]), WHERE(test1[good_pre]), WHERE(test2[good_pre]), WHERE(test3[good_pre])
+;<Expression>    LONG      = Array[19]
+;<Expression>    LONG      = Array[43]
+;<Expression>    LONG      = Array[43]
+;<Expression>    LONG      = Array[20]
+
+
+;good_lowfm = WHERE(test2,gdlwfm,COMPLEMENT=good_higfm,NCOMPLEMENT=gdhgfm)
+;good_lowfp = WHERE(test3,gdlwfp,COMPLEMENT=good_higfp,NCOMPLEMENT=gdhgfp)
+;PRINT,';  ',  gdlwfm, gdhgfm,  gdlwfp, gdhgfp
+;           191         232         137         286
+;
+;good_prelm = good_lowfm[good_pre]
+;good_prehm = good_higfm[good_pre]
+;good_prelp = good_lowfp[good_pre]
+;good_prehp = good_higfp[good_pre]
+
+
+
+good_lowfm = WHERE(test2[good_pre],gdlwfm,COMPLEMENT=good_higfm,NCOMPLEMENT=gdhgfm)
+good_lowfp = WHERE(test3[good_pre],gdlwfp,COMPLEMENT=good_higfp,NCOMPLEMENT=gdhgfp)
+PRINT,';  ',  gdlwfm, gdhgfm,  gdlwfp, gdhgfp
+;            43          41          20          64
+
+good_prelm = good_pre[good_lowfm]
+good_prehm = good_pre[good_higfm]
+good_prelp = good_pre[good_lowfp]
+good_prehp = good_pre[good_higfp]
+
+
+
+; => Define rest frame frequencies
+all_frestl = [frest_lfkm[good_prelm],frest_hfkm[good_prelm]]
+; => Define fci[ce,lh] frequency
+all_wcpl   = [wcp[good_prelm],wcp[good_prelm]]
+all_wcel   = [wce[good_prelm],wce[good_prelm]]
+all_wlhl   = [wlh[good_prelm],wlh[good_prelm]]
+; => Define phase speeds
+all_vphl   = [frest_lfkm[good_prelm],frest_hfkm[good_prelm]]/[avg_lfkm[good_prelm],avg_hfkm[good_prelm]]
+; => Define rest frame wave number magnitudes
+all_k_kml  = [avg_lfkm[good_prelm],avg_hfkm[good_prelm]]
+all_kcwpel = [kcwpelfm[good_prelm],kcwpehfm[good_prelm]]
+all_krhoel = [krhoelfm[good_prelm],krhoehfm[good_prelm]]
+; => Define rest frame parallel wave number magnitudes
+all_kpar_l = ABS([avg_lfkm_par[good_prelm],avg_hfkm_par[good_prelm]])
+all_kparcl = ABS([kcwpelfm_par[good_prelm],kcwpehfm_par[good_prelm]])
+all_kparrl = ABS([krhoelfm_par[good_prelm],krhoehfm_par[good_prelm]])
+; => Define rest frame perpendicular wave number magnitudes
+all_kper_l = ABS([avg_lfkm_per[good_prelm],avg_hfkm_per[good_prelm]])
+all_kpercl = ABS([kcwpelfm_per[good_prelm],kcwpehfm_per[good_prelm]])
+all_kperrl = ABS([krhoelfm_per[good_prelm],krhoehfm_per[good_prelm]])
+
+PRINT,';  ',  MIN(all_k_kml,/NAN),  MAX(all_k_kml,/NAN),  MEAN(all_k_kml,/NAN),  STDDEV(all_k_kml,/NAN)
+PRINT,';  ',  MIN(all_kcwpel,/NAN), MAX(all_kcwpel,/NAN), MEAN(all_kcwpel,/NAN), STDDEV(all_kcwpel,/NAN)
+PRINT,';  ',  MIN(all_krhoel,/NAN), MAX(all_krhoel,/NAN), MEAN(all_krhoel,/NAN), STDDEV(all_krhoel,/NAN)
+PRINT,';  ',  MIN(all_vphl,/NAN),   MAX(all_vphl,/NAN),   MEAN(all_vphl,/NAN),   STDDEV(all_vphl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.022280999      0.53691304      0.10745316     0.093121330
+;       0.030146192      0.56762698      0.12560448      0.10426464
+;       0.020198952      0.85426319      0.17228000      0.14424693
+;        0.74216893       583.73981       144.05301       130.44772
+;---------------------------------------------------------------------
+
+PRINT,';  ',  [MIN(all_frestl,/NAN),MAX(all_frestl,/NAN),MEAN(all_frestl,/NAN),STDDEV(all_frestl,/NAN)]/(2d0*!DPI)
+PRINT,';  ',  MIN(all_frestl/all_wcpl,/NAN), MAX(all_frestl/all_wcpl,/NAN), MEAN(all_frestl/all_wcpl,/NAN), STDDEV(all_frestl/all_wcpl,/NAN)
+PRINT,';  ',  MIN(all_frestl/all_wcel,/NAN), MAX(all_frestl/all_wcel,/NAN), MEAN(all_frestl/all_wcel,/NAN), STDDEV(all_frestl/all_wcel,/NAN)
+PRINT,';  ',  MIN(all_frestl/all_wlhl,/NAN), MAX(all_frestl/all_wlhl,/NAN), MEAN(all_frestl/all_wlhl,/NAN), STDDEV(all_frestl/all_wlhl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;      0.0036809690       8.9670588       2.9387200       3.0061212
+;       0.018519545       40.978369       13.391471       13.655390
+;     1.0086059e-05     0.022317516    0.0072932225    0.0074369574
+;     0.00043219393      0.95631951      0.31251691      0.31867628
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kpar_l,/NAN), MAX(all_kpar_l,/NAN), MEAN(all_kpar_l,/NAN), STDDEV(all_kpar_l,/NAN)
+PRINT,';  ',  MIN(all_kper_l,/NAN), MAX(all_kper_l,/NAN), MEAN(all_kper_l,/NAN), STDDEV(all_kper_l,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;     0.00081466540      0.12189892     0.039764832     0.033366180
+;       0.014598990      0.52317305     0.096304206     0.090867175
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kparcl,/NAN), MAX(all_kparcl,/NAN), MEAN(all_kparcl,/NAN), STDDEV(all_kparcl,/NAN)
+PRINT,';  ',  MIN(all_kpercl,/NAN), MAX(all_kpercl,/NAN), MEAN(all_kpercl,/NAN), STDDEV(all_kpercl,/NAN)
+PRINT,';  ',  MIN(all_kparrl,/NAN), MAX(all_kparrl,/NAN), MEAN(all_kparrl,/NAN), STDDEV(all_kparrl,/NAN)
+PRINT,';  ',  MIN(all_kperrl,/NAN), MAX(all_kperrl,/NAN), MEAN(all_kperrl,/NAN), STDDEV(all_kperrl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;     0.00086126808      0.13014858     0.047034318     0.038728353
+;       0.021144356      0.55310100      0.11218020      0.10179695
+;      0.0010083277      0.20796640     0.064673036     0.056187320
+;       0.013234788      0.85415461      0.15349644      0.14003423
+;---------------------------------------------------------------------
+
+
+; => Define rest frame frequencies
+all_fresth = [frest_lfkm[good_prehm],frest_hfkm[good_prehm]]
+; => Define fci[ce,lh] frequency
+all_wcph   = [wcp[good_prehm],wcp[good_prehm]]
+all_wceh   = [wce[good_prehm],wce[good_prehm]]
+all_wlhh   = [wlh[good_prehm],wlh[good_prehm]]
+; => Define phase speeds
+all_vphh   = [frest_lfkm[good_prehm],frest_hfkm[good_prehm]]/[avg_lfkm[good_prehm],avg_hfkm[good_prehm]]
+; => Define rest frame wave number magnitudes
+all_k_kmh  = [avg_lfkm[good_prehm],avg_hfkm[good_prehm]]
+all_kcwpeh = [kcwpelfm[good_prehm],kcwpehfm[good_prehm]]
+all_krhoeh = [krhoelfm[good_prehm],krhoehfm[good_prehm]]
+; => Define rest frame parallel wave number magnitudes
+all_kpar_h = ABS([avg_lfkm_par[good_prehm],avg_hfkm_par[good_prehm]])
+all_kparch = ABS([kcwpelfm_par[good_prehm],kcwpehfm_par[good_prehm]])
+all_kparrh = ABS([krhoelfm_par[good_prehm],krhoehfm_par[good_prehm]])
+; => Define rest frame perpendicular wave number magnitudes
+all_kper_h = ABS([avg_lfkm_per[good_prehm],avg_hfkm_per[good_prehm]])
+all_kperch = ABS([kcwpelfm_per[good_prehm],kcwpehfm_per[good_prehm]])
+all_kperrh = ABS([krhoelfm_per[good_prehm],krhoehfm_per[good_prehm]])
+
+PRINT,';  ',  MIN(all_k_kmh,/NAN),  MAX(all_k_kmh,/NAN),  MEAN(all_k_kmh,/NAN),  STDDEV(all_k_kmh,/NAN)
+PRINT,';  ',  MIN(all_kcwpeh,/NAN), MAX(all_kcwpeh,/NAN), MEAN(all_kcwpeh,/NAN), STDDEV(all_kcwpeh,/NAN)
+PRINT,';  ',  MIN(all_krhoeh,/NAN), MAX(all_krhoeh,/NAN), MEAN(all_krhoeh,/NAN), STDDEV(all_krhoeh,/NAN)
+PRINT,';  ',  MIN(all_vphh,/NAN),   MAX(all_vphh,/NAN),   MEAN(all_vphh,/NAN),   STDDEV(all_vphh,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.029703001      0.39709997      0.13279324     0.079704050
+;       0.031402151      0.52921721      0.15755944     0.093459838
+;       0.036763998      0.85525603      0.21885199      0.14411831
+;         3.8680618       900.63159       327.02789       199.59884
+;---------------------------------------------------------------------
+
+PRINT,';  ',  [MIN(all_fresth,/NAN),MAX(all_fresth,/NAN),MEAN(all_fresth,/NAN),STDDEV(all_fresth,/NAN)]/(2d0*!DPI)
+PRINT,';  ',  MIN(all_fresth/all_wcph,/NAN), MAX(all_fresth/all_wcph,/NAN), MEAN(all_fresth/all_wcph,/NAN), STDDEV(all_fresth/all_wcph,/NAN)
+PRINT,';  ',  MIN(all_fresth/all_wceh,/NAN), MAX(all_fresth/all_wceh,/NAN), MEAN(all_fresth/all_wceh,/NAN), STDDEV(all_fresth/all_wceh,/NAN)
+PRINT,';  ',  MIN(all_fresth/all_wlhh,/NAN), MAX(all_fresth/all_wlhh,/NAN), MEAN(all_fresth/all_wlhh,/NAN), STDDEV(all_fresth/all_wlhh,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.024223153       18.203783       8.0348973       6.3120603
+;        0.12187057       91.136616       37.890226       29.894744
+;     6.6372783e-05     0.049634550     0.020635661     0.016281186
+;      0.0028441152       2.1268715      0.88424438      0.69765335
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kpar_h,/NAN), MAX(all_kpar_h,/NAN), MEAN(all_kpar_h,/NAN), STDDEV(all_kpar_h,/NAN)
+PRINT,';  ',  MIN(all_kper_h,/NAN), MAX(all_kper_h,/NAN), MEAN(all_kper_h,/NAN), STDDEV(all_kper_h,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;      0.0060216471      0.21228499     0.095895908     0.055478909
+;       0.010776586      0.38914257     0.079837164     0.073241751
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kparch,/NAN), MAX(all_kparch,/NAN), MEAN(all_kparch,/NAN), STDDEV(all_kparch,/NAN)
+PRINT,';  ',  MIN(all_kperch,/NAN), MAX(all_kperch,/NAN), MEAN(all_kperch,/NAN), STDDEV(all_kperch,/NAN)
+PRINT,';  ',  MIN(all_kparrh,/NAN), MAX(all_kparrh,/NAN), MEAN(all_kparrh,/NAN), STDDEV(all_kparrh,/NAN)
+PRINT,';  ',  MIN(all_kperrh,/NAN), MAX(all_kperrh,/NAN), MEAN(all_kperrh,/NAN), STDDEV(all_kperrh,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;      0.0063661135      0.22442869      0.11479757     0.066285426
+;       0.013465199      0.51861234     0.093473737     0.085358379
+;      0.0074531131      0.35980634      0.16107779      0.10568681
+;      0.0097695688      0.83811774      0.12786467      0.12357304
+;---------------------------------------------------------------------
+
+
+
+
+
+; => Define rest frame frequencies
+all_frestl = [frest_lfkp[good_prelp],frest_hfkp[good_prelp]]
+; => Define fci[ce,lh] frequency
+all_wcpl   = [wcp[good_prelp],wcp[good_prelp]]
+all_wcel   = [wce[good_prelp],wce[good_prelp]]
+all_wlhl   = [wlh[good_prelp],wlh[good_prelp]]
+; => Define phase speeds
+all_vphl   = [frest_lfkp[good_prelp],frest_hfkp[good_prelp]]/[avg_lfkp[good_prelp],avg_hfkp[good_prelp]]
+; => Define rest frame wave number magnitudes
+all_k_kml  = [avg_lfkp[good_prelp],avg_hfkp[good_prelp]]
+all_kcwpel = [kcwpelfp[good_prelp],kcwpehfp[good_prelp]]
+all_krhoel = [krhoelfp[good_prelp],krhoehfp[good_prelp]]
+; => Define rest frame parallel wave number magnitudes
+all_kpar_l = ABS([avg_lfkp_par[good_prelp],avg_hfkp_par[good_prelp]])
+all_kparcl = ABS([kcwpelfp_par[good_prelp],kcwpehfp_par[good_prelp]])
+all_kparrl = ABS([krhoelfp_par[good_prelp],krhoehfp_par[good_prelp]])
+; => Define rest frame perpendicular wave number magnitudes
+all_kper_l = ABS([avg_lfkp_per[good_prelp],avg_hfkp_per[good_prelp]])
+all_kpercl = ABS([kcwpelfp_per[good_prelp],kcwpehfp_per[good_prelp]])
+all_kperrl = ABS([krhoelfp_per[good_prelp],krhoehfp_per[good_prelp]])
+
+PRINT,';  ',  MIN(all_k_kml,/NAN),  MAX(all_k_kml,/NAN),  MEAN(all_k_kml,/NAN),  STDDEV(all_k_kml,/NAN)
+PRINT,';  ',  MIN(all_kcwpel,/NAN), MAX(all_kcwpel,/NAN), MEAN(all_kcwpel,/NAN), STDDEV(all_kcwpel,/NAN)
+PRINT,';  ',  MIN(all_krhoel,/NAN), MAX(all_krhoel,/NAN), MEAN(all_krhoel,/NAN), STDDEV(all_krhoel,/NAN)
+PRINT,';  ',  MIN(all_vphl,/NAN),   MAX(all_vphl,/NAN),   MEAN(all_vphl,/NAN),   STDDEV(all_vphl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.058149502       1.1881475      0.20784958      0.19826875
+;       0.084220471       1.2561152      0.24525030      0.20900551
+;       0.052715725       1.4705940      0.33216798      0.26445763
+;         32.942253       1023.7873       492.78439       212.13500
+;---------------------------------------------------------------------
+
+PRINT,';  ',  [MIN(all_frestl,/NAN),MAX(all_frestl,/NAN),MEAN(all_frestl,/NAN),STDDEV(all_frestl,/NAN)]/(2d0*!DPI)
+PRINT,';  ',  MIN(all_frestl/all_wcpl,/NAN), MAX(all_frestl/all_wcpl,/NAN), MEAN(all_frestl/all_wcpl,/NAN), STDDEV(all_frestl/all_wcpl,/NAN)
+PRINT,';  ',  MIN(all_frestl/all_wcel,/NAN), MAX(all_frestl/all_wcel,/NAN), MEAN(all_frestl/all_wcel,/NAN), STDDEV(all_frestl/all_wcel,/NAN)
+PRINT,';  ',  MIN(all_frestl/all_wlhl,/NAN), MAX(all_frestl/all_wlhl,/NAN), MEAN(all_frestl/all_wlhl,/NAN), STDDEV(all_frestl/all_wlhl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         3.2130983       57.630211       14.904988       10.862908
+;         12.625374       289.94684       68.400696       53.641674
+;      0.0068759935      0.15790998     0.037252181     0.029214167
+;        0.29463871       6.7665411       1.5962678       1.2518421
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kpar_l,/NAN), MAX(all_kpar_l,/NAN), MEAN(all_kpar_l,/NAN), STDDEV(all_kpar_l,/NAN)
+PRINT,';  ',  MIN(all_kper_l,/NAN), MAX(all_kper_l,/NAN), MEAN(all_kper_l,/NAN), STDDEV(all_kper_l,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.048286652      0.26707309      0.14366604     0.063172839
+;       0.015326464       1.1577420      0.12007572      0.20897806
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kparcl,/NAN), MAX(all_kparcl,/NAN), MEAN(all_kparcl,/NAN), STDDEV(all_kparcl,/NAN)
+PRINT,';  ',  MIN(all_kpercl,/NAN), MAX(all_kpercl,/NAN), MEAN(all_kpercl,/NAN), STDDEV(all_kpercl,/NAN)
+PRINT,';  ',  MIN(all_kparrl,/NAN), MAX(all_kparrl,/NAN), MEAN(all_kparrl,/NAN), STDDEV(all_kparrl,/NAN)
+PRINT,';  ',  MIN(all_kperrl,/NAN), MAX(all_kperrl,/NAN), MEAN(all_kperrl,/NAN), STDDEV(all_kperrl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), Low Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.064351874      0.28235093      0.17194639     0.068729732
+;       0.020625486       1.2239703      0.13942204      0.22447473
+;       0.044921238      0.42330855      0.23601547      0.11602838
+;       0.013894284       1.4329604      0.18577546      0.27768847
+;---------------------------------------------------------------------
+
+
+; => Define rest frame frequencies
+all_fresth = [frest_lfkp[good_prehp],frest_hfkp[good_prehp]]
+; => Define fci[ce,lh] frequency
+all_wcph   = [wcp[good_prehp],wcp[good_prehp]]
+all_wceh   = [wce[good_prehp],wce[good_prehp]]
+all_wlhh   = [wlh[good_prehp],wlh[good_prehp]]
+; => Define phase speeds
+all_vphh   = [frest_lfkp[good_prehp],frest_hfkp[good_prehp]]/[avg_lfkp[good_prehp],avg_hfkp[good_prehp]]
+; => Define rest frame wave number magnitudes
+all_k_kmh  = [avg_lfkp[good_prehp],avg_hfkp[good_prehp]]
+all_kcwpeh = [kcwpelfp[good_prehp],kcwpehfp[good_prehp]]
+all_krhoeh = [krhoelfp[good_prehp],krhoehfp[good_prehp]]
+; => Define rest frame parallel wave number magnitudes
+all_kpar_h = ABS([avg_lfkp_par[good_prehp],avg_hfkp_par[good_prehp]])
+all_kparch = ABS([kcwpelfp_par[good_prehp],kcwpehfp_par[good_prehp]])
+all_kparrh = ABS([krhoelfp_par[good_prehp],krhoehfp_par[good_prehp]])
+; => Define rest frame perpendicular wave number magnitudes
+all_kper_h = ABS([avg_lfkp_per[good_prehp],avg_hfkp_per[good_prehp]])
+all_kperch = ABS([kcwpelfp_per[good_prehp],kcwpehfp_per[good_prehp]])
+all_kperrh = ABS([krhoelfp_per[good_prehp],krhoehfp_per[good_prehp]])
+
+PRINT,';  ',  MIN(all_k_kmh,/NAN),  MAX(all_k_kmh,/NAN),  MEAN(all_k_kmh,/NAN),  STDDEV(all_k_kmh,/NAN)
+PRINT,';  ',  MIN(all_kcwpeh,/NAN), MAX(all_kcwpeh,/NAN), MEAN(all_kcwpeh,/NAN), STDDEV(all_kcwpeh,/NAN)
+PRINT,';  ',  MIN(all_krhoeh,/NAN), MAX(all_krhoeh,/NAN), MEAN(all_krhoeh,/NAN), STDDEV(all_krhoeh,/NAN)
+PRINT,';  ',  MIN(all_vphh,/NAN),   MAX(all_vphh,/NAN),   MEAN(all_vphh,/NAN),   STDDEV(all_vphh,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;        0.12119600       4.0448470      0.58960878      0.60007606
+;        0.15907121       4.2762312      0.67908592      0.65480640
+;        0.12130115       5.0063881      0.94046289      0.88044323
+;         23.521332       1173.1943       525.03218       233.15082
+;---------------------------------------------------------------------
+
+PRINT,';  ',  [MIN(all_fresth,/NAN),MAX(all_fresth,/NAN),MEAN(all_fresth,/NAN),STDDEV(all_fresth,/NAN)]/(2d0*!DPI)
+PRINT,';  ',  MIN(all_fresth/all_wcph,/NAN), MAX(all_fresth/all_wcph,/NAN), MEAN(all_fresth/all_wcph,/NAN), STDDEV(all_fresth/all_wcph,/NAN)
+PRINT,';  ',  MIN(all_fresth/all_wceh,/NAN), MAX(all_fresth/all_wceh,/NAN), MEAN(all_fresth/all_wceh,/NAN), STDDEV(all_fresth/all_wceh,/NAN)
+PRINT,';  ',  MIN(all_fresth/all_wlhh,/NAN), MAX(all_fresth/all_wlhh,/NAN), MEAN(all_fresth/all_wlhh,/NAN), STDDEV(all_fresth/all_wlhh,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         8.9826628       99.672507       37.822726       21.868538
+;         44.654172       464.50924       177.62911       103.05044
+;       0.024319421      0.25297963     0.096739834     0.056123024
+;         1.0420907       10.840214       4.1453315       2.4048811
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kpar_h,/NAN), MAX(all_kpar_h,/NAN), MEAN(all_kpar_h,/NAN), STDDEV(all_kpar_h,/NAN)
+PRINT,';  ',  MIN(all_kper_h,/NAN), MAX(all_kper_h,/NAN), MEAN(all_kper_h,/NAN), STDDEV(all_kper_h,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.098589479      0.40115444      0.21735176     0.064679826
+;       0.036448415       4.0404707      0.52617930      0.61614474
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kparch,/NAN), MAX(all_kparch,/NAN), MEAN(all_kparch,/NAN), STDDEV(all_kparch,/NAN)
+PRINT,';  ',  MIN(all_kperch,/NAN), MAX(all_kperch,/NAN), MEAN(all_kperch,/NAN), STDDEV(all_kperch,/NAN)
+PRINT,';  ',  MIN(all_kparrh,/NAN), MAX(all_kparrh,/NAN), MEAN(all_kparrh,/NAN), STDDEV(all_kparrh,/NAN)
+PRINT,';  ',  MIN(all_kperrh,/NAN), MAX(all_kperrh,/NAN), MEAN(all_kperrh,/NAN), STDDEV(all_kperrh,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), High Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;        0.11159541      0.42410235      0.25455689     0.075236236
+;       0.043864617       4.2716046      0.60369454      0.67474887
+;       0.089376791      0.62410897      0.35906611      0.15040333
+;       0.070091939       5.0009715      0.83220044      0.90336264
+;---------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+; => Define rest frame frequencies
+all_frestl = [frest_lfkm[good_prelm],frest_hfkm[good_prelm],frest_lfkm[good_prehm],frest_hfkm[good_prehm]]
+; => Define fci[ce,lh] frequency
+all_wcpl   = [wcp[good_prelm],wcp[good_prelm],wcp[good_prehm],wcp[good_prehm]]
+all_wcel   = [wce[good_prelm],wce[good_prelm],wce[good_prehm],wce[good_prehm]]
+all_wlhl   = [wlh[good_prelm],wlh[good_prelm],wlh[good_prehm],wlh[good_prehm]]
+; => Define phase speeds
+all_vphl   = [frest_lfkm[good_prelm],frest_hfkm[good_prelm],frest_lfkm[good_prehm],frest_hfkm[good_prehm]]/[avg_lfkm[good_prelm],avg_hfkm[good_prelm],avg_lfkm[good_prehm],avg_hfkm[good_prehm]]
+; => Define rest frame wave number magnitudes
+all_k_kml  = [avg_lfkm[good_prelm],avg_hfkm[good_prelm],avg_lfkm[good_prehm],avg_hfkm[good_prehm]]
+all_kcwpel = [kcwpelfm[good_prelm],kcwpehfm[good_prelm],kcwpelfm[good_prehm],kcwpehfm[good_prehm]]
+all_krhoel = [krhoelfm[good_prelm],krhoehfm[good_prelm],krhoelfm[good_prehm],krhoehfm[good_prehm]]
+; => Define rest frame parallel wave number magnitudes
+all_kpar_l = ABS([avg_lfkm_par[good_prelm],avg_hfkm_par[good_prelm],avg_lfkm_par[good_prehm],avg_hfkm_par[good_prehm]])
+all_kparcl = ABS([kcwpelfm_par[good_prelm],kcwpehfm_par[good_prelm],kcwpelfm_par[good_prehm],kcwpehfm_par[good_prehm]])
+all_kparrl = ABS([krhoelfm_par[good_prelm],krhoehfm_par[good_prelm],krhoelfm_par[good_prehm],krhoehfm_par[good_prehm]])
+; => Define rest frame perpendicular wave number magnitudes
+all_kper_l = ABS([avg_lfkm_per[good_prelm],avg_hfkm_per[good_prelm],avg_lfkm_per[good_prehm],avg_hfkm_per[good_prehm]])
+all_kpercl = ABS([kcwpelfm_per[good_prelm],kcwpehfm_per[good_prelm],kcwpelfm_per[good_prehm],kcwpehfm_per[good_prehm]])
+all_kperrl = ABS([krhoelfm_per[good_prelm],krhoehfm_per[good_prelm],krhoelfm_per[good_prehm],krhoehfm_per[good_prehm]])
+
+PRINT,';  ',  MIN(all_k_kml,/NAN),  MAX(all_k_kml,/NAN),  MEAN(all_k_kml,/NAN),  STDDEV(all_k_kml,/NAN)
+PRINT,';  ',  MIN(all_kcwpel,/NAN), MAX(all_kcwpel,/NAN), MEAN(all_kcwpel,/NAN), STDDEV(all_kcwpel,/NAN)
+PRINT,';  ',  MIN(all_krhoel,/NAN), MAX(all_krhoel,/NAN), MEAN(all_krhoel,/NAN), STDDEV(all_krhoel,/NAN)
+PRINT,';  ',  MIN(all_vphl,/NAN),   MAX(all_vphl,/NAN),   MEAN(all_vphl,/NAN),   STDDEV(all_vphl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.022280999      0.53691304      0.11982153     0.087500549
+;       0.030146192      0.56762698      0.14120154      0.10013229
+;       0.020198952      0.85525603      0.19501157      0.14563574
+;        0.74216893       900.63159       233.36218       190.78756
+;---------------------------------------------------------------------
+
+PRINT,';  ',  [MIN(all_frestl,/NAN),MAX(all_frestl,/NAN),MEAN(all_frestl,/NAN),STDDEV(all_frestl,/NAN)]/(2d0*!DPI)
+PRINT,';  ',  MIN(all_frestl/all_wcpl,/NAN), MAX(all_frestl/all_wcpl,/NAN), MEAN(all_frestl/all_wcpl,/NAN), STDDEV(all_frestl/all_wcpl,/NAN)
+PRINT,';  ',  MIN(all_frestl/all_wcel,/NAN), MAX(all_frestl/all_wcel,/NAN), MEAN(all_frestl/all_wcel,/NAN), STDDEV(all_frestl/all_wcel,/NAN)
+PRINT,';  ',  MIN(all_frestl/all_wlhl,/NAN), MAX(all_frestl/all_wlhl,/NAN), MEAN(all_frestl/all_wlhl,/NAN), STDDEV(all_frestl/all_wlhl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;      0.0036809690       18.203783       5.4261399       5.5183418
+;       0.018519545       91.136616       25.349197       26.062215
+;     1.0086059e-05     0.049634550     0.013805603     0.014193926
+;     0.00043219393       2.1268715      0.59157436      0.60821388
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kpar_l,/NAN), MAX(all_kpar_l,/NAN), MEAN(all_kpar_l,/NAN), STDDEV(all_kpar_l,/NAN)
+PRINT,';  ',  MIN(all_kper_l,/NAN), MAX(all_kper_l,/NAN), MEAN(all_kper_l,/NAN), STDDEV(all_kper_l,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;     0.00081466540      0.21228499     0.067162143     0.053399164
+;       0.010776586      0.52317305     0.088266721     0.082901239
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kparcl,/NAN), MAX(all_kparcl,/NAN), MEAN(all_kparcl,/NAN), STDDEV(all_kparcl,/NAN)
+PRINT,';  ',  MIN(all_kpercl,/NAN), MAX(all_kpercl,/NAN), MEAN(all_kpercl,/NAN), STDDEV(all_kpercl,/NAN)
+PRINT,';  ',  MIN(all_kparrl,/NAN), MAX(all_kparrl,/NAN), MEAN(all_kparrl,/NAN), STDDEV(all_kparrl,/NAN)
+PRINT,';  ',  MIN(all_kperrl,/NAN), MAX(all_kperrl,/NAN), MEAN(all_kperrl,/NAN), STDDEV(all_kperrl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (- sign), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;     0.00086126808      0.22442869     0.080109240     0.063629417
+;       0.013465199      0.55310100      0.10304967     0.094320185
+;      0.0010083277      0.35980634      0.11172774     0.096749988
+;      0.0097695688      0.85415461      0.14098570      0.13248628
+;---------------------------------------------------------------------
+
+
+
+; => Define rest frame frequencies
+all_frestl = [frest_lfkp[good_prelp],frest_hfkp[good_prelp],frest_lfkp[good_prehp],frest_hfkp[good_prehp]]
+; => Define fci[ce,lh] frequency
+all_wcpl   = [wcp[good_prelp],wcp[good_prelp],wcp[good_prehp],wcp[good_prehp]]
+all_wcel   = [wce[good_prelp],wce[good_prelp],wce[good_prehp],wce[good_prehp]]
+all_wlhl   = [wlh[good_prelp],wlh[good_prelp],wlh[good_prehp],wlh[good_prehp]]
+; => Define phase speeds
+all_vphl   = [frest_lfkp[good_prelp],frest_hfkp[good_prelp],frest_lfkp[good_prehp],frest_hfkp[good_prehp]]/[avg_lfkp[good_prelp],avg_hfkp[good_prelp],avg_lfkp[good_prehp],avg_hfkp[good_prehp]]
+; => Define rest frame wave number magnitudes
+all_k_kml  = [avg_lfkp[good_prelp],avg_hfkp[good_prelp],avg_lfkp[good_prehp],avg_hfkp[good_prehp]]
+all_kcwpel = [kcwpelfp[good_prelp],kcwpehfp[good_prelp],kcwpelfp[good_prehp],kcwpehfp[good_prehp]]
+all_krhoel = [krhoelfp[good_prelp],krhoehfp[good_prelp],krhoelfp[good_prehp],krhoehfp[good_prehp]]
+; => Define rest frame parallel wave number magnitudes
+all_kpar_l = ABS([avg_lfkp_par[good_prelp],avg_hfkp_par[good_prelp],avg_lfkp_par[good_prehp],avg_hfkp_par[good_prehp]])
+all_kparcl = ABS([kcwpelfp_par[good_prelp],kcwpehfp_par[good_prelp],kcwpelfp_par[good_prehp],kcwpehfp_par[good_prehp]])
+all_kparrl = ABS([krhoelfp_par[good_prelp],krhoehfp_par[good_prelp],krhoelfp_par[good_prehp],krhoehfp_par[good_prehp]])
+; => Define rest frame perpendicular wave number magnitudes
+all_kper_l = ABS([avg_lfkp_per[good_prelp],avg_hfkp_per[good_prelp],avg_lfkp_per[good_prehp],avg_hfkp_per[good_prehp]])
+all_kpercl = ABS([kcwpelfp_per[good_prelp],kcwpehfp_per[good_prelp],kcwpelfp_per[good_prehp],kcwpehfp_per[good_prehp]])
+all_kperrl = ABS([krhoelfp_per[good_prelp],krhoehfp_per[good_prelp],krhoelfp_per[good_prehp],krhoehfp_per[good_prehp]])
+
+
+PRINT,';  ',  MIN(all_k_kml,/NAN),  MAX(all_k_kml,/NAN),  MEAN(all_k_kml,/NAN),  STDDEV(all_k_kml,/NAN)
+PRINT,';  ',  MIN(all_kcwpel,/NAN), MAX(all_kcwpel,/NAN), MEAN(all_kcwpel,/NAN), STDDEV(all_kcwpel,/NAN)
+PRINT,';  ',  MIN(all_krhoel,/NAN), MAX(all_krhoel,/NAN), MEAN(all_krhoel,/NAN), STDDEV(all_krhoel,/NAN)
+PRINT,';  ',  MIN(all_vphl,/NAN),   MAX(all_vphl,/NAN),   MEAN(all_vphl,/NAN),   STDDEV(all_vphl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.058149502       4.0448470      0.49534725      0.55445317
+;       0.084220471       4.2762312      0.57196601      0.60666397
+;       0.052715725       5.0063881      0.79026662      0.81777897
+;         23.521332       1173.1943       517.06976       227.92408
+;---------------------------------------------------------------------
+
+PRINT,';  ',  [MIN(all_frestl,/NAN),MAX(all_frestl,/NAN),MEAN(all_frestl,/NAN),STDDEV(all_frestl,/NAN)]/(2d0*!DPI)
+PRINT,';  ',  MIN(all_frestl/all_wcpl,/NAN), MAX(all_frestl/all_wcpl,/NAN), MEAN(all_frestl/all_wcpl,/NAN), STDDEV(all_frestl/all_wcpl,/NAN)
+PRINT,';  ',  MIN(all_frestl/all_wcel,/NAN), MAX(all_frestl/all_wcel,/NAN), MEAN(all_frestl/all_wcel,/NAN), STDDEV(all_frestl/all_wcel,/NAN)
+PRINT,';  ',  MIN(all_frestl/all_wlhl,/NAN), MAX(all_frestl/all_wlhl,/NAN), MEAN(all_frestl/all_wlhl,/NAN), STDDEV(all_frestl/all_wlhl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;         3.2130983       99.672507       32.164025       22.051580
+;         12.625374       464.50924       150.65913       104.45257
+;      0.0068759935      0.25297963     0.082051525     0.056886648
+;        0.29463871       10.840214       3.5159331       2.4376052
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kpar_l,/NAN), MAX(all_kpar_l,/NAN), MEAN(all_kpar_l,/NAN), STDDEV(all_kpar_l,/NAN)
+PRINT,';  ',  MIN(all_kper_l,/NAN), MAX(all_kper_l,/NAN), MEAN(all_kper_l,/NAN), STDDEV(all_kper_l,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.048286652      0.40115444      0.19915776     0.071601054
+;       0.015326464       4.0404707      0.42590681      0.57162143
+;---------------------------------------------------------------------
+
+PRINT,';  ',  MIN(all_kparcl,/NAN), MAX(all_kparcl,/NAN), MEAN(all_kparcl,/NAN), STDDEV(all_kparcl,/NAN)
+PRINT,';  ',  MIN(all_kpercl,/NAN), MAX(all_kpercl,/NAN), MEAN(all_kpercl,/NAN), STDDEV(all_kpercl,/NAN)
+PRINT,';  ',  MIN(all_kparrl,/NAN), MAX(all_kparrl,/NAN), MEAN(all_kparrl,/NAN), STDDEV(all_kparrl,/NAN)
+PRINT,';  ',  MIN(all_kperrl,/NAN), MAX(all_kperrl,/NAN), MEAN(all_kperrl,/NAN), STDDEV(all_kperrl,/NAN)
+;---------------------------------------------------------------------
+; => Results for (+ sign), All Freq.
+;---------------------------------------------------------------------
+;            Min             Max            Mean          Std. Dev.
+;=====================================================================
+;       0.064351874      0.42410235      0.23415924     0.081702540
+;       0.020625486       4.2716046      0.48905936      0.62825726
+;       0.044921238      0.62410897      0.32868323      0.15197079
+;       0.013894284       5.0009715      0.67258933      0.84272046
+;---------------------------------------------------------------------
+
+
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Old
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+; => Look at only the precursors
+;-----------------------------------------------------------------------------------------
+evns_pre   = [03408599L,00010488L,02011249L,23145465L]
+good_pre   = array_where(evns,evns_pre,/N_UNIQ)
+good_pre   = good_pre[*,0]
+
+; => Define low/high frequency by rest frame frequencies
+test0      = (frest_lfkm/wlh LT 1) AND (frest_lfkp/wlh LT 1)
+test1      = (frest_hfkm/wlh LT 1) OR (frest_hfkp/wlh LT 1)
+test2      = (frest_lfkm/wlh LT 1) AND (frest_hfkm/wlh LT 1)
+test3      = (frest_lfkp/wlh LT 1) OR (frest_hfkp/wlh LT 1)
+HELP, WHERE(test0[good_pre]), WHERE(test1[good_pre]), WHERE(test2[good_pre]), WHERE(test3[good_pre])
+;<Expression>    LONG      = Array[21]
+;<Expression>    LONG      = Array[43]
+;<Expression>    LONG      = Array[43]
+;<Expression>    LONG      = Array[22]
+
+
+;good_lowf  = WHERE(test0[good_pre],gdlwf,COMPLEMENT=good_higf,NCOMPLEMENT=gdhgf)
+;good_lowf  = WHERE(test1[good_pre],gdlwf,COMPLEMENT=good_higf,NCOMPLEMENT=gdhgf)
+;good_lowf  = WHERE(test2[good_pre],gdlwf,COMPLEMENT=good_higf,NCOMPLEMENT=gdhgf)
+good_lowf  = WHERE(test3[good_pre],gdlwf,COMPLEMENT=good_higf,NCOMPLEMENT=gdhgf)
+PRINT,';  ',  gdlwf, gdhgf
+;----------------------------------------
+; => Results for test0
+;            21          68
+;----------------------------------------
+; => Results for test1
+;            43          46
+;----------------------------------------
+; => Results for test2
+;            43          46
+;----------------------------------------
+; => Results for test3
+;            22          67
+;----------------------------------------
+
+good_prelf = good_pre[good_lowf]
+good_prehf = good_pre[good_higf]
+
+; => Define parameters for all frequencies
+all_k_km   = [avg_lfkm[good_pre],avg_lfkp[good_pre],avg_hfkm[good_pre],avg_hfkp[good_pre]]
+all_kcwpe  = [kcwpelfm[good_pre],kcwpelfp[good_pre],kcwpehfm[good_pre],kcwpehfp[good_pre]]
+all_krhoe  = [krhoelfm[good_pre],krhoelfp[good_pre],krhoehfm[good_pre],krhoehfp[good_pre]]
+all_frest  = [frest_lfkm[good_pre],frest_lfkp[good_pre],frest_hfkm[good_pre],frest_hfkp[good_pre]]
+all_wcp    = [wcp[good_pre],wcp[good_pre],wcp[good_pre],wcp[good_pre]]
+all_wce    = [wce[good_pre],wce[good_pre],wce[good_pre],wce[good_pre]]
+all_wlh    = [wlh[good_pre],wlh[good_pre],wlh[good_pre],wlh[good_pre]]
+
+PRINT,';  ',  MIN(all_k_km,/NAN),     MAX(all_k_km,/NAN)
+PRINT,';  ',  MIN(all_kcwpe,/NAN),    MAX(all_kcwpe,/NAN)
+PRINT,';  ',  MIN(all_krhoe,/NAN),    MAX(all_krhoe,/NAN)
+PRINT,';  ',  MIN(all_frest,/NAN)/(2d0*!DPI),    MAX(all_frest,/NAN)/(2d0*!DPI)
+PRINT,';  ',  MIN(all_frest/all_wcp,/NAN),    MAX(all_frest/all_wcp,/NAN)
+PRINT,';  ',  MIN(all_frest/all_wce,/NAN),    MAX(all_frest/all_wce,/NAN)
+PRINT,';  ',  MIN(all_frest/all_wlh,/NAN),    MAX(all_frest/all_wlh,/NAN)
+;----------------------------------------
+;       0.022280999       4.0448470
+;       0.030146192       4.2762312
+;       0.020198952       5.0063881
+;      0.0036809690       99.672507
+;       0.018519545       464.50924
+;     1.0086059e-05      0.25297963
+;     0.00043219393       10.840214
+;----------------------------------------
+
+; => Define parameters for low frequencies
+lf_k_km    = [avg_lfkm[good_prelf],avg_lfkp[good_prelf],avg_hfkm[good_prelf],avg_hfkp[good_prelf]]
+lf_kcwpe   = [kcwpelfm[good_prelf],kcwpelfp[good_prelf],kcwpehfm[good_prelf],kcwpehfp[good_prelf]]
+lf_krhoe   = [krhoelfm[good_prelf],krhoelfp[good_prelf],krhoehfm[good_prelf],krhoehfp[good_prelf]]
+lf_frest   = [frest_lfkm[good_prelf],frest_lfkp[good_prelf],frest_hfkm[good_prelf],frest_hfkp[good_prelf]]
+lf_wcp     = [wcp[good_prelf],wcp[good_prelf],wcp[good_prelf],wcp[good_prelf]]
+lf_wce     = [wce[good_prelf],wce[good_prelf],wce[good_prelf],wce[good_prelf]]
+lf_wlh     = [wlh[good_prelf],wlh[good_prelf],wlh[good_prelf],wlh[good_prelf]]
+
+PRINT,';  ',  MIN(lf_k_km,/NAN),     MAX(lf_k_km,/NAN)
+PRINT,';  ',  MIN(lf_kcwpe,/NAN),    MAX(lf_kcwpe,/NAN)
+PRINT,';  ',  MIN(lf_krhoe,/NAN),    MAX(lf_krhoe,/NAN)
+PRINT,';  ',  MIN(lf_frest,/NAN)/(2d0*!DPI),    MAX(lf_frest,/NAN)/(2d0*!DPI)
+PRINT,';  ',  MIN(lf_frest/lf_wcp,/NAN),    MAX(lf_frest/lf_wcp,/NAN)
+PRINT,';  ',  MIN(lf_frest/lf_wce,/NAN),    MAX(lf_frest/lf_wce,/NAN)
+PRINT,';  ',  MIN(lf_frest/lf_wlh,/NAN),    MAX(lf_frest/lf_wlh,/NAN)
+;----------------------------------------
+; => Results for test0
+;       0.038714498      0.40645650
+;       0.051078844      0.54168670
+;       0.035096824      0.87540770
+;        0.85471642       28.402905
+;         4.3002154       142.89957
+;      0.0023419704     0.077825536
+;        0.10035489       3.3348728
+;----------------------------------------
+; => Results for test1
+;       0.022280999       4.0448470
+;       0.030146192       4.2762312
+;       0.020198952       5.0063881
+;      0.0036809690       99.672507
+;       0.018519545       464.50924
+;     1.0086059e-05      0.25297963
+;     0.00043219393       10.840214
+;----------------------------------------
+; => Results for test2
+;       0.022280999       4.0448470
+;       0.030146192       4.2762312
+;       0.020198952       5.0063881
+;      0.0036809690       99.672507
+;       0.018519545       464.50924
+;     1.0086059e-05      0.25297963
+;     0.00043219393       10.840214
+;----------------------------------------
+; => Results for test3
+;       0.038714498       1.1881475
+;       0.051078844       1.2561152
+;       0.035096824       1.4705940
+;        0.85471642       57.630211
+;         4.3002154       289.94684
+;      0.0023419704      0.15790998
+;        0.10035489       6.7665411
+;----------------------------------------
+
+; => Define parameters for High frequencies
+hf_k_km    = [avg_lfkm[good_prehf],avg_lfkp[good_prehf],avg_hfkm[good_prehf],avg_hfkp[good_prehf]]
+hf_kcwpe   = [kcwpelfm[good_prehf],kcwpelfp[good_prehf],kcwpehfm[good_prehf],kcwpehfp[good_prehf]]
+hf_krhoe   = [krhoelfm[good_prehf],krhoelfp[good_prehf],krhoehfm[good_prehf],krhoehfp[good_prehf]]
+hf_frest   = [frest_lfkm[good_prehf],frest_lfkp[good_prehf],frest_hfkm[good_prehf],frest_hfkp[good_prehf]]
+hf_wcp     = [wcp[good_prehf],wcp[good_prehf],wcp[good_prehf],wcp[good_prehf]]
+hf_wce     = [wce[good_prehf],wce[good_prehf],wce[good_prehf],wce[good_prehf]]
+hf_wlh     = [wlh[good_prehf],wlh[good_prehf],wlh[good_prehf],wlh[good_prehf]]
+
+PRINT,';  ',  MIN(hf_k_km,/NAN),     MAX(hf_k_km,/NAN)
+PRINT,';  ',  MIN(hf_kcwpe,/NAN),    MAX(hf_kcwpe,/NAN)
+PRINT,';  ',  MIN(hf_krhoe,/NAN),    MAX(hf_krhoe,/NAN)
+PRINT,';  ',  MIN(hf_frest,/NAN)/(2d0*!DPI),    MAX(hf_frest,/NAN)/(2d0*!DPI)
+PRINT,';  ',  MIN(hf_frest/hf_wcp,/NAN),    MAX(hf_frest/hf_wcp,/NAN)
+PRINT,';  ',  MIN(hf_frest/hf_wce,/NAN),    MAX(hf_frest/hf_wce,/NAN)
+PRINT,';  ',  MIN(hf_frest/hf_wlh,/NAN),    MAX(hf_frest/hf_wlh,/NAN)
+;----------------------------------------
+; => Results for test0
+;       0.022280999       4.0448470
+;       0.030146192       4.2762312
+;       0.020198952       5.0063881
+;      0.0036809690       99.672507
+;       0.018519545       464.50924
+;     1.0086059e-05      0.25297963
+;     0.00043219393       10.840214
+;----------------------------------------
+; => Results for test1
+;       0.029703001       2.6212802
+;       0.031402151       2.7712297
+;       0.035096824       3.2444110
+;       0.024223153       85.772216
+;        0.12187057       431.53377
+;     6.6372783e-05      0.23502063
+;      0.0028441152       10.070781
+;----------------------------------------
+; => Results for test2
+;       0.029703001       2.6212802
+;       0.031402151       2.7712297
+;       0.035096824       3.2444110
+;       0.024223153       85.772216
+;        0.12187057       431.53377
+;     6.6372783e-05      0.23502063
+;      0.0028441152       10.070781
+;----------------------------------------
+; => Results for test3
+;       0.022280999       4.0448470
+;       0.030146192       4.2762312
+;       0.020198952       5.0063881
+;      0.0036809690       99.672507
+;       0.018519545       464.50924
+;     1.0086059e-05      0.25297963
+;     0.00043219393       10.840214
+;----------------------------------------
+
+
+
+
+
+

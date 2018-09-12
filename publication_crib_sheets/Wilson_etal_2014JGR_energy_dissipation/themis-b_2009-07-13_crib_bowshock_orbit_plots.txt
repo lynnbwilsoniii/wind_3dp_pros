@@ -1,0 +1,402 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+; => Compile necessary routines
+@comp_lynn_pros
+; => Load all relevant data
+tdate     = '2009-07-13'
+tr_00     = tdate[0]+'/'+['07:50:00','10:10:00']
+date      = '071309'
+probe     = 'b'
+themis_load_all_inst,DATE=date[0],PROBE=probe[0],/LOAD_EFI,/LOAD_SCM
+LOADCT,39
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+coord          = 'gse'
+fgmnm          = pref[0]+'fgl_'+['mag',coord[0]]
+tplot,fgmnm,/NOM,TRANGE=tr_00
+
+t_magpause     = time_double(tdate[0]+'/'+['08:54:22.720','08:54:31.570'])
+t_mp_time      = MEAN(t_magpause,/NAN,/DOUBLE)
+PRINT,';  ', time_string(t_mp_time[0],PREC=3)
+;  2009-07-13/08:54:27.145
+
+
+th_gse_pos     = pref[0]+'state_pos_'+coord[0]
+get_data,th_gse_pos[0],DATA=th_gpos
+x_gse_pos      = th_gpos.Y[*,0]/R_E[0]
+y_gse_pos      = th_gpos.Y[*,1]/R_E[0]
+z_gse_pos      = th_gpos.Y[*,2]/R_E[0]
+t_pos          = th_gpos.X
+
+;-----------------------------------------------------------------------------------------
+; => Look at shock paramters
+;-----------------------------------------------------------------------------------------
+t_RH_0     = time_double(tdate[0]+'/'+['08:57:00.000','09:02:30.000'])
+t_up_0     = time_double(tdate[0]+'/'+['09:00:08.700','09:01:38.800'])
+t_dn_0     = time_double(tdate[0]+'/'+['08:57:35.000','08:59:00.000'])
+;; => electron moment only solutions
+t_RH_0b    = time_double(tdate[0]+'/'+['08:57:30.000','09:02:00.000'])
+t_up_0b    = time_double(tdate[0]+'/'+['09:00:38.600','09:01:30.000'])
+t_dn_0b    = time_double(tdate[0]+'/'+['08:57:59.600','08:58:51.000'])
+
+;; => 2nd bow shock crossing
+t_RH_1     = time_double(tdate[0]+'/'+['09:18:40.000','09:40:15.000'])
+t_up_1     = time_double(tdate[0]+'/'+['09:36:40.000','09:38:40.000'])
+t_dn_1     = time_double(tdate[0]+'/'+['09:20:15.000','09:22:15.000'])
+;;-------------------------------------------------
+;;  => Define center of shock ramps
+;;-------------------------------------------------
+;; => Avg. terms [1st Shock]
+t_foot_0   = time_double(tdate[0]+'/'+['08:59:48.285','09:00:00.400'])
+t_ramp_0   = time_double(tdate[0]+'/'+['08:59:45.440','08:59:48.290'])
+t_over_0   = time_double(tdate[0]+'/'+['08:59:40.970','08:59:45.435'])
+tura_0_0   = MEAN(t_ramp_0,/NAN,/DOUBLE)
+PRINT,';  ', time_string(tura_0_0[0],PREC=3)
+;  2009-07-13/08:59:46.865
+
+;; => Avg. terms [2nd Shock]
+t_ramp_1   = time_double(tdate[0]+'/'+['09:24:43.340','09:24:47.850'])
+tura_0_1   = MEAN(t_ramp_1,/NAN,/DOUBLE)
+PRINT,';  ', time_string(tura_0_1[0],PREC=3)
+;  2009-07-13/09:24:45.595
+
+;;-------------------------------------------------
+;;  => Interpolate to actual locations
+;;-------------------------------------------------
+;;  Magnetopause crossing
+x_mp_gse_pos  = interp(x_gse_pos,t_pos,t_mp_time[0],/NO_EXTRAP)
+y_mp_gse_pos  = interp(y_gse_pos,t_pos,t_mp_time[0],/NO_EXTRAP)
+z_mp_gse_pos  = interp(z_gse_pos,t_pos,t_mp_time[0],/NO_EXTRAP)
+r_mp_gse_pos  = SQRT(x_mp_gse_pos[0]^2 + y_mp_gse_pos[0]^2)
+;r_mp_gse_pos  = SQRT(x_mp_gse_pos[0]^2 + y_mp_gse_pos[0]^2 + z_mp_gse_pos[0]^2)
+theta_mp_gse  = ATAN(y_mp_gse_pos[0],x_mp_gse_pos[0])
+PRINT,';  ', x_mp_gse_pos[0], y_mp_gse_pos[0], z_mp_gse_pos[0], r_mp_gse_pos[0], theta_mp_gse[0]*18d1/!DPI
+;         11.356658      0.91241880      -2.2216597       11.393252       4.5934023
+
+
+;;  1st bow shock crossing
+x_bs0_gse_pos = interp(x_gse_pos,t_pos,tura_0_0[0],/NO_EXTRAP)
+y_bs0_gse_pos = interp(y_gse_pos,t_pos,tura_0_0[0],/NO_EXTRAP)
+z_bs0_gse_pos = interp(z_gse_pos,t_pos,tura_0_0[0],/NO_EXTRAP)
+r_bs0_gse_pos = SQRT(x_bs0_gse_pos[0]^2 + y_bs0_gse_pos[0]^2)
+;r_bs0_gse_pos = SQRT(x_bs0_gse_pos[0]^2 + y_bs0_gse_pos[0]^2 + z_bs0_gse_pos[0]^2)
+theta_bs0_gse = ATAN(y_bs0_gse_pos[0],x_bs0_gse_pos[0])
+PRINT,';  ', x_bs0_gse_pos[0], y_bs0_gse_pos[0], z_bs0_gse_pos[0], r_bs0_gse_pos[0], theta_bs0_gse[0]*18d1/!DPI
+;         11.470831      0.97584715      -2.2381378       11.512265       4.8625617
+
+;;  2nd bow shock crossing
+x_bs1_gse_pos = interp(x_gse_pos,t_pos,tura_0_1[0],/NO_EXTRAP)
+y_bs1_gse_pos = interp(y_gse_pos,t_pos,tura_0_1[0],/NO_EXTRAP)
+z_bs1_gse_pos = interp(z_gse_pos,t_pos,tura_0_1[0],/NO_EXTRAP)
+r_bs1_gse_pos = SQRT(x_bs1_gse_pos[0]^2 + y_bs1_gse_pos[0]^2)
+theta_bs1_gse = ATAN(y_bs1_gse_pos[0],x_bs1_gse_pos[0])
+PRINT,';  ', x_bs1_gse_pos[0], y_bs1_gse_pos[0], z_bs1_gse_pos[0], r_bs1_gse_pos[0], theta_bs1_gse[0]*18d1/!DPI
+;         11.991605       1.2716796      -2.3125529       12.058846       6.0534487
+
+
+;-----------------------------------------------------------------------------------------
+; => bow shock model [Slavin and Holzer, [1990,1991]]
+;-----------------------------------------------------------------------------------------
+WINDOW,1,RETAIN=2,XSIZE=1200,YSIZE=1200
+
+ecc    = (1.10 + 1.20)/2d0                       ; => eccentricity      [Table 4 estimates]
+Lsemi  = (22.9 + 23.5)/2d0                       ; => semi-latus rectum [Re, Table 4 estimates]
+xo     = 3d0
+;  L   = b^2/a
+;  e   = c/a
+;  c^2 = a^2 + b^2   =>  b^2 = a^2 (e^2 - 1)
+;                    =>  L   = a (e^2 - 1)
+;                    =>  a   = L/(e^2 - 1)
+asemi  = Lsemi[0]/(ecc[0]^2 - 1d0)
+bsemi  = SQRT(asemi[0]*Lsemi[0])
+ae     = asemi[0]*ecc[0]
+PRINT, ';  ', asemi[0], bsemi[0], ae[0]
+;         71.937938       40.852910       82.728635
+
+n      = 1000L
+n2     = 2000L
+themx  = 11d1*!DPI/18d1
+theta  = DINDGEN(n2)*2d0*themx[0]/((n2 - 1L)) - themx[0]  ; => radians
+the_0  = DINDGEN(n)*themx[0]/(n - 1L)                     ; => angle for y > 0
+the_1  = DINDGEN(n)*themx[0]/(n - 1L) - themx[0]          ; => angle for y < 0
+
+rad    = Lsemi[0]/(1d0 + ecc[0]*COS(theta))      ; => Distance from focus [Re]
+rad_st = xo[0] + rad
+; => V_E = 29.78 km/s  {avg. orbital speed of Earth}
+v_e    = 29.78
+vsw    = (400d0 + 450d0)/2d0                     ; => range of Vsw from ACE OMNI
+abber  = ATAN(v_e[0]/vsw[0])                     ; => abberation correction [radians]
+
+xabb   = rad*COS(theta)
+yabb   = rad*SIN(theta)
+zabb   = yabb
+rshft  = REPLICATE(0d0,n2,3L)
+rshft[*,0] += xo[0]
+
+; => bow shock location in abberated basis
+r_abb  = [[xabb],[yabb],[zabb]]
+; => rotation from GSE to abberated system
+abrot  = TRANSPOSE(eulermat(0d0,abber[0],0d0,/RAD))
+; => rotation from abberated to GSE system
+iabrot = TRANSPOSE(abrot)
+; => bow shock location in original basis
+r_org  = iabrot ## (r_abb + rshft)
+
+;alph_0 = abber[0] + the_0                        ; => abber. angle for y > 0
+;alph_1 = abber[0] - the_1                        ; => abber. angle for y < 0
+
+WSET,1
+PLOT,rad,theta,/POLAR
+PLOT,rad_st,theta,/POLAR
+  OPLOT,[r_bs0_gse_pos[0]],[theta_bs0_gse[0]],PSYM=4,COLOR=250,/POLAR
+
+; => Compare results with and without abberation
+PLOT,xo[0] + rad,theta,XRANGE=[-15.,15.],YRANGE=[-30.,30.],/XSTYLE,/YSTYLE,/NODATA
+  OPLOT,xo[0] + rad,theta,/POLAR,COLOR=250
+  OPLOT,r_org[*,0],r_org[*,1],COLOR=150
+
+; => To match 1st observed bow shock crossing, xo -> 0.70 instead of 3.0
+ecc    = (1.10 + 1.20)/2d0                       ; => eccentricity      [Table 4 estimates]
+Lsemi  = (22.9 + 23.5)/2d0                       ; => semi-latus rectum [Re, Table 4 estimates]
+xo     = 0.70d0
+rad    = Lsemi[0]/(1d0 + ecc[0]*COS(theta))      ; => Distance from focus [Re]
+rad_sh = xo[0] + rad
+the_sh = theta
+
+xra    = [-1d0,1d0]*15d0
+yra    = [-1d0,1d0]*30d0
+PLOT,rad_sh,the_sh,/POLAR,XRANGE=xra,YRANGE=yra,/XSTYLE,/YSTYLE,/NODATA
+  OPLOT,rad_sh,the_sh,/POLAR
+  OPLOT,[r_bs0_gse_pos[0]],[theta_bs0_gse[0]],PSYM=4,COLOR=250,/POLAR
+  OPLOT,[x_bs0_gse_pos[0],x_bs0_gse_pos[0]],yra,LINESTYLE=2,COLOR= 50
+  OPLOT,xra,[y_bs0_gse_pos[0],y_bs0_gse_pos[0]],LINESTYLE=2,COLOR= 50
+
+
+; => To match 2nd observed bow shock crossing, xo -> 1.23 instead of 3.0
+n2     = 2000L
+themx  = 11d1*!DPI/18d1
+theta  = DINDGEN(n2)*2d0*themx[0]/((n2 - 1L)) - themx[0]  ; => radians
+ecc    = (1.10 + 1.20)/2d0                       ; => eccentricity      [Table 4 estimates]
+Lsemi  = (22.9 + 23.5)/2d0                       ; => semi-latus rectum [Re, Table 4 estimates]
+xo     = 1.23d0
+rad    = Lsemi[0]/(1d0 + ecc[0]*COS(theta))      ; => Distance from focus [Re]
+rad_sh = xo[0] + rad
+the_sh = theta
+
+xra    = [-1d0,1d0]*15d0
+yra    = [-1d0,1d0]*30d0
+PLOT,rad_sh,the_sh,/POLAR,XRANGE=xra,YRANGE=yra,/XSTYLE,/YSTYLE,/NODATA
+  OPLOT,rad_sh,the_sh,/POLAR
+  OPLOT,[r_bs1_gse_pos[0]],[theta_bs1_gse[0]],PSYM=4,COLOR=250,/POLAR
+  OPLOT,[x_bs1_gse_pos[0],x_bs1_gse_pos[0]],yra,LINESTYLE=2,COLOR= 50
+  OPLOT,xra,[y_bs1_gse_pos[0],y_bs1_gse_pos[0]],LINESTYLE=2,COLOR= 50
+
+;-----------------------------------------------------------------------------------------
+; => magnetopause model [Kawano et al., [1999]]
+;-----------------------------------------------------------------------------------------
+; => From OMNI HRO 1 Min. Data
+;
+;   P_sw = 1.30 - 3.40 nPa
+;
+;   Use 3 Parameters in Figures 2-5 of Kawano et al., [1999]
+;
+xo        = (1.50d0 + 2.00d0)/2d0
+ro        = (6.00d0 + 7.00d0)/2d0
+el        = (0.89d0 + 0.93d0)/2d0
+n         = 2000L
+themx     = 13d1*!DPI/18d1
+theta     = DINDGEN(n)*themx[0]/(n - 1L)
+
+r_model   = ro[0]*(1d0 + el[0])/(1d0 + el[0]*COS(theta))
+; => use cylindrical ellipsoid described by X and Rho coordinates
+x_model   = r_model*COS(theta) + xo[0]
+rho_model = r_model*SIN(theta)
+
+x_model   = [x_model,x_model]
+rho_model = [-1d0*rho_model,rho_model]
+bad       = WHERE(rho_model EQ 0.,bd)
+IF (bd GT 0) THEN rho_model[bad] = d
+
+; => To match last observed magnetopause crossing, xo -> 4.9 instead of 3.75
+ro        = 6.5d0
+el        = 0.91d0
+xo        = 4.9d0
+r_model   = ro[0]*(1d0 + el[0])/(1d0 + el[0]*COS(theta))
+; => use cylindrical ellipsoid described by X and Rho coordinates
+x_model   = r_model*COS(theta) + xo[0]
+rho_model = r_model*SIN(theta)
+x_model   = [x_model,x_model]
+rho_model = [-1d0*rho_model,rho_model]
+bad       = WHERE(rho_model EQ 0.,bd)
+IF (bd GT 0) THEN rho_model[bad] = d
+
+
+xra    = [-1d0,1d0]*15d0
+yra    = [-1d0,1d0]*20d0
+PLOT,rad_sh,the_sh,/POLAR,XRANGE=xra,YRANGE=yra,/XSTYLE,/YSTYLE,/NODATA
+  ; => Model Bow Shock [Slavin and Holzer, [1990,1991]]
+  OPLOT,rad_sh,the_sh,/POLAR,COLOR=200L
+  OPLOT,[x_bs0_gse_pos[0]],[y_bs0_gse_pos[0]],COLOR=250L,PSYM=2    ; => actual bow shock crossing
+  OPLOT,[x_mp_gse_pos[0]],[y_mp_gse_pos[0]],COLOR=150L,PSYM=2  ; => actual Magnetopause crossing
+  ; => Model Magnetopause [Kawano et al., [1999]]
+  OPLOT,x_model,rho_model,COLOR=50L,LINESTYLE=4,THICK=2.0
+;-----------------------------------------------------------------------------------------
+; => Calc. orbits
+;-----------------------------------------------------------------------------------------
+th_gse_pos     = pref[0]+'state_pos_'+coord[0]
+get_data,th_gse_pos[0],DATA=th_gpos
+
+tr_orb         = tdate[0]+'/'+['04:00:00','12:00:00']
+tdfore         = time_double(tr_orb)
+t_pos          = th_gpos.X
+good           = WHERE(t_pos GE tdfore[0] AND t_pos LE tdfore[1],gd)
+x_tgse_pos     = th_gpos.Y[good,0]/R_E[0]
+y_tgse_pos     = th_gpos.Y[good,1]/R_E[0]
+z_tgse_pos     = th_gpos.Y[good,2]/R_E[0]
+n_gseout       = N_ELEMENTS(x_tgse_pos) - 1L
+;;-------------------------------------------------
+;; => Define model bow shocks
+;;-------------------------------------------------
+ecc            = (1.10 + 1.20)/2d0                       ; => eccentricity      [Table 4 estimates]
+Lsemi          = (22.9 + 23.5)/2d0                       ; => semi-latus rectum [Re, Table 4 estimates]
+n2             = 2000L
+themx          = 11d1*!DPI/18d1
+theta          = DINDGEN(n2)*2d0*themx[0]/((n2 - 1L)) - themx[0]  ; => radians
+rad            = Lsemi[0]/(1d0 + ecc[0]*COS(theta))      ; => Distance from focus [Re]
+; => To match 1st observed bow shock crossing, xo -> 0.70 instead of 3.0
+xo             = 0.70d0
+rad_sh_0       = xo[0] + rad
+the_sh_0       = theta
+; => To match 2nd observed bow shock crossing, xo -> 1.23 instead of 3.0
+xo             = 1.23d0
+rad_sh_1       = xo[0] + rad
+the_sh_1       = theta
+;;-------------------------------------------------
+;; => Define model magnetopause
+;;-------------------------------------------------
+ro        = 6.5d0
+el        = 0.91d0
+xo        = 4.9d0
+n         = 2000L
+themx     = 13d1*!DPI/18d1
+theta     = DINDGEN(n)*themx[0]/(n - 1L)
+r_model   = ro[0]*(1d0 + el[0])/(1d0 + el[0]*COS(theta))
+x_model   = r_model*COS(theta) + xo[0]
+rho_model = r_model*SIN(theta)
+x_model   = [x_model,x_model]
+rho_model = [-1d0*rho_model,rho_model]
+bad       = WHERE(rho_model EQ 0.,bd)
+IF (bd GT 0) THEN rho_model[bad] = d
+
+
+;-----------------------------------------------------------------------------------------
+; => Plot orbits
+;-----------------------------------------------------------------------------------------
+sc        = probe[0]
+scu       = STRUPCASE(sc[0])
+
+!P.MULTI  = 0          ; => Plot each projection individually in one window
+faket     = DINDGEN(361)*(!DPI/18d1)
+faker     = REPLICATE(1.,361)
+la        = 40
+xyra      = [-40.,40.]
+xra       = [ -5.,20.]
+yra       = [-15.,15.]
+
+ttle      = 'THEMIS-'+scu[0]+' Petal Orbit: '+tr_orb[0]+'-'+tr_orb[1]
+yttl      = '!7D!3 = start,  !9V!3 = end'
+pstr      = {XRANGE:xra,YRANGE:yra,XSTYLE:1,YSTYLE:1,NODATA:1,$
+             TITLE:ttle,YTITLE:yttl}
+cols      = [250L,150L,50L]
+
+fnm       = file_name_times(tr_orb,PREC=0)
+sfname    = fnm.F_TIME[0]+'_'+fnm.F_TIME[1]
+
+; => XY-GSE-Plane
+xdatout   = x_tgse_pos
+ydatout   = y_tgse_pos
+prefx     = 'THEMIS-'+scu[0]+'-Orbit_XY-GSE-Plane_Foreshock_Outbound_'
+fname     = prefx[0]+sfname[0]
+
+popen,fname[0],/LAND
+
+PLOT,xdatout,ydatout,_EXTRA=pstr,XTITLE='XY-GSE Plane'
+  ; => Plot outbound orbit
+  OPLOT,xdatout,ydatout,COLOR= 50L
+  OPLOT,[xdatout[0]],[ydatout[0]],PSYM=5,COLOR= 50L,SYMSIZE=2.0
+  OPLOT,[xdatout[n_gseout]],[ydatout[n_gseout]],PSYM=4,COLOR= 50L,SYMSIZE=2.0
+  ; => Put Concentric Purple Circles at 1, 5, 10, 15, 20, 25, and 30 R_e
+  OPLOT,faker*1 ,faket,COLOR=30L,LINESTYLE=2,/POLAR
+  OPLOT,faker*5 ,faket,COLOR=30L,LINESTYLE=2,/POLAR
+  OPLOT,faker*10,faket,COLOR=30L,LINESTYLE=2,/POLAR
+  OPLOT,faker*15,faket,COLOR=30L,LINESTYLE=2,/POLAR
+  OPLOT,faker*20,faket,COLOR=30L,LINESTYLE=2,/POLAR
+  OPLOT,faker*25,faket,COLOR=30L,LINESTYLE=2,/POLAR
+  OPLOT,faker*30,faket,COLOR=30L,LINESTYLE=2,/POLAR
+  ; => Put Diagonal and Vertical Lines to mark 45 deg. points
+  OPLOT,[0d0,0d0],xyra,LINESTYLE=4,COLOR=150L
+  OPLOT,xyra,[0d0,0d0],LINESTYLE=4,COLOR=150L
+  OPLOT,xyra,xyra,LINESTYLE=4,COLOR=150L
+  OPLOT,xyra,-1.*xyra,LINESTYLE=4,COLOR=150L
+  ; => Put Purple Labels on Circles
+  XYOUTS, 1*faker[0]*COS(faket[la]), 1*faker[0]*SIN(faket[la]), '1.0',/DATA,COLOR=30L
+  XYOUTS, 5*faker[0]*COS(faket[la]), 5*faker[0]*SIN(faket[la]), '5.0',/DATA,COLOR=30L
+  XYOUTS,10*faker[0]*COS(faket[la]),10*faker[0]*SIN(faket[la]),'10.0',/DATA,COLOR=30L
+  XYOUTS,15*faker[0]*COS(faket[la]),15*faker[0]*SIN(faket[la]),'15.0',/DATA,COLOR=30L
+  XYOUTS,20*faker[0]*COS(faket[la]),20*faker[0]*SIN(faket[la]),'20.0',/DATA,COLOR=30L
+  XYOUTS,25*faker[0]*COS(faket[la]),25*faker[0]*SIN(faket[la]),'25.0',/DATA,COLOR=30L
+  XYOUTS,30*faker[0]*COS(faket[la]),30*faker[0]*SIN(faket[la]),'30.0',/DATA,COLOR=30L
+  ; => Label directions
+  XYOUTS,-1e0,14*faker[0],'Dusk',/DATA,COLOR=200L,CHARSIZE=1.2      ; => Positive Y-GSM
+  XYOUTS,18*faker[0],4e0,'Noon',/DATA,COLOR=200L,CHARSIZE=1.2       ; => Positive X-GSM
+  XYOUTS,-1e0,-14*faker[0],'Dawn',/DATA,COLOR=200L,CHARSIZE=1.2     ; => Negative Y-GSM
+  XYOUTS,-4*faker[0],0e0,'Midnight',/DATA,COLOR=200L,CHARSIZE=1.2  ; => Negative X-GSM
+  ; => 1st Model Bow Shock [Slavin and Holzer, [1990,1991]]
+  OPLOT,rad_sh_0,the_sh_0,/POLAR,COLOR=220L
+  ; => 2nd Model Bow Shock [Slavin and Holzer, [1990,1991]]
+  OPLOT,rad_sh_1,the_sh_1,/POLAR,COLOR=200L
+  ; => Overplot 1st observed bow shock crossing
+  OPLOT,[x_bs0_gse_pos[0]],[y_bs0_gse_pos[0]],PSYM=1,SYMSIZE=2.0,COLOR=220L  ; => Outbound
+  ; => Overplot 2nd observed bow shock crossing
+  OPLOT,[x_bs1_gse_pos[0]],[y_bs1_gse_pos[0]],PSYM=1,SYMSIZE=2.0,COLOR=200L  ; => Outbound
+  ; => Overplot model magnetopause
+  OPLOT,x_model,rho_model,COLOR= 50L,LINESTYLE=4,THICK=2.0
+  ; => Overplot observed magnetopause crossing
+  OPLOT,[x_mp_gse_pos[0]],[y_mp_gse_pos[0]],COLOR=150L,PSYM=6
+
+pclose
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

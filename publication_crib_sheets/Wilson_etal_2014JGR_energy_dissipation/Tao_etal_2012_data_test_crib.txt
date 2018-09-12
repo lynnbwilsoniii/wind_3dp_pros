@@ -1,0 +1,468 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+;-----------------------------------------------------------------------------------------
+; => Date/Times/Probes
+;-----------------------------------------------------------------------------------------
+tdate     = '2008-10-23'
+probe     = 'd'
+probef    = 'd'
+
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/kill_data_tr.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/kill_data_tr.pro
+
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/array_where.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/LYNN_PRO/array_where.pro
+
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/difference.pro
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/findpath.pro
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/findsource.pro
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/read_wholefile.pro
+.compile /Users/lbwilson/Desktop/idllibs/codemgr/libs/utility/man.pro
+
+.compile /Users/lbwilson/Desktop/swidl-0.1/IDL_stuff/themis_pros/wave_polarization.pro
+.compile /Users/lbwilson/Desktop/swidl-0.1/IDL_stuff/themis_pros/wavpol_to_tplot.pro
+
+;-----------------------------------------------------------------------------------------
+; Load THEMIS Data
+;-----------------------------------------------------------------------------------------
+tplot_title = 'THEMIS EFI Waveform Examples'
+tplot_options,'TITLE',tplot_title
+tplot_options,'XMARGIN',[ 20, 15]
+tplot_options,'YMARGIN',[ 5, 5]
+; Data parameters, load data, and set color table:
+;
+dur       = 1.0   ; # of days
+
+timespan,tdate[0],dur[0],/DAY
+tr        = timerange()
+probes    = ['a','b','c','d','e']
+;-----------------------------------------------------
+; => Load State Data
+;-----------------------------------------------------
+sc        = probe[0]
+thm_load_state,PROBE=sc[0],/GET_SUPPORT_DATA
+;-----------------------------------------------------
+; => Load FGM Data
+;-----------------------------------------------------
+sc        = probe[0]
+mode      = 'fg?'
+; => load raw data
+thm_load_fgm,PROBE=sc[0],LEVEL=1,TYPE='raw',SUFFIX='_raw',/GET_SUPPORT_DATA
+; => calibrate
+thm_cal_fgm,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_raw',OUT_SUFFIX='_ssl'
+
+; => load level 2 calibrated data
+thm_load_fgm,PROBE=sc[0],DATATYPE=mode[0],LEVEL=2,COORD='dsl',TRANGE=tr
+
+; => rotate SSL to DSL
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_ssl',OUT_SUFFIX='_dsl',OUT_COORD='dsl'
+
+; => rotate DSL to GSE
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_dsl',OUT_SUFFIX='_gse',OUT_COORD='gse'
+
+; => rotate GSE to GSM
+thm_cotrans,PROBE=sc[0],DATATYPE=mode[0],IN_SUFFIX='_gse',OUT_SUFFIX='_gsm',OUT_COORD='gsm'
+
+pref    = 'th'+sc[0]+'_fg*'
+names   = tnames(pref[0])
+hed_nm  = tnames('*_hed')
+good_nm = array_where(names,hed_nm,/N_UNIQ,NCOMP1=comp1,NCOMP2=comp2)
+names   = names[comp1]
+options,names,'COLORS',[250,150, 50]
+options,names,'LABELS',['x','y','z']
+
+;-----------------------------------------------------
+; => Create |B| TPLOT variable
+;-----------------------------------------------------
+mode    = 'fgs'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]'
+
+mode    = 'fgl'
+coord   = 'dsl'
+name    = 'th'+sc[0]+'_'+mode[0]+'_'+coord[0]
+get_data,name[0],DATA=temp,DLIM=dlim,LIM=lim
+bmag    = SQRT(TOTAL(temp.Y^2,2,/NAN))
+temp2   = {X:temp.X,Y:bmag}
+store_data,'th'+sc[0]+'_'+mode[0]+'_mag',DATA=temp2
+options,'th'+sc[0]+'_'+mode[0]+'_mag','YTITLE','th'+STRMID(sc[0],0L,1L)+' |B| ['+mode[0]+', nT]'
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+tplot,'th'+STRMID(sc[0],0L,1L)+['_fge','_fgl','_fgh','_fgs']+'_gsm'
+
+; => translate to polar coords
+pref    = 'th'+sc[0]+'_state_pos_'
+coord   = ['gse','gsm']
+xyz_to_polar,pref[0]+coord[0]
+xyz_to_polar,pref[0]+coord[1]
+
+; => Normalize SC position by R_E
+posnm   = 'th'+sc[0]+'_state_pos_gsm'
+newname = posnm[0]+'_Re'
+;tkm2re,posnm[0],NEWNAME=newname[0]
+get_data,posnm[0],DATA=temp,DLIM=dlim,LIM=lim
+data_re = temp.Y/R_E[0]
+temp2   = {X:temp.X,Y:data_re,V:temp.V}
+store_data,newname[0],DATA=temp,DLIM=dlim,LIM=lim
+
+; => Convert GSM SC position to SM position
+pos_gsm = 'th'+sc[0]+'_state_pos_gsm'
+pos__sm = 'th'+sc[0]+'_state_pos__sm'
+cotrans,pos_gsm[0],pos__sm[0],/GSM2SM
+; => Calculate Magnetic Local Time (MLT), Magnetic Latitude (MLAT), L-Shell, and Invariant Latitude (ILAT)
+posnm          = pos__sm[0]
+get_data,posnm[0],DATA=temp,DLIM=dlim,LIM=lim
+th_pos_time    = temp.X
+th_pos_vec__sm = temp.Y
+th_pos_rad__sm = SQRT(TOTAL(th_pos_vec__sm^2,2,/NAN))
+;-----------------------------------------------------
+; => MLT (hours)
+;-----------------------------------------------------
+t_x            = th_pos_vec__sm[*,0]
+t_y            = th_pos_vec__sm[*,1]
+t_z            = th_pos_vec__sm[*,2]
+th_mlt         = ATAN(t_y/t_x)*18d1/!DPI/15d0 + 12d0
+; => Check for negative X-SM coordinate points
+low_tmp        = WHERE(th_pos_vec__sm[*,0] LT 0d0,lwtp)
+IF (lwtp GT 0L) THEN th_mlt[low_tmp] = (ATAN(t_y[low_tmp]/t_x[low_tmp]) + !DPI)*18d1/(!DPI*15d0) + 12d0
+; => make sure LT 24
+th_mlt         = th_mlt MOD 24d0
+;-----------------------------------------------------
+; => MLAT (deg)
+;-----------------------------------------------------
+t_ratio        = t_z/th_pos_rad__sm
+th_mlat        = ATAN(t_ratio)*18d1/!DPI
+;-----------------------------------------------------
+; => L-Shell (Re)
+;-----------------------------------------------------
+cmlat          = COS(th_mlat*!DPI/18d1)
+th_lshell      = th_pos_rad__sm/(R_E[0]*cmlat^2)
+;-----------------------------------------------------
+; => ILAT (deg)
+;-----------------------------------------------------
+irt_lsh        = SQRT(1d0/th_lshell)
+th_ilat        = ACOS(irt_lsh)*18d1/!DPI
+
+; => send to TPLOT
+pref           = 'th'+sc[0]+'_'
+store_data,pref[0]+'_MLT',DATA={X:th_pos_time,Y:th_mlt}
+store_data,pref[0]+'MLAT',DATA={X:th_pos_time,Y:th_mlat}
+store_data,pref[0]+'_LSH',DATA={X:th_pos_time,Y:th_lshell}
+store_data,pref[0]+'ILAT',DATA={X:th_pos_time,Y:th_ilat}
+
+pref           = 'th'+sc[0]+'_'
+tpref          = 'th'+sc[0]+' '
+options,pref[0]+'_MLT','YTITLE',tpref[0]+'MLT [Hr]'
+options,pref[0]+'MLAT','YTITLE',tpref[0]+'MLAT [Deg]'
+options,pref[0]+'_LSH','YTITLE',tpref[0]+'LShell [Re]'
+options,pref[0]+'ILAT','YTITLE',tpref[0]+'ILAT [Deg]'
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+; => Add SC position to TPLOT plots
+names          = [pref[0]+'_LSH',pref[0]+'_MLT',pref[0]+'MLAT',pref[0]+'ILAT']
+tplot_options,VAR_LABEL=names
+
+fgm_nm         = 'th'+STRMID(sc[0],0L,1L)+['_fgs']+'_gsm'
+options,fgm_nm[0],'YTITLE','th'+STRMID(sc[0],0L,1L)+' B [fgs, GSM, nT]'
+options,fgm_nm[0],'YSUBTITLE',''
+
+tplot,fgm_nm[0]
+;-----------------------------------------------------
+; => Load SCM Data
+;-----------------------------------------------------
+sc        = probe[0]
+;; Select MODE (scf, scp, scw)
+mode      = 'scf scp scw'
+
+thm_load_scm,PROBE=sc[0],LEVEL=1,TYPE='raw',TRANGE=tr,/GET_SUPPORT
+
+; => Output is in DSL coordinates
+thm_cal_scm,PROBE=sc[0],DATATYPE=mode[0]+'*',OUT_SUFFIX='_cal',TRANGE=tr, $
+            CLEANUP='full',Fmin=0.45,/EDGE_ZERO
+; FMIN     :  Min frequency for filtering in DSL system.  [Default is 0 Hz.]
+; FMAX     :  Max frequency for filtering in DSL system.  [Default is Nyquist.]
+; CLEANUP  :  type of cleanup [Default is 'none']:
+;               'spin' for only spin tones (power ripples) cleanup,
+;               'full' for spin tones and 8/32 Hz tones
+;               'none' for no cleanup processes.
+;
+; => Extra keyword options
+;             nk  = 512, $
+;             mk = 4, $
+;             Despin=1, $
+;             N_spinfit = 2, $
+;             cleanup = 'full',$
+;             clnup_author = 'ole', $
+;             wind_dur_1s = 1.,$
+;             wind_dur_spin = 1.,$
+;             Fdet = 0., $
+;             Fcut = 0.1, $
+;             Fmin = 0.45, $
+;             Fmax = 0., $
+;             step = 4, $
+;             /edge_zero
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+
+pref    = 'th'+sc[0]+'_sc*_cal'
+names   = tnames(pref[0])
+options,names,'COLORS',[250,150, 50]
+options,names,'LABELS',['x','y','z']
+
+;-----------------------------------------------------
+; => Plot SCM Data
+;-----------------------------------------------------
+tdate          = '2008-10-23'
+tr_00          = tdate[0]+'/'+['00:00:00','07:40:00']
+
+pref           = 'th'+sc[0]+'_'
+names          = pref[0]+['fgs_mag','fgs_gsm','scp_cal','scw_cal']
+tplot,names
+
+
+pref           = 'th'+sc[0]+'_'
+names          = pref[0]+['fgs_mag','fgs_gsm','fgl_gsm','scp_cal','scw_cal']
+tplot,names
+
+
+tr_Tao         = tdate[0]+'/'+['06:36:45.500','06:36:51.600']
+tlimit,tr_Tao
+
+; => smooth the Bfield data appropriately
+pref           = 'th'+sc[0]+'_'
+tsmooth2,pref[0]+'fgs_dsl',50,NEWNAME=pref[0]+'fgs_dsl_sm50'
+
+; => make transformation matrix
+thm_fac_matrix_make,pref[0]+'fgs_dsl_sm50',OTHER_DIM='xgse',NEWNAME=pref[0]+'fgs_dsl_sm50_fac_mat'
+
+; => transform SCM Bfield vectors into field aligned coordinates
+tvector_rotate,pref[0]+'fgs_dsl_sm50_fac_mat',pref[0]+'scp_cal',NEWNAME=pref[0]+'scp_cal_facx'
+tvector_rotate,pref[0]+'fgs_dsl_sm50_fac_mat',pref[0]+'scw_cal',NEWNAME=pref[0]+'scw_cal_facx'
+
+names          = pref[0]+['scp_cal','scw_cal']+'_facx'
+options,names,'COLORS',[250,150, 50]
+options,names,'LABELS',['(B x Xgse) x B','B x Xgse','B']
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+
+pref           = 'th'+sc[0]+'_'
+names          = pref[0]+['fgs_mag','fgs_gsm',['scp_cal','scw_cal']+'_facx']
+tplot,names
+;-----------------------------------------------------------------------------------------
+; Wave polarization analysis
+;-----------------------------------------------------------------------------------------
+pref           = 'th'+sc[0]+'_'
+names          = pref[0]+['fgl_mag','fgl_gsm',['scp_cal','scw_cal']+'_facx']
+tplot,names
+
+
+mode           = 'scw'
+thscs_mode     = 'th'+sc[0]+'_'+mode[0]
+coord          = 'dsl'
+fgm_mode       = 'fgl'
+thscs_fgm_mode ='th'+sc[0]+'_'+fgm_mode[0]
+;-----------------------------------------------------
+; => Transform into Xgse field aligned coordinates 
+;      built from time averaged fgm data
+;-----------------------------------------------------
+time_av        = 3.
+old_name       = thscs_fgm_mode[0]+'_'+coord[0]
+new_name       = thscs_fgm_mode[0]+'_'+coord[0]+'_av'
+avg_data,old_name[0],time_av[0],NEWNAME=new_name[0]
+; => interpolate
+tinterpol_mxn,new_name[0],old_name[0]
+; => define rotation matrix
+thm_fac_matrix_make, thscs_fgm_mode+'_'+coord+'_av_interp'
+; => rotate
+new_name2      = new_name[0]+'_interp_fac_mat'
+tvector_rotate,new_name2[0],thscs_mode[0]+'_cal'
+scm_wave       = thscs_mode[0]+'_cal_rot'
+
+options,scm_wave[0],'COLORS',[250,150, 50]
+options,scm_wave[0],'LABELS',['(B x Xgse) x B','B x Xgse','B']
+
+pref           = 'th'+sc[0]+'_'
+names          = [pref[0]+['fgl_mag','fgl_dsl_av','scw_cal_facx'],scm_wave[0]]
+tplot,names
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+;-----------------------------------------------------
+; => clip data into specified range
+;-----------------------------------------------------
+scm_wave_nms   = thscs_mode[0]+'_cal_rot_'+STRING(FORMAT='(I2.2)',LINDGEN(12))
+tr_all         = tdate[0]+'/'+[['00:24:46.200','00:24:52.300'],['00:28:54.300','00:29:00.300'],$
+                               ['00:54:33.300','00:54:39.400'],['00:57:49.800','00:57:55.800'],$
+                               ['06:23:15.500','06:23:21.600'],['06:26:07.800','06:26:13.800'],$
+                               ['06:30:57.700','06:31:03.800'],['06:36:45.500','06:36:51.600'],$
+                               ['06:40:53.100','06:40:59.200'],['06:44:37.000','06:44:43.100'],$
+                               ['06:50:48.400','06:50:54.500'],['06:53:28.000','06:53:34.100'] ]
+
+FOR j=0L, N_ELEMENTS(scm_wave_nms) - 1L DO BEGIN $
+  time_clip,scm_wave[0],tr_all[0,j],tr_all[1,j],NEWNAME=scm_wave_nms[j]
+
+mode           = 'scw'
+IF (mode eq 'scf') THEN nopfft_input     = 32
+IF (mode eq 'scp') THEN nopfft_input     = 512
+IF (mode eq 'scw') THEN nopfft_input     = 1024
+
+;-----------------------------------------------------
+; => twavpol/wavpol gives power spectrum in arbitary units,
+;-----------------------------------------------------
+steplength_input = nopfft_input[0]/2
+
+options,scm_wave_nms,'COLORS',[250,150, 50]
+options,scm_wave_nms,'LABELS',['(B x Xgse) x B','B x Xgse','B']
+
+FOR j=0L, N_ELEMENTS(scm_wave_nms) - 1L DO BEGIN $
+  wavpol_to_tplot,scm_wave_nms[j],NOPFFT=nopfft_input,STEPLENGTH=steplength_input
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+
+names_all      = [pows_nm,degp_nm,wava_nm,ellp_nm,helc_nm]
+options,names_all,'YLOG',1
+options,names_all,'YRANGE',[3d2,3d3]
+
+
+
+j              = 0L
+names          = [scm_wave_nms[j]+['','_powspec','_degpol','_waveangle','_elliptict','_helict']]
+tplot,names,/NOM,TRANGE=time_double(REFORM(tr_all[*,j]))
+
+
+
+;;SETENV,'IDL_EXTRA_DIR=/Users/lbwilson/Desktop/idllibs/codemgr/libs/utility'
+
+;;SETENV,'IDL_PATH='+test[0]+':+'+GETENV('IDL_EXTRA_DIR')
+
+
+FOR j=0L, N_ELEMENTS(scm_wave_nms) - 1L DO BEGIN $
+  wavpol_to_tplot,scm_wave_nms[j],NOPFFT=nopfft_input,STEPLENGTH=steplength_input,PREFIX='test_'+STRING(FORMAT='(I2.2)',j)
+
+
+
+
+
+
+
+
+
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+FOR j=0L, N_ELEMENTS(scm_wave_nms) - 1L DO BEGIN $
+  twavpol,scm_wave_nms[j],NOPFFT=nopfft_input,STEPLENGTH=steplength_input
+;twavpol,scm_wave_nms[j],ERROR=error,FREQLINE=freqline,TIMELINE=timeline,NOPFFT=nopfft_input,STEPLENGTH=steplength_input
+
+sc             = probe[0]
+ytpref         = 'th'+sc[0]+' '
+pows_nm        = tnames('*_powspec')
+degp_nm        = tnames('*_degpol')
+wava_nm        = tnames('*_waveangle')
+ellp_nm        = tnames('*_elliptict')
+helc_nm        = tnames('*_helict')
+
+FOR j=0L, N_ELEMENTS(pows_nm) - 1L DO BEGIN  $
+  get_data,pows_nm[j],DATA=temp            & $
+  yra = minmax(temp.Y,/POS)                & $
+  options,pows_nm[j],'ZRANGE',yra
+
+options,pows_nm,'YTITLE',ytpref[0]+'Power Spec'+'!C'+'Frequency [Hz]'
+options,pows_nm,'ZTITLE','Power Spec. Density'
+options,pows_nm,'ZLOG',1
+options,pows_nm,'ZTICKS',3
+
+options,degp_nm,'YTITLE',ytpref[0]+'DoP'+'!C'+'Frequency [Hz]'
+options,degp_nm,'ZTITLE','Degree of!CPolarization'
+ztn = ['0.00','0.25','0.50','0.75','1.00']
+ztv = [0.00,0.25,0.5,0.75,1.00]
+zts = N_ELEMENTS(ztv) - 1L
+options,degp_nm,'ZTICKNAME',ztn
+options,degp_nm,'ZTICKV',ztv
+options,degp_nm,'ZTICKS',zts
+
+options,wava_nm,'YTITLE',ytpref[0]+'MVA Angle'+'!C'+'Frequency [Hz]'
+options,wava_nm,'ZTITLE','Wave Normal'+'!C'+'Angle [rad]'
+ztn = ['0 !7p!3','!7p!3'+['/4','/2']]
+ztv = [0d0,25d-2,50d-2]*!DPI
+zts = N_ELEMENTS(ztv) - 1L
+options,wava_nm,'ZTICKNAME',ztn
+options,wava_nm,'ZTICKV',ztv
+options,wava_nm,'ZTICKS',zts
+options,wava_nm,'ZRANGE',[0d0,50d-2]*!DPI
+
+options,ellp_nm,'YTITLE',ytpref[0]+'Ellipticity'+'!C'+'Frequency [Hz]'
+options,ellp_nm,'ZTITLE','Ellipticity'
+ztn = ['-1.0','-0.5','0.0','0.5','1.0']
+ztv = [-1d0,-5d-1,0d0,5d-1,1d0]
+zts = N_ELEMENTS(ztv) - 1L
+options,ellp_nm,'ZTICKNAME',ztn
+options,ellp_nm,'ZTICKV',ztv
+options,ellp_nm,'ZTICKS',zts
+options,ellp_nm,'ZRANGE',[-1d0,1d0]
+
+options,helc_nm,'YTITLE',ytpref[0]+'Helicity'+'!C'+'Frequency [Hz]'
+options,helc_nm,'ZTITLE','Helicity'
+options,helc_nm,'ZRANGE',[0.0,1.0]
+ztn = ['0.00','0.25','0.50','0.75','1.00']
+ztv = [0d0,25d-2,50d-2,75d-2,1d0]
+zts = N_ELEMENTS(ztv) - 1L
+options,helc_nm,'ZTICKNAME',ztn
+options,helc_nm,'ZTICKV',ztv
+options,helc_nm,'ZTICKS',zts
+
+
+
+

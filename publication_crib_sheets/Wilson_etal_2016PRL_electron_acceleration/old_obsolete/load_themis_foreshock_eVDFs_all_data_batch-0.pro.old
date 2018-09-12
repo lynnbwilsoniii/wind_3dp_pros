@@ -1,0 +1,265 @@
+;+
+;*****************************************************************************************
+;
+;  BATCH    :   load_themis_foreshock_eVDFs_all_data_batch.pro
+;  PURPOSE  :   This is a batch file that is meant to load the TPLOT save file that
+;                 was created by load_themis_foreshock_eVDFs_everything_and_save_batch.pro
+;
+;  CALLED BY:   
+;               thm_VDF_foreshock_eVDFs_all_data_crib.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               get_os_slash.pro
+;               test_tdate_format.pro
+;               time_double.pro
+;               get_valid_trange.pro
+;               add_os_slash.pro
+;               tplot_restore.pro
+;               lbw_tplot_set_defaults.pro
+;               set_tplot_times.pro
+;               tnames.pro
+;               options.pro
+;               tplot_options.pro
+;               tplot.pro
+;
+;  REQUIRES:    
+;               1)  THEMIS TDAS 8.0 or SPEDAS 1.0 (or greater) IDL libraries
+;               2)  UMN Modified Wind/3DP IDL Libraries
+;               3)  TPLOT save files created by load_themis_foreshock_eVDFs_everything_and_save_batch.pro
+;
+;  INPUT:
+;               NA
+;
+;  EXAMPLES:    
+;               ;;  Initialize THEMIS defaults
+;               thm_init
+;               ;;  Load all State, FGM, ESA, EFI, and SCM data for 2008-07-26 for Probe B
+;               ;;  **********************************************
+;               ;;  **  variable names MUST exactly match these **
+;               ;;  **********************************************
+;               probe          = 'b'                             ;;  Spacecraft identifier/name
+;               tdate          = '2008-07-26'                    ;;  Date of interest
+;               date           = '072608'                        ;;  short date format
+;               @load_themis_foreshock_eVDFs_all_data_batch.pro
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  This batch routine expects a date and a probe input on the command
+;                     line prior to calling (see EXAMPLES)
+;               2)  If your paths are not set correctly, you may need to provide a full
+;                     path to this routine, e.g., the following is figurative and should
+;                     be replaced with the full file path to this batch file:
+;                     @/full/file/path/to/load_themis_foreshock_eVDFs_all_data_batch.pro
+;               3)  This batch routine loads FGM, ESA moments, EFI and SCM data, and
+;                      particle spectra from both ESAs and SSTs from a TPLOT save file
+;               4)  See also:
+;                              load_thm_fields_save_tplot_batch.pro
+;                              load_thm_fgm_efi_scm_2_tplot_batch.pro
+;                              load_thm_fgm_efi_scm_save_tplot_batch.pro
+;                              load_thm_FS_eVDFs_calc_sh_parms_batch.pro
+;                              load_themis_foreshock_eVDFs_batch.pro
+;                              load_themis_foreshock_eVDFs_everything_and_save_batch.pro
+;
+;  REFERENCES:  
+;               1)  McFadden, J.P., C.W. Carlson, D. Larson, M. Ludlam, R. Abiad,
+;                      B. Elliot, P. Turin, M. Marckwordt, and V. Angelopoulos
+;                      "The THEMIS ESA Plasma Instrument and In-flight Calibration,"
+;                      Space Sci. Rev. 141, pp. 277-302, (2008).
+;               2)  McFadden, J.P., C.W. Carlson, D. Larson, J.W. Bonnell,
+;                      F.S. Mozer, V. Angelopoulos, K.-H. Glassmeier, U. Auster
+;                      "THEMIS ESA First Science Results and Performance Issues,"
+;                      Space Sci. Rev. 141, pp. 477-508, (2008).
+;               3)  Auster, H.U., K.-H. Glassmeier, W. Magnes, O. Aydogar, W. Baumjohann,
+;                      D. Constantinescu, D. Fischer, K.H. Fornacon, E. Georgescu,
+;                      P. Harvey, O. Hillenmaier, R. Kroth, M. Ludlam, Y. Narita,
+;                      R. Nakamura, K. Okrafka, F. Plaschke, I. Richter, H. Schwarzl,
+;                      B. Stoll, A. Valavanoglou, and M. Wiedemann "The THEMIS Fluxgate
+;                      Magnetometer," Space Sci. Rev. 141, pp. 235-264, (2008).
+;               4)  Angelopoulos, V. "The THEMIS Mission," Space Sci. Rev. 141,
+;                      pp. 5-34, (2008).
+;               5)  Cully, C.M., R.E. Ergun, K. Stevens, A. Nammari, and J. Westfall
+;                      "The THEMIS Digital Fields Board," Space Sci. Rev. 141,
+;                      pp. 343-355, (2008).
+;               6)  Roux, A., O. Le Contel, C. Coillot, A. Bouabdellah, B. de la Porte,
+;                      D. Alison, S. Ruocco, and M.C. Vassal "The Search Coil
+;                      Magnetometer for THEMIS," Space Sci. Rev. 141,
+;                      pp. 265-275, (2008).
+;               7)  Le Contel, O., A. Roux, P. Robert, C. Coillot, A. Bouabdellah,
+;                      B. de la Porte, D. Alison, S. Ruocco, V. Angelopoulos,
+;                      K. Bromund, C.C. Chaston, C.M. Cully, H.U. Auster,
+;                      K.-H. Glassmeier, W. Baumjohann, C.W. Carlson, J.P. McFadden,
+;                      and D. Larson "First Results of the THEMIS Search Coil
+;                      Magnetometers," Space Sci. Rev. 141, pp. 509-534, (2008).
+;
+;   CREATED:  02/03/2016
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/03/2016   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+c              = 2.9979245800d+08         ;;  Speed of light in vacuum [m s^(-1), 2014 CODATA/NIST]
+GG             = 6.6740800000d-11         ;;  Newtonian Constant [m^(3) kg^(-1) s^(-1), 2014 CODATA/NIST]
+kB             = 1.3806485200d-23         ;;  Boltzmann Constant [J K^(-1), 2014 CODATA/NIST]
+SB             = 5.6703670000d-08         ;;  Stefan-Boltzmann Constant [W m^(-2) K^(-4), 2014 CODATA/NIST]
+hh             = 6.6260700400d-34         ;;  Planck Constant [J s, 2014 CODATA/NIST]
+qq             = 1.6021766208d-19         ;;  Fundamental charge [C, 2014 CODATA/NIST]
+epo            = 8.8541878170d-12         ;;  Permittivity of free space [F m^(-1), 2014 CODATA/NIST]
+muo            = !DPI*4.00000d-07         ;;  Permeability of free space [N A^(-2) or H m^(-1), 2014 CODATA/NIST]
+ma             = 6.6446572300d-27         ;;  Alpha particle mass [kg, 2014 CODATA/NIST]
+me             = 9.1093835600d-31         ;;  Electron mass [kg, 2014 CODATA/NIST]
+mn             = 1.6749274710d-27         ;;  Neutron mass [kg, 2014 CODATA/NIST]
+mp             = 1.6726218980d-27         ;;  Proton mass [kg, 2014 CODATA/NIST]
+;;  --> Define mass of particles in units of energy [eV]
+ma_eV          = ma[0]*c[0]^2/qq[0]       ;;  ~3727.379378(23) [MeV, 2014 CODATA/NIST]
+me_eV          = me[0]*c[0]^2/qq[0]       ;;  ~0.5109989461(31) [MeV, 2014 CODATA/NIST]
+mn_eV          = mn[0]*c[0]^2/qq[0]       ;;  ~939.5654133(58) [MeV, 2014 CODATA/NIST]
+mp_eV          = mp[0]*c[0]^2/qq[0]       ;;  ~938.2720813(58) [MeV, 2014 CODATA/NIST]
+;;  Astronomical
+R_Ea__m        = 6.3781366d06             ;;  Earth's Mean Equatorial Radius [m, 2016 AA values]
+M_E            = 5.9722000d24             ;;  Earth's mass [kg, 2015 AA values]
+au             = 1.49597870700d+11        ;;  1 astronomical unit or AU [m, from Mathematica 10.1 on 2015-04-21]
+R_E            = R_Ea__m[0]*1d-3          ;;  m --> km
+;;  Conversion Factors
+f_1eV          = qq[0]/hh[0]              ;;  Freq. associated with 1 eV of energy [ Hz --> f_1eV*energy{eV} = freq{Hz} ]
+J_1eV          = hh[0]*f_1eV[0]           ;;  Energy associated with 1 eV of energy [ J --> J_1eV*energy{eV} = energy{J} ]
+K_eV           = qq[0]/kB[0]              ;;  Temp. associated with 1 eV of energy [11,604.5221 K/eV, 2014 CODATA/NIST --> K_eV*energy{eV} = Temp{K}]
+eV_K           = kB[0]/qq[0]              ;;  Energy associated with 1 K Temp. [8.6173303 x 10^(-5) eV/K, 2014 CODATA/NIST --> eV_K*Temp{K} = energy{eV}]
+valfen__fac    = 1d-9/SQRT(muo[0]*mp[0]*1d6)       ;;  factor for (proton-only) Alfvén speed [m s^(-1) nT^(-1) cm^(-3/2)]
+gam            = 5d0/3d0                  ;;  Use gamma = 5/3
+rho_fac        = (me[0] + mp[0])*1d6      ;;  kg, cm^(-3) --> m^(-3)
+cs_fac         = SQRT(gam[0]/rho_fac[0])
+;;  Useful variables
+slash          = get_os_slash()       ;;  '/' for Unix, '\' for Windows
+all_scs        = ['a','b','c','d','e']
+coord_spg      = 'spg'
+coord_ssl      = 'ssl'
+coord_dsl      = 'dsl'
+coord_gse      = 'gse'
+coord_gsm      = 'gsm'
+coord_fac      = 'fac'
+coord_mag      = 'mag'
+fb_string      = ['f','b']
+vec_str        = ['x','y','z']
+fac_vec_str    = ['perp1','perp2','para']
+fac_dir_str    = ['para','perp','anti']
+modes_slh      = ['s','l','h']
+modes_fpw      = ['f','p','w']
+modes_fgm      = 'fg'+modes_slh
+modes_efi      = 'ef'+modes_fpw
+modes_scm      = 'sc'+modes_fpw
+vec_col        = [250,150,50]
+
+start_of_day_t = '00:00:00.000000000'
+end___of_day_t = '23:59:59.999999999'
+def__lim       = {YSTYLE:1,PANEL_SIZE:2.,XMINOR:5,XTICKLEN:0.04,YTICKLEN:0.01}
+def_dlim       = {SPEC:0,COLORS:50L,LABELS:'1',LABFLAG:2}
+;;  Define dummy time range arrays for later use
+dt_70          = [-1,1]*7d1
+dt_140         = [-1,1]*14d1
+dt_200         = [-1,1]*20d1
+dt_250         = [-1,1]*25d1
+dt_400         = [-1,1]*40d1
+;;  Define dummy error messages
+dummy_errmsg   = ['You have not defined the proper input!',          $
+                  'This batch routine expects three inputs',         $
+                  'with following EXACT variable names:',            $
+                  "date   ;; e.g., '072608' for July 26, 2008",      $
+                  "tdate  ;; e.g., '2008-07-26' for July 26, 2008",  $
+                  "probe  ;; e.g., 'b' for Probe B"                  ]
+nderrmsg       = N_ELEMENTS(dummy_errmsg) - 1L
+;;----------------------------------------------------------------------------------------
+;;  Define and times/dates Probe from input
+;;----------------------------------------------------------------------------------------
+test           = (N_ELEMENTS(date) EQ 0) OR (N_ELEMENTS(tdate) EQ 0) OR $
+                 (N_ELEMENTS(probe) EQ 0)
+IF (test[0]) THEN FOR pj=0L, nderrmsg[0] DO PRINT,dummy_errmsg[pj]
+IF (test[0]) THEN PRINT,'%%  Stopping before starting...'
+IF (test[0]) THEN STOP             ;;  Stop before user runs into issues
+;;  Check TDATE format
+test           = test_tdate_format(tdate)
+IF (test[0] EQ 0) THEN STOP        ;;  Stop before user runs into issues
+
+sc             = probe[0]
+pref           = 'th'+sc[0]+'_'
+prefu          = STRUPCASE(pref[0])
+scpref         = pref[0]
+scu            = STRUPCASE(sc[0])
+;;  Default to entire day
+tr_00          = tdate[0]+'/'+[start_of_day_t[0],end___of_day_t[0]]
+;;  Make sure valid time range
+trange         = time_double(tr_00)
+test           = get_valid_trange(TRANGE=trange,PRECISION=6)
+IF (SIZE(test,/TYPE) NE 8) THEN STOP        ;;  Stop before user runs into issues
+;;----------------------------------------------------------------------------------------
+;;  Load ALL relevant data
+;;----------------------------------------------------------------------------------------
+th_data_dir    = 0
+dumb           = TEMPORARY(th_data_dir)
+;;  Define location of IDL save files
+test           = (N_ELEMENTS(th_data_dir) EQ 0) OR (SIZE(th_data_dir,/TYPE) NE 7)
+IF (test) THEN th_data_dir = FILE_DIRNAME('',/MARK_DIRECTORY)
+;;  Add trailing '/'
+th_data_dir    = add_os_slash(th_data_dir[0])
+;;  Define location for TPLOT save file
+tpnsave_dir    = th_data_dir[0]+'themis_tplot_save'+slash[0]
+;;  Define TPLOT save file name
+tpn_fpref_out  = 'TPLOT_save_file_'+prefu[0]
+inst_mid_out   = 'FGM-ALL_EESA-IESA-Moments_EFI-Cal-Cor_SCM-Cal-Cor_ESA-SST-Spectra_'
+fname          = tpn_fpref_out[0]+inst_mid_out[0]+'eVDF_fit_results_'+tdate[0]+'*.tplot'
+;;  Find IDL save files
+tpn__file      = FILE_SEARCH(tpnsave_dir[0],fname[0])
+test_tpnf      = (tpn__file[0] NE '')
+;;  Load new TPLOT data (make sure to append so as to not delete currently loaded data)
+IF (test_tpnf[0]) THEN tplot_restore,FILENAME=tpn__file[0],VERBOSE=0,/APPEND,/SORT ELSE STOP
+;;  Set defaults
+lbw_tplot_set_defaults
+;;  Force TPLOT to store things like REFDATE etc.
+set_tplot_times
+;;  Change colors for vectors
+all_vec_coord  = [coord_spg[0],coord_ssl[0],coord_dsl[0],coord_gse[0],coord_gsm[0],coord_fac[0]]
+all_vec_tpns   = tnames('*_'+all_vec_coord)
+options,all_vec_tpns,'COLORS'
+options,all_vec_tpns,'COLORS',vec_col,/DEF
+tplot_options,  'XMARGIN',[20,20]
+;;  Define spacecraft position as tick marks
+pos_gse_tpn    = tnames(scpref[0]+'state_pos_'+coord_gse[0]+'_*')
+rad_pos_tpn    = tnames(scpref[0]+'_Rad')
+names2         = [REVERSE(pos_gse_tpn),rad_pos_tpn[0]]
+tplot_options,VAR_LABEL=names2
+;;----------------------------------------------------------------------------------------
+;;  Open window and plot
+;;----------------------------------------------------------------------------------------
+DEVICE,GET_SCREEN_SIZE=s_size
+wsz            = s_size*7d-1
+win_ttl        = 'THEMIS-'+scu[0]+' Plots ['+tdate[0]+']'
+win_str        = {RETAIN:2,XSIZE:wsz[0],YSIZE:wsz[1],TITLE:win_ttl[0],XPOS:10,YPOS:10}
+WINDOW,0,_EXTRA=win_str
+
+;fgm_tpns       = scpref[0]+modes_fgm[2]+'_'+[coord_mag[0],coord_dsl[0]]
+fgm_tpns       = scpref[0]+modes_fgm[1]+'_'+[coord_mag[0],coord_dsl[0]]
+efi_tpns       = scpref[0]+modes_efi[1:2]+'_*_rmspikes_'+coord_dsl[0]
+scm_tpns       = scpref[0]+modes_scm[1:2]+'_l1_cal_*_'+coord_dsl[0]
+nna            = fgm_tpns
+;nna            = [fgm_tpns,efi_tpns,scm_tpns]
+tplot,nna
+
+
+
+
+
+

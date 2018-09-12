@@ -1,0 +1,362 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   plot_superposed_epoch_anal.pro
+;  PURPOSE  :   This routine creates a superposed epoch analysis plot from an input
+;                  array of independent data and 2D array of dependent data.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;               test_plot_axis_range.pro
+;               num2int_str.pro
+;               calc_1var_stats.pro
+;               test_window_number.pro
+;               lbw_window.pro
+;               str_element.pro
+;               extract_tags.pro
+;               popen.pro
+;               pclose.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               XDATA  :  [N]-Element [numeric] array of independent data points
+;               YDATA  :  [N,K]-Element [numeric] array of dependent data points
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               plot_superposed_epoch_anal,xdata,ydata [,XTITLE=xtitle] [,YTITLE=ytitle]    $
+;                                          [,XRANGE=xrange] [,YRANGE=yrange] [,TITLE=title] $
+;                                          [,FILE_NAME=file_name] [,WIND_N=wind_n]          $
+;                                          [,/SHOW_MED] [,/XLOG] [,/YLOG] [,XMID_PT=xmid_pt]
+;
+;  KEYWORDS:    
+;               [X,Y]TITLE  :  Scalar [string] defining the [X,Y] plot axis title
+;               [X,Y]RANGE  :  [2]-Element [numeric] array defining the [X,Y] plot axis
+;                                range to use
+;               TITLE       :  Scalar [string] defining the plot title
+;               FILE_NAME   :  Scalar [string] defining the file name of the output
+;                                postscript file name
+;               WIND_N      :  Scalar [numeric] defining the window number to use
+;               SHOW_MED    :  If set, routine will show the median instead of the
+;                                average at each abscissa point
+;                                [Default = FALSE]
+;               [X,Y]LOG    :  If set, routine will show the [X,Y] plot axis on a
+;                                logarithmic scale
+;                                [Default = FALSE]
+;               XMID_PT     :  Scalar [numeric] defining the location along the x-axis
+;                                to show a vertical line marking the midpoint of the
+;                                data/plot
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [09/10/2018   v1.0.0]
+;             2)  Moved to ~/wind_3dp_pros/LYNN_PRO/plotting_routines/
+;                                                                   [09/12/2018   v1.0.1]
+;
+;   NOTES:      
+;               1)  The routine plots all data as little black dots and over plots
+;                     the average (cyan) or median (red) points for each abscissa
+;                     with the lower and upper quartiles as error bars.  The routine
+;                     will add a suffix to the file name specifying whether the mean
+;                     or median was shown.
+;               2)  The FILE_NAME input can include a path to the location, but if not,
+;                     then the file will be saved in the current working directory.
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  09/09/2018
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/12/2018   v1.0.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO plot_superposed_epoch_anal,xdata,ydata,XTITLE=xtitle,YTITLE=ytitle,XRANGE=xrange,     $
+                               YRANGE=yrange,TITLE=title,FILE_NAME=file_name,             $
+                               WIND_N=wind_n,SHOW_MED=show_med,XLOG=xlog,YLOG=ylog,       $
+                               XMID_PT=xmid_pt
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy tick mark arrays
+exp_val        = LINDGEN(501) - 250L                  ;;  Array of exponent values
+exp_str        = STRTRIM(STRING(exp_val,FORMAT='(I)'),2L)
+log10_tickn    = '10!U'+exp_str+'!N'                  ;;  Powers of 10 tick names
+log10_tickv    = 1d1^DOUBLE(exp_val[*])               ;;  " " values
+;;  Define relevant indices of the output from calc_1var_stats.pro
+ind_min        =  0L                                  ;;  Index for minimum value
+ind_max        =  1L                                  ;;  Index for maximum value
+ind_avg        =  2L                                  ;;  Index for mean value
+ind_med        =  3L                                  ;;  Index for median value
+ind_std        =  4L                                  ;;  Index for standard deviation of values
+ind_skw        =  6L                                  ;;  Index for skewness
+ind_kur        =  7L                                  ;;  Index for kurtosis
+ind_lqt        =  8L                                  ;;  Index for lower quartile
+ind_uqt        =  9L                                  ;;  Index for upper quartile
+ind_n_t        = 11L                                  ;;  Index for total # of input points
+ind_n_f        = 12L                                  ;;  Index for total # of finite input points
+;;  Define some logic defaults
+med_on         = 0b
+xlog_on        = 0b
+ylog_on        = 0b
+xmid_on        = 0b
+;;  Define some plot defaults
+thck           = 2e0
+psym           = 10                                   ;;  Histogram symbol
+colr           = [50L,200L,250L,100L]                 ;;  Use blue, orange, red, or cyan for color table 39
+def_xttl       = 'Independent Data Axis'
+def_yttl       = 'Dependent Data Axis'
+def_ttle       = 'Superposed Epoch Analysis of Data'
+def_yran       = [1d0,1d2]
+def_delx       = 1d0
+xposi0         = 0.90
+yposi0         = 0.15
+dypos0         = 0.03
+chsz           = 1.5e0
+thck           = 2e0
+chck           = 2e0
+ethk           = 1.5e0
+xmarg          = [10,10]
+ymarg          = [4,4]
+;;  Define some default plot and PS file structures
+def_pstr       = {XSTYLE:1,YSTYLE:1,XTICKS:8,XMINOR:10L,NODATA:1,YLOG:0,YMINOR:10L,   $
+                  YTITLE:def_yttl[0],YTICKS:8,XLOG:0,CHARSIZE:chsz[0],THICK:thck[0],  $
+                  XTHICK:thck[0],YTHICK:thck[0],XMARGIN:xmarg,YMARGIN:ymarg,          $
+                  CHARTHICK:chck[0]}
+def_lstr       = {XSTYLE:1,YSTYLE:1,XMINOR:10L,YMINOR:10L,YTITLE:def_yttl[0],NODATA:1,  $
+                  CHARSIZE:chsz[0],THICK:thck[0],XTHICK:thck[0],YTHICK:thck[0],         $
+                  XMARGIN:xmarg,YMARGIN:ymarg,CHARTHICK:chck[0]}
+def_xystr      = {NORMAL:1,CHARSIZE:0.75,ORIENTATION:9e1,CHARTHICK:chck[0]}
+postruc        = {LANDSCAPE:0,PORT:1,UNITS:'inches',XSIZE:8.,YSIZE:8.,ASPECT:1.}
+;;  Dummy error messages
+noinpt_msg     = 'No input supplied...'
+nofint_msg     = 'Not enough finite data...'
+badinp_msg     = 'XDATA and YDATA must be [N]- and [N,K]-element [numeric] arrays...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 2) OR (is_a_number(xdata,/NOMSSG) EQ 0) OR (is_a_number(ydata,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  ;;  No input
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Define data
+xx             = REFORM(xdata,N_ELEMENTS(xdata))      ;;  Force to 1D
+yy             = ydata
+szdx           = SIZE(xx,/DIMENSIONS)
+szdy           = SIZE(yy,/DIMENSIONS)
+test           = (szdx[0] NE szdy[0]) AND (N_ELEMENTS(szdy) NE 2)
+IF (test[0]) THEN BEGIN
+  ;;  Bad input format
+  MESSAGE,badinp_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Check for finite data
+test_x         = FINITE(xx)
+good_xra       = WHERE(test_x,gdx)
+test_y         = FINITE(yy)
+good_yra       = WHERE(test_y,gdy)
+IF (gdx[0] LT 5 OR gdy[0] LT 5*szdy[1]) THEN BEGIN
+  ;;  Not enough finite input
+  MESSAGE,nofint_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Define default [X,Y]-Range
+mnmx_x         = [MIN(xx[good_xra],/NAN),MAX(xx[good_xra],/NAN)]
+mnmx_y         = [MIN(yy[good_yra],/NAN),MAX(yy[good_yra],/NAN)]
+test           = test_plot_axis_range(mnmx_x,/NOMSSG) AND test_plot_axis_range(mnmx_y,/NOMSSG)
+IF (~test[0]) THEN BEGIN
+  ;;  Bad input
+  MESSAGE,nofint_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+def_xran       = mnmx_x
+def_yran       = mnmx_y
+gd__x          = N_ELEMENTS(xx)                       ;;  Total # of x-points supplied
+gd_fx          = gdx[0]                               ;;  Total # of finite/valid x-points supplied
+gd__y          = N_ELEMENTS(yy)                       ;;  Total # of y-points supplied
+gd_fy          = gdy[0]                               ;;  Total # of finite/valid y-points supplied
+tot_xcnt_out   = 'Total # X    [ALL]: '+(num2int_str(gd__x[0],NUM_CHAR=10,/ZERO_PAD))[0]
+tot_xfnt_out   = 'Total # X [FINITE]: '+(num2int_str(gd_fx[0],NUM_CHAR=10,/ZERO_PAD))[0]
+tot_ycnt_out   = 'Total # Y    [ALL]: '+(num2int_str(gd__y[0],NUM_CHAR=10,/ZERO_PAD))[0]
+tot_yfnt_out   = 'Total # Y [FINITE]: '+(num2int_str(gd_fy[0],NUM_CHAR=10,/ZERO_PAD))[0]
+tot_xout_str   = tot_xcnt_out[0]+',  '+tot_xfnt_out[0]
+tot_yout_str   = tot_ycnt_out[0]+',  '+tot_yfnt_out[0]
+;;  Define one-variable stats
+onev_statx     = calc_1var_stats(xx,/NAN)
+onev_staty_d0  = REPLICATE(d,13L,szdy[0])             ;; stats of 1st dimension
+onev_staty_d1  = REPLICATE(d,13L,szdy[1])             ;; stats of 2nd dimension
+FOR j=0L, szdy[0] - 1L DO BEGIN
+  temp           = calc_1var_stats(REFORM(yy[j,*]),/NAN)
+  IF (N_ELEMENTS(temp) EQ 13) THEN onev_staty_d0[*,j] = temp
+ENDFOR
+FOR j=0L, szdy[1] - 1L DO BEGIN
+  temp           = calc_1var_stats(yy[*,j],/NAN)
+  IF (N_ELEMENTS(temp) EQ 13) THEN onev_staty_d1[*,j] = temp
+ENDFOR
+;;  Define median, mean, standard deviation, lower quartile, and upper quartile of Y for each X
+avg_y_at_x     = REFORM(onev_staty_d0[ind_avg[0],*])
+med_y_at_x     = REFORM(onev_staty_d0[ind_med[0],*])
+std_y_at_x     = REFORM(onev_staty_d0[ind_std[0],*])
+lqt_y_at_x     = REFORM(onev_staty_d0[ind_lqt[0],*])
+uqt_y_at_x     = REFORM(onev_staty_d0[ind_uqt[0],*])
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check WINDN
+test           = test_window_number(wind_n,DAT_OUT=windn)
+IF (test[0] EQ 0) THEN windn = 1L
+;;  Check [X,Y]TITLE
+test           = (SIZE(xtitle,/TYPE) NE 7) OR (N_ELEMENTS(xtitle) LT 1)
+IF (test[0]) THEN xttl = def_xttl[0] ELSE xttl = xtitle[0]
+test           = (SIZE(ytitle,/TYPE) NE 7) OR (N_ELEMENTS(ytitle) LT 1)
+IF (test[0]) THEN yttl = def_yttl[0] ELSE yttl = ytitle[0]
+;;  Check TITLE
+test           = (SIZE(title,/TYPE) NE 7) OR (N_ELEMENTS(title) LT 1)
+IF (test[0]) THEN ttle = def_ttle[0] ELSE ttle = title[0]
+;;  Check FILE_NAME
+test           = (SIZE(file_name,/TYPE) NE 7) OR (N_ELEMENTS(file_name) LT 1)
+IF (test[0]) THEN save_on = 0b ELSE save_on = 1b
+IF (save_on[0]) THEN fname = file_name[0]
+;;  Check [X,Y]RANGE
+test           = test_plot_axis_range(xrange,/NOMSSG)
+IF (test[0]) THEN xran = xrange ELSE xran = def_xran
+test           = test_plot_axis_range(yrange,/NOMSSG)
+IF (test[0]) THEN yran = yrange ELSE yran = def_yran
+;;  Check SHOW_MED
+IF KEYWORD_SET(show_med) THEN med_on = 1b
+;;  Check [X,Y]LOG
+IF KEYWORD_SET(xlog) THEN xlog_on = 1b
+IF KEYWORD_SET(ylog) THEN ylog_on = 1b
+;;  Check XMID_PT
+IF (is_a_number(xmid_pt,/NOMSSG))[0] THEN BEGIN
+  ;;  Make sure user set correctly
+  check   = (xmid_pt[0] GE xran[0]) AND (xmid_pt[0] LE xran[1])
+  IF (test[0]) THEN BEGIN
+    xmid__v = REPLICATE(xmid_pt[0],2L)
+    xmid_on = 1b
+    xmidcol = 150L
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Open window
+;;----------------------------------------------------------------------------------------
+DEVICE,GET_SCREEN_SIZE=s_size
+wsz            = s_size*7d-1
+win_str        = {RETAIN:2,XSIZE:wsz[1],YSIZE:wsz[1],XPOS:10,YPOS:10}
+lbw_window,WIND_N=windn[0],_EXTRA=win_str
+;;----------------------------------------------------------------------------------------
+;;  Setup plot limits structure
+;;----------------------------------------------------------------------------------------
+IF (xlog_on[0] OR ylog_on[0]) THEN use_pstr = def_lstr ELSE use_pstr = def_pstr
+IF (xlog_on[0]) THEN use_pstr.XMINOR = 9L ELSE str_element,use_pstr,'XTICKS',8L,/ADD_REPLACE
+IF (ylog_on[0]) THEN use_pstr.YMINOR = 9L ELSE str_element,use_pstr,'YTICKS',8L,/ADD_REPLACE
+new_pstr       = {XRANGE:xran,YRANGE:yran,XTITLE:xttl[0],YTITLE:yttl[0],TITLE:ttle[0],$
+                  XLOG:xlog_on[0],YLOG:ylog_on[0]}
+extract_tags,use_pstr,new_pstr
+;;----------------------------------------------------------------------------------------
+;;  Define Avg. or Med. line info
+;;----------------------------------------------------------------------------------------
+plot_col       = colr[2]
+err__col       = colr[3]
+xyoutcol       = plot_col[0]
+
+;;  Overplot Avg. or Med. lines with lower/upper quartiles as error bars
+IF (med_on[0]) THEN BEGIN
+  yout     = med_y_at_x
+  ylow     = lqt_y_at_x
+  yupp     = uqt_y_at_x
+  xyoutlab = 'Median with lower/upper quartile'
+  fname    = fname[0]+'_median_lowupp_quart'
+ENDIF ELSE BEGIN
+  yout     = avg_y_at_x
+  ylow     = yout - std_y_at_x
+  yupp     = yout + std_y_at_x
+  xyoutlab = 'Mean with standard deviation'
+  fname    = fname[0]+'_mean_standard_deviation'
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Plot the data
+;;----------------------------------------------------------------------------------------
+;;  Reset [X,Y]POSI
+xposi          = xposi0[0]
+yposi          = yposi0[0]
+dypos          = dypos0[0]
+;;  Initialize plot window
+!P.MULTI       = 0
+WSET,windn[0]
+WSHOW,windn[0]
+;;  Initialize plot
+PLOT,xx,yy[*,0],_EXTRA=use_pstr
+  FOR j=0L, szdy[1] - 1L DO BEGIN
+    ;;  Plot data as little black dots
+    OPLOT,xx,yy[*,j],PSYM=3L
+  ENDFOR
+  ;;  Overplot Avg. or Med. lines
+  OPLOT,xx,yout,PSYM=6L,COLOR=plot_col[0],THICK=thck[0]
+  ERRPLOT,xx,ylow,yupp, COLOR=err__col[0],THICK=ethk[0],/DATA
+  OPLOT,xx,yout,LINESTYLE=0L,COLOR=plot_col[0],THICK=thck[0]     ;;  Overplot line so it can be seen
+  ;;  Overplot midpoint vertical line if user desires
+  IF (xmid_on[0]) THEN BEGIN
+    OPLOT,xmid__v,yran,COLOR=xmidcol[0],THICK=thck[0]
+  ENDIF
+  ;;  Output label
+  XYOUTS,xposi[0],yposi[0],xyoutlab[0],COLOR=xyoutcol[0],_EXTRA=def_xystr
+  ;;  Output relevant info
+  xposi += dypos[0]
+  XYOUTS,xposi[0],yposi[0],tot_xout_str[0],COLOR=colr[0],_EXTRA=def_xystr
+  xposi += dypos[0]
+  XYOUTS,xposi[0],yposi[0],tot_yout_str[0],COLOR=colr[0],_EXTRA=def_xystr
+;;----------------------------------------------------------------------------------------
+;;  Save color-coded plot (if desired)
+;;----------------------------------------------------------------------------------------
+;;  Reset [X,Y]POSI
+xposi          = xposi0[0]
+yposi          = yposi0[0]
+dypos          = dypos0[0]
+IF (save_on[0]) THEN BEGIN
+  !P.MULTI       = 0
+  str_element,use_pstr,'CHARSIZE',1.05,/ADD_REPLACE
+  popen,fname[0],_EXTRA=postruc
+    ;;  Initialize plot
+    PLOT,xx,yy[*,0],_EXTRA=use_pstr
+      FOR j=0L, szdy[1] - 1L DO BEGIN
+        ;;  Plot data as little black dots
+        OPLOT,xx,yy[*,j],PSYM=3L
+      ENDFOR
+      ;;  Overplot Avg. or Med. lines
+      OPLOT,xx,yout,PSYM=6L,COLOR=plot_col[0],THICK=thck[0]
+      ERRPLOT,xx,ylow,yupp, COLOR=err__col[0],THICK=ethk[0],/DATA
+      OPLOT,xx,yout,LINESTYLE=0L,COLOR=plot_col[0],THICK=thck[0]     ;;  Overplot line so it can be seen
+      ;;  Overplot midpoint vertical line if user desires
+      IF (xmid_on[0]) THEN BEGIN
+        OPLOT,xmid__v,yran,COLOR=xmidcol[0],THICK=thck[0]
+      ENDIF
+      ;;  Output label
+      XYOUTS,xposi[0],yposi[0],xyoutlab[0],COLOR=xyoutcol[0],_EXTRA=def_xystr
+      ;;  Output relevant info
+      xposi += dypos[0]
+      XYOUTS,xposi[0],yposi[0],tot_xout_str[0],COLOR=colr[0],_EXTRA=def_xystr
+      xposi += dypos[0]
+      XYOUTS,xposi[0],yposi[0],tot_yout_str[0],COLOR=colr[0],_EXTRA=def_xystr
+  pclose
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

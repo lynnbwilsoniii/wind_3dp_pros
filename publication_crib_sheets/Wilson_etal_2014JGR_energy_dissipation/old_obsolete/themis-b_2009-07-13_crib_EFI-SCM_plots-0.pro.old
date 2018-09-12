@@ -1,0 +1,216 @@
+;-----------------------------------------------------------------------------------------
+; => Constants
+;-----------------------------------------------------------------------------------------
+f      = !VALUES.F_NAN
+d      = !VALUES.D_NAN
+epo    = 8.854187817d-12   ; => Permittivity of free space (F/m)
+muo    = 4d0*!DPI*1d-7     ; => Permeability of free space (N/A^2 or H/m)
+me     = 9.10938291d-31    ; => Electron mass (kg) [2010 value]
+mp     = 1.672621777d-27   ; => Proton mass (kg) [2010 value]
+ma     = 6.64465675d-27    ; => Alpha-Particle mass (kg) [2010 value]
+qq     = 1.602176565d-19   ; => Fundamental charge (C) [2010 value]
+kB     = 1.3806488d-23     ; => Boltzmann Constant (J/K) [2010 value]
+K_eV   = 1.1604519d4       ; => Factor [Kelvin/eV] [2010 value]
+c      = 2.99792458d8      ; => Speed of light in vacuum (m/s)
+R_E    = 6.37814d3         ; => Earth's Equitorial Radius (km)
+
+; => Compile necessary routines
+@comp_lynn_pros
+; => Date/Time and Probe
+tdate     = '2009-07-13'
+tr_00     = tdate[0]+'/'+['07:50:00','10:10:00']
+date      = '071309'
+probe     = 'b'
+;-----------------------------------------------------------------------------------------
+; => Load all relevant data
+;-----------------------------------------------------------------------------------------
+themis_load_all_inst,DATE=date[0],PROBE=probe[0],/LOAD_EFI,/LOAD_SCM,/TRAN_FAC,         $
+                         /TCLIP_FIELDS,SE_T_EFI_OUT=tr_all_efi,SE_T_SCM_OUT=tr_all_scm, $
+                         /NO_EXTRA,/NO_SPEC,/DIRECT_CROSS,/POYNT_FLUX,TRANGE=time_double(tr_00)
+
+WINDOW,0,RETAIN=2,XSIZE=1700,YSIZE=1100
+
+
+nefi           = N_ELEMENTS(REFORM(tr_all_efi[*,0]))
+nscm           = N_ELEMENTS(REFORM(tr_all_scm[*,0]))
+PRINT,'; ', nefi, nscm
+;           17          17
+
+nnw = tnames()
+options,nnw,'YSTYLE',1
+options,nnw,'PANEL_SIZE',2.
+options,nnw,'XMINOR',5
+options,nnw,'XTICKLEN',0.04
+options,nnw,'YTICKLEN',0.01
+;-----------------------------------------------------------------------------------------
+; => Plot data
+;-----------------------------------------------------------------------------------------
+tr_eb   = tdate[0]+'/'+['08:50:00','09:45:00']
+treb    = time_double(tr_eb)
+
+sc      = probe[0]
+pref    = 'th'+sc[0]+'_'
+coord   = 'gse'
+
+fgmnm   = pref[0]+'fgh_'+['mag',coord[0]]
+efwnm   = pref[0]+'efw_cal_'+coord[0]+'_corrected*'
+scwnm   = pref[0]+'scw_cal_'+coord[0]+'*'
+names   = [fgmnm,efwnm,scwnm]
+
+
+tplot,names,TRANGE=treb
+;-----------------------------------------------------------------------------------------
+; => Save Plots
+;-----------------------------------------------------------------------------------------
+sc      = probe[0]
+scu     = STRUPCASE(sc[0])
+pref    = 'th'+sc[0]+'_'
+coord   = 'gse'
+fgmnm   = pref[0]+'fgh_'+['mag',coord[0]]
+
+
+stpref  = 'S__TimeSeries_'
+sppref  = 'S__PowerSpectra_'
+efwpre  = 'efw_cal_'
+scwpre  = 'scw_cal_'
+ffname  = ['efw','scw']
+tfname  = ['corrected','HighPass']
+
+s_fsuff = 'PoyntingFlux_'
+fepref  = 'FGM-fgh-GSE_TH-'+scu[0]+'_'+ffname[0]+'_'+s_fsuff[0]
+fbpref  = 'FGM-fgh-GSE_TH-'+scu[0]+'_'+ffname[1]+'_'+s_fsuff[0]
+
+;;  Poynting flux TPLOT handles
+st_nm   = tnames(pref[0]+stpref[0]+coord[0]+'*')
+sp_nm   = tnames(pref[0]+sppref[0]+coord[0]+'*')
+n_st    = N_ELEMENTS(st_nm)
+f_suffx = '_INT'+STRING(LINDGEN(n_st),FORMAT='(I3.3)')
+
+;;  EFI TPLOT handles
+efinm   = tnames(pref[0]+efwpre[0]+coord[0]+'_'+tfname[0]+'*')
+
+;;  SCM TPLOT handles
+scmnm   = tnames(pref[0]+scwpre[0]+coord[0]+'_'+tfname[1]+'*')
+
+;;  Save EFI Plots
+FOR j=0L, nefi - 1L DO BEGIN                                         $
+  aname  = [fgmnm,efinm,st_nm[j],sp_nm[j]]                         & $
+  tra    = REFORM(tr_all_efi[j,*])                                 & $
+  fnm    = file_name_times(tra,PREC=3)                             & $
+  ftimes = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)             & $
+  fname  = fepref[0]+ftimes[0]+f_suffx[j]                          & $
+  tplot,aname,TRANGE=tra,/NOM                                      & $
+  popen,fname[0],/PORT                                             & $
+    tplot,aname,TRANGE=tra,/NOM                                    & $
+  pclose
+
+
+
+;;  Save SCM Plots
+FOR j=0L, nscm - 1L DO BEGIN                                         $
+  aname  = [fgmnm,scmnm,st_nm[j],sp_nm[j]]                         & $
+  tra    = REFORM(tr_all_scm[j,*])                                 & $
+  fnm    = file_name_times(tra,PREC=3)                             & $
+  ftimes = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)             & $
+  fname  = fbpref[0]+ftimes[0]+f_suffx[j]                          & $
+  tplot,aname,TRANGE=tra,/NOM                                      & $
+  popen,fname[0],/PORT                                             & $
+    tplot,aname,TRANGE=tra,/NOM                                    & $
+  pclose
+
+;-----------------------------------------------------------------------------------------
+; => Plot specific zoomed in views
+;-----------------------------------------------------------------------------------------
+st_nm   = tnames(pref[0]+stpref[0]+coord[0]+'*')
+efinm   = tnames(pref[0]+efwpre[0]+coord[0]+'*')
+scmnm   = tnames(pref[0]+scwpre[0]+coord[0]+'*')
+
+n_st    = N_ELEMENTS(st_nm)
+f_suffx = '_INT'+STRING(LINDGEN(n_st),FORMAT='(I3.3)')
+
+s_fsuff = 'PoyntingFlux_'
+fapref  = 'FGM-fgh-GSE_TH-'+scu[0]+'_efw-scw_'+s_fsuff[0]
+
+
+;; Int 0
+temp0            = tdate[0]+'/'+['08:59:43.488','08:59:43.789']
+temp1            = tdate[0]+'/'+['08:59:43.982','08:59:44.460']
+temp2            = tdate[0]+'/'+['08:59:44.580','08:59:44.769']
+temp3            = tdate[0]+'/'+['08:59:44.761','08:59:44.894']
+temp4            = tdate[0]+'/'+['08:59:44.911','08:59:45.057']
+temp5            = tdate[0]+'/'+['08:59:45.246','08:59:45.414']
+temp6            = tdate[0]+'/'+['08:59:45.496','08:59:45.616']
+temp7            = tdate[0]+'/'+['08:59:45.616','08:59:45.909']
+temp8            = tdate[0]+'/'+['08:59:45.943','08:59:46.235']
+temp9            = tdate[0]+'/'+['08:59:46.240','08:59:46.566']
+temp10           = tdate[0]+'/'+['08:59:46.661','08:59:47.087']
+temp11           = tdate[0]+'/'+['08:59:47.087','08:59:47.332']
+temp12           = tdate[0]+'/'+['08:59:47.383','08:59:47.590']
+temp13           = tdate[0]+'/'+['08:59:47.740','08:59:48.020']
+temp14           = tdate[0]+'/'+['08:59:48.015','08:59:48.243']
+temp15           = tdate[0]+'/'+['08:59:48.299','08:59:48.544']
+temp16           = tdate[0]+'/'+['08:59:48.652','08:59:48.940']
+temp17           = tdate[0]+'/'+['08:59:48.948','08:59:49.232']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],[temp7],[temp8],[temp9],$
+                    [temp10],[temp11],[temp12],[temp13],[temp14],[temp15],[temp16],[temp17]])
+jj               = 0L
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tra         = time_double(REFORM(temp_a[i,*]))                             & $
+  fnm         = file_name_times(tra,PREC=3)                                  & $
+  ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                  & $
+  anames      = [fgmnm,efinm,scmnm,st_nm[jj]]                                & $
+  fname_a     = fapref[0]+ftimes[0]+f_suffx[jj]                              & $
+  tplot,anames,TRANGE=tra,/NOM                                               & $
+  popen,fname_a[0],/PORT                                                     & $
+    tplot,anames,TRANGE=tra,/NOM                                             & $
+  pclose
+
+
+
+
+;; Int 1
+temp0            = tdate[0]+'/'+['08:59:49.326','08:59:50.241']
+temp1            = tdate[0]+'/'+['08:59:50.301','08:59:50.605']
+temp2            = tdate[0]+'/'+['08:59:50.635','08:59:50.905']
+temp3            = tdate[0]+'/'+['08:59:51.080','08:59:51.392']
+temp4            = tdate[0]+'/'+['08:59:51.422','08:59:51.504']
+temp5            = tdate[0]+'/'+['08:59:51.555','08:59:51.630']
+temp6            = tdate[0]+'/'+['08:59:51.683','08:59:51.876']
+temp7            = tdate[0]+'/'+['08:59:51.987','08:59:52.252']
+temp8            = tdate[0]+'/'+['08:59:52.496','08:59:52.595']
+temp9            = tdate[0]+'/'+['08:59:52.864','08:59:52.945']
+temp10           = tdate[0]+'/'+['08:59:53.574','08:59:53.771']
+temp11           = tdate[0]+'/'+['08:59:54.370','08:59:54.570']
+temp12           = tdate[0]+'/'+['08:59:54.875','08:59:55.055']
+temp13           = tdate[0]+'/'+['08:59:55.393','08:59:55.701']
+temp_a           = TRANSPOSE([[temp0],[temp1],[temp2],[temp3],[temp4],[temp5],[temp6],[temp7],[temp8],[temp9],$
+                    [temp10],[temp11],[temp12],[temp13]])
+jj               = 1L
+FOR i=0L, N_ELEMENTS(temp_a[*,0]) - 1L DO BEGIN                                $
+  tra         = time_double(REFORM(temp_a[i,*]))                             & $
+  fnm         = file_name_times(tra,PREC=3)                                  & $
+  ftimes      = fnm.F_TIME[0]+'-'+STRMID(fnm.F_TIME[1],11L)                  & $
+  anames      = [fgmnm,efinm,scmnm,st_nm[jj]]                                & $
+  fname_a     = fapref[0]+ftimes[0]+f_suffx[jj]                              & $
+  tplot,anames,TRANGE=tra,/NOM                                               & $
+  popen,fname_a[0],/PORT                                                     & $
+    tplot,anames,TRANGE=tra,/NOM                                             & $
+  pclose
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

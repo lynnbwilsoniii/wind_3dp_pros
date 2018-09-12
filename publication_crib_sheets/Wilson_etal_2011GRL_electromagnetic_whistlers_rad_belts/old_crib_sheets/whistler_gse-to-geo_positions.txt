@@ -1,0 +1,94 @@
+temp       = whistler_insta_read()
+
+; => Define SCETs
+scets     = STRTRIM(temp.SCETS,2L)
+
+tdate     = STRMID(scets[*],0L,10L)
+sdate     = STRMID(tdate[*],5L,2L)+STRMID(tdate[*],8L,2L)+STRMID(tdate[*],2L,2L)
+uttime    = STRMID(scets[*],11L,12L)
+
+; => Define L-Shell and MLT
+w_lsh     = temp.WIND_L_SHELL
+w_mlt     = temp.WIND_MLT
+; => Define radial distance and invariant latitude
+w_rad     = temp.WIND_RAD_DIST
+w_inv     = temp.WIND_INV_LAT
+; => Define GSE and GSM positions
+xgse      = temp.X_GSE_POS
+ygse      = temp.Y_GSE_POS
+zgse      = temp.Z_GSE_POS
+
+xgsm      = temp.X_GSM_POS
+ygsm      = temp.Y_GSM_POS
+zgsm      = temp.Z_GSM_POS
+
+pgse      = [[xgse],[ygse],[zgse]]
+pgsm      = [[xgsm],[ygsm],[zgsm]]
+
+nw        = N_ELEMENTS(w_lsh)
+pgeo      = DBLARR(nw,3L)
+FOR j=0L, nw - 1L DO BEGIN                                 $
+  dt0  = sdate[j]                                        & $
+  ut0  = uttime[j]                                       & $
+  tpos = REFORM(pgse[j,*])                               & $
+  orbit_eulerang,DATE=dt0,UT_TIME=ut0,ROT_MAT=rmat       & $
+  T_GSE_GEID  = LA_INVERT(rmat.GEID2GSED,/DOUBLE)        & $
+  T_GEID_GEIT = rmat.GEID2GEIT                           & $
+  T_GEIT_GEO  = rmat.GEIT2GEO                            & $
+  T_GSE_GEO   = REFORM(T_GEIT_GEO ## REFORM(T_GEID_GEIT ## T_GSE_GEID))  & $
+  pgeo[j,*]   = T_GSE_GEO ## tpos
+  
+
+
+;-----------------------------------------------------------------------------------------
+; => Print data to ASCII file
+;-----------------------------------------------------------------------------------------
+; => Define file path
+default_path = FILE_EXPAND_PATH('')
+fname        = 'TDS_whistler_GEO_Positions.txt'
+gfile        = default_path[0]+'/'+fname[0]
+
+mform        = '(a30,13f15.3)'
+space        = '                                    '
+h_str0       = space[0]+'Wind_Rad_Dist  Wind_L_Shell  Wind_Inv_Lat      Wind_MLT     '
+h_str2       = h_str0[0]+'X_GSE_POS      Y_GSE_POS      Z_GSE_POS      '
+h_str3       = h_str2[0]+'X_GSM_POS      Y_GSM_POS      Z_GSM_POS      '
+h_strs       = h_str3[0]+'X_GEO_POS      Y_GEO_POS      Z_GEO_POS'
+hline        = ''
+;-----------------------------------------------------------------------------------------
+; => Open file and print new data to file
+;-----------------------------------------------------------------------------------------
+OPENW,gunit,gfile[0],/GET_LUN
+  ;---------------------------------------------------------------------------------------
+  ; -Define/Print header values/quantities
+  ;---------------------------------------------------------------------------------------
+  PRINTF,gunit,h_strs
+  PRINTF,gunit,hline
+  FOR j=0L, nw - 1L DO BEGIN                                 $
+    d_gse  = REFORM(pgse[j,*])                             & $
+    d_gsm  = REFORM(pgsm[j,*])                             & $
+    d_geo  = REFORM(pgeo[j,*])                             & $
+    PRINTF,gunit,FORMAT=mform,scets[j],w_rad[j],w_lsh[j],    $
+                              w_inv[j],w_mlt[j],d_gse[*],    $
+                              d_gsm[*],d_geo[*]
+
+FREE_LUN,gunit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
