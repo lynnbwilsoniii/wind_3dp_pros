@@ -43,7 +43,7 @@
 ;                                 [,YTITLE=ytitle] [,YLOG=y_log] [,XLOG=x_log]       $
 ;                                 [,XMIN=xmin] [,XMAX=xmax] [,NX=nx] [,YMIN=ymin]    $
 ;                                 [,YMAX=ymax] [,NY=ny] [,CLIMITS=climits]           $
-;                                 [,CLABS=clabs] [,SMCONT=smcont] [,SMWDTH=smwdth]   $
+;                                 [,CLABS=clabs] [,SMCONT=smcont]                    $
 ;                                 [,USE_SMOOTH=use_smooth] [,LEVEL_PER=level_per]    $
 ;                                 [,CPATH_OUT=cpath_out] [,HIST2D_OUT=hist2d_out]    $
 ;                                 [,N_SUM=n_sum] [,_EXTRA=ex_str]
@@ -98,10 +98,6 @@
 ;               LEVEL_PER   :  [L]-Element array [float/double] defining the relative
 ;                                percent of the maximum density from the 2D histogram
 ;                                to use for each level in the contour plot output
-;               SMWDTH      :  Scalar [integer/long] defining the number of elements over
-;                                 which to smooth the 2D histogram (only applies when the
-;                                 USE_SMOOTH keyword is set)
-;                                [Default = 4]
 ;               **********************************
 ;               ***      INDIRECT OUTPUTS      ***
 ;               **********************************
@@ -114,10 +110,6 @@
 ;                                                                   [11/01/2017   v1.0.0]
 ;             2)  Added N_SUM keyword and a little more error handling
 ;                                                                   [11/03/2017   v1.0.1]
-;             3)  Added error handling for plotting color-coded data points when none
-;                   fall within a contour and
-;                   added keyword:  SMWDTH
-;                                                                   [09/20/2018   v1.0.2]
 ;
 ;   NOTES:      
 ;               1)  See also:  density_contour_plot.pro
@@ -127,7 +119,7 @@
 ;
 ;   CREATED:  10/30/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  09/20/2018   v1.0.2
+;    LAST MODIFIED:  11/03/2017   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -138,7 +130,7 @@ PRO density_contour_plot_wrapper,xdata,ydata,                                   
                                  N_SUM=n_sum,XTITLE=xtitle,YTITLE=ytitle,            $
                                  YLOG=y_log,XLOG=x_log,XMIN=xmin,XMAX=xmax,NX=nx,    $
                                  YMIN=ymin,YMAX=ymax,NY=ny,CLIMITS=climits,          $
-                                 CLABS=clabs,SMCONT=smcont,SMWDTH=smwdth,            $
+                                 CLABS=clabs,SMCONT=smcont,                          $
                                  USE_SMOOTH=use_smooth,LEVEL_PER=level_per,          $
                                  CPATH_OUT=cpath_out,HIST2D_OUT=hist2d_out,          $  ;; outputs
                                  _EXTRA=ex_str
@@ -172,8 +164,7 @@ symb           = 3
 syms           = 2.0
 thck           = 2.0
 lsty           = 2
-postruc        = {LANDSCAPE:1,PORT:0,UNITS:'inches',XSIZE:10.5,YSIZE:8.,ASPECT:0}
-;postruc        = {LANDSCAPE:1,UNITS:'inches',XSIZE:8.,YSIZE:8.,ASPECT:1.}
+postruc        = {LANDSCAPE:1,UNITS:'inches',XSIZE:8.,YSIZE:8.,ASPECT:1.}
 ;;  Define default plot structure
 plotposi       = [0.1,0.1,0.9,0.9]
 def_pstr       = {NODATA:1,YSTYLE:1,XSTYLE:1,POSITION:plotposi}
@@ -313,48 +304,19 @@ WSHOW,windn[0]
     ;;  Plot data points
     OPLOT,px,py,PSYM=symb[0],SYMSIZE=syms[0]
     ;;  Overplot contours
-    density_contour_plot,px,py,XMIN=xran[0],XMAX=xran[1],NX=nx,                   $
-                               YMIN=yran[0],YMAX=yran[1],NY=ny,CLABS=clabs,       $
-                               XTTL=struct_value(plim,'XTITLE',DEFAULT=xttl[0]),  $
-                               YTTL=struct_value(plim,'YTITLE',DEFAULT=yttl[0]),  $
-                               /OVERPLOT,LIMITS=clim,SMWDTH=smwdth,               $
-                               X_LOG=xlog,Y_LOG=ylog,SMCONT=smcont,               $
-                               USE_SMOOTH=use_smooth,LEVEL_PER=level_per,         $
-                               CPATH_OUT=cpath_out,HIST2D_OUT=hist2d_out,         $
-                               CLIM_OUT=clim_out,RAN_H2DN=ran_h2dn
+    density_contour_plot,px,py,XMIN=xran[0],XMAX=xran[1],NX=nx,            $
+                               YMIN=yran[0],YMAX=yran[1],NY=ny,            $
+                               /OVERPLOT,LIMITS=clim,                      $
+                               X_LOG=xlog,Y_LOG=ylog,SMCONT=smcont,        $
+                               USE_SMOOTH=use_smooth,LEVEL_PER=level_per,  $
+                               CPATH_OUT=cpath_out,HIST2D_OUT=hist2d_out
 ;;----------------------------------------------------------------------------------------
 ;;  Define path info stuff
 ;;----------------------------------------------------------------------------------------
-IF (SIZE(cpath_out,/TYPE) NE 8) THEN STOP
 ;;  Define path info parameters
 xy_cpaths      = REFORM(cpath_out.XY)          ;;  [2,N]-Element array
 c_info         = cpath_out.INFO                ;;  [C]-Element [structure] array
 nconts         = N_ELEMENTS(c_info)            ;;  # of contours = C
-IF (SIZE(xy_cpaths,/N_DIMENSIONS) NE 2) THEN BEGIN
-  MESSAGE,'No contour paths were returned',/INFORMATIONAL,/CONTINUE
-  ;;--------------------------------------------------------------------------------------
-  ;;  Still plot something
-  ;;--------------------------------------------------------------------------------------
-  !P.MULTI       = 0
-  WSET,windn[0]
-  WSHOW,windn[0]
-  PLOT,px_show,py_show,_EXTRA=plim
-    OPLOT,px_show,py_show,PSYM=symb[0],SYMSIZE=syms[0],COLOR=50L
-  ;;--------------------------------------------------------------------------------------
-  ;;  Still save something
-  ;;--------------------------------------------------------------------------------------
-  IF (save_on[0]) THEN BEGIN
-    !P.MULTI       = 0
-    popen,fname[0],_EXTRA=postruc
-      PLOT,px_show,py_show,_EXTRA=plim
-        OPLOT,px_show,py_show,PSYM=symb[0],SYMSIZE=syms[0],COLOR=50L
-    pclose
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Return to user
-  ;;--------------------------------------------------------------------------------------
-  RETURN
-ENDIF
 ;;  Define level info
 lev_nums       = c_info.LEVEL
 unq            = UNIQ(lev_nums,SORT(lev_nums))
@@ -370,9 +332,8 @@ all_cols       = [30L,def_c_cols]
 all_ind        = LINDGEN(nn[0])
 ;;  Define default contour limits structure (in case CLIMITS undefined)
 def_clim       = {NLEVELS:n_lev[0],C_COLORS:def_c_cols}
-clim           = clim_out
-;IF (SIZE(clim,/TYPE) NE 8) THEN clim = clim_out ELSE extract_tags,clim,clim_out,/PRESERVE
-;IF (SIZE(clim,/TYPE) NE 8) THEN clim = def_clim ELSE extract_tags,clim,def_clim,/PRESERVE
+IF (SIZE(clim,/TYPE) NE 8) THEN clim = def_clim ELSE extract_tags,clim,def_clim
+;IF (SIZE(clim,/TYPE) NE 8) THEN clim = def_clim
 ;;----------------------------------------------------------------------------------------
 ;;  Determine points inside/outside of each contour
 ;;----------------------------------------------------------------------------------------
@@ -387,30 +348,24 @@ FOR j=0L, nconts[0] - 1L DO BEGIN
   ;;  Find points inside each contour
   vt0         = TRANSPOSE(xy_0)
   test        = poly_winding_number2d(px_show,py_show,vt0,/INCLUDE_EDGE,/NOMSSG)
+;  test        = poly_winding_number2d(px,py,vt0,/INCLUDE_EDGE,/NOMSSG)
   str_element,test_str,tags[j],test,/ADD_REPLACE
-  good0       = WHERE(test NE 0,gdin)
-  IF (gdin[0] EQ 0) THEN good0 = [good0[0]]
+  good0  = WHERE(test NE 0,gdin)
   str_element,gind_str,tags[j],good0,/ADD_REPLACE
 ENDFOR
-;;----------------------------------------------------------------------------------------
 ;;  Combine all points by contour level
-;;----------------------------------------------------------------------------------------
-;;  Initialize level structure
-FOR j=0L, n_lev[0] - 1L DO str_element,glev_str,tags[j],-1L,/ADD_REPLACE
-
 FOR j=0L, nconts[0] - 1L DO BEGIN
-  glev        = WHERE(lev_nums EQ j[0],gdl)
+  glev  = WHERE(lev_nums EQ j[0],gdl)
   IF (gdl[0] EQ 0) THEN CONTINUE
-  dumb        = TEMPORARY(gind0)                  ;;  Erase copy of old array
+  dumb  = TEMPORARY(gind0)
   FOR k=0L, gdl[0] - 1L DO BEGIN
-    ii   = glev[k]
-    temp = gind_str.(ii)
+    ii = glev[k]
     test = (k EQ 0) OR (N_ELEMENTS(gind0) EQ 0)
+    temp = gind_str.(ii)
     IF (test[0]) THEN gind0 = temp ELSE gind0 = [temp,gind0]
   ENDFOR
-  good0       = WHERE(gind0 GE 0,gd0)
-  IF (gd0[0] GT 0) THEN gind = gind0[good0] ELSE gind = [-1L]
-;  IF (gd0[0] GT 0) THEN gind = gind0[good0] ELSE gind = -1L
+  good0  = WHERE(gind0 GE 0,gd0)
+  IF (gd0[0] GT 0) THEN gind = gind0[good0] ELSE gind = -1L
   str_element,glev_str,tags[j],gind,/ADD_REPLACE
 ENDFOR
 ;;----------------------------------------------------------------------------------------
@@ -420,35 +375,18 @@ ENDFOR
 l0             = all_ind
 l1             = glev_str.(0)
 ibtwn          = cgsetdifference(l0,l1,SUCCESS=success)   ;;  Find elements in L0 that are NOT in L1
-IF (success[0] GT 0) THEN ind = ibtwn ELSE ind = all_ind
-struc          = {IND:ind,COLOR:all_cols[0]}
+struc          = {IND:ibtwn,COLOR:all_cols[0]}
 str_element,gcont_str,tags[0],struc,/ADD_REPLACE
 ;;  Find points for each intermediate contour
 FOR j=0L, n_lev[0] - 2L DO BEGIN
   k       = j + 1L
   l0      = glev_str.(j)
   l1      = glev_str.(k)
-  IF (l1[0] LT 0) THEN BEGIN
-    ;;  Use all of the lower level indices but the upper level color
-    ind     = l0
-    struc   = {IND:ind,COLOR:all_cols[k]}
-  ENDIF ELSE BEGIN
-    ;;  Find elements in L0 that are NOT in L1
-    ibtwn   = cgsetdifference(l0,l1,SUCCESS=success)
-    IF (success[0] GT 0) THEN BEGIN
-      ind = ibtwn
-      col = all_cols[k]
-    ENDIF ELSE BEGIN
-      ;;  Use all of the lower level indices but the upper level color
-      ind = l0
-      col = all_cols[k]
-    ENDELSE
-    struc   = {IND:ind,COLOR:col[0]}
-  ENDELSE
-;  IF (success[0] GT 0) THEN ind = ibtwn ELSE ind = -1L
-;  struc   = {IND:ind,COLOR:all_cols[j+1L]}
-;  str_element,gcont_str,tags[j+1L],struc,/ADD_REPLACE
-  str_element,gcont_str,tags[k],struc,/ADD_REPLACE
+  ;;  Find elements in L0 that are NOT in L1
+  ibtwn   = cgsetdifference(l0,l1,SUCCESS=success)
+  IF (success[0] GT 0) THEN ind = ibtwn ELSE ind = -1L
+  struc   = {IND:ind,COLOR:all_cols[j+1L]}
+  str_element,gcont_str,tags[j+1L],struc,/ADD_REPLACE
 ENDFOR
 ;;  Add points inside highest level contour
 ibtwn          = glev_str.(n_lev[0] - 1L)
@@ -458,95 +396,39 @@ str_element,gcont_str,tags[n_lev[0]],struc,/ADD_REPLACE
 ;;  Replot points in color-coded manner
 ;;----------------------------------------------------------------------------------------
 n_gcont        = N_TAGS(gcont_str)
-ncnt           = 0L
-FOR j=0L, n_gcont[0] - 1L DO BEGIN
-  gind  = gcont_str.(j).IND
-  IF (gind[0] GE 0) THEN ncnt += N_ELEMENTS(gind)
-ENDFOR
-;IF (nn[0] NE ncnt[0]) THEN STOP      ;;  Missed some --> debug
-IF (nn[0] NE ncnt[0]) THEN BEGIN
-  PRINT,';;  Nx = ',nn[0],',   N_ind = ',ncnt[0]
-ENDIF
 !P.MULTI       = 0
-dxpos          = 0.025
-xpos0          = 0.900
-ypos0          = 0.250
 WSET,windn[0]
 WSHOW,windn[0]
   ;;  Initialize plot
   PLOT,px_show,py_show,_EXTRA=plim
+;  PLOT,px,py,_EXTRA=plim
     ;;  Plot color-coded data points
     FOR j=0L, n_gcont[0] - 1L DO BEGIN
       gind = gcont_str.(j).IND
       tcol = gcont_str.(j).COLOR
-      IF (N_ELEMENTS(gind) LE 1) THEN BEGIN
-        IF (gind[0] LT 0) THEN CONTINUE ELSE OPLOT,[px_show[gind[0]]],[py_show[gind[0]]],PSYM=symb[0],SYMSIZE=syms[0],COLOR=tcol[0]
-      ENDIF ELSE BEGIN
-        OPLOT,px_show[gind],py_show[gind],PSYM=symb[0],SYMSIZE=syms[0],COLOR=tcol[0]
-      ENDELSE
+      OPLOT,px_show[gind],py_show[gind],PSYM=symb[0],SYMSIZE=syms[0],COLOR=tcol[0]
+;      OPLOT,px[gind],py[gind],PSYM=symb[0],SYMSIZE=syms[0],COLOR=tcol[0]
     ENDFOR
     ;;  Overplot contours
     lbw_oplot_clines_from_struc,cpath_out,C_COLORS=clim.C_COLORS,THICK=thck[0],/DATA
-    ;;  Output plot levels
-    IF (SIZE(clim_out,/TYPE) EQ 8) THEN BEGIN
-      lev_vals = struct_value(clim_out,'LEVELS',INDEX=i_lval,DEFAULT=-1)
-      IF (i_lval[0] GE 0) THEN BEGIN
-        lev_str = STRTRIM(STRING(lev_vals,FORMAT='(g10.3)'))
-        yposi   = ypos0[0]
-        xposi   = xpos0[0]
-        dypos   = 0d0
-;        yposi   = 135d-2*!Y.WINDOW[0]
-;        yposi   = 35d-2*(1d1^(!Y.CRANGE))[0]
-        FOR ll=0L, N_ELEMENTS(lev_str) - 1L DO BEGIN
-          IF (ll[0] NE 0) THEN yposi += dypos[0] ELSE yposi = ypos0[0]
-;          IF (ll[0] NE 0) THEN xposi += dxpos[0] ELSE xposi = xpos0[0]
-          XYOUTS,xposi[0],yposi[0],lev_str[ll],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=1.5e0,COLOR=clim_out.C_COLORS[ll],WIDTH=dypos
-        ENDFOR
-        ;;  Output max value too
-        xposi  += dxpos[0]
-        XYOUTS,xposi[0],ypos0[0],'Max = '+STRTRIM(STRING(MAX(ABS(ran_h2dn),/NAN),FORMAT='(g10.3)')),CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=1.5e0
-      ENDIF
-    ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Save color-coded plot (if desired)
 ;;----------------------------------------------------------------------------------------
 IF (save_on[0]) THEN BEGIN
+  !P.MULTI       = 0
   popen,fname[0],_EXTRA=postruc
-    !P.MULTI       = 0
     ;;  Initialize plot
     PLOT,px_show,py_show,_EXTRA=plim
+;    PLOT,px,py,_EXTRA=plim
       ;;  Plot color-coded data points
       FOR j=0L, n_gcont[0] - 1L DO BEGIN
         gind = gcont_str.(j).IND
         tcol = gcont_str.(j).COLOR
-        IF (N_ELEMENTS(gind) LE 1) THEN BEGIN
-          IF (gind[0] LT 0) THEN CONTINUE ELSE OPLOT,[px_show[gind[0]]],[py_show[gind[0]]],PSYM=symb[0],SYMSIZE=syms[0],COLOR=tcol[0]
-        ENDIF ELSE BEGIN
-          OPLOT,px_show[gind],py_show[gind],PSYM=symb[0],SYMSIZE=syms[0],COLOR=tcol[0]
-        ENDELSE
+        OPLOT,px_show[gind],py_show[gind],PSYM=symb[0],SYMSIZE=syms[0],COLOR=tcol[0]
+;        OPLOT,px[gind],py[gind],PSYM=symb[0],SYMSIZE=syms[0],COLOR=tcol[0]
       ENDFOR
       ;;  Overplot contours
       lbw_oplot_clines_from_struc,cpath_out,C_COLORS=clim.C_COLORS,THICK=thck[0],/DATA
-      ;;  Output plot levels
-      IF (SIZE(clim_out,/TYPE) EQ 8) THEN BEGIN
-        lev_vals = struct_value(clim_out,'LEVELS',INDEX=i_lval,DEFAULT=-1)
-        IF (i_lval[0] GE 0) THEN BEGIN
-          lev_str = STRTRIM(STRING(lev_vals,FORMAT='(g10.3)'))
-          yposi   = ypos0[0]
-          xposi   = xpos0[0]
-          dypos   = 0d0
-;          yposi   = 135d-2*!Y.WINDOW[0]
-;          yposi   = 35d-2*(1d1^(!Y.CRANGE))[0]
-          FOR ll=0L, N_ELEMENTS(lev_str) - 1L DO BEGIN
-            IF (ll[0] NE 0) THEN yposi += dypos[0] ELSE yposi = ypos0[0]
-;            IF (ll[0] NE 0) THEN xposi += dxpos[0] ELSE xposi = xpos0[0]
-            XYOUTS,xposi[0],yposi[0],lev_str[ll],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=1.5e0,COLOR=clim_out.C_COLORS[ll],WIDTH=dypos
-          ENDFOR
-          ;;  Output max value too
-          xposi  += dxpos[0]
-          XYOUTS,xposi[0],ypos0[0],'Max = '+STRTRIM(STRING(MAX(ABS(ran_h2dn),/NAN),FORMAT='(g10.3)')),CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=1.5e0
-        ENDIF
-      ENDIF
   pclose
 ENDIF
 ;;----------------------------------------------------------------------------------------

@@ -10,7 +10,6 @@
 ;               NA
 ;
 ;  CALLS:
-;               is_a_number.pro
 ;               density_hist_2d_wrapper.pro
 ;               format_limits_struc.pro
 ;               struct_value.pro
@@ -25,17 +24,6 @@
 ;               YDATA       :  [N]-Element array [float/double] of   dependent data points
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               density_contour_plot, xdata, ydata,                                      $
-;                                 [,XTTL=xttl] [,YTTL=yttl] [,XMIN=xmin] [,XMAX=xmax]    $
-;                                 [,YMIN=ymin] [,YMAX=ymax] [,NX=nx] [,NY=ny]            $
-;                                 [,X_LOG=x_log] [,Y_LOG=y_log] [,/OVERPLOT]             $
-;                                 [,LIMITS=limits] [,CLABS=clabs] [,/SMCONT]             $
-;                                 [,/USE_SMOOTH] [,SMWDTH=smwdth] [,LEVEL_PER=level_per] $
-;                                 [,CPATH_OUT=cpath_out] [,HIST2D_OUT=hist2d_out]        $
-;                                 [,CLIM_OUT=clim_out] [,RAN_H2DN=ran_h2dn]        $
-;                                 [,_EXTRA=ex_str]
-;
 ;               ;;------------------------------------------------------------------------
 ;               ;;  Define # of bins and data range
 ;               ;;------------------------------------------------------------------------
@@ -94,10 +82,6 @@
 ;               LEVEL_PER   :  [L]-Element array [float/double] defining the relative
 ;                                percent of the maximum density from the 2D histogram
 ;                                to use for each level in the contour plot output
-;               SMWDTH      :  Scalar [integer/long] defining the number of elements over
-;                                 which to smooth the 2D histogram (only applies when the
-;                                 USE_SMOOTH keyword is set)
-;                                [Default = 4]
 ;               **********************************
 ;               ***      INDIRECT OUTPUTS      ***
 ;               **********************************
@@ -105,23 +89,15 @@
 ;                                information in data coordinates
 ;               HIST2D_OUT  :  Set to a named variable to return the 2D histogram used
 ;                                to create the contours for CONTOUR.PRO
-;               CLIM_OUT    :  Set to a named variable to return the plot limits
-;                                structure for CONTOUR.PRO that includes level values
-;               RAN_H2DN    :  Set to a named variable to return the range of histogram
-;                                values prior to smoothing
 ;
 ;   CHANGED:  1)  Added keywords:  CLABS and SMCONT
-;                                                                   [06/20/2013   v1.1.0]
+;                                                                 [06/20/2013   v1.1.0]
 ;             2)  Added keyword:  USE_SMOOTH and now calls my_min_curve_surf.pro
-;                                                                   [08/29/2013   v1.2.0]
+;                                                                 [08/29/2013   v1.2.0]
 ;             3)  Added keywords:  CPATH_OUT and HIST2D_OUT
-;                                                                   [04/14/2014   v1.3.0]
+;                                                                 [04/14/2014   v1.3.0]
 ;             4)  Added keywords:  LEVEL_PER
-;                                                                   [11/26/2014   v1.4.0]
-;             5)  Added error handling for issue when CONTOUR does not output anything
-;                   for the contour paths and now calls is_a_number.pro and
-;                   added keywords:  SMWDTH, CLIMOUT, RAN_H2DN
-;                                                                   [09/20/2018   v1.4.1]
+;                                                                 [11/26/2014   v1.4.0]
 ;
 ;   NOTES:      
 ;               1)  This routine works well for overplotting contours onto
@@ -138,7 +114,7 @@
 ;
 ;   CREATED:  05/01/2013
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  09/20/2018   v1.4.1
+;    LAST MODIFIED:  11/26/2014   v1.4.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -148,9 +124,8 @@ PRO density_contour_plot,xdata,ydata,XTTL=xttl,XMIN=xmin,XMAX=xmax,NX=nx,X_LOG=x
                                      YTTL=yttl,YMIN=ymin,YMAX=ymax,NY=ny,Y_LOG=y_log,$
                                      OVERPLOT=overplot,LIMITS=limits,CLABS=clabs,    $
                                      SMCONT=smcont,USE_SMOOTH=use_smooth,            $
-                                     LEVEL_PER=level_per,SMWDTH=smwdth,              $
+                                     LEVEL_PER=level_per,                            $
                                      CPATH_OUT=cpath_out,HIST2D_OUT=hist2d_out,      $  ;; outputs
-                                     CLIM_OUT=clim_out,RAN_H2DN=ran_h2dn,            $
                                      _EXTRA=ex_str
 
 ;;----------------------------------------------------------------------------------------
@@ -183,13 +158,17 @@ IF (N_PARAMS() NE 2) THEN BEGIN
   RETURN
 ENDIF
 test_xy        = ((N_ELEMENTS(xdata) EQ 0) OR (N_ELEMENTS(ydata) EQ 0)) OR $
-                  (N_ELEMENTS(xdata) NE N_ELEMENTS(ydata)) OR              $
-                  (is_a_number(xdata,/NOMSSG) EQ 0) OR (is_a_number(ydata,/NOMSSG) EQ 0)
-IF (test_xy[0]) THEN BEGIN
+                 (N_ELEMENTS(xdata) NE N_ELEMENTS(ydata))
+IF (test_xy) THEN BEGIN
   MESSAGE,badinp_msg[0],/INFORMATIONAL,/CONTINUE
   RETURN
 ENDIF
-;;  Define parameters
+
+test           = (N_ELEMENTS(clabs) NE 0) AND KEYWORD_SET(clabs)
+IF (test) THEN plotlabs = 1 ELSE plotlabs = 0
+test           = (N_ELEMENTS(smcont) NE 0) AND KEYWORD_SET(smcont)
+IF (test) THEN sm_cont = 1 ELSE sm_cont = 0
+
 xx             = REFORM(xdata)
 yy             = REFORM(ydata)
 ;;----------------------------------------------------------------------------------------
@@ -218,7 +197,7 @@ yran_def       = [key_str.MINY[0],key_str.MAXY[0]]
 widthy         = key_str.BINY[0]
 nny            = key_str.NY[0]
 ylog           = key_str.YLOG[0]
-;;  Check [X,Y]LOG
+
 IF KEYWORD_SET(xlog) THEN xxl = 1d1^(x_locs) ELSE xxl = x_locs
 IF KEYWORD_SET(ylog) THEN yyl = 1d1^(y_locs) ELSE yyl = y_locs
 ;;----------------------------------------------------------------------------------------
@@ -229,36 +208,29 @@ IF (SIZE(test_lim,/TYPE) NE 8) THEN lim0 = 0 ELSE lim0 = test_lim
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
-;;  Check USE_SMOOTH
 test           = (N_ELEMENTS(use_smooth) NE 0) AND KEYWORD_SET(use_smooth)
-IF (test[0]) THEN use_sm = 1 ELSE use_sm = 0
-;;  Check SMCONT
-test           = (N_ELEMENTS(smcont) NE 0) AND KEYWORD_SET(smcont)
-IF (test[0]) THEN sm_cont = 1 ELSE sm_cont = 0
-;;  Check SMWDTH
-test           = (is_a_number(smwdth,/NOMSSG) EQ 0)
-IF (test[0]) THEN wdth = 4L ELSE wdth = (LONG(smwdth[0]) > 3L) < (MIN([nnx[0],nny[0]])/2)
-;;  Check CLABS
-test           = (N_ELEMENTS(clabs) NE 0) AND KEYWORD_SET(clabs)
-IF (test[0]) THEN plotlabs = 1 ELSE plotlabs = 0
-;;  Check limits structure
+IF (test) THEN use_sm = 1 ELSE use_sm = 0
+
 over           = struct_value(lim0,'OVERPLOT',INDEX=ind)
-test0          = (ind[0] GE 0) AND (over[0] EQ 1)
+test0          = (ind[0] GE 0) AND (over EQ 1)
 test1          = (N_ELEMENTS(overplot) NE 0) AND KEYWORD_SET(overplot)
 test           = test0 OR test1
-IF (test[0]) THEN over = 1 ELSE over = 0
+IF (test) THEN over = 1 ELSE over = 0
 ;;  Add to LIMITS
 str_element,lim0,'OVERPLOT',over[0],/ADD_REPLACE
+
 ;;  Check for XRANGE
 xran           = struct_value(lim0,'XRANGE',INDEX=ind)
 test0          = (ind[0] LT 0) OR (N_ELEMENTS(xran) NE 2)
-IF (test0[0])     THEN xran = xran_def
-IF (over[0] EQ 0) THEN str_element,lim0,'XRANGE',xran,/ADD_REPLACE
+IF (test0)     THEN xran = xran_def
+IF (over EQ 0) THEN str_element,lim0,'XRANGE',xran,/ADD_REPLACE
+
 ;;  Check for YRANGE
 yran           = struct_value(lim0,'YRANGE',INDEX=ind)
 test0          = (ind[0] LT 0) OR (N_ELEMENTS(yran) NE 2)
-IF (test0[0])     THEN yran = yran_def
-IF (over[0] EQ 0) THEN str_element,lim0,'YRANGE',yran,/ADD_REPLACE
+IF (test0)     THEN yran = yran_def
+IF (over EQ 0) THEN str_element,lim0,'YRANGE',yran,/ADD_REPLACE
+
 ;;-----------------------------------------
 ;;  [X,Y]-Axis Keywords
 ;;-----------------------------------------
@@ -338,7 +310,7 @@ ENDIF
 IF KEYWORD_SET(sm_cont) THEN BEGIN
   IF KEYWORD_SET(use_sm) THEN BEGIN
     ;;  Use smooth instead of my_min_curve_surf.pro
-    hist2dn        = SMOOTH(hist2d,wdth[0],/NAN,/EDGE_TRUNCATE)
+    hist2dn        = SMOOTH(hist2d,4L,/NAN,/EDGE_TRUNCATE)
     xxln           = xxl
     yyln           = yyl
   ENDIF ELSE BEGIN
@@ -356,6 +328,7 @@ IF KEYWORD_SET(sm_cont) THEN BEGIN
     ;;  Define corresponding [X,Y]-grid
     widthxn        = (xran_def[1] - xran_def[0])/(sztn[0] - 1L)
     widthyn        = (yran_def[1] - yran_def[0])/(sztn[1] - 1L)
+;    xyoff          = [(xran_def[0] + widthxn[0]/2d0),(yran_def[0] + widthyn[0]/2d0)]
     xyoff          = [xran_def[0],yran_def[0]]
     x_nlocs        = DINDGEN(sztn[0])*widthxn[0] + xyoff[0]
     y_nlocs        = DINDGEN(sztn[1])*widthyn[0] + xyoff[1]
@@ -370,9 +343,15 @@ ENDIF ELSE BEGIN
   xxln           = xxl
   yyln           = yyl
 ENDELSE
+
+;IF KEYWORD_SET(sm_cont) THEN STOP
 ;;----------------------------------------------------------------------------------------
 ;;  Plot contours
 ;;----------------------------------------------------------------------------------------
+;CONTOUR,hist2d,xxl,yyl,_EXTRA=lim0
+;CONTOUR,hist2dn,xxln,yyln,_EXTRA=lim0
+
+;;  LBW III  04/14/2014   v1.3.0
 ;;  -->  Plot contours
 CONTOUR,hist2dn,xxln,yyln,_EXTRA=lim0
 ;;  -->  Record contours
@@ -380,17 +359,9 @@ CONTOUR,hist2dn,xxln,yyln,_EXTRA=lim0,/PATH_DATA_COORDS,/PATH_DOUBLE,$
         PATH_INFO=cpath_info,PATH_XY=cpath_xy
 ;;  Define path structure for output
 tags           = ['INFO','XY']
-;;  Make sure the outputs are defined
-IF (N_ELEMENTS(cpath_info) EQ 0) THEN cpath_info = 0
-IF (N_ELEMENTS(cpath_xy)   EQ 0) THEN cpath_xy = 0
 cpath_out      = CREATE_STRUCT(tags,cpath_info,cpath_xy)
 ;;  Define histogram for output
 hist2d_out     = hist2dn
-;;  Define CLIM_OUT
-clim_out       = lim0
-;;  Define RAN_H2DN
-good           = WHERE(FINITE(hist2d) AND hist2d GT 0,gd)
-IF (gd[0] GT 0) THEN ran_h2dn = [MIN(hist2d[good],/NAN),MAX(hist2d[good],/NAN)] ELSE ran_h2dn = REPLICATE(d,2)
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

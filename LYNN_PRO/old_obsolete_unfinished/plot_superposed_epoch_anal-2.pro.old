@@ -35,8 +35,7 @@
 ;               plot_superposed_epoch_anal,xdata,ydata [,XTITLE=xtitle] [,YTITLE=ytitle]    $
 ;                                          [,XRANGE=xrange] [,YRANGE=yrange] [,TITLE=title] $
 ;                                          [,FILE_NAME=file_name] [,WIND_N=wind_n]          $
-;                                          [,/SHOW_MED] [,/XLOG] [,/YLOG]                   $
-;                                          [,XMID_PT=xmid_pt] [,SMWDTH=smwdth] [,/SHOW_SYM]
+;                                          [,/SHOW_MED] [,/XLOG] [,/YLOG] [,XMID_PT=xmid_pt]
 ;
 ;  KEYWORDS:    
 ;               [X,Y]TITLE  :  Scalar [string] defining the [X,Y] plot axis title
@@ -55,21 +54,11 @@
 ;               XMID_PT     :  Scalar [numeric] defining the location along the x-axis
 ;                                to show a vertical line marking the midpoint of the
 ;                                data/plot
-;               SMWDTH      :  Scalar [numeric] defining the smoothing width to apply
-;                                when you wish to smooth the mean median line that is
-;                                overplotted on the data
-;                                [Default = FALSE]
-;               SHOW_SYM    :  IF set, routine will output squares for the median or
-;                                mean line in addition to the line
-;                                [Default = FALSE]
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [09/10/2018   v1.0.0]
 ;             2)  Moved to ~/wind_3dp_pros/LYNN_PRO/plotting_routines/
 ;                                                                   [09/12/2018   v1.0.1]
-;             3)  Added keywords:  SMWDTH and SHOW_SYM and
-;                  now calls routine_version.pro and now plots in landscape
-;                                                                   [09/15/2018   v1.0.2]
 ;
 ;   NOTES:      
 ;               1)  The routine plots all data as little black dots and over plots
@@ -85,7 +74,7 @@
 ;
 ;   CREATED:  09/09/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  09/15/2018   v1.0.2
+;    LAST MODIFIED:  09/12/2018   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -94,7 +83,7 @@
 PRO plot_superposed_epoch_anal,xdata,ydata,XTITLE=xtitle,YTITLE=ytitle,XRANGE=xrange,     $
                                YRANGE=yrange,TITLE=title,FILE_NAME=file_name,             $
                                WIND_N=wind_n,SHOW_MED=show_med,XLOG=xlog,YLOG=ylog,       $
-                               XMID_PT=xmid_pt,SMWDTH=smwdth,SHOW_SYM=show_sym
+                               XMID_PT=xmid_pt
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -123,8 +112,6 @@ med_on         = 0b
 xlog_on        = 0b
 ylog_on        = 0b
 xmid_on        = 0b
-smth_on        = 0b
-psym_on        = 0b
 ;;  Define some plot defaults
 thck           = 2e0
 psym           = 10                                   ;;  Histogram symbol
@@ -152,8 +139,7 @@ def_lstr       = {XSTYLE:1,YSTYLE:1,XMINOR:10L,YMINOR:10L,YTITLE:def_yttl[0],NOD
                   CHARSIZE:chsz[0],THICK:thck[0],XTHICK:thck[0],YTHICK:thck[0],         $
                   XMARGIN:xmarg,YMARGIN:ymarg,CHARTHICK:chck[0]}
 def_xystr      = {NORMAL:1,CHARSIZE:0.75,ORIENTATION:9e1,CHARTHICK:chck[0]}
-postruc        = {LANDSCAPE:1,PORT:0,UNITS:'inches',XSIZE:10.5,YSIZE:8.,ASPECT:0}
-;postruc        = {LANDSCAPE:0,PORT:1,UNITS:'inches',XSIZE:8.,YSIZE:8.,ASPECT:1.}
+postruc        = {LANDSCAPE:0,PORT:1,UNITS:'inches',XSIZE:8.,YSIZE:8.,ASPECT:1.}
 ;;  Dummy error messages
 noinpt_msg     = 'No input supplied...'
 nofint_msg     = 'Not enough finite data...'
@@ -197,9 +183,6 @@ IF (~test[0]) THEN BEGIN
   MESSAGE,nofint_msg[0],/INFORMATIONAL,/CONTINUE
   RETURN
 ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Calculate one-variable statistics on input
-;;----------------------------------------------------------------------------------------
 def_xran       = mnmx_x
 def_yran       = mnmx_y
 gd__x          = N_ELEMENTS(xx)                       ;;  Total # of x-points supplied
@@ -268,30 +251,6 @@ IF (is_a_number(xmid_pt,/NOMSSG))[0] THEN BEGIN
     xmidcol = 150L
   ENDIF
 ENDIF
-;;  Check SMWDTH
-IF (is_a_number(smwdth,/NOMSSG))[0] THEN BEGIN
-  smth_on = 1b
-  wdth    = (LONG(ABS(smwdth[0])) < (gd__x[0]/2L)) > 3L
-  vers_ex = ';;  Smoothed'
-ENDIF ELSE vers_ex = ''
-;;  Check SHOW_SYM
-IF KEYWORD_SET(show_sym) THEN psym_on = 1b
-;;  Overplot Avg. or Med. lines with lower/upper quartiles as error bars
-IF (med_on[0]) THEN BEGIN
-  IF (smth_on[0]) THEN yout = SMOOTH(med_y_at_x,wdth[0],/NAN,/EDGE_TRUNCATE) ELSE yout = med_y_at_x
-  ylow     = lqt_y_at_x
-  yupp     = uqt_y_at_x
-  xyoutlab = 'Median with lower/upper quartile'
-  fname    = fname[0]+'_median_lowupp_quart'
-ENDIF ELSE BEGIN
-  IF (smth_on[0]) THEN yout = SMOOTH(avg_y_at_x,wdth[0],/NAN,/EDGE_TRUNCATE) ELSE yout = avg_y_at_x
-  ylow     = yout - std_y_at_x
-  yupp     = yout + std_y_at_x
-  xyoutlab = 'Mean with standard deviation'
-  fname    = fname[0]+'_mean_standard_deviation'
-ENDELSE
-;;  Get version info
-vers           = routine_version('plot_superposed_epoch_anal.pro')+vers_ex[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Open window
 ;;----------------------------------------------------------------------------------------
@@ -314,6 +273,21 @@ extract_tags,use_pstr,new_pstr
 plot_col       = colr[2]
 err__col       = colr[3]
 xyoutcol       = plot_col[0]
+
+;;  Overplot Avg. or Med. lines with lower/upper quartiles as error bars
+IF (med_on[0]) THEN BEGIN
+  yout     = med_y_at_x
+  ylow     = lqt_y_at_x
+  yupp     = uqt_y_at_x
+  xyoutlab = 'Median with lower/upper quartile'
+  fname    = fname[0]+'_median_lowupp_quart'
+ENDIF ELSE BEGIN
+  yout     = avg_y_at_x
+  ylow     = yout - std_y_at_x
+  yupp     = yout + std_y_at_x
+  xyoutlab = 'Mean with standard deviation'
+  fname    = fname[0]+'_mean_standard_deviation'
+ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Plot the data
 ;;----------------------------------------------------------------------------------------
@@ -321,7 +295,6 @@ xyoutcol       = plot_col[0]
 xposi          = xposi0[0]
 yposi          = yposi0[0]
 dypos          = dypos0[0]
-chthick        = 1.5e0          ;;  Character line thickness
 ;;  Initialize plot window
 !P.MULTI       = 0
 WSET,windn[0]
@@ -333,14 +306,9 @@ PLOT,xx,yy[*,0],_EXTRA=use_pstr
     OPLOT,xx,yy[*,j],PSYM=3L
   ENDFOR
   ;;  Overplot Avg. or Med. lines
-  IF (psym_on[0]) THEN BEGIN
-    OPLOT,xx,yout,PSYM=6L,COLOR=plot_col[0],THICK=thck[0]
-    ERRPLOT,xx,ylow,yupp, COLOR=err__col[0],THICK=ethk[0],/DATA
-    OPLOT,xx,yout,LINESTYLE=0L,COLOR=plot_col[0],THICK=thck[0]     ;;  Overplot line so it can be seen
-  ENDIF ELSE BEGIN
-    ERRPLOT,xx,ylow,yupp, COLOR=err__col[0],THICK=ethk[0],/DATA
-    OPLOT,xx,yout,LINESTYLE=0L,COLOR=plot_col[0],THICK=thck[0]     ;;  Overplot line so it can be seen
-  ENDELSE
+  OPLOT,xx,yout,PSYM=6L,COLOR=plot_col[0],THICK=thck[0]
+  ERRPLOT,xx,ylow,yupp, COLOR=err__col[0],THICK=ethk[0],/DATA
+  OPLOT,xx,yout,LINESTYLE=0L,COLOR=plot_col[0],THICK=thck[0]     ;;  Overplot line so it can be seen
   ;;  Overplot midpoint vertical line if user desires
   IF (xmid_on[0]) THEN BEGIN
     OPLOT,xmid__v,yran,COLOR=xmidcol[0],THICK=thck[0]
@@ -352,10 +320,6 @@ PLOT,xx,yy[*,0],_EXTRA=use_pstr
   XYOUTS,xposi[0],yposi[0],tot_xout_str[0],COLOR=colr[0],_EXTRA=def_xystr
   xposi += dypos[0]
   XYOUTS,xposi[0],yposi[0],tot_yout_str[0],COLOR=colr[0],_EXTRA=def_xystr
-  ;;--------------------------------------------------------------------------------------
-  ;;  Output version # and date produced
-  ;;--------------------------------------------------------------------------------------
-  XYOUTS,0.985,0.06,vers[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=chthick[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Save color-coded plot (if desired)
 ;;----------------------------------------------------------------------------------------
@@ -367,7 +331,6 @@ IF (save_on[0]) THEN BEGIN
   !P.MULTI       = 0
   str_element,use_pstr,'CHARSIZE',1.05,/ADD_REPLACE
   popen,fname[0],_EXTRA=postruc
-    chthick        = 3e0          ;;  Character line thickness
     ;;  Initialize plot
     PLOT,xx,yy[*,0],_EXTRA=use_pstr
       FOR j=0L, szdy[1] - 1L DO BEGIN
@@ -375,14 +338,9 @@ IF (save_on[0]) THEN BEGIN
         OPLOT,xx,yy[*,j],PSYM=3L
       ENDFOR
       ;;  Overplot Avg. or Med. lines
-      IF (psym_on[0]) THEN BEGIN
-        OPLOT,xx,yout,PSYM=6L,COLOR=plot_col[0],THICK=thck[0]
-        ERRPLOT,xx,ylow,yupp, COLOR=err__col[0],THICK=ethk[0],/DATA
-        OPLOT,xx,yout,LINESTYLE=0L,COLOR=plot_col[0],THICK=thck[0]     ;;  Overplot line so it can be seen
-      ENDIF ELSE BEGIN
-        ERRPLOT,xx,ylow,yupp, COLOR=err__col[0],THICK=ethk[0],/DATA
-        OPLOT,xx,yout,LINESTYLE=0L,COLOR=plot_col[0],THICK=thck[0]     ;;  Overplot line so it can be seen
-      ENDELSE
+      OPLOT,xx,yout,PSYM=6L,COLOR=plot_col[0],THICK=thck[0]
+      ERRPLOT,xx,ylow,yupp, COLOR=err__col[0],THICK=ethk[0],/DATA
+      OPLOT,xx,yout,LINESTYLE=0L,COLOR=plot_col[0],THICK=thck[0]     ;;  Overplot line so it can be seen
       ;;  Overplot midpoint vertical line if user desires
       IF (xmid_on[0]) THEN BEGIN
         OPLOT,xmid__v,yran,COLOR=xmidcol[0],THICK=thck[0]
@@ -394,10 +352,6 @@ IF (save_on[0]) THEN BEGIN
       XYOUTS,xposi[0],yposi[0],tot_xout_str[0],COLOR=colr[0],_EXTRA=def_xystr
       xposi += dypos[0]
       XYOUTS,xposi[0],yposi[0],tot_yout_str[0],COLOR=colr[0],_EXTRA=def_xystr
-      ;;----------------------------------------------------------------------------------
-      ;;  Output version # and date produced
-      ;;----------------------------------------------------------------------------------
-      XYOUTS,0.985,0.06,vers[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=chthick[0]
   pclose
 ENDIF
 ;;----------------------------------------------------------------------------------------
