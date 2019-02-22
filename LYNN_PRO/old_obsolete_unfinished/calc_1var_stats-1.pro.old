@@ -23,43 +23,7 @@
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               stats = calc_1var_stats(xx [,/NAN] [,/PRINTOUT] [,RANGE=range]  $
-;                                          [,/POSITIVE] [,/NEGATIVE])
-;
-;               ;;  Define dummy array of values for later use
-;               xx             = [-45.12d3,-25.2d1,-72.88,-2.31738,300.95313,5.15287331e5,$
-;                                 4.988237385d0,15.135343e0,158.113,295.884,64.912d2,     $
-;                                 !VALUES.D_NAN]
-;               ;;  Output WITHOUT any keywords
-;               PRINT,';;',calc_1var_stats(xx)
-;               ;;      -45120.000       515287.34             NaN       15.135343             NaN             NaN             NaN             NaN      -2.3173800       300.95312       99.982334       12.000000       11.000000
-;
-;               ;;  Output with NAN keyword set
-;               PRINT,';;',calc_1var_stats(xx,/NAN)
-;               ;;           Min            Max             Mean           Median         StdDev.         StDvMn.          Skew.           Kurt.            Q1              Q2              IQM           Tot.  #         Fin.  #
-;               ;;      -45120.000       515287.34       43373.311       15.135343       157132.30       47377.170       2.4299814       4.4096244      -2.3173800       300.95312       99.982334       12.000000       11.000000
-;
-;               ;;  Output with RANGE keyword set
-;               range          = [0e0,5e2]
-;               PRINT,';;',calc_1var_stats(xx,/NAN,RANGE=range)
-;               ;;           Min            Max             Mean           Median         StdDev.         StDvMn.          Skew.           Kurt.            Q1              Q2              IQM           Tot.  #         Fin.  #
-;               ;;       4.9882374       300.95312       155.01474       158.11301       144.24455       64.508123    -0.013997410      -2.1975970       15.135343       300.95312       155.01474       5.0000000       5.0000000
-;
-;               ;;  Output with POSITIVE keyword set
-;               PRINT,';;',calc_1var_stats(xx,/NAN,/POSITIVE)
-;               ;;           Min            Max             Mean           Median         StdDev.         StDvMn.          Skew.           Kurt.            Q1              Q2              IQM           Tot.  #         Fin.  #
-;               ;;       4.9882374       515287.34       74650.517       295.88400       194316.96       73444.908       1.6193469      0.79489923       158.11301       6491.2000       1452.2571       7.0000000       7.0000000
-;
-;               ;;  Output with NEGATIVE keyword set
-;               PRINT,';;',calc_1var_stats(xx,/NAN,/NEGATIVE)
-;               ;;           Min            Max             Mean           Median         StdDev.         StDvMn.          Skew.           Kurt.            Q1              Q2              IQM           Tot.  #         Fin.  #
-;               ;;      -45120.000      -2.3173800      -11361.799      -72.879997       22505.712       11252.856     -0.74995097      -1.6875328      -252.00000      -2.3173800      -11361.799       4.0000000       4.0000000
-;
-;               ;;  Output with bad RANGE setting
-;               range          = [0e0,5e0]
-;               PRINT,';;',calc_1var_stats(xx,/NAN,RANGE=range)
-;               % CALC_1VAR_STATS: No input supplied...
-;               ;;   0
+;               stats = calc_1var_stats(xx [,/NAN] [,/PRINTOUT])
 ;
 ;  KEYWORDS:    
 ;               NAN          :  If set, routine will ignore non-finite values
@@ -67,19 +31,9 @@
 ;                                 [Default = FALSE]
 ;               PRINTOUT     :  If set, routine will print out the results
 ;                                 [Default = FALSE]
-;               RANGE        :  [2]-Element [numeric] array defining the range of
-;                                 values to allow in the analysis.
-;               POSITIVE     :  If set, routine will ignore all non-positive values
-;                                 including zeros
-;                                 [Default = FALSE]
-;               NEGATIVE     :  If set, routine will ignore all non-negative values
-;                                 including zeros
-;                                 [Default = FALSE]
 ;
 ;   CHANGED:  1)  Added error handling and updated Man. page
 ;                                                                   [01/18/2018   v1.0.1]
-;             2)  Added keywords:  RANGE, POSITIVE, and NEGATIVE
-;                                                                   [02/20/2019   v1.0.2]
 ;
 ;   NOTES:      
 ;               1)  The return value, if successful, is a thirteen element array with:
@@ -96,22 +50,19 @@
 ;                    A[10]  =     Interquartile Mean of X
 ;                    A[11]  =    Total # of Elements in X
 ;                    A[12]  =   Finite # of Elements in X
-;               2)  RANGE supercedes both POSITIVE and NEGATIVE and
-;                     POSITIVE supercedes NEGATIVE
 ;
 ;  REFERENCES:  
 ;               NA
 ;
 ;   CREATED:  01/17/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  02/20/2019   v1.0.2
+;    LAST MODIFIED:  01/18/2018   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION calc_1var_stats,xx,NAN=nan,PRINTOUT=printout,RANGE=range,             $
-                            POSITIVE=positive,NEGATIVE=negative
+FUNCTION calc_1var_stats,xx,NAN=nan,PRINTOUT=printout
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -137,10 +88,10 @@ IF (test[0]) THEN BEGIN
   RETURN,0b
 ENDIF
 ;;  Define params
-nx             = N_ELEMENTS(xx)
-x              = REFORM(xx,nx[0])      ;;  Force to 1D
+x              = REFORM(xx)
 sp             = SORT(x)
 x              = TEMPORARY(x[sp])      ;;  Sort array
+nx             = N_ELEMENTS(x)
 good           = WHERE(FINITE(x),gdx)
 IF (nx[0] LT 3) THEN BEGIN
   ;;  not enough elements!
@@ -161,69 +112,6 @@ IF (test[0]) THEN nan_on = 0b ELSE nan_on = 1b
 ;;  Check PRINTOUT
 test           = (is_a_number(printout,/NOMSSG) EQ 0) OR ~KEYWORD_SET(printout)
 IF (test[0]) THEN print_on = 0b ELSE print_on = 1b
-;;  Check POSITIVE
-test           = (is_a_number(positive,/NOMSSG) EQ 0) OR ~KEYWORD_SET(positive)
-IF (test[0]) THEN pos_on = 0b ELSE pos_on = 1b
-;;  Check NEGATIVE
-test           = (is_a_number(negative,/NOMSSG) EQ 0) OR ~KEYWORD_SET(negative)
-IF (test[0]) THEN neg_on = 0b ELSE neg_on = 1b
-;;  Check RANGE
-test           = is_a_number(range,/NOMSSG) AND (N_ELEMENTS(range) EQ 2)
-IF (test[0]) THEN test = test_plot_axis_range(range,/NOMSSG)
-IF (test[0]) THEN BEGIN
-  ran_on = 1b
-  gran   = range[SORT(range)]
-  ;;  Shut off other keywords
-  pos_on = 0b
-  neg_on = 0b
-ENDIF ELSE ran_on = 0b
-IF (pos_on[0] AND neg_on[0]) THEN neg_on[0] = 0b
-;;----------------------------------------------------------------------------------------
-;;  Redefine good elements array, if necessary
-;;----------------------------------------------------------------------------------------
-IF (ran_on[0] OR pos_on[0] OR neg_on[0]) THEN BEGIN
-  check = [ran_on[0],pos_on[0],neg_on[0]]
-  CASE 1 OF
-    check[0]  :  BEGIN
-      ;;  RANGE set
-      gind = WHERE(x GE gran[0] AND x LE gran[1],gin)
-      IF (gin[0] GT 0) THEN BEGIN
-        ;;  Good setting --> Redefine input and re-call
-        x2 = x[gind]
-        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout)
-      ENDIF ELSE BEGIN
-        ;;  Bad range setting --> Inform user and return 0
-        MESSAGE,'No data within RANGE boundaries...',/INFORMATIONAL,/CONTINUE
-        RETURN,0b
-      ENDELSE
-    END
-    check[1]  :  BEGIN
-      ;;  POSITIVE set
-      x2 = get_posneg_els_arr(x)
-      IF (N_ELEMENTS(x2) LE 1) THEN BEGIN
-        ;;  Bad result --> Inform user and return 0
-        MESSAGE,'No positive-only data provided...',/INFORMATIONAL,/CONTINUE
-        RETURN,0b
-      ENDIF ELSE BEGIN
-        ;;  Good setting --> Re-call with new input
-        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout)
-      ENDELSE
-    END
-    check[2]  :  BEGIN
-      ;;  NEGATIVE set
-      x2 = get_posneg_els_arr(x,/NEGATIVE)
-      IF (N_ELEMENTS(x2) LE 1) THEN BEGIN
-        ;;  Bad result --> Inform user and return 0
-        MESSAGE,'No positive-only data provided...',/INFORMATIONAL,/CONTINUE
-        RETURN,0b
-      ENDIF ELSE BEGIN
-        ;;  Good setting --> Re-call with new input
-        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout)
-      ENDELSE
-    END
-    ELSE      : STOP  ;;  should not happen!
-  ENDCASE
-ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate simple stats
 ;;----------------------------------------------------------------------------------------
