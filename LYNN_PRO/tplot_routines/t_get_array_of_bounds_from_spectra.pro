@@ -1,0 +1,339 @@
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   t_get_array_of_bounds_from_spectra.pro
+;  PURPOSE  :   Routine will prompt the user to get an array of data points consisting
+;                 of lower and upper boundaries at uniform time stamps for the purpose
+;                 of peak finding in spectra data.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TP_NAME     :  Scalar [string] defining the TPLOT handle that the user
+;                                wishes to get data from
+;                                [Default = first TPLOT handle plotted]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               ***  Still testing  ***
+;
+;  KEYWORDS:    
+;               DATA_OUT    :  Set to a named variable to return the TPLOT structure
+;                                of data defining the lower and upper bounds chosen by
+;                                the user for the interval of interest
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [03/07/2019   v1.0.0]
+;
+;   NOTES:      
+;               ***  Still testing  ***
+;               1)  If the TPLOT handle, TP_NAME, is not associated with a spectral
+;                     plot, the routine may not be of much use at the moment.
+;               2)  To increase the precision of the output results, it would be wise
+;                     to zoom-in (both X and Y) on the points of interest.  Technically,
+;                     the use of SPECPLOT.PRO and zooming-in may artificially increase
+;                     the resolution of the data.  However, zooming-in should reduce the
+;                     errors introduced by "shaky hands" or a particularly stubborn
+;                     mouse.
+;               3)  Currently, the routine does not return valid values for the
+;                     Z-Component of the data.  I am not sure if this is an issue
+;                     with ctime.pro or my call to ctime.pro.  Eventually, I hope to
+;                     correct this issue.
+;               ********************
+;               ***  To-do List  ***
+;               ********************
+;                 --  Add ZRANGE option
+;                 --  Allow manual time entry, not just cursor with tlimit.pro
+;                 --  Allow for panning right/left by user input time
+;                 --  Allow for different color tables?
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  03/06/2019
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  03/07/2019   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO t_get_array_of_bounds_from_spectra,tp_name,DATA_OUT=struc_out
+
+;;----------------------------------------------------------------------------------------
+;;  Define Constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define some error messages
+no_tplot       = 'You must first load some data into TPLOT!'
+noinput_mssg   = 'User must supply -- TP_NAME -- as a scalar [string] TPLOT handle...'
+bad_tpn_msg    = 'Incorrect input:  TP_NAME must be a valid and existing TPLOT handle...'
+notspec_msg    = 'Incorrect input:  TP_NAME must be a TPLOT handle of spectra data...'
+;;  Define excepted tags to avoid
+xyz_str        = ['x','y','z']
+excpt_tags     = [xyz_str+'tickv',xyz_str+'tickname',xyz_str+'ticks',xyz_str[1]+'minor',xyz_str[1]+'log']
+;;  Define prompt strings
+pro__out_quit  = ['At any point, enter "q" to exit the routine.']
+pro__out_inst  = ['When finding the lower and upper bounds, try to click as close to the',$
+                  'same time stamp for each value as possible.']
+str__out_fnum  = 'How many lower/upper values do you want to find [integer]?  '
+str__out_chck  = 'Do you wish to find more lower/upper values [y/n]?  '
+str__out_zoom  = 'Would you like to zoom in on a specific time range [y/n]?  '
+str__out_panr  = 'Would you like to pan to the right [y/n]?  '
+str__out_panl  = 'Would you like to pan to the left [y/n]?  '
+str__out_yran  = 'Would you like to change the Y-Axis range [y/n]?  '
+str__out_ylow  = 'Enter a value [numeric] for the lower Y-Axis bound [x.xx]:  '
+str__out_yupp  = 'Enter a value [numeric] for the upper Y-Axis bound [x.xx]:  '
+
+;;  Define prompt format outputs
+form_out_fnum  = 2L                  ;;  Format type [integer] for # of lower/upper values prompt
+form_out_chck  = 7L                  ;;  Format type [string] for checking whether to continue
+form_out_zoom  = 7L                  ;;  Format type [string] for checking whether to zoom-in
+form_out_panr  = 7L                  ;;  Format type [string] for checking whether to pan right
+form_out_panl  = 7L                  ;;  Format type [string] for checking whether to pan left
+form_out_yran  = 7L                  ;;  Format type [string] for checking whether to change Y-Axis range
+form_out_ylow  = 4L                  ;;  Format type [string] for the lower Y-Axis bound
+form_out_yupp  = 4L                  ;;  Format type [string] for the upper Y-Axis bound
+
+;;  Initialize prompt inputs/outputs
+in_out_fnum    = -1
+in_out_chck    = ''
+in_out_zoom    = ''
+in_out_panr    = ''
+in_out_panl    = ''
+in_out_yran    = ''
+in_out_ylow    = 0e0
+in_out_yupp    = 0e0
+;;  Initialize logic tests
+true           = 1b
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 1) THEN BEGIN
+  ;;  No input
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Make sure TPLOT variables exist
+;;----------------------------------------------------------------------------------------
+tpn_all        = tnames()
+IF (tpn_all[0] EQ '') THEN BEGIN
+  MESSAGE,no_tplot[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Check TP_NAME
+test_in        = test_tplot_handle(tp_name,TPNMS=tpname)
+IF (test_in[0] EQ 0) THEN BEGIN
+  MESSAGE,bad_tpn_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Okay, TPLOT handle is valid and exists --> Make copy
+;;----------------------------------------------------------------------------------------
+get_data,tpname[0],DATA=temp,DLIMIT=dlim0,LIMIT=lim0
+;;  Check structure format
+test           = tplot_struct_format_test(temp,TEST__V=test__v,/NOMSSG)
+IF (test__v[0] EQ 0) THEN BEGIN
+  MESSAGE,notspec_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Redefine LIMITS structures
+extract_tags,dlim,dlim0,EXCEPT=excpt_tags
+extract_tags, lim, lim0,EXCEPT=excpt_tags
+;;  Determine the range of Y-Axis values
+yval__all      = struct_value(temp,'V',DEFAULT=0d0)
+onevs_yval     = calc_1var_stats(yval__all,/NAN,/POSITIVE)
+yran_yval      = onevs_yval[0:1]*[0.99d0,1.01d0]
+yran_ystr      = num2flt_str(yran_yval,NUM_DEC=1)
+;;  Send copy to TPLOT without forced tick marks and log scaling
+store_data,tpname[0]+'_copy',DATA=temp,DLIMIT=dlim,LIMIT=lim
+tp_new         = tnames(tpname[0]+'_copy')
+;;  Get currently plotted variables
+tplot,NEW_TVARS=tplot_vstruc
+;;  Plot data starting with full time range
+tplot,[tpname[0],tp_new[0]]
+tlimit,/FULL
+;;  Get current time range
+tr_full        = t_get_current_trange()
+tplot,[tpname[0],tp_new[0]],T_OFFSET=t_offs
+;;----------------------------------------------------------------------------------------
+;;  Get boundaries
+;;----------------------------------------------------------------------------------------
+;;  Reset output arrays
+delete_variable,lower,upper,unix
+WHILE (true[0]) DO BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user wishes to zoom-in
+  ;;--------------------------------------------------------------------------------------
+  in_out_zoom    = ''
+  WHILE (in_out_zoom NE 'n' AND in_out_zoom NE 'y' AND in_out_zoom NE 'q') DO BEGIN
+    in_out_zoom = general_prompt_routine(STR_OUT=str__out_zoom[0],PRO_OUT=pro__out_inst,FORM_OUT=form_out_zoom[0])
+    IF (in_out_zoom[0] EQ 'debug') THEN STOP
+  ENDWHILE
+  IF (in_out_zoom[0] EQ 'y') THEN tlimit
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user wishes to pan right or left
+  ;;--------------------------------------------------------------------------------------
+  ;;  Pan Right
+  in_out_panr    = ''
+  WHILE (in_out_panr NE 'n' AND in_out_panr NE 'y' AND in_out_panr NE 'q') DO BEGIN
+    in_out_panr = general_prompt_routine(STR_OUT=str__out_panr[0],PRO_OUT=pro__out_quit,FORM_OUT=form_out_panr[0])
+    IF (in_out_panr[0] EQ 'debug') THEN STOP
+  ENDWHILE
+  IF (in_out_panr[0] EQ 'y') THEN t_tr_nplfz,/NEXT
+  ;;  Pan Left
+  in_out_panl    = ''
+  WHILE (in_out_panl NE 'n' AND in_out_panl NE 'y' AND in_out_panl NE 'q') DO BEGIN
+    in_out_panl = general_prompt_routine(STR_OUT=str__out_panl[0],PRO_OUT=pro__out_quit,FORM_OUT=form_out_panl[0])
+    IF (in_out_panl[0] EQ 'debug') THEN STOP
+  ENDWHILE
+  IF (in_out_panl[0] EQ 'y') THEN t_tr_nplfz,/PREVIOUS
+  tr_curr        = t_get_current_trange()
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user wants to optimize plot prior to selection
+  ;;--------------------------------------------------------------------------------------
+  in_out_yran    = ''
+  WHILE (in_out_yran NE 'n' AND in_out_yran NE 'y' AND in_out_yran NE 'q') DO BEGIN
+    in_out_yran = general_prompt_routine(STR_OUT=str__out_yran[0],PRO_OUT=pro__out_quit,FORM_OUT=form_out_yran[0])
+    IF (in_out_yran[0] EQ 'debug') THEN STOP
+  ENDWHILE
+  IF (in_out_yran[0] EQ 'y') THEN BEGIN
+    pro_yran_out   = ['The range of allowed values is:',$
+                      'X > '+yran_ystr[0],              $
+                      'X < '+yran_ystr[1]               ]
+    ;;--------------------------------------------------------------------------------------
+    ;;  User wants to change Y-Axis range --> prompt for values
+    ;;--------------------------------------------------------------------------------------
+    in_out_ylow    = -1e0
+    WHILE (in_out_ylow LT yran_yval[0] OR in_out_ylow GT yran_yval[1]) DO BEGIN
+      in_out_ylow = general_prompt_routine(STR_OUT=str__out_ylow[0],PRO_OUT=pro_yran_out,FORM_OUT=form_out_ylow[0])
+      IF (in_out_ylow[0] LT 0) THEN STOP
+    ENDWHILE
+    in_out_yupp    = -1e0
+    WHILE (in_out_yupp LT yran_yval[0] OR in_out_yupp GT yran_yval[1]) DO BEGIN
+      in_out_yupp = general_prompt_routine(STR_OUT=str__out_yupp[0],PRO_OUT=pro_yran_out,FORM_OUT=form_out_yupp[0])
+      IF (in_out_yupp[0] LT 0) THEN STOP
+    ENDWHILE
+    ;;  Make sure range is valid
+    yran_new       = FLOAT([in_out_ylow[0],in_out_yupp[0]])
+    testy          = test_plot_axis_range(yran_new,/NOMSSG)
+    IF (testy[0]) THEN BEGIN
+      ;;  Valid range --> Replot after setting
+      options,tp_new[0],YRANGE=yran_new,/DEFAULT
+      tplot,[tpname[0],tp_new[0]],TRANGE=tr_curr
+    ENDIF
+  ENDIF
+;  ;;  Get panel positions in normal coordinates
+;  tplot,GET_PLOT_POSITION=tp_posi,TRANGE=tr_curr,NEW_TVARS=dumb_tpstruc
+;  xsys_old       = !X
+;  ysys_old       = !Y
+;  psys_old       = !P
+;  xsys_new       = dumb_tpstruc.SETTINGS.X[0]
+;  ysys_new       = dumb_tpstruc.SETTINGS.Y[1]
+;  psys_new       = dumb_tpstruc.SETTINGS.P[0]
+;  ;;  Set system variables so CONVERT_COORD can work
+;  !X             = xsys_new
+;  !Y             = ysys_new
+;  !P             = psys_new
+;  xx_posi        = tp_posi[[0L,2L],1L]
+;  yy_posi        = tp_posi[[1L,3L],1L]
+;  xy_dpos0       = CONVERT_COORD(xx_posi[0],yy_posi[0],/NORMAL,/TO_DATA)
+;  xy_dpos1       = CONVERT_COORD(xx_posi[1],yy_posi[1],/NORMAL,/TO_DATA)
+  ;;--------------------------------------------------------------------------------------
+  ;;  Start getting values
+  ;;--------------------------------------------------------------------------------------
+  in_out_fnum    = -1
+  WHILE (in_out_fnum LT 0 OR in_out_fnum GT 100) DO BEGIN
+    in_out_fnum = general_prompt_routine(STR_OUT=str__out_fnum[0],FORM_OUT=form_out_fnum[0])
+  ENDWHILE
+  IF (in_out_fnum[0] GT 0) THEN BEGIN
+    ;;  User wants to get some points
+    nn      = LONG(in_out_fnum[0])
+    unx0    = REPLICATE(d,nn[0])         ;;  Dummy time array to fill
+    arr0    = REPLICATE(d,nn[0],2)       ;;  Dummy data array to fill
+    test    = general_prompt_routine(PRO_OUT=pro__out_inst)
+    FOR j=0L, nn[0] - 1L DO BEGIN
+      ;;  Get lower and upper bounds for each index
+      PRINT,'Select Lower Bound'
+      t_get_values_from_plot,tp_name,NDATA=1,DATA_OUT=data_low
+      PRINT,'Select Upper Bound'
+      t_get_values_from_plot,tp_name,NDATA=1,DATA_OUT=data_upp
+      ;;  Define values
+      low_t     = struct_value(data_low,'X',DEFAULT=d)
+      low_v     = struct_value(data_low,'Y',DEFAULT=d)
+      upp_t     = struct_value(data_upp,'X',DEFAULT=d)
+      upp_v     = struct_value(data_upp,'Y',DEFAULT=d)
+      IF (FINITE(low_t) EQ 0 AND FINITE(upp_t) EQ 0) THEN CONTINUE
+      IF (FINITE(low_t) NE 0) THEN unx0[j] = low_t[0] ELSE unx0[j] = upp_t[0]
+      arr0[j,*] = [low_v[0],upp_v[0]]
+    ENDFOR
+    IF (N_ELEMENTS(unix) EQ 0) THEN unix = unx0 ELSE unix = [unix,unx0]
+    IF (N_ELEMENTS(lower) EQ 0) THEN lower = arr0[*,0] ELSE lower = [lower,arr0[*,0]]
+    IF (N_ELEMENTS(upper) EQ 0) THEN upper = arr0[*,1] ELSE upper = [upper,arr0[*,1]]
+    ;;  Sort
+    sp      = SORT(unix)
+    unix    = unix[sp]
+    lower   = lower[sp]
+    upper   = upper[sp]
+    ;;  Make sure lower < upper
+    diff    = upper - lower
+    bad     = WHERE(diff LT 0,bd)
+    IF (bd[0] GT 0) THEN BEGIN
+      templ = lower
+      tempu = upper
+      lower[bad] = tempu[bad]
+      upper[bad] = templ[bad]
+      ;;  Clean up
+      delete_variable,templ,tempu
+    ENDIF
+    ;;  Clean up
+    delete_variable,diff,bad
+  ENDIF
+  ;;  Output new points on plot
+  ;;    Panel numbers start from zero
+  tplot,[tpname[0],tp_new[0]],TRANGE=tr_curr
+  tplot_panel,unix,[[lower],[upper]],PANEL=1,PSYM=2,COLOR=200
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check if user wishes to continue
+  ;;--------------------------------------------------------------------------------------
+  in_out_chck    = ''
+  IF (in_out_fnum[0] EQ 0) THEN in_out_chck = 'n'
+  WHILE (in_out_chck NE 'n' AND in_out_chck NE 'y' AND in_out_chck NE 'q') DO BEGIN
+    in_out_chck = general_prompt_routine(STR_OUT=str__out_chck[0],PRO_OUT=pro__out_quit,FORM_OUT=form_out_chck[0])
+    IF (in_out_chck[0] EQ 'debug') THEN STOP
+  ENDWHILE
+  test_str       = STRLOWCASE(STRMID(in_out_chck,0,1))
+  true           = (test_str[0] EQ 'y')
+;  STOP
+ENDWHILE
+;;----------------------------------------------------------------------------------------
+;;  Clean up
+;;----------------------------------------------------------------------------------------
+;;  Return to original time range
+tlimit,tr_full
+;;  Remove copy spectra
+store_data,DELETE=tp_new[0]
+;;  Plot original variables
+tplot,OLD_TVARS=tplot_vstruc
+;;----------------------------------------------------------------------------------------
+;;  Define output
+;;----------------------------------------------------------------------------------------
+struc_out      = {X:unix,Y:[[lower],[upper]]}
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END

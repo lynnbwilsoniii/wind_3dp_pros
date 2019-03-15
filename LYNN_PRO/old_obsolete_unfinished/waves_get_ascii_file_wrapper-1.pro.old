@@ -1,3 +1,4 @@
+;+
 ;*****************************************************************************************
 ;
 ;  FUNCTION :   find_waves_ascii_files.pro
@@ -8,25 +9,19 @@
 ;  CALLED BY:   
 ;               waves_get_ascii_file_wrapper.pro
 ;
-;  INCLUDES:
-;               NA
-;
 ;  CALLS:
 ;               get_os_slash.pro
-;               get_valid_trange.pro
+;               time_range_define.pro
 ;               time_double.pro
 ;
 ;  REQUIRES:    
 ;               1)  UMN Modified Wind/3DP IDL Libraries
-;               2)  ASCII files found at:
-;                     https://solar-radio.gsfc.nasa.gov/wind/data_products.html
 ;
 ;  INPUT:
 ;               NA
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               files = find_waves_ascii_files([DATE=date] [,TRANGE=trange] [,RECEIVER=receiver] [,TDATE=tdate])
+;               files = find_waves_ascii_files(DATE=date,TRANGE=trange,RECEIVER=receiver)
 ;
 ;  KEYWORDS:    
 ;               DATE      :  Scalar [string] or array of the form:
@@ -39,31 +34,24 @@
 ;                              'rad1'  :  WAVES RADio receiver band 1
 ;                              'rad2'  :  WAVES RADio receiver band 2
 ;                              [Default = 'tnr']
-;               TDATE     :  Scalar [string] defining the date of interest of the form:
-;                              'YYYY-MM-DD' [MM=month, DD=day, YYYY=year]
 ;
-;   CHANGED:  1)  Updated Man. page and routine a little, no longer calls time_range_define.pro
-;                   and now calls get_valid_trange.pro
-;                   and now uses TDATE keyword in place of DATE keyword
-;                                                                   [03/06/2019   v1.0.1]
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
-;               NA
-;
-;  REFERENCES:  
-;               NA
+;               
 ;
 ;   CREATED:  03/21/2013
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  03/06/2019   v1.0.1
+;    LAST MODIFIED:  03/21/2013   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
+;-
 
-FUNCTION find_waves_ascii_files,DATE=date,TRANGE=trange,RECEIVER=receiver,TDATE=tdate
+FUNCTION find_waves_ascii_files,DATE=date,TRANGE=trange,RECEIVER=receiver
 
 ;;----------------------------------------------------------------------------------------
-;;  Define some constants and dummy variables
+;; => Define some constants and dummy variables
 ;;----------------------------------------------------------------------------------------
 f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
@@ -78,29 +66,22 @@ def_exten      = 'wind_3dp_pros'+slash[0]+'wind_data_dir'+slash[0]+'Wind_WAVES_D
 tnr__exten     = 'TNR__ASCII'
 rad1_exten     = 'RAD1_ASCII'
 rad2_exten     = 'RAD2_ASCII'
-;;  dummy error messages
+;; => dummy error messages
 nodatamssg     = 'No Wind WAVES data files were found...'
 ndatdatems     = 'No Wind WAVES data files were found for that date...'
 pick_mssg      = 'Select all the wind WAVES files of interest...'
 badtrmssg      = 'Incorrect use of TRANGE:  Time range does not overlap with data...'
 ;;----------------------------------------------------------------------------------------
-;;  Determine time range of interest
+;; => Determine time range of interest
 ;;----------------------------------------------------------------------------------------
-time_ra        = get_valid_trange(TDATE=tdate,TRANGE=trange)
-trange         = time_ra.UNIX_TRANGE
-tdates         = time_ra.DATE_TRANGE                          ;;  'YYYY-MM-DD'  e.g., '2009-07-13'
-mdates         = STRMID(tdates,2,2)+STRMID(tdates,5,2)+STRMID(tdates,8,2)
-fdates         = STRMID(tdates,5,5)+'-'+STRMID(tdates,0,4)    ;;  'MM-DD-YYYY'
+time_ra        = time_range_define(DATE=date,TRANGE=trange)
+trange         = time_ra.TR_UNIX    ;;  Define keyword for return if originally unset
 tra            = trange
-fdate          = fdates
-;time_ra        = time_range_define(DATE=date,TRANGE=trange)
-;trange         = time_ra.TR_UNIX    ;;  Define keyword for return if originally unset
-;tra            = trange
-;tdates         = time_ra.TDATE_SE
-;fdate          = time_ra.FDATE_SE   ;;  'MM-DD-YYYY'
+tdates         = time_ra.TDATE_SE
+fdate          = time_ra.FDATE_SE   ;;  'MM-DD-YYYY'
 IF (fdate[0] NE fdate[1]) THEN multi_f = 1 ELSE multi_f = 0
 ;;----------------------------------------------------------------------------------------
-;;  Find ASCII file directory
+;; => Find ASCII file directory
 ;;----------------------------------------------------------------------------------------
 DEFSYSV,'!wind3dp_umn',EXISTS=exists
 IF NOT KEYWORD_SET(EXISTS) THEN BEGIN
@@ -109,7 +90,7 @@ ENDIF ELSE BEGIN
   mdir = !wind3dp_umn.WIND_WAVES_DIR
   IF (mdir[0] EQ '') THEN mdir = FILE_EXPAND_PATH(def_exten[0])
 ENDELSE
-;;  Check for trailing '/'
+;; => Check for trailing '/'
 ll             = STRMID(mdir, STRLEN(mdir) - 1L,1L)
 test_ll        = (ll[0] NE slash[0])
 IF (test_ll) THEN mdir  = mdir[0]+slash[0]
@@ -129,16 +110,16 @@ ENDCASE
 ;;  Define file name prefix
 fpref          = STRUPCASE(rec[0])+'_'                     ;;  e.g., 'TNR_'
 ;;----------------------------------------------------------------------------------------
-;;  Find ASCII files
+;; => Find ASCII files
 ;;----------------------------------------------------------------------------------------
 tfiles         = FILE_SEARCH(mdir,'*.txt')
 IF (tfiles[0] EQ '') THEN BEGIN
-  ;;  No WAVES files were found
+  ;; => No WAVES files were found
   MESSAGE,nodatamssg[0],/INFORMATIONAL,/CONTINUE
   RETURN,''
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;  Separate file name from directory name
+;; => Separate file name from directory name
 ;;----------------------------------------------------------------------------------------
 file_only      = STRMID(tfiles,STRLEN(mdir[0]))            ;;  e.g., 'TNR_19970108.txt'
 ;;  Separate file dates from file names
@@ -162,7 +143,7 @@ file_ymdbs     = file_ymdbs[sp]
 file_ymdbe     = file_ymdbe[sp]
 file_tdates    = file_tdates[sp]
 ;;----------------------------------------------------------------------------------------
-;;  Find all files within time range
+;; => Find all files within time range
 ;;----------------------------------------------------------------------------------------
 good_s         = WHERE(file_unixs GE tra[0],gds)
 IF (gds EQ 0) THEN BEGIN
@@ -187,7 +168,7 @@ IF (gds EQ 0) THEN BEGIN
       yesfile = STRLOWCASE(yesf)
     ENDELSE
   ENDWHILE
-  ;;  Determine what to do
+  ;; => Determine what to do
   test     = (yesfile NE 'y')
   IF (test) THEN RETURN,''        ;;  Exit loop and return empty string
   ;;--------------------------------------------------------------------------------------
@@ -228,7 +209,7 @@ ENDIF ELSE BEGIN
   gind      = LINDGEN(nf) + first_gel[0]
 ENDELSE
 ;;----------------------------------------------------------------------------------------
-;;  Define good files and return structure
+;; => Define good files and return structure
 ;;----------------------------------------------------------------------------------------
 gfiles         = tfiles[gind]
 g_unixs        = file_unixs[gind]
@@ -239,7 +220,7 @@ g_tdates       = file_tdates[gind]
 tags           = ['FILES','UNIX_S','UNIX_E','YMDB_S','YMDB_E','TDATES']
 struc          = CREATE_STRUCT(tags,gfiles,g_unixs,g_unixe,g_ymdbs,g_ymdbe,g_tdates)
 ;;----------------------------------------------------------------------------------------
-;;  Return to user
+;; => Return to user
 ;;----------------------------------------------------------------------------------------
 
 RETURN,struc
@@ -259,11 +240,7 @@ END
 ;  CALLED BY:   
 ;               waves_tnr_rad_to_tplot.pro
 ;
-;  INCLUDES:
-;               find_waves_ascii_files.pro
-;
 ;  CALLS:
-;               get_valid_trange.pro
 ;               find_waves_ascii_files.pro
 ;               str_element.pro
 ;               waves_tnr_file_read.pro
@@ -272,15 +249,14 @@ END
 ;  REQUIRES:    
 ;               1)  UMN Modified Wind/3DP IDL Libraries
 ;               2)  ASCII files found at:
-;                     https://solar-radio.gsfc.nasa.gov/wind/data_products.html
+;                     http://www-lep.gsfc.nasa.gov/waves/data_products.html
 ;
 ;  INPUT:
 ;               NA
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               data = waves_get_ascii_file_wrapper([DATE=date] [,FLOW=flow] [,FHIGH=fhigh] $
-;                                                   [,TRANGE=trange] [,/NODCBLS] [,TDATE=tdate])
+;               test = waves_get_ascii_file_wrapper(DATE=date,FLOW=flz0,FHIGH=fhz0,$
+;                                                   TRANGE=trange,NODCBLS=nodcbls)
 ;
 ;  KEYWORDS:    
 ;               DATE      :  Scalar [string] or array of the form:
@@ -293,21 +269,15 @@ END
 ;                              which the user desires to get data [Unix time]
 ;               NODCBLS   :  If set, program returns dynamic spectra in microvolts
 ;                              per root Hz instead of dB above background
-;               TDATE     :  Scalar [string] defining the date of interest of the form:
-;                              'YYYY-MM-DD' [MM=month, DD=day, YYYY=year]
 ;
-;   CHANGED:  1)  Added keyword:  NODCBLS
-;                                                                   [10/11/2010   v1.1.0]
-;             2)  Updated website location
-;                                                                   [03/11/2011   v1.1.1]
+;   CHANGED:  1)  Added keyword:  NODCBLS                         
+;                                                                 [10/11/2010   v1.1.0]
+;             2)  Updated website location                        
+;                                                                 [03/11/2011   v1.1.1]
 ;             3)  Updated man page and changed name to waves_get_ascii_file_wrapper.pro
 ;                   and now moved to ~/wind_3dp_pros/LYNN_PRO/ directory
 ;                   and now calls find_waves_ascii_files.pro
-;                                                                   [03/21/2013   v2.0.0]
-;             4)  Updated Man. page and routine, no longer calls time_range_define.pro
-;                   and now calls get_valid_trange.pro
-;                   and now uses TDATE keyword in place of DATE keyword
-;                                                                   [03/06/2019   v2.0.1]
+;                                                                 [03/21/2013   v2.0.0]
 ;
 ;   NOTES:      
 ;               1)  This program should NOT be called by a user, let
@@ -322,17 +292,17 @@ END
 ;
 ;   CREATED:  05/11/2010
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  03/06/2019   v2.0.1
+;    LAST MODIFIED:  03/21/2013   v2.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
 FUNCTION waves_get_ascii_file_wrapper,DATE=date,FLOW=flz0,FHIGH=fhz0,TRANGE=trange, $
-                                      NODCBLS=nodcbls,TDATE=tdate
+                                      NODCBLS=nodcbls
 
 ;;----------------------------------------------------------------------------------------
-;;  Define Constants and dummy variables
+;; => Define Constants and dummy variables
 ;;----------------------------------------------------------------------------------------
 f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
@@ -365,23 +335,23 @@ rad1_ch1       = 0L       ;;  Lowest channel of RAD1 frequencies
 rad1_ch2       = 0L       ;;  Highest " "
 rad2_ch1       = 0L       ;;  Lowest channel of RAD2 frequencies
 rad2_ch2       = 0L       ;;  Highest " "
-;;  TNR Channels
+;; => TNR Channels
 tnr_ch1        = 0
 tnr_ch2        = LONG((ALOG10(tnr_str.F_HIGH) - ALOG10(tnr_str.F_LOW))/tnr_str.D_FREQ) + 1L
-;;  RAD1 Channels
+;; => RAD1 Channels
 rad1_ch1       = 0L
 rad1_ch2       = LONG((rad1_str.F_HIGH - rad1_str.F_LOW)/rad1_str.D_FREQ)
-;;  RAD2 Channels
+;; => RAD2 Channels
 rad2_ch1       = 0L
 rad2_ch2       = LONG((rad2_str.F_HIGH - rad2_str.F_LOW)/rad2_str.D_FREQ)
 
 ;;  Define default frequencies for each receiver
-tnr_lzl        = 1e1^(ALOG10(tnr_str.F_LOW) + tnr_ch1*tnr_str.D_FREQ) ;;  low freq. end of TNR
-tnr_hzl        = 1e1^(ALOG10(tnr_str.F_LOW) + tnr_ch2*tnr_str.D_FREQ) ;;  high " "
-rad1_lzl       = rad1_str.F_LOW + rad1_ch1*rad1_str.D_FREQ            ;;  low freq. end of RAD1
-rad1_hzl       = rad1_str.F_LOW + rad1_ch2*rad1_str.D_FREQ            ;;  high " "
-rad2_lzl       = rad2_str.F_LOW + rad2_ch1*rad2_str.D_FREQ            ;;  low freq. end of RAD2
-rad2_hzl       = rad2_str.F_LOW + rad2_ch2*rad2_str.D_FREQ            ;;  high " "
+tnr_lzl        = 1e1^(ALOG10(tnr_str.F_LOW) + tnr_ch1*tnr_str.D_FREQ) ;; => low freq. end of TNR
+tnr_hzl        = 1e1^(ALOG10(tnr_str.F_LOW) + tnr_ch2*tnr_str.D_FREQ) ;; => high " "
+rad1_lzl       = rad1_str.F_LOW + rad1_ch1*rad1_str.D_FREQ            ;; => low freq. end of RAD1
+rad1_hzl       = rad1_str.F_LOW + rad1_ch2*rad1_str.D_FREQ            ;; => high " "
+rad2_lzl       = rad2_str.F_LOW + rad2_ch1*rad2_str.D_FREQ            ;; => low freq. end of RAD2
+rad2_hzl       = rad2_str.F_LOW + rad2_ch2*rad2_str.D_FREQ            ;; => high " "
 ;;  Define all default frequencies for each receiver
 tnr_frq        = 1e1^(FINDGEN(tnr_str.N_FREQ)*tnr_str.D_FREQ + ALOG10(tnr_str.F_LOW))
 rad1_frq       = FINDGEN(rad1_str.N_FREQ)*rad1_str.D_FREQ + rad1_str.F_LOW
@@ -391,7 +361,7 @@ rad2_frq       = FINDGEN(rad2_str.N_FREQ)*rad2_str.D_FREQ + rad2_str.F_LOW
 min_per_day    = 1440L
 waves_t_sod    = DINDGEN(min_per_day[0])*6d1  ;;  Seconds of day
 ;;----------------------------------------------------------------------------------------
-;;  Check frequency range keywords
+;; => Check frequency range keywords
 ;;----------------------------------------------------------------------------------------
 flz            = 0e0
 fhz            = 0e0
@@ -427,7 +397,7 @@ ENDIF ELSE BEGIN
   IF (test_fh1) THEN fhz = fhz[0] ELSE fhz = rad2_str.F_HIGH[0]
 ENDELSE
 ;;----------------------------------------------------------------------------------------
-;;  Determine the frequency range of input
+;; => Determine the frequency range of input
 ;;----------------------------------------------------------------------------------------
 rec_tags       = ['TNR','RAD1','RAD2']
 a_freqs        = CREATE_STRUCT(rec_tags,tnr_frq,rad1_frq,rad2_frq)
@@ -441,7 +411,7 @@ good           = WHERE(test,gd)
 CASE gd[0] OF
   1L   : BEGIN
     ;;------------------------------------------------------------------------------------
-    ;;  Only one receiver
+    ;; => Only one receiver
     ;;------------------------------------------------------------------------------------
     receivers = STRLOWCASE(rec_tags[good[0]])
     temp      = STRUPCASE(receivers)
@@ -451,7 +421,7 @@ CASE gd[0] OF
   END
   2L   : BEGIN
     ;;------------------------------------------------------------------------------------
-    ;;  Two receivers
+    ;; => Two receivers
     ;;------------------------------------------------------------------------------------
     receivers = STRLOWCASE(rec_tags[good])
     temp      = STRUPCASE(receivers)
@@ -461,7 +431,7 @@ CASE gd[0] OF
   END
   3L   : BEGIN
     ;;------------------------------------------------------------------------------------
-    ;;  Three receivers
+    ;; => Three receivers
     ;;------------------------------------------------------------------------------------
     receivers = STRLOWCASE(rec_tags[good])
     temp      = STRUPCASE(receivers)
@@ -475,15 +445,11 @@ CASE gd[0] OF
   END
 ENDCASE
 ;;----------------------------------------------------------------------------------------
-;;  Determine file names
+;; => Determine file names
 ;;----------------------------------------------------------------------------------------
-time_ra        = get_valid_trange(TDATE=tdate,TRANGE=trange)
-tra            = time_ra.UNIX_TRANGE
-tdates         = time_ra.DATE_TRANGE        ;;  'YYYY-MM-DD'  e.g., '2009-07-13'
 n_rec          = N_ELEMENTS(receivers)
 FOR j=0L, n_rec - 1L DO BEGIN
-  files = find_waves_ascii_files(DATE=date,TRANGE=tra,RECEIVER=receivers[j],TDATE=tdates[0])
-;  files = find_waves_ascii_files(DATE=date,TRANGE=trange,RECEIVER=receivers[j])
+  files = find_waves_ascii_files(DATE=date,TRANGE=trange,RECEIVER=receivers[j])
   test  = (SIZE(files,/TYPE) EQ 8)
   IF (test) THEN BEGIN
     gfiles   = files.FILES
@@ -502,10 +468,11 @@ FOR j=0L, n_rec - 1L DO BEGIN
   ENDIF
 ENDFOR
 ;;----------------------------------------------------------------------------------------
-;;  Define timestamps for each receiver
+;; => Define timestamps for each receiver
 ;;----------------------------------------------------------------------------------------
-;time_ra        = time_range_define(DATE=date,TRANGE=trange)
-;tra            = trange
+time_ra        = time_range_define(DATE=date,TRANGE=trange)
+tra            = trange
+
 td1            = 1441L
 ntype          = N_TAGS(myfiles)   ;;  # of receivers with ASCII files found
 FOR j=0L, ntype - 1L DO BEGIN
@@ -524,7 +491,7 @@ FOR j=0L, ntype - 1L DO BEGIN
   str_element,myunix,tag0[0],unx1d,/ADD_REPLACE
 ENDFOR
 ;;----------------------------------------------------------------------------------------
-;;  Read in files
+;; => Read in files
 ;;----------------------------------------------------------------------------------------
 ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 ;;  Note:  
@@ -598,7 +565,7 @@ FOR j=0L, ntype - 1L DO BEGIN
     nbkgd[g_ind,*] = REFORM(REPLICATE(1e0,n_el) # REFORM(bkgd[k,*]))
   ENDFOR
   ;;--------------------------------------------------------------------------------------
-  ;;  Change units if desired
+  ;; => Change units if desired
   ;;--------------------------------------------------------------------------------------
   IF KEYWORD_SET(nodcbls) THEN data  *=  nbkgd
   ;;--------------------------------------------------------------------------------------
@@ -621,7 +588,7 @@ FOR j=0L, ntype - 1L DO BEGIN
   str_element,mydata,tag0[0],g_str,/ADD_REPLACE
 ENDFOR
 ;;----------------------------------------------------------------------------------------
-;;  Reformat data structures
+;; => Reformat data structures
 ;;----------------------------------------------------------------------------------------
 tags      = STRMID(TAG_NAMES(mydata),0L,4L)
 g_tnr     = WHERE(tags EQ 'TNR_',gtnr)
@@ -629,7 +596,7 @@ g_rad1    = WHERE(tags EQ 'RAD1',grd1)
 g_rad2    = WHERE(tags EQ 'RAD2',grd2)
 nt        = N_ELEMENTS(tags)
 ;;------------------------------------------
-;;  WAVES/TNR
+;; => WAVES/TNR
 ;;------------------------------------------
 num_times = 0L
 num_freqs = 0L
@@ -637,10 +604,10 @@ IF (gtnr GT 0) THEN BEGIN
   temp          = mydata.(g_tnr[0])
   num_times     = N_ELEMENTS(temp.X)
   num_freqs     = num_freqs > N_ELEMENTS(temp.F)
-  all_data_tnr  = FLTARR(num_times,num_freqs)   ;;  All the data in format : [times,frequencies]
-  all_times_tnr = DBLARR(num_times)             ;;  All frequencies
-  all_freqs_tnr = FLTARR(num_freqs)             ;;  All Unix times
-  all_bkgd_tnr  = FLTARR(num_times,num_freqs)   ;;  All background data
+  all_data_tnr  = FLTARR(num_times,num_freqs)   ;; => All the data in format : [times,frequencies]
+  all_times_tnr = DBLARR(num_times)             ;; => All frequencies
+  all_freqs_tnr = FLTARR(num_freqs)             ;; => All Unix times
+  all_bkgd_tnr  = FLTARR(num_times,num_freqs)   ;; => All background data
   ;;  Fill arrays
   all_data_tnr  = temp.Y
   all_times_tnr = temp.X
@@ -656,7 +623,7 @@ ENDIF ELSE BEGIN
 ENDELSE
 
 ;;------------------------------------------
-;;  WAVES/RAD1
+;; => WAVES/RAD1
 ;;------------------------------------------
 num_times = 0L
 num_freqs = 0L
@@ -664,10 +631,10 @@ IF (grd1 GT 0) THEN BEGIN
   temp          = mydata.(g_rad1[0])
   num_times     = N_ELEMENTS(temp.X)
   num_freqs     = num_freqs > N_ELEMENTS(temp.F)
-  all_data_rd1  = FLTARR(num_times,num_freqs)   ;;  All the data in format : [times,frequencies]
-  all_times_rd1 = DBLARR(num_times)             ;;  All frequencies
-  all_freqs_rd1 = FLTARR(num_freqs)             ;;  All Unix times
-  all_bkgd_rd1  = FLTARR(num_times,num_freqs)   ;;  All background data
+  all_data_rd1  = FLTARR(num_times,num_freqs)   ;; => All the data in format : [times,frequencies]
+  all_times_rd1 = DBLARR(num_times)             ;; => All frequencies
+  all_freqs_rd1 = FLTARR(num_freqs)             ;; => All Unix times
+  all_bkgd_rd1  = FLTARR(num_times,num_freqs)   ;; => All background data
   ;;  Fill arrays
   all_data_rd1  = temp.Y
   all_times_rd1 = temp.X
@@ -683,7 +650,7 @@ ENDIF ELSE BEGIN
 ENDELSE
 
 ;;------------------------------------------
-;;  WAVES/RAD2
+;; => WAVES/RAD2
 ;;------------------------------------------
 num_times = 0L
 num_freqs = 0L
@@ -691,9 +658,9 @@ IF (grd2 GT 0) THEN BEGIN
   temp          = mydata.(g_rad2[0])
   num_times     = N_ELEMENTS(temp.X)
   num_freqs     = num_freqs > N_ELEMENTS(temp.F)
-  all_data_rd2  = FLTARR(num_times,num_freqs)   ;;  All the data in format : [times,frequencies]
-  all_times_rd2 = DBLARR(num_times)             ;;  All frequencies
-  all_bkgd_rd2  = FLTARR(num_times,num_freqs)   ;;  All background data
+  all_data_rd2  = FLTARR(num_times,num_freqs)   ;; => All the data in format : [times,frequencies]
+  all_times_rd2 = DBLARR(num_times)             ;; => All frequencies
+  all_bkgd_rd2  = FLTARR(num_times,num_freqs)   ;; => All background data
   ;;  Fill arrays
   all_data_rd2  = temp.Y
   all_times_rd2 = temp.X
@@ -708,7 +675,7 @@ ENDIF ELSE BEGIN
   all_bkgd_rd2  = REPLICATE(f,num_times,num_freqs)
 ENDELSE
 ;;----------------------------------------------------------------------------------------
-;;  Define dummy return structures
+;; => Define dummy return structures
 ;;----------------------------------------------------------------------------------------
 tnr_data       = {X:all_times_tnr,Y:all_data_tnr,V:all_freqs_tnr,SPEC:1}
 rad1_data      = {X:all_times_rd1,Y:all_data_rd1,V:all_freqs_rd1,SPEC:1}
@@ -720,7 +687,7 @@ data_structure = CREATE_STRUCT(rec,tnr_data,rad1_data,rad2_data)
 tags           = ['DATA','BKG']
 struct         = CREATE_STRUCT(tags,data_structure,bkgd_struc)
 ;;----------------------------------------------------------------------------------------
-;;  Return to user
+;; => Return to user
 ;;----------------------------------------------------------------------------------------
 
 RETURN,struct

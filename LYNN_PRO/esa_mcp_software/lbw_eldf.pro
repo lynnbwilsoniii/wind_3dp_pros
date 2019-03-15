@@ -1,0 +1,348 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   lbw_eldf.pro
+;  PURPOSE  :   This routine is a generic function meant to serve as a routine called
+;                 by some fitting function using CALL_FUNCTION.PRO
+;
+;  CALLED BY:   
+;               lbw_eesal_counts.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               energy_to_vel.pro
+;               sphere_to_cart.pro
+;               unit_vec.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               ENERGY     :  [N,M]-Element [numeric] array of energies [eV] at which
+;                               to numerically calculate the electron distribution
+;               THETA      :  [N,M]-Element [numeric] array of poloidal angles [deg]
+;                               corresponding to ENERGY
+;               PHI        :  [N,M]-Element [numeric] array of azimuthal angles [deg]
+;                               corresponding to ENERGY
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               evdf = lbw_eldf(energy, theta, phi [,PARAMETER=param])
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***       DIRECT  INPUTS       ***
+;               **********************************
+;               PARAMETER  :  Scalar [structure] with a predefined and expected format
+;                               [Default = routine defines default version]
+;               **********************************
+;               ***       DIRECT OUTPUTS       ***
+;               **********************************
+;               PARAMETER  :  Set to a named variable to return the default parameter
+;                               structure with no inputs provided on calling.  This is
+;                               useful for establishing the structure format expected
+;                               by this routine
+;
+;   CHANGED:  1)  Routine last modified by ??
+;                                                                   [??/??/????   v1.0.0]
+;             2)  Routine updated and renamed from eldf.pro to lbw_eldf.pro and
+;                   now does all computations in double-precision and reverts to
+;                   single precision on output only to avoid rounding errors
+;                                                                   [02/27/2019   v1.0.1]
+;             3)  Fixed an undefined variable and cleaned up
+;                                                                   [02/28/2019   v1.0.2]
+;
+;   NOTES:      
+;               1)  The distributions are computed in an "odd" manner below, so here
+;                     are some notes on what the various terms mean and how they are
+;                     used.
+;                     bdir   :  b           = magnetic field unit vector
+;                                           = B/|B|
+;                     vrel   :  V_rel       = V_sw + (Vo.b) b
+;                     vsj    :  V'_j        = V_j - V_rel_j  (j = x, y, or z)
+;                     vtot2  :  (V'.V')     = Vx.Vx + Vy.Vy + Vz.Vz
+;                     r      :  R           = Tpara/Tperp
+;                     T      :  T           = (Tpara + 2*Tperp)/3
+;                       --> Tperp = 3*T/(R + 2)
+;                       --> Tpara = 3*R*T/(R + 2)
+;                     denom  :  denom       = denominator of amplitude of Maxwellian
+;                                           = Tperp * Tpara^(1/2)
+;                                           = [(3 R T)/(R + 2)]^(3/2) * R^(-1)
+;                                           = [(3 T)/(R + 2)]^(3/2) * R^(+1/2)
+;                     cos2a  :  cos(a)^2    = (V'.b)^2/(V'.V')
+;                           --> V'perp      = V' - (V'.b) b
+;                           --> V'perp^2    = (V'.V') + (V'.b)^2 b.b - V'.[(V'.b)b] - [(V'.b) b].V'
+;                                           = (V'.V') + (V'.b)^2 - 2 (V'.b)^2
+;                                           = (V'.V') - (V'.b)^2
+;                           --> (V'.b)^2    = (V'.V') cos(a)^2
+;                     expon  :  expon       = Exponent of Maxwellian
+;                                           = -[m/(2 kB)]*{ (V'.b)^2/Tpara + V'perp^2/Tperp}
+;                       --> (V'.b)^2/Tpara  = [(R + 2)/(3 R T)] (V'.b)^2
+;                                           = [(R + 2)/(3 R T)] (V'.V') cos(a)^2
+;                       --> V'perp^2/Tperp  = [(R + 2)/(3 T)] [(V'.V') - (V'.b)^2]
+;                                           = [(R + 2)/(3 T)] (V'.V') [1 = cos(a)^2]
+;                           --> expon       = -[m/(2 kB)]*(V'.V')/(3 R T) {[(R + 2) - R(R + 2)] cos(a)^2 + R(R + 2)}
+;                                           = -[m/(2 kB)]*(V'.V')/(3 T) {(2 - R^2 - R)/R cos(a)^2 + (R + 2)}
+;                     ff     :  ff          = expon * { -[(2 kB)/m] * [T/(V'.V')] }
+;
+;  REFERENCES:  
+;               1)  Carlson et al., "An instrument for rapidly measuring plasma
+;                      distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70, 1983.
+;               2)  Curtis et al., "On-board data analysis techniques for space plasma
+;                      particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372, 1989.
+;               3)  Lin et al., "A Three-Dimensional Plasma and Energetic particle
+;                      investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125, 1995.
+;               4)  Paschmann, G. and P.W. Daly "Analysis Methods for Multi-Spacecraft
+;                      Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst., 1998.
+;               5)  R.R. Goruganthu and W.G. Wilson "Relative electron detection
+;                      efficiency of microchannel plates from 0-3 keV,"
+;                      Rev. Sci. Instrum. Vol. 55(12), pp. 2030--2033,
+;                      doi:10.1063/1.1137709, 1984.
+;               6)  F. Bordoni "Channel electron multiplier efficiency for 10-1000 eV
+;                      electrons," Nucl. Inst. & Meth. Vol. 97, pp. 405--408,
+;                      doi:10.1016/0029-554X(71)90300-4, 1971.
+;
+;   ADAPTED FROM: eldf.pro    BY: Davin Larson
+;   CREATED:  02/27/2019
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/28/2019   v1.0.2
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION lbw_eldf,energy,theta,phi,PARAMETER=param
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+;;  Fundamental
+c              = 2.9979245800d+08         ;;  Speed of light in vacuum [m s^(-1), 2014 CODATA/NIST]
+kB             = 1.3806485200d-23         ;;  Boltzmann Constant [J K^(-1), 2014 CODATA/NIST]
+hh             = 6.6260700400d-34         ;;  Planck Constant [J s, 2014 CODATA/NIST]
+;;  Define speed of light in km/s
+c2             = c[0]^2
+ckm            = c[0]*1d-3                ;;  m --> km
+ckm2           = ckm[0]^2                 ;;  (km/s)^2
+;;  Electromagnetic
+qq             = 1.6021766208d-19         ;;  Fundamental charge [C, 2014 CODATA/NIST]
+epo            = 8.8541878170d-12         ;;  Permittivity of free space [F m^(-1), 2014 CODATA/NIST]
+muo            = !DPI*4.00000d-07         ;;  Permeability of free space [N A^(-2) or H m^(-1), 2014 CODATA/NIST]
+;;  Atomic
+me             = 9.1093835600d-31         ;;  Electron mass [kg, 2014 CODATA/NIST]
+mp             = 1.6726218980d-27         ;;  Proton mass [kg, 2014 CODATA/NIST]
+mn             = 1.6749274710d-27         ;;  Neutron mass [kg, 2014 CODATA/NIST]
+ma             = 6.6446572300d-27         ;;  Alpha particle mass [kg, 2014 CODATA/NIST]
+;;  --> Define mass of particles in units of energy [eV]
+me_eV          = me[0]*c2[0]/qq[0]        ;;  ~0.5109989461(31) [MeV, 2014 CODATA/NIST]
+mp_eV          = mp[0]*c2[0]/qq[0]        ;;  ~938.2720813(58) [MeV, 2014 CODATA/NIST]
+ma_eV          = ma[0]*c2[0]/qq[0]        ;;  ~3727.379378(23) [MeV, 2014 CODATA/NIST]
+;;  Convert mass to units of energy per c^2 [eV km^(-2) s^(2)]
+me_esa         = me_eV[0]/ckm2[0]
+mp_esa         = mp_eV[0]/ckm2[0]
+ma_esa         = ma_eV[0]/ckm2[0]
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check PARAMETER
+IF (SIZE(param,/TYPE) NE 8) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define default PARAM structure
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define photon energy flux at specific energies
+  eflux = [2.76005e+08,1.87363e+08,1.08779e+08,5.82489e+07,2.92734e+07,4.31295e+06,1.38850e+06]
+  pnrg  = [7.00739,8.91540,11.8189,16.2156,22.7692,32.6411,47.4903]
+  photo = {EFLUX:eflux,NRG:pnrg}
+  ;;  Define electron structures
+  ;;    N     :  number density [cm^(-3)]
+  ;;    T     :  scalar average temperature [eV]
+  ;;    TRAT  :  Tpara/Tperp ratio
+  ;;    V     :  parallel drift speed [km/s] in VSW frame
+  core  = {N:9.5d0,  T:10d0, TRAT:1d0,   V:0d0}    ;;  Fit parameter guesses for core electrons
+  halo  = {N:0.5d0,  T:60d0, TRAT:1d0,   V:0d0}    ;;  Fit parameter guesses for halo electrons
+  param = {PH:photo,CORE:core,HALO:halo,       $
+           MASS:FLOAT(me_esa[0]),              $   ;;  electron mass
+           SC_POT:5d0,                         $   ;;  Spacecraft potential [eV] guess
+           VSW:[-500d0,0d0,0d0],               $   ;;  Bulk flow velocity [km/s] guess
+           MAGF:[-5e0,5e0,0e0],                $   ;;  Quasi-static magnetic field [nT] guess
+           NTOT:10d0,                          $   ;;  Total number density [cm^(-3)] guess
+           FIX_SCP_WGHT:0,                     $   ;;  TRUE --> fix weights
+           UNITS:'df' }
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF N_PARAMS() EQ 0 THEN RETURN,param
+IF N_PARAMS() EQ 1 THEN BEGIN
+  ;;  Set default angles
+  the0   = 0e0
+  phi0   = 0e0
+ENDIF ELSE BEGIN
+  the0   = 1d0*theta
+  phi0   = 1d0*phi
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define some relevant parameters
+;;----------------------------------------------------------------------------------------
+;;  Define the electron energy at infinity
+dener          = DOUBLE(energy)
+nrg_inf        = DOUBLE(dener - param.SC_POT[0])
+;;  Define the electron velocities [km/s] in cartesian coordinates
+spd            = energy_to_vel((nrg_inf > 0d0),param.MASS[0])     ;;  Particle speed [km/s] far from potential
+sphere_to_cart,spd,the0,phi0,vx,vy,vz
+;;  Define magnetic field unit vector
+bdir           = unit_vec(param.MAGF,/NAN)
+bx             = bdir[0]
+by             = bdir[1]
+bz             = bdir[2]
+szdde          = SIZE(dener,/DIMENSIONS)
+sznde          = SIZE(dener,/N_DIMENSIONS)
+nn2            = szdde[0]
+;;----------------------------------------------------------------------------------------
+;;  Define weights
+;;----------------------------------------------------------------------------------------
+IF (param.SC_POT[0] NE 0 AND param.FIX_SCP_WGHT[0] AND nn2[0] GT 2) THEN BEGIN
+  IF (sznde[0] GE 2) THEN BEGIN
+    e0 = SHIFT(dener,1,0)  & e0[0L,*]            = e0[1L,*]
+    e2 = SHIFT(dener,-1,0) & e2[(nn2[0] - 1L),*] = e2[(nn2[0] - 2L),*]
+  ENDIF ELSE BEGIN
+    e0 = SHIFT(dener,1)  & e0[0L]                = e0[1L]
+    e2 = SHIFT(dener,-1) & e2[(nn2[0] - 1L)]     = e2[(nn2[0] - 2L)]
+  ENDELSE
+  ;;  Define ∆E = E_2 - E_1
+  de   = ABS(e2 - e0)
+  ;;  Define weights for every energy bin
+  wght =  0d0 > ((dener + e0 - 2d0*param.SC_POT[0])/de) < 1d0
+ENDIF ELSE wght = DOUBLE(dener GT param.SC_POT[0])
+;;----------------------------------------------------------------------------------------
+;;  Define photoelectron [df,flux,eflux] contribution
+;;----------------------------------------------------------------------------------------
+;;  Initialize photoelectron distribution variables
+f              = 0d0
+a              = (2d5/param.MASS[0]^2d0)
+photo          = param.PH
+IF KEYWORD_SET(photo.EFLUX[0]) THEN BEGIN
+  ;;  Interpolate with double-precision and return to single-precision after completion
+  pener  = DOUBLE(photo.NRG)
+  peflx  = DOUBLE(photo.EFLUX)
+  ;;  Determine the type of spline interpolation to be used
+  eflx2  = SPL_INIT(ALOG(pener),ALOG(peflx),/DOUBLE)
+  ;;  Spline interpolation in log-space
+  splef  = SPL_INTERP(ALOG(pener),ALOG(peflx),eflx2,ALOG(dener),/DOUBLE)
+  ;;  Convert back to linear space and renormalize
+  fphoto = EXP(splef)/dener^2d0/a[0]
+  f     += (((1d0 - wght) * fphoto))
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Add core electron [df,flux,eflux] contribution
+;;----------------------------------------------------------------------------------------
+mass           = param.MASS[0]
+vsw            = param.vsw
+IF (param.CORE.N NE 0) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define CORE structure
+  ;;--------------------------------------------------------------------------------------
+  maxw  = param.CORE
+  ;;  Remove field-aligned drift
+  vrel  = vsw + bdir * maxw.V        ;;  V_rel = V_sw + (Vo.b) b
+  vsx   = vx - vrel[0] 
+  vsy   = vy - vrel[1]
+  vsz   = vz - vrel[2]
+  ;;  Compute V'.V' [km^(+2) s^(-2)]
+  vtot2 = vsx*vsx + vsy*vsy + vsz*vsz
+  ;;  Define R = Tpara/Tperp
+  ;;    T = (Tpara + 2*Tperp)/3
+  ;;    Tperp = 3*T/(R + 2)
+  ;;    Tpara = 3*R*T/(R + 2)
+  ;;    --> Tperp * Tpara^(1/2) = [(3 R T)/(R + 2)]^(3/2) * R^(-1)
+  ;;                            = [(3 T)/(R + 2)]^(3/2) * R^(+1/2)
+  r     = maxw.TRAT
+  IF (r NE 1) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Not isotropic --> act accordingly
+    ;;------------------------------------------------------------------------------------
+    ;;  Compute:  cos(a)^2 = (V'.b)^2/(V'.V')
+    ;;    V'perp = V' - (V'.b) b
+    ;;    --> V'perp^2 = (V'.V') + (V'.b)^2 b.b - V'.[(V'.b)b] - [(V'.b) b].V'
+    ;;                 = (V'.V') + (V'.b)^2 - 2 (V'.b)^2
+    ;;                 = (V'.V') - (V'.b)^2
+    ;;    --> (V'.b)^2 = (V'.V') cos(a)^2
+    cos2a = (vsx*bx + vsy*by + vsz*bz)^2d0/vtot2
+    w     = WHERE(vtot2 EQ 0,c)
+    IF (c NE 0) THEN cos2a[w]= 0
+    ;;------------------------------------------------------------------------------------
+    ;;  Compute Exponent in terms of (V'.V') and T
+    ;;------------------------------------------------------------------------------------
+    ;;    (V'.b)^2/Tpara  =  [(R + 2)/(3 R T)] (V'.b)^2 = [(R + 2)/(3 R T)] (V'.V') cos(a)^2
+    ;;    V'perp^2/Tperp  = [(R + 2)/(3 T)] [(V'.V') - (V'.b)^2]
+    ;;                    = [(R + 2)/(3 T)] (V'.V') [1 = cos(a)^2]
+    ;;    {(V'.b)^2/Tpara + V'perp^2/Tperp} = (V'.V')/(3 R T) {[(R + 2) - R(R + 2)] cos(a)^2 + R(R + 2)}
+    ;;    (R + 2) - R(R + 2) = (2 - R^2 - R)
+    ;;    Thus, { " " }      = (V'.V')/(3 T) {(2 - R^2 - R)/R cos(a)^2 + (R + 2)}
+    ;;  The FF expression below is then given by:
+    ;;    ff  =  { " " } [T/(V'.V')] = {(2 - R^2 - R)/(3 R)*cos(a)^2 + (R + 2)/3}
+    ff    = (2d0 + r)/3d0 + cos2a*(2d0 - r - r^2d0)/3d0/r
+  ENDIF ELSE ff = 1d0
+  ;;  Define (bi-)Maxwellian terms
+  e     = EXP(-0.5d0*mass[0]/maxw.T[0]*ff*vtot2)                     ;;  Exponential : e  = -[m/(2 T) * ff * (V'.V')]
+  k     = (mass[0]/2d0/!DPI)^(3d0/2d0)                               ;;  Constant    : k  = [m/(2 π)]^(3/2)
+  ;;  The denominator in the following is given by:
+  ;;    Tperp * Tpara^(1/2) = [(3 T)/(R + 2)]^(3/2) * R^(+1/2)
+  fm    = (k[0]*maxw.N[0]/SQRT(r*(3d0/(2d0 + r)*maxw.T[0])^3d0))*e   ;;  Maxwellian  : fm = (n * k)/{Tperp * Tpara^(1/2)} * e
+  f    += (DOUBLE(wght * fm))                                        ;;  Add onto pre-existing f
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Add halo electron [df,flux,eflux] contribution
+;;----------------------------------------------------------------------------------------
+IF (param.HALO.N NE 0) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define HALO structure
+  ;;--------------------------------------------------------------------------------------
+  maxw  = param.HALO
+  ;;  Remove field-aligned drift
+  vrel  = vsw + bdir * maxw.V
+  vsx   = vx - vrel[0] 
+  vsy   = vy - vrel[1]
+  vsz   = vz - vrel[2]
+  ;;  Compute V'.V' [km^(+2) s^(-2)]
+  vtot2 = vsx*vsx + vsy*vsy + vsz*vsz
+  r     = maxw.TRAT
+  IF (r NE 1) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Not isotropic --> act accordingly
+    ;;------------------------------------------------------------------------------------
+    cos2a = (vsx*bx + vsy*by + vsz*bz)^2d0/vtot2
+    w     = WHERE(vtot2 EQ 0,c)
+    IF (c NE 0) THEN cos2a[w]= 0
+    ;;------------------------------------------------------------------------------------
+    ;;  Compute Exponent in terms of (V'.V') and T
+    ;;------------------------------------------------------------------------------------
+    ff    = (2d0 + r)/3d0 + cos2a*(2d0 - r - r^2d0)/3d0/r
+  ENDIF ELSE ff = 1d0
+  ;;  Define (bi-)Maxwellian terms
+  e     = EXP(-0.5d0*mass[0]/maxw.T[0]*ff*vtot2)                     ;;  Exponential term
+  k     = (mass[0]/2d0/!DPI)^(3d0/2d0)                               ;;  Constant
+  fm    = (k[0]*maxw.N[0]/SQRT(r*(3d0/(2d0 + r)*maxw.T[0])^3d0))*e   ;;  Combine to define Maxwellian
+  f    += (DOUBLE(wght * fm))                                        ;;  Add onto pre-existing f
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define output (convert units)
+;;----------------------------------------------------------------------------------------
+CASE STRLOWCASE(param.UNITS[0]) OF
+  'df'     :  data = FLOAT(f)
+  'flux'   :  data = FLOAT(f * dener * a[0])
+  'eflux'  :  data = FLOAT(f * dener^2d0 * a[0])
+  ELSE     :  STOP     ;;  Not currently supported
+ENDCASE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,data
+END

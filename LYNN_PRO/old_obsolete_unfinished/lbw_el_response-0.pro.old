@@ -1,0 +1,165 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   lbw_el_response.pro
+;  PURPOSE  :   This routine computes the response of the EESA Low electrostatic
+;                 analyzer.
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               NA
+;
+;  COMMON BLOCKS:
+;               LBW_EL_RESPONSE_COM
+;
+;  CALLS:
+;               dgen.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               VOLTS      :  [A,E]-Element [numeric] array of voltages [V] at which
+;                               to numerically calculate the electron instrument response
+;                                 A  :  # of anodes
+;                                 E  :  # of energy bins
+;               ENERGY     :  [E,S]-Element [numeric] array of energies [eV] at which
+;                               to numerically calculate the electron instrument response
+;                                 E  :  # of energy bins
+;                                 S  :  # of solid angles
+;               DENERGY    :  [E,S]-Element [numeric] array of energy bin widths [eV]
+;                               at which to numerically calculate the electron
+;                               instrument response
+;                                 E  :  # of energy bins
+;                                 S  :  # of solid angles
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               resp = lbw_el_response(volts, energy, denergy [,NSTEPS=nsteps])
+;
+;  KEYWORDS:    
+;               NSTEPS     :  Scalar [numeric] value defining the number of energy
+;                               bins
+;
+;   CHANGED:  1)  Routine last modified by ??
+;                                                                   [??/??/????   v1.0.0]
+;             2)  Routine updated and renamed from el_response.pro to lbw_el_response.pro
+;                   and now does all computations in double-precision
+;                                                                   [02/28/2019   v1.0.1]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               1)  Carlson et al., "An instrument for rapidly measuring plasma
+;                      distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70, 1983.
+;               2)  Curtis et al., "On-board data analysis techniques for space plasma
+;                      particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372, 1989.
+;               3)  Lin et al., "A Three-Dimensional Plasma and Energetic particle
+;                      investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125, 1995.
+;               4)  Paschmann, G. and P.W. Daly "Analysis Methods for Multi-Spacecraft
+;                      Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst., 1998.
+;               5)  R.R. Goruganthu and W.G. Wilson "Relative electron detection
+;                      efficiency of microchannel plates from 0-3 keV,"
+;                      Rev. Sci. Instrum. Vol. 55(12), pp. 2030--2033,
+;                      doi:10.1063/1.1137709, 1984.
+;               6)  F. Bordoni "Channel electron multiplier efficiency for 10-1000 eV
+;                      electrons," Nucl. Inst. & Meth. Vol. 97, pp. 405--408,
+;                      doi:10.1016/0029-554X(71)90300-4, 1971.
+;
+;   ADAPTED FROM: el_response.pro    BY: Davin Larson
+;   CREATED:  02/28/2019
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  02/28/2019   v1.0.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION lbw_el_response,volts,energy,denergy,NSTEPS=nsteps
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+;;  Instrumental
+k_an           = 6.42d0        ;;  ESA instrument analyzer constant
+fwhm           = 0.22d0        ;;  Full Width at Half Maximum (correction?) [FWHM]
+;k_an           = 6.42
+;fwhm           = 0.22
+;;----------------------------------------------------------------------------------------
+;;  Define common block
+;;----------------------------------------------------------------------------------------
+COMMON lbw_el_response_com,resp0,volts0,energy0,denergy0,nsteps0
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check NSTEPS0
+IF KEYWORD_SET(nsteps0) THEN BEGIN
+  IF (nsteps EQ nsteps0 AND TOTAL(volts ne volts0) EQ 0) THEN BEGIN
+    ;;  Data was already computed for this set of voltages
+    ;;    --> Redefine inputs and return
+    energy  = energy0
+    denergy = denergy0
+    RETURN,resp0
+  ENDIF
+ENDIF
+MESSAGE,/INFORMATIONAL,'Computing instrument response.'
+;;  Check NSTEPS
+IF KEYWORD_SET(nsteps) THEN BEGIN
+  ;;  Define energies and energy bin widths
+  v_ran   = [MIN(volts,/NAN),MAX(volts,/NAN)]
+  erange  = k_an[0]*v_ran*([1d0 - fwhm[0],1d0 + fwhm[0]])^2d0
+;  erange  = k_an*minmax_range(volts)*[1-fwhm,1+fwhm]^2
+  energy  = dgen(nsteps,/LOG,RANGE=erange)
+  i       = LINDGEN(nsteps)
+  denergy = ABS(energy[i + 1L] - energy[i - 1L])/2d0
+ENDIF
+nn             = N_ELEMENTS(energy)       ;;  # of energy bins
+nv             = N_ELEMENTS(volts)        ;;  # of voltages
+dim            = SIZE(volts,/DIMENSIONS)
+;dim = dimen(volts)
+;;  Correct voltages by instrument constant
+es             = REPLICATE(1.,nv[0]) # energy
+kvs            = REFORM(k_an[0]*volts,nv[0]) # REPLICATE(1.,nn[0])
+;;  Calculate variance of Gaussian
+;;    FWHM = 2 (ln|2|)^(1/2) V_th
+sigma          = fwhm[0]/(2d0*SQRT(2d0*ALOG(2d0))) * kvs
+;;  Compute initial response
+resp           = EXP(-((es - kvs)/sigma)^2d0/2d0) / SQRT(2d0*!DPI)/sigma
+;;  Finalize response
+resp          *= (REPLICATE(1.,nv[0]) # denergy)
+;resp           = resp * (replicate(1.,nv) # denergy)
+;;  Check if response needs to be resized and summed
+IF (N_ELEMENTS(dim) EQ 2) THEN BEGIN
+;if ndimen(volts) eq 2 then begin
+  ;;  Resize array
+  resp        = REFORM(resp,dim[0],dim[1],nn[0])
+  ;;  Sum over 1st dimension (should be the anodes)
+  resp        = TOTAL(resp,1,/NAN)/dim[0]
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Redefine common block variables
+;;----------------------------------------------------------------------------------------
+volts0         = volts
+resp0          = resp
+energy0        = energy
+denergy0       = denergy
+nsteps0        = nsteps
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,resp
+END
+
+
+
+;plot,energy,resp(14,*),/xl
+;for i=0,dimen1(resp)-1 do oplot,energy,resp(i,*)
+
