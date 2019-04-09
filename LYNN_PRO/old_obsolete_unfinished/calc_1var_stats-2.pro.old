@@ -23,9 +23,8 @@
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               stats = calc_1var_stats(xx [,/NAN] [,/PRINTOUT] [,RANGE=range]        $
-;                                          [,/POSITIVE] [,/NEGATIVE] [,CONLIM=conlim] $
-;                                          [,PERCENTILES=percentiles])
+;               stats = calc_1var_stats(xx [,/NAN] [,/PRINTOUT] [,RANGE=range]  $
+;                                          [,/POSITIVE] [,/NEGATIVE])
 ;
 ;               ;;  Define dummy array of values for later use
 ;               xx             = [-45.12d3,-25.2d1,-72.88,-2.31738,300.95313,5.15287331e5,$
@@ -63,9 +62,6 @@
 ;               ;;   0
 ;
 ;  KEYWORDS:    
-;               ****************
-;               ***  INPUTS  ***
-;               ****************
 ;               NAN          :  If set, routine will ignore non-finite values
 ;                                 by passing the argument to functions like MIN.PRO
 ;                                 [Default = FALSE]
@@ -79,26 +75,11 @@
 ;               NEGATIVE     :  If set, routine will ignore all non-negative values
 ;                                 including zeros
 ;                                 [Default = FALSE]
-;               CONLIM       :  Scalar [numeric] define the percent confidence limit
-;                                 for which to calculate the percentiles.  For example,
-;                                 a one-sigma value for a Gaussian distribution would
-;                                 be 0.68.
-;                                 [Default = 0.68]
-;               ****************
-;               ***  OUTPUT  ***
-;               ****************
-;               PERCENTILES  :  Set to a named variable to return the lower and upper
-;                                 percentiles at the boundaries of the confidence
-;                                 limit defined by CONLIM.  For instance, if CONLIM=0.68,
-;                                 then the output for this would be the value of X at
-;                                 the 16th and 85th percentiles
 ;
 ;   CHANGED:  1)  Added error handling and updated Man. page
 ;                                                                   [01/18/2018   v1.0.1]
 ;             2)  Added keywords:  RANGE, POSITIVE, and NEGATIVE
 ;                                                                   [02/20/2019   v1.0.2]
-;             3)  Added keywords:  CONLIM and PERCENTILES
-;                                                                   [04/04/2019   v1.0.3]
 ;
 ;   NOTES:      
 ;               1)  The return value, if successful, is a thirteen element array with:
@@ -123,14 +104,14 @@
 ;
 ;   CREATED:  01/17/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/04/2019   v1.0.3
+;    LAST MODIFIED:  02/20/2019   v1.0.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION calc_1var_stats,xx,NAN=nan,PRINTOUT=printout,RANGE=range,POSITIVE=positive, $
-                            NEGATIVE=negative,CONLIM=conlim,PERCENTILES=percentiles
+FUNCTION calc_1var_stats,xx,NAN=nan,PRINTOUT=printout,RANGE=range,             $
+                            POSITIVE=positive,NEGATIVE=negative
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -197,9 +178,6 @@ IF (test[0]) THEN BEGIN
   neg_on = 0b
 ENDIF ELSE ran_on = 0b
 IF (pos_on[0] AND neg_on[0]) THEN neg_on[0] = 0b
-;;  Check CONLIM
-test           = (is_a_number(conlim,/NOMSSG) EQ 0)
-IF (test[0]) THEN conflim = 68d-1 ELSE conflim = (ABS(conlim[0]) > 1d-4) < 0.9999d0
 ;;----------------------------------------------------------------------------------------
 ;;  Redefine good elements array, if necessary
 ;;----------------------------------------------------------------------------------------
@@ -212,7 +190,7 @@ IF (ran_on[0] OR pos_on[0] OR neg_on[0]) THEN BEGIN
       IF (gin[0] GT 0) THEN BEGIN
         ;;  Good setting --> Redefine input and re-call
         x2 = x[gind]
-        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout,CONLIM=conlim,PERCENTILES=percentiles)
+        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout)
       ENDIF ELSE BEGIN
         ;;  Bad range setting --> Inform user and return 0
         MESSAGE,'No data within RANGE boundaries...',/INFORMATIONAL,/CONTINUE
@@ -228,7 +206,7 @@ IF (ran_on[0] OR pos_on[0] OR neg_on[0]) THEN BEGIN
         RETURN,0b
       ENDIF ELSE BEGIN
         ;;  Good setting --> Re-call with new input
-        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout,CONLIM=conlim,PERCENTILES=percentiles)
+        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout)
       ENDELSE
     END
     check[2]  :  BEGIN
@@ -240,7 +218,7 @@ IF (ran_on[0] OR pos_on[0] OR neg_on[0]) THEN BEGIN
         RETURN,0b
       ENDIF ELSE BEGIN
         ;;  Good setting --> Re-call with new input
-        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout,CONLIM=conlim,PERCENTILES=percentiles)
+        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout)
       ENDELSE
     END
     ELSE      : STOP  ;;  should not happen!
@@ -258,8 +236,6 @@ ENDIF ELSE BEGIN
   ny      = nx[0]
   y       = x
 ENDELSE
-sp             = SORT(y)
-y              = TEMPORARY(y[sp])
 sdomfac        = SQRT(1d0*ny[0])
 minx           =    MIN(y,NAN=nan_on)                      ;;  Min. value of X
 maxx           =    MAX(y,NAN=nan_on)                      ;;  Max. value of X
@@ -311,12 +287,6 @@ ENDIF ELSE BEGIN
     iqmx           = MEAN(iy,NAN=nan_on,/DOUBLE)
   ENDELSE
 ENDELSE
-;;----------------------------------------------------------------------------------------
-;;  Calculate the percentiles
-;;----------------------------------------------------------------------------------------
-low_pind       = LONG(((1d0 - conflim[0])/2L)*ny[0]) > 0L
-upp_pind       = ny[0] - low_pind[0] - 1L
-percentiles    = [y[low_pind[0]],y[upp_pind[0]]]
 ;;----------------------------------------------------------------------------------------
 ;;  Print stats, if user wants to
 ;;----------------------------------------------------------------------------------------
