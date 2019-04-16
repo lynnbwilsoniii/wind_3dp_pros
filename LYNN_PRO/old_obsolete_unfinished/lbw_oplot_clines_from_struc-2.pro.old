@@ -15,9 +15,6 @@
 ;  CALLED BY:   
 ;               NA
 ;
-;  INCLUDES:
-;               NA
-;
 ;  CALLS:
 ;               is_a_number.pro
 ;
@@ -33,15 +30,12 @@
 ;                            [see NOTES below for more details]
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               lbw_oplot_clines_from_struc,cpath [,C_COLORS=c_colors] [,_EXTRA=ex_str]
+;               lbw_oplot_clines_from_struc,cpath,C_COLORS=c_colors
 ;
 ;  KEYWORDS:    
 ;               C_COLORS  :  [N]-Element [long] array defining the color indices for the
 ;                              contours on output
 ;                              [Default = evenly spaced values from 30 - 250]
-;               CLOSED    :  If set, routine will only plot the closed contours
-;                              [Default = TRUE]
 ;               _EXTRA    :  Any keywords accepted by PLOTS.PRO
 ;
 ;   CHANGED:  1)  Continued to write routine
@@ -49,11 +43,6 @@
 ;             2)  Moved to ~/wind_3dp_pros/LYNN_PRO/plotting_routines/ and updated
 ;                   Man. page
 ;                                                                   [08/12/2015   v1.1.0]
-;             3)  Fixed an issue where not all contours are closed thus the number
-;                   of levels from the CPATH info may differ from the number of
-;                   elements in C_COLORS and
-;                   added keyword:  CLOSED
-;                                                                   [04/12/2019   v1.1.1]
 ;
 ;   NOTES:      
 ;               1)  This routine takes a structure containing the outputs from the
@@ -67,13 +56,13 @@
 ;
 ;   CREATED:  07/19/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/12/2019   v1.1.1
+;    LAST MODIFIED:  08/12/2015   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-PRO lbw_oplot_clines_from_struc,cpath,C_COLORS=c_colors,CLOSED=closed,_EXTRA=ex_str
+PRO lbw_oplot_clines_from_struc,cpath,C_COLORS=c_colors,_EXTRA=ex_str
 
 ;;  Let IDL know that the following are functions
 FORWARD_FUNCTION is_a_number
@@ -85,7 +74,6 @@ f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
 
 def_tags       = ['INFO','XY']
-open_on        = 0b
 ;;  Dummy error messages
 noinpt_msg     = 'User must supply an IDL structure containing results returned by PATH_* keywords from CONTOUR.PRO'
 badfor_msg     = "User supplied IDL structure must have the following tags:  'INFO' and 'XY'"
@@ -116,7 +104,6 @@ xy_cpaths      = REFORM(cpath_out.XY)          ;;  [2,N]-Element array
 c_info         = cpath_out.INFO
 nconts         = N_ELEMENTS(c_info)            ;;  # of contours
 ;;  Define level info
-cls_open       = c_info.TYPE                   ;;  0 = Open, 1 = Closed
 lev_nums       = c_info.LEVEL
 unq            = UNIQ(lev_nums,SORT(lev_nums))
 n_lev          = N_ELEMENTS(unq)               ;;  # of unique levels to be plotted (may differ from # of contours)
@@ -130,31 +117,18 @@ def_c_cols     = LINDGEN(n_lev[0])*ccol_fac[0] + mnmx_col[0]
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
 ;;  Check C_COLORS
-test           = (is_a_number(c_colors,/NOMSSG) EQ 0)
-IF (test[0]) THEN test = (N_ELEMENTS(c_colors) LE MAX(lev_nums))
-IF (test[0]) THEN ccols = def_c_cols ELSE ccols = c_colors
-;;  Check CLOSED
-IF ~KEYWORD_SET(closed) THEN open_on = 1b
+test           = (is_a_number(c_colors,/NOMSSG) EQ 0) OR (N_ELEMENTS(c_colors) NE n_lev[0])
+IF (test) THEN ccols = def_c_cols ELSE ccols = c_colors
 ;;----------------------------------------------------------------------------------------
 ;;  Overplot contours
 ;;----------------------------------------------------------------------------------------
 FOR j=0L, nconts[0] - 1L DO BEGIN
   ;;  Define the level # and associated indices for path construction
-  opn_nj = (cls_open[j] EQ 0)
   lev_nj = lev_nums[j]
-;  inds_j = [LINDGEN(lev_n_ind[j]),0L]
+  inds_j = [LINDGEN(lev_n_ind[j]),0L]
   ;;  Define index offset
   i0_j   = lev_ind_off[j]
-  IF (opn_nj[0]) THEN BEGIN
-    ;;  Open contour --> Check if user allows this
-    yesplt = open_on[0]
-    inds_j = LINDGEN(lev_n_ind[j])
-  ENDIF ELSE BEGIN
-    ;;  Closed contour --> always allow these
-    yesplt = 1b
-    inds_j = [LINDGEN(lev_n_ind[j]),0L]
-  ENDELSE
-  IF (yesplt[0]) THEN PLOTS,xy_cpaths[*, (inds_j + i0_j[0]) ],COLOR=ccols[lev_nj[0]],_EXTRA=ex_str
+  PLOTS,xy_cpaths[*, (inds_j + i0_j[0]) ],COLOR=ccols[lev_nj[0]],_EXTRA=ex_str
 ENDFOR
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user

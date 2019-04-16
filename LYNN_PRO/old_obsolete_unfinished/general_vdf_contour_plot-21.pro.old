@@ -483,8 +483,7 @@ END
 ;                                      [,P_TITLE=p_title] [,ONE_C=one_c]                 $
 ;                                      [,DAT_OUT=dat_out] [,BIMAX=bimax] [,BIKAP=bikap]  $
 ;                                      [,STRAHL=strahl] [,/GET_ROT] [,ROT_OUT=rot_out]   $
-;                                      [,S_SIGN=s_sign] [,CLOSED=closed] [,/KEEPNAN]     $
-;                                      [,F3D_QH=f3d_qh]
+;                                      [,S_SIGN=s_sign]
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -596,11 +595,6 @@ END
 ;                             is positive, then the output from find_strahl_direction.pro
 ;                             will be used, otherwise the sign will flip.
 ;                             [Default = +1]
-;               CLOSED   :  If set, routine will only plot the closed contours
-;                             [Default = FALSE]
-;               KEEPNAN  :  If set, routine will keep track of places where NaNs were
-;                             originally located and replace them if they are interpolated
-;                             out
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [none of the following have default settings]  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -666,8 +660,6 @@ END
 ;               ROT_OUT  :  Set to a named variable to return a structure containing
 ;                             the rotated and triangulated data and rotation matrices,
 ;                             i.e., the output from rotate_and_triangulate_dfs.pro
-;               F3D_QH   :  Set to a named variable to return the 3D array of phase
-;                             space densities triangulated onto a regular grid
 ;
 ;   CHANGED:  1)  Fixed a bug that occurs when VDF input contains zeros
 ;                                                                  [05/16/2016   v1.0.1]
@@ -728,8 +720,6 @@ END
 ;            21)  Fixed an issue where the one-count data does not return a valid
 ;                   triangulated structure
 ;                                                                  [04/10/2019   v1.3.5]
-;            22)  Added keywords:  CLOSED, KEEPNAN, and F3D_QH
-;                                                                  [04/12/2019   v1.3.6]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -784,7 +774,7 @@ END
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/12/2019   v1.3.6
+;    LAST MODIFIED:  04/10/2019   v1.3.5
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -798,8 +788,7 @@ PRO general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=v
                              P_TITLE=p_title,ONE_C=one_c,DAT_OUT=dat_out,             $
                              CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info,             $
                              BIMAX=bimax,BIKAP=bikap,STRAHL=strahl,GET_ROT=get_rot,   $
-                             ROT_OUT=rot_out,S_SIGN=s_sign,CLOSED=closed,             $
-                             KEEPNAN=keep_nans,F3D_QH=f3d_qh
+                             ROT_OUT=rot_out,S_SIGN=s_sign
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range,              $
                  defaults_vdf_contour_plot, rot_matrix_array_dfs, rel_lorentz_trans_3vec, $
@@ -900,18 +889,13 @@ ENDIF ELSE BEGIN
   df1do   = df1d
   dfrao   = dfra
 ENDELSE
-;;  Check CLOSED
-IF KEYWORD_SET(closed) THEN close_only = 1b ELSE close_only = 0b
-;;  Check KEEPNAN
-IF KEYWORD_SET(keep_nans) THEN nans_on = 1b ELSE nans_on = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Rotate velocities and VDF into new coordinate basis and triangulate
 ;;----------------------------------------------------------------------------------------
 r_vels         = get_rotated_and_triangulated_vdf(vxyz,df1d,VLIM=vlim[0],C_LOG=clog_on[0],$
                                                   NGRID=nm[0],SLICE2D=slice_on[0],        $
                                                   VFRAME=vframe,VEC1=vec1,VEC2=vec2,      $
-                                                  P_LOG=plog_on,ROTMXY=rotm,ROTMZY=rotz,  $
-                                                  F3D_QH=f3d_qh                           )
+                                                  P_LOG=plog_on,ROTMXY=rotm,ROTMZY=rotz   )
 ;;  Check if user is only looking for the rotation structure
 IF KEYWORD_SET(get_rot) THEN BEGIN
   rot_out = r_vels
@@ -1225,13 +1209,6 @@ IF KEYWORD_SET(sm_cuts) THEN BEGIN
     onec_cut_par0 = SMOOTH(onec_cpara,nsmcut[0],/NAN,/EDGE_TRUNCATE)
     onec_cut_per0 = SMOOTH(onec_cperp,nsmcut[0],/NAN,/EDGE_TRUNCATE)
   ENDIF
-  IF (nans_on[0]) THEN BEGIN
-    ;;  Replace indices originally having NaNs with NaNs
-    bad = WHERE(FINITE(vdf_para_cut) EQ 0,bd)
-    IF (bd[0] GT 0) THEN vdf_cut_para0[bad] = d
-    bad = WHERE(FINITE(vdf_perp_cut) EQ 0,bd)
-    IF (bd[0] GT 0) THEN vdf_cut_perp0[bad] = d
-  ENDIF
 ENDIF ELSE BEGIN
   vdf_cut_para0  = vdf_para_cut
   vdf_cut_perp0  = vdf_perp_cut
@@ -1243,11 +1220,6 @@ ENDELSE
 IF KEYWORD_SET(sm_cont) THEN BEGIN
   ;;  Smooth contour
   df2ds0 = SMOOTH(df2d,nsmcon[0],/NAN,/EDGE_TRUNCATE)
-  IF (nans_on[0]) THEN BEGIN
-    ;;  Replace indices originally having NaNs with NaNs
-    bad = WHERE(FINITE(df2d) EQ 0,bd)
-    IF (bd[0] GT 0) THEN df2ds0[bad] = d
-  ENDIF
 ENDIF ELSE BEGIN
   df2ds0 = df2d
 ENDELSE
@@ -1333,17 +1305,7 @@ PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=base_lim_cn,CHARTHICK=chthick[0],XTHICK=p_thick[
   ;;  Output actual locations of data in plane
   OPLOT,vxpts*1d-3,vypts*1d-3,PSYM=8,SYMSIZE=1.0,COLOR=100L
   ;;  Output contour plot
-  IF (close_only[0]) THEN BEGIN
-    CONTOUR,df2ds,vx2d*1d-3,vy2d*1d-3,_EXTRA=con_lim,C_THICK=c_thick[0],/PATH_DATA_COORDS,/PATH_DOUBLE,$
-                                      PATH_INFO=cpath_info,PATH_XY=cpath_xy
-    IF (SIZE(cpath_info,/TYPE) EQ 8) THEN BEGIN
-      cpath  = {INFO:cpath_info,XY:cpath_xy}
-      lbw_oplot_clines_from_struc,cpath,C_COLORS=c_cols,THICK=c_thick[0],/DATA,CLOSED=1b
-    ENDIF
-  ENDIF ELSE BEGIN
-    ;;  Plot all contours [Default]
-    CONTOUR,df2ds,vx2d*1d-3,vy2d*1d-3,_EXTRA=con_lim,C_THICK=c_thick[0]
-  ENDELSE
+  CONTOUR,df2ds,vx2d*1d-3,vy2d*1d-3,_EXTRA=con_lim,C_THICK=c_thick[0]
   ;;--------------------------------------------------------------------------------------
   ;;  Output arrows for EX_VECS
   ;;--------------------------------------------------------------------------------------
