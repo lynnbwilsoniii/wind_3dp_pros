@@ -1,0 +1,282 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   lbw_hist_nd.pro
+;  PURPOSE  :   Calculate the histogram of an [N,M]-dimensional input array, where
+;                 M is the number of points in each of the N-dimensions.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               XIN   :  [N,M]-Element [numeric] array, i.e., it is N-dimensions and there
+;                          are M-elements in each dimension
+;               BSZ   :  Scalar or [N]-element [numeric] array defining the bin size
+;                          in the Nth dimension.  If a scalar, then all N-dimensions get
+;                          the same bin size.
+;                          [Default = FLOAT(MAXX - MINX)/NBIN]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               ndhist = lbw_hist_nd(xin [,bsz] [,MINX=minx] [,MAXX=maxx] [,NBIN=nbin] [,RIND=rind])
+;
+;               ;;*****************************************************************
+;               ;;  The following was adapted from:
+;               ;;    http://www.idlcoyote.com/code_tips/matchlists.html
+;               ;;
+;               ;;  Match stars in one list to another, within some tolerance.
+;               ;;  Pre-bin into a 2D histogram, and use DUAL HISTOGRAM matching to select
+;               ;;*****************************************************************
+;               n1     = 1000000L                     ;;  number of stars
+;               x1     = RANDOMU(sd,n1)               ;;  points to find matches near
+;               y1     = RANDOMU(sd,n1)
+;               ;;  Define points to search in
+;               n2     = n1
+;               x2     = RANDOMU(sd,n2)
+;               y2     = RANDOMU(sd,n2)
+;               ;;  Define search radius and bin size
+;               max_r  = .0005                        ;;  maximum allowed radius for a match
+;               bsz    = 2*max_r[0]                   ;;  this is the smallest binsize allowed
+;               ndhist = lbw_hist_nd([1#x2,1#y2],bsz,MIN=0,MAX=1,RIND=rind)
+;               bsz    = bsz[0]
+;               dh     = SIZE(ndhist,/DIMENSIONS)
+;               ;;  Bin location of X1,Y1 in the X2,Y2 grid
+;               xoff   = x1/bsz[0]
+;               yoff   = y1/bsz[0]
+;               xbin   = FLOOR(xoff)
+;               ybin   = FLOOR(yoff)
+;               binl   = (xbin + dh[0]*ybin) < (dh[0]*dh[1] - 1L)
+;               ;;  We must search 4 bins worth for closest match, depending on
+;               ;;  location within bin (towards any of the 4 quadrants).
+;               xoff2  = 1L - 2L*((xoff - xbin) LT 5e-1)        ;;  add bin left or right
+;               yoff2  = 1L - 2L*((yoff - ybin) LT 5e-1)        ;;  add bin down or up
+;               mnposi = MAKE_ARRAY(n1[0],VALUE=-1L)
+;               mndist = FLTARR(n1[0],/NOZERO)
+;               ;; Loop over 4 bins in the correct quadrant direction
+;               FOR i=0L, 1L DO BEGIN
+;                 FOR j=0L, 1L DO BEGIN
+;                   ;;  Define current bin offset
+;                   b0 = 0L > (binl + i[0]*xoff + j[0]*yoff*dh[0]) < (dh[0]*dh[1] - 1L)
+;                   ;; Dual histogram method, loop by repeat count in bins
+;                   h2 = HISTOGRAM(ndhist[b0],MIN=1,REVERSE_INDICES=rind2)
+;                   ;; Process all bins with the same number of repeats >= 1
+;                   FOR k=0L, N_ELEMENTS(h2) - 1L DO BEGIN
+;                     IF (h2[k] EQ 0) THEN CONTINUE
+;                     ;;  Define the points with k+1 repeats in bin
+;                     these_bins = rind2[rind2[k]:(rind2[(k + 1L)] - 1L)]
+;                     IF (k EQ 0) THEN BEGIN
+;                       ;;  single point (n)
+;                       these_points = rind[rind[b0[these_bins]]]
+;                     ENDIF ELSE BEGIN
+;                       ;;  range over k+1 points, (n x k+1)
+;                       these_points = rind[rind[REBIN(b0[these_bins],h2[k],(k + 1L),/SAMPLE)] + $
+;                                                REBIN(LINDGEN(1,(k + 1L)),h2[k],(k + 1L),/SAMPLE)]
+;                       these_bins   = REBIN(TEMPORARY(these_bins),h2[k],(k + 1L),/SAMPLE)
+;                     ENDELSE
+;                     ;;  Define the current distribution of points
+;                     cdist = (x2[these_points] - x1[these_bins])^2 + $
+;                             (y2[these_points] - y1[these_bins])^2
+;                     IF (k GT 0) THEN BEGIN
+;                       ;;  multiple point in bin: find closest
+;                       cdist        = MIN(cdist,DIMENSION=2,p)
+;                       ;;  index of closest point in bin
+;                       these_points = these_points[p]
+;                       ;;  original bin list
+;                       these_bins   = rind2[rind2[k]:(rind2[(k + 1L)] - 1L)]
+;                     ENDIF
+;                     ;;  See if a minimum is already set
+;                     set = WHERE(mnposi[these_bins] GE 0,nset,COMPLEMENT=unset,NCOMPLEMENT=nunset)
+;                     IF (nset[0] GT 0) THEN BEGIN
+;                       ;; Only update those where the new distance is less
+;                       closer = WHERE(cdist[set] LT mndist[these_bins[set]],cnt)
+;                       IF (cnt[0] GT 0) THEN BEGIN
+;                         set                     = set[closer]
+;                         mnposi[these_bins[set]] = these_points[set]
+;                         mndist[these_bins[set]] = cdist[set]
+;                       ENDIF
+;                     ENDIF
+;                     IF (nunset[0] GT 0) THEN BEGIN
+;                       ;;  Nothing set, closest by default
+;                       mnposi[these_bins[unset]] = these_points[unset]
+;                       mndist[these_bins[unset]] = cdist[unset]
+;                     ENDIF
+;                   ENDFOR
+;                 ENDFOR
+;               ENDFOR
+;
+;  KEYWORDS:    
+;               ***  INPUTS  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all of the following have default settings]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               MINX  :  Scalar or [N]-element [numeric] array defining the minimum
+;                          value to allow in the Nth dimension.  If a scalar, then all
+;                          N-dimensions get the same minimum.
+;                          [Default = MIN(XIN)]
+;               MAXX  :  Scalar or [N]-element [numeric] array defining the maximum
+;                          value to allow in the Nth dimension.  If a scalar, then all
+;                          N-dimensions get the same maximum.
+;                          [Default = MAX(XIN)]
+;               NBIN  :  Scalar or [N]-element [numeric] array defining the number of
+;                          bins to use in the Nth dimension of the output histogram.
+;                          If a scalar, then all N-dimensions get the same number of bins.
+;                          If set and BSZ not set, then BSZ will be defined as:
+;                            BSZ = (MAXX - MINX)/NBIN
+;                          [Default = LONG((MAXX - MINX)/BSZ + 1L)]
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               RIND  :  Set to a named variable to return the reverse indices from
+;                          the histogram routine.  This will be a 1D array so to find
+;                          the index of the, e.g., [i,j,k]-th location of the histogram,
+;                          define the following:
+;                            gind  =  [i[0] + ni[0]*(j[0] + nj[0]*k[0])]
+;                            gloc  = rind[rind[gind[0]]:(rind[gind[0] + 1L] - 1L)]
+;                          To find the location in the original array, use ARRAY_INDICES
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               See also:
+;                 http://www.idlcoyote.com/code_tips/drizzling.html
+;
+;  REFERENCES:  
+;               https://www.harrisgeospatial.com/docs/HISTOGRAM.html
+;               https://www.harrisgeospatial.com/docs/hist_2d.html
+;               https://www.harrisgeospatial.com/docs/PRODUCT.html
+;               https://www.harrisgeospatial.com/docs/ARRAY_EQUAL.html
+;               https://www.harrisgeospatial.com/docs/REBIN.html
+;
+;   ADAPTED FROM: hist_nd.pro    BY: J.D. Smith  Copyright (C) 2001-2010
+;   CREATED:  04/26/2019
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/26/2019   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION lbw_hist_nd,xin,bsz,MINX=minx,MAXX=maxx,NBIN=nbin,RIND=rind
+
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+;;  Dummy error messages
+no_inpt_msg    = 'User must supply XIN as an [N,P]-element [numeric] array...'
+badndim_msg    = 'Incorrect input format:  XIN cannot have more than 8 dimensions...'
+badmnmx_msg    = 'MINX value(s) must not exceed MAXX value(s)...'
+nobs_nb_msg    = 'Either BSZ or NBIN must be set and numeric in type on input...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+szdx           = SIZE(xin,/DIMENSIONS)
+sznx           = SIZE(xin,/N_DIMENSIONS)
+IF (sznx[0] NE 2) THEN BEGIN
+  ;;  Incorrect inputs --> exit without plotting
+  MESSAGE,no_inpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+IF (szdx[0] GT 8) THEN BEGIN
+  ;;  Incorrect input format --> exit without plotting
+  MESSAGE,badndim_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test           = ((N_ELEMENTS(bsz) EQ 0) OR (is_a_number(bsz,/NOMSSG) EQ 0)) AND  $
+                 ((N_ELEMENTS(nbin) EQ 0) OR (is_a_number(nbin,/NOMSSG) EQ 0))
+IF (test[0]) THEN BEGIN
+  ;;  Incorrect input format --> exit without plotting
+  MESSAGE,nobs_nb_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Define default MAX/MIN
+def_max        = MAX(xin,DIMENSION=2,MIN=def_min)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check MINX and MAXX
+IF ((N_ELEMENTS(minx) EQ 0) OR (is_a_number(minx,/NOMSSG) EQ 0)) THEN minx = def_min
+IF ((N_ELEMENTS(maxx) EQ 0) OR (is_a_number(maxx,/NOMSSG) EQ 0)) THEN maxx = def_max
+IF (szdx[0] GT 1) THEN BEGIN
+  ;;  More than 1D
+  IF (N_ELEMENTS(minx) EQ 1) THEN minx = REPLICATE(minx[0],szdx[0])
+  IF (N_ELEMENTS(maxx) EQ 1) THEN maxx = REPLICATE(maxx[0],szdx[0])
+  IF (N_ELEMENTS(bsz)  EQ 1) THEN bsz  = REPLICATE( bsz[0],szdx[0])
+  IF (N_ELEMENTS(nbin) EQ 1) THEN nbin = REPLICATE(nbin[0],szdx[0])
+ENDIF ELSE BEGIN
+  ;;  Make into arrays
+  minx = [minx[0]]
+  maxx = [maxx[0]]
+ENDELSE
+;;  Check that MINX ≤ MAXX
+test           = ~ARRAY_EQUAL(minx LE maxx,1b)
+IF (test[0]) THEN BEGIN
+  ;;  limits are incorrectly set
+  MESSAGE,badmnmx_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check BSZ and NBIN
+test           = ((N_ELEMENTS(bsz) EQ 0) OR (is_a_number(bsz,/NOMSSG) EQ 0))
+IF (test[0]) THEN BEGIN
+  ;;  BSZ is not set --> Already checked for NBIN
+  nbin           = LONG(nbin)                 ;;  Prevent fractional indices
+  bsz            = FLOAT(maxx - minx)/nbin
+ENDIF ELSE BEGIN
+  ;;  NBIN is not set --> Already checked for BSZ
+  nbin           = LONG((maxx - minx)/bsz + 1L)
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define parameters
+;;----------------------------------------------------------------------------------------
+tot_nbins      = PRODUCT(nbin,/PRESERVE_TYPE)
+;;  Initialize scaled indices
+ih             = LONG( (xin[(szdx[0] - 1L),*] - minx[(szdx[0] - 1L)])/bsz[(szdx[0] - 1L)] )
+;;  Define the scaled indices
+FOR i=(szdx[0] - 2L), 0L, -1L DO ih = nbin[i]*TEMPORARY(ih) + LONG( (xin[i,*] - minx[i])/bsz[i] )
+;;  Check for out-of-bounds indices
+outside        = [~ARRAY_EQUAL(minx LE def_min,1b),~ARRAY_EQUAL(maxx GE def_max,1b)]
+IF (~ARRAY_EQUAL(outside,0b)) THEN BEGIN
+  ;;  At least one value is out of bounds --> fix
+  inside         = 1
+  IF (outside[0]) THEN BEGIN
+    ;;  Lower bound is bad
+    inside = TOTAL((xin GE REBIN(minx,szdx,/SAMPLE)),1L,/PRESERVE_TYPE) EQ szdx[0]
+  ENDIF
+  IF (outside[1]) THEN BEGIN
+    ;;  Upper bound is bad
+    ;;    AND=  :  prevents having to put INSIDE on both sides of the = symbol
+    inside AND= TOTAL((xin LE REBIN(maxx,szdx,/SAMPLE)),1L,/PRESERVE_TYPE) EQ szdx[0]
+  ENDIF
+  ;;  Redefine the scaled indices
+  ih             = (TEMPORARY(ih) + 1L)*TEMPORARY(inside) - 1L
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define histograms
+;;----------------------------------------------------------------------------------------
+;;  Construct output array
+outarr         = MAKE_ARRAY(TYPE=3,DIMENSION=nbin,/NOZERO)
+IF (ARG_PRESENT(rind)) THEN BEGIN
+  ;;  User wants to get back reverse indices
+  outarr[0]      = HISTOGRAM(ih,MIN=0L,MAX=(tot_nbins[0] - 1L),REVERSE_INDICES=rind)
+ENDIF ELSE BEGIN
+  ;;  User does not want reverse indices
+  outarr[0]      = HISTOGRAM(ih,MIN=0L,MAX=(tot_nbins[0] - 1L))
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,outarr
+END
+
+

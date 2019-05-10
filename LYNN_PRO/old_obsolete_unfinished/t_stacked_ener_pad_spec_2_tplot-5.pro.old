@@ -21,7 +21,6 @@
 ;               t_stacked_pad_spec_2_tplot.pro
 ;               get_data.pro
 ;               tplot_struct_format_test.pro
-;               lbw_append_arr.pro
 ;               extract_tags.pro
 ;               store_data.pro
 ;               tnames.pro
@@ -121,12 +120,6 @@
 ;                                                                   [01/15/2016   v1.1.0]
 ;             4)  Fixed a bug where badvdf_msg and notthm_msg variables were not defined
 ;                                                                   [02/02/2016   v1.1.1]
-;             5)  In very unusual circumstances, incompatible arrays would get through
-;                   and cause errors which have now been fixed using the routine
-;                   lbw_append_arr.pro and
-;                   all V* tags are now forced to be 2D on output to avoid issues
-;                   in other routines that assume or require 2D arrays for these tags
-;                                                                   [05/09/2019   v1.1.2]
 ;
 ;   NOTES:      
 ;               1)  See also:  get_spec.pro, get_padspecs.pro,
@@ -162,23 +155,10 @@
 ;                      Magnetometer," Space Sci. Rev. 141, pp. 235-264, (2008).
 ;               8)  Angelopoulos, V. "The THEMIS Mission," Space Sci. Rev. 141,
 ;                      pp. 5-34, (2008).
-;               9)  L.B. Wilson III, et al., "Electron energy partition across
-;                      interplanetary shocks: I. Methodology and Data Product,"
-;                      Astrophys. J. Suppl., under review, eprint 1902.01476, 2019a.
-;              10)  Wilson III, L.B., et al., "Relativistic Electrons Produced by
-;                      Foreshock Disturbances Observed Upstream of Earth's Bow Shock,"
-;                      Phys. Rev. Lett. 117(21), pp. 215101,
-;                      doi:10.1103/PhysRevLett.117.215101, 2016.
-;              11)  L.B. Wilson III, et al., "Electron energy partition across
-;                      interplanetary shocks: II. Statistics," Astrophys. J. Suppl.,
-;                      in preparation, 20??.
-;              12)  L.B. Wilson III, et al., "Electron energy partition across
-;                      interplanetary shocks: III. Analysis," Astrophys. J.,
-;                      in preparation, 20??.
 ;
 ;   CREATED:  02/10/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/09/2019   v1.1.2
+;    LAST MODIFIED:  02/02/2016   v1.1.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -196,7 +176,9 @@ COMPILE_OPT IDL2
 FORWARD_FUNCTION test_wind_vs_themis_esa_struct, dat_3dp_str_names,                 $
                  dat_themis_esa_str_names, struct_value, tnames, is_a_number,       $
                  tplot_struct_format_test
-ex_start       = SYSTIME(1)
+;;****************************************************************************************
+ex_start = SYSTIME(1)
+;;****************************************************************************************
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
 ;;----------------------------------------------------------------------------------------
@@ -389,50 +371,29 @@ IF (test[0]) THEN BEGIN
       ;;----------------------------------------------------------------------------------
       ;;  Everything seems okay --> merge
       ;;----------------------------------------------------------------------------------
-      tempx          = [temp_x,temp2x]
-      IF (szdd_1.(1)[1] NE szdd_2.(1)[1]) THEN BEGIN
-        ;;  Issue in 2nd dimension
-        tempy = lbw_append_arr(temp_y,temp2y,LARGER=2)
-      ENDIF ELSE BEGIN
-        ;;  Same size --> directly append
-        tempy = [temp_y,temp2y]
-      ENDELSE
-      ;;  Replace zeros with NaNs
-      bad          = WHERE(FINITE(tempy) EQ 0 OR tempy LE 0,bd)
-      IF (bd[0] GT 0) THEN tempy[bad] = d
-      ;;----------------------------------------------------------------------------------
+      tempx = [temp_x,temp2x]
+      tempy = [temp_y,temp2y]
       ;;  Sort by time
-      ;;----------------------------------------------------------------------------------
-      sp             = SORT(tempx)
-      tempx          = TEMPORARY(tempx[sp])
-      tempy          = TEMPORARY(tempy[sp,*])
+      sp    = SORT(tempx)
+      tempx = TEMPORARY(tempx[sp])
+      tempy = TEMPORARY(tempy[sp,*])
       IF (vv_2d_on[0]) THEN BEGIN
         ;;  V tag is a 2D array  -->  Sort by time
-        IF (szdd_1.(2)[1] NE szdd_2.(2)[1]) THEN BEGIN
-          tempv = lbw_append_arr(temp_v,temp2v,LARGER=2)
-        ENDIF ELSE BEGIN
-          ;;  Same size --> directly append
-          tempv = [temp_v,temp2v]
-        ENDELSE
+        tempv = [temp_v,temp2v]
         tempv = TEMPORARY(tempv[sp,*])
       ENDIF ELSE BEGIN
         ;;  V tag is a 1D array  -->  No time-dependent sorting necessary
         tempv = temp_v
-        ;;  Force to 2D to avoid issues in other routines
-        tempv = REPLICATE(1e0,N_ELEMENTS(tempx)) # tempv
       ENDELSE
-      ;;  Replace zeros with NaNs
-      bad            = WHERE(FINITE(tempv) EQ 0 OR tempv LE 0,bd)
-      IF (bd[0] GT 0) THEN tempv[bad] = d
       ;;----------------------------------------------------------------------------------
       ;;  Define data structure for TPLOT
       ;;----------------------------------------------------------------------------------
-      tstrc          = {X:tempx,Y:tempy,V:tempv}
+      tstrc = {X:tempx,Y:tempy,V:tempv}
       ;;  Extract tags from LIMITS structures
       extract_tags,dopts_str,dlim,EXCEPT_TAGS=['YRANGE']      ;;  Get current default plot limits settings
       extract_tags,opts__str, lim,EXCEPT_TAGS=['YRANGE']
-      dlim_tags      = TAG_NAMES(dopts_str)
-      lim__tags      = TAG_NAMES(opts__str)
+      dlim_tags = TAG_NAMES(dopts_str)
+      lim__tags = TAG_NAMES(opts__str)
       extract_tags,dopts_str,dlim2,EXCEPT_TAGS=[dlim_tags,'YRANGE']
       extract_tags,opts__str, lim2,EXCEPT_TAGS=[lim__tags,'YRANGE']
       ;;----------------------------------------------------------------------------------
@@ -493,71 +454,23 @@ IF (test[0]) THEN BEGIN
       ;;----------------------------------------------------------------------------------
       ;;  Everything seems okay --> merge
       ;;----------------------------------------------------------------------------------
-      tempx          = [temp_x,temp2x]
-      IF ((szdd_1.(1)[1] NE szdd_2.(1)[1]) OR (szdd_1.(1)[2] NE szdd_2.(1)[2])) THEN BEGIN
-        ;;--------------------------------------------------------------------------------
-        ;;  Uneven Y sizes
-        ;;--------------------------------------------------------------------------------
-        dim0      = szdd_1.(1)
-        dim0[1]   = (szdd_1.(1)[1]) > (szdd_2.(1)[1])
-        dim0[2]   = (szdd_1.(1)[2]) > (szdd_2.(1)[2])
-        tempy     = lbw_append_arr(temp_y,temp2y,DIM_OUT=dim0)
-      ENDIF ELSE BEGIN
-        ;;  Same size --> directly append
-        tempy     = [temp_y,temp2y]
-      ENDELSE
-      ;;  Replace zeros with NaNs
-      bad            = WHERE(FINITE(tempy) EQ 0 OR tempy LE 0,bd)
-      IF (bd[0] GT 0) THEN tempy[bad] = d
-      ;;----------------------------------------------------------------------------------
-      ;;  Check V1
-      ;;----------------------------------------------------------------------------------
-      IF (szdd_1.(2)[1] NE szdd_2.(2)[1]) THEN BEGIN
-        ;;--------------------------------------------------------------------------------
-        ;;  Uneven V1 sizes
-        ;;--------------------------------------------------------------------------------
-        dim0      = szdd_1.(2)
-        dim0[1]   = (szdd_1.(2)[1]) > (szdd_2.(2)[1])
-        tempv1    = lbw_append_arr(temp_v1,temp2v1,DIM_OUT=dim0)
-      ENDIF ELSE BEGIN
-        ;;  Same size --> directly append
-        tempv1    = [temp_v1,temp2v1]
-      ENDELSE
-      ;;  Replace zeros with NaNs
-      bad            = WHERE(FINITE(tempv1) EQ 0 OR tempv1 LE 0,bd)
-      IF (bd[0] GT 0) THEN tempv1[bad] = d
-      ;;----------------------------------------------------------------------------------
-      ;;  Check V2
-      ;;----------------------------------------------------------------------------------
-      IF (szdd_1.(3)[1] NE szdd_2.(3)[1]) THEN BEGIN
-        ;;--------------------------------------------------------------------------------
-        ;;  Uneven V2 sizes
-        ;;--------------------------------------------------------------------------------
-        dim0      = szdd_1.(3)
-        dim0[1]   = (szdd_1.(3)[1]) > (szdd_2.(3)[1])
-        tempv2    = lbw_append_arr(temp_v2,temp2v2,DIM_OUT=dim0)
-      ENDIF ELSE BEGIN
-        ;;  Same size --> directly append
-        tempv2    = [temp_v2,temp2v2]
-      ENDELSE
-      ;;  Replace zeros with NaNs
-      bad            = WHERE(FINITE(tempv2) EQ 0 OR tempv2 LE 0,bd)
-      IF (bd[0] GT 0) THEN tempv2[bad] = d
-      ;;----------------------------------------------------------------------------------
+      tempx     = [temp_x,temp2x]
+      tempy     = [temp_y,temp2y]
+      tempv1    = [temp_v1,temp2v1]
+      tempv2    = [temp_v2,temp2v2]
       ;;  Sort by time
-      ;;----------------------------------------------------------------------------------
-      sp             = SORT(tempx)
-      tempx          =  TEMPORARY(tempx[sp])
-      tempy          =  TEMPORARY(tempy[sp,*,*])
-      tempv1         = TEMPORARY(tempv1[sp,*])
-      tempv2         = TEMPORARY(tempv2[sp,*])
+      sp        = SORT(tempx)
+      tempx     =  TEMPORARY(tempx[sp])
+      tempy     =  TEMPORARY(tempy[sp,*,*])
+      tempv1    = TEMPORARY(tempv1[sp,*])
+      tempv2    = TEMPORARY(tempv2[sp,*])
       ;;  Define data structure for TPLOT
-      tstrc          = {X:tempx,Y:tempy,V1:tempv1,V2:tempv2}
+      tstrc     = {X:tempx,Y:tempy,V1:tempv1,V2:tempv2}
       ;;  Extract tags from LIMITS structures
       extract_tags,dopts_str,dlim,EXCEPT_TAGS=['YRANGE']      ;;  Get current default plot limits settings
       extract_tags,opts__str, lim,EXCEPT_TAGS=['YRANGE']
-      dlim_tags      = TAG_NAMES(dopts_str)
-      lim__tags      = TAG_NAMES(opts__str)
+      dlim_tags = TAG_NAMES(dopts_str)
+      lim__tags = TAG_NAMES(opts__str)
       extract_tags,dopts_str,dlim2,EXCEPT_TAGS=[dlim_tags,'YRANGE']
       extract_tags,opts__str, lim2,EXCEPT_TAGS=[lim__tags,'YRANGE']
       ;;  Send results to TPLOT
@@ -619,49 +532,27 @@ IF (test[0] AND test2[0]) THEN BEGIN
         ;;--------------------------------------------------------------------------------
         ;;  Everything seems okay --> merge
         ;;--------------------------------------------------------------------------------
-        tempx          = [temp_x,temp2x]
-        IF (szdd_1.(1)[1] NE szdd_2.(1)[1]) THEN BEGIN
-          ;;  Issue in 2nd dimension --> Default to larger size
-          tempy = lbw_append_arr(temp_y,temp2y,LARGER=2)
-        ENDIF ELSE BEGIN
-          ;;  Same size --> directly append
-          tempy = [temp_y,temp2y]
-        ENDELSE
-        ;;  Replace zeros with NaNs
-        bad            = WHERE(FINITE(tempy) EQ 0 OR tempy LE 0,bd)
-        IF (bd[0] GT 0) THEN tempy[bad] = d
-        ;;--------------------------------------------------------------------------------
+        tempx = [temp_x,temp2x]
+        tempy = [temp_y,temp2y]
         ;;  Sort by time
-        ;;--------------------------------------------------------------------------------
-        sp             = SORT(tempx)
-        tempx          = TEMPORARY(tempx[sp])
-        tempy          = TEMPORARY(tempy[sp,*])
+        sp    = SORT(tempx)
+        tempx = TEMPORARY(tempx[sp])
+        tempy = TEMPORARY(tempy[sp,*])
         IF (vv_2d_on[0]) THEN BEGIN
           ;;  V tag is a 2D array  -->  Sort by time
-          IF (szdd_1.(2)[1] NE szdd_2.(2)[1]) THEN BEGIN
-            ;;  Issue in 2nd dimension --> Default to larger size
-            tempv = lbw_append_arr(temp_v,temp2v,LARGER=2)
-          ENDIF ELSE BEGIN
-            ;;  Same size --> directly append
-            tempv = [temp_v,temp2v]
-          ENDELSE
-          ;;  Apply sort
+          tempv = [temp_v,temp2v]
           tempv = TEMPORARY(tempv[sp,*])
         ENDIF ELSE BEGIN
           ;;  V tag is a 1D array  -->  No time-dependent sorting necessary
-          ;;    Force to 2D to avoid issues in other routines
-          tempv = REPLICATE(1e0,N_ELEMENTS(tempx)) # temp_v
+          tempv = temp_v
         ENDELSE
-        ;;  Replace zeros with NaNs
-        bad            = WHERE(FINITE(tempv) EQ 0 OR tempv LE 0,bd)
-        IF (bd[0] GT 0) THEN tempv[bad] = d
         ;;  Define data structure for TPLOT
-        tstrc          = {X:tempx,Y:tempy,V:tempv}
+        tstrc = {X:tempx,Y:tempy,V:tempv}
         ;;  Extract tags from LIMITS structures
         extract_tags,dopts_str,dlim,EXCEPT_TAGS=['YRANGE']      ;;  Get current default plot limits settings
         extract_tags,opts__str, lim,EXCEPT_TAGS=['YRANGE']
-        dlim_tags      = TAG_NAMES(dopts_str)
-        lim__tags      = TAG_NAMES(opts__str)
+        dlim_tags = TAG_NAMES(dopts_str)
+        lim__tags = TAG_NAMES(opts__str)
         extract_tags,dopts_str,dlim2,EXCEPT_TAGS=dlim_tags
         extract_tags,opts__str, lim2,EXCEPT_TAGS=lim__tags
         ;;  Send results to TPLOT
@@ -765,7 +656,10 @@ str_element,tpn_struc,   'ANIS.PAD_PAR_2_ANT_N',tpn__paraanti[0],/ADD_REPLACE
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
-MESSAGE,STRING(SYSTIME(1) - ex_start[0])+' seconds execution time.',/INFORMATIONAL,/CONTINUE
+;;****************************************************************************************
+ex_time = SYSTIME(1) - ex_start[0]
+MESSAGE,STRING(ex_time)+' seconds execution time.',/INFORMATIONAL,/CONTINUE
+;;****************************************************************************************
 
 RETURN
 END

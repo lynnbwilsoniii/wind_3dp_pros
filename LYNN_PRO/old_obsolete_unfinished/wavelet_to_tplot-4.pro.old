@@ -15,8 +15,8 @@
 ;               NA
 ;
 ;  CALLS:
-;               is_a_number.pro
 ;               sample_rate.pro
+;               is_a_number.pro
 ;               wavelet.pro
 ;               tnames.pro
 ;               wave_signif.pro
@@ -140,9 +140,6 @@
 ;                                                                   [10/18/2017   v1.3.0]
 ;            16)  Fixed a typo
 ;                                                                   [10/19/2017   v1.3.1]
-;            17)  Fixed a hardcoded setting when determining the default sample rate
-;                   that caused very low cadence data to return all NaNs
-;                                                                   [05/09/2019   v1.3.2]
 ;
 ;   NOTES:      
 ;             1)  It's probably wise to set the KILL_CONE to avoid analysis based upon
@@ -182,7 +179,7 @@
 ;
 ;   CREATED:  08/12/2009
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/09/2019   v1.3.2
+;    LAST MODIFIED:  10/19/2017   v1.3.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -229,12 +226,8 @@ IF (bd_nan[0] GT 0) THEN data[bad_nan] = 0
 ;;----------------------------------------------------------------------------------------
 ;;  Define sample rate and period
 ;;----------------------------------------------------------------------------------------
-;;  Determine dummy cadence for gap threshold estimates
-dt0            = times - SHIFT(times,1)
-delt           = MEDIAN(dt0[1:*])
-dumb           = TEMPORARY(dt0)
 ;;  Determine sample rate [samples per unit time]
-s_rate         = sample_rate(times,GAP_THRESH=2d0*delt[0],/AVE,OUT_MED_AVG=sr_medavg)
+s_rate         = sample_rate(times,GAP_THRESH=1d0,/AVE,OUT_MED_AVG=sr_medavg)
 s_period       = 1d0/s_rate[0]                           ;;  Sample Period [unit time]
 ;;  Define dummy array of frequencies for optional Y-Axis range later
 freq_bins      = DINDGEN(nsams[0]/2L)*(s_rate[0]/(nsams[0] - 1L))
@@ -375,11 +368,11 @@ store_data,new_name[0],DATA={X:times,Y:wv_power,V:wv_freqs,SPEC:1},DLIMIT=def_dl
 op_names       = new_name[0]+'_Conf_Level_95'
 store_data,op_names[0],DATA={X:times,Y:conf_95lev,V:1d0/period,SPEC:1}
 options,op_names[0],LEVEL=1.0,C_ANNOTATION='95%',ZRANGE=[5e-1,1e0],$
-                    YTITLE='95% Confidence Level'+'!C'+'(anything > 1.0)',/DEFAULT
+                    YTITLE='95% Confidence Level'+'!C'+'(anything > 1.0)',/DEF
 ;;  --> Cone of Influence
 store_data,new_name[0]+'_Cone_of_Influence',DATA={X:times,Y:1d0/cone}
 op_names       = [new_name[0]+'_Conf_Level_95',new_name[0]+'_Cone_of_Influence']
-options,op_names,YLOG=1,YRANGE=yra,/DEFAULT
+options,op_names,YLOG=1,YRANGE=yra,/DEF
 ;;  Set default plot options
 nnw            = tnames([new_name,op_names])
 options,nnw,YSTYLE=1,PANEL_SIZE=2.0,XMINOR=5,XTICKLEN=0.04

@@ -354,8 +354,11 @@
 ;               OUTSTRC     :  Set to a named variable to return all the relevant data
 ;                                used to create the contour plot and cuts of the VDF
 ;
-;   CHANGED:  1)  NA
-;                                                                   [MM/DD/YYYY   v1.0.0]
+;   CHANGED:  1)  Fixed how total chi-squared and reduced values are calculated and
+;                   added total reduced chi-squared to output structure
+;                                                                   [04/22/2019   v1.0.1]
+;             2)  Now returns two forms of the total value and reduced chi-squared
+;                                                                   [04/25/2019   v1.0.2]
 ;
 ;   NOTES:      
 ;               0)  ***  Do not directly set the RMSTRAHL keyword  ***
@@ -546,7 +549,7 @@
 ;   ADAPTED FROM: wrapper_fit_vdf_2_sumof3funcs.pro    BY: Lynn B. Wilson III
 ;   CREATED:  04/03/2019
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/03/2019   v1.0.0
+;    LAST MODIFIED:  04/25/2019   v1.0.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -1232,6 +1235,7 @@ vdfc_max                = MAX(ABS(vdf_2dc),/NAN)
 test_core               = (vdf_2dc GE cthrsh[0]*vdfc_max[0])
 good_core               = WHERE(test_core,gd_core,COMPLEMENT=bad_core,NCOMPLEMENT=bd_core)
 IF (bd_core[0] GT 0) THEN vdf_2dc[bad_core] = f
+vdf_2dc0                = vdf_2dc
 IF (gd_core[0] GT 0) THEN BEGIN
   ;;  Remove data from halo and beam arrays
   vdf_2dh[good_core]     = f
@@ -1653,10 +1657,38 @@ IF (bf[0] NE 'AS') THEN f_sigb /= pfar ELSE f_sigb /= pfar1
 corefit_out            /= ffac[0]
 halofit_out            /= ffac[0]
 beamfit_out            /= ffac[0]
+;;  Remove logarithm factor
+CASE good_wts[0] OF
+  0    : BEGIN       ;;  one-count
+    wghtc                   = wwc10
+    wghth                   = wwh10
+    wghtb                   = wwb10
+  END
+  1    : BEGIN       ;;  no weighting
+    wghtc                   = wwc10
+    wghth                   = wwh10
+    wghtb                   = wwb10
+  END
+  2    : BEGIN       ;;  Poisson
+    wghtc                   = wwc10
+    wghth                   = wwh10
+    wghtb                   = wwb10
+  END
+  3    : BEGIN       ;;  10% of data
+    wghtc                   = wwc10
+    wghth                   = wwh10
+    wghtb                   = wwb10
+  END
+  ELSE : STOP        ;;  Should not be possible --> debug
+ENDCASE
+;;  Compute total weights
+weighttot               = lbw__add(wghtc,lbw__add(wghth,wghtb,/NAN),/NAN)
 ;;  Calculate total chi-squared
 model_tot               = lbw__add(corefit_out,lbw__add(halofit_out,beamfit_out,/NAN),/NAN)
-measr_tot               = vdf_2d
-weighttot               = 1d0/poisson_2d^2d0
+measr_tot               = lbw__add(vdf_2dc0,lbw__add(residualh,residualb,/NAN),/NAN)
+;measr_tot               = vdf_2d
+;weighttot               = lbw__add(weightc,lbw__add(weighth,weightb,/NAN),/NAN)
+;weighttot               = 1d0/poisson_2d^2d0
 test_tot                = (FINITE(measr_tot) EQ 0) OR (measr_tot LE 0) OR   $
                           (FINITE(weighttot) EQ 0) OR (weighttot LE 0)
 bad_tot                 = WHERE(test_tot,bd_tot,COMPLEMENT=good_tot,NCOMPLEMENT=gd_tot)
@@ -1664,7 +1696,14 @@ IF (bd_tot[0] GT 0) THEN BEGIN
   measr_tot[bad]            = 0d0
   weighttot[bad]            = 0d0
 ENDIF
-chisq_tot               = TOTAL((measr_tot - model_tot)^2d0*ABS(weighttot),/NAN)
+dof0                    = ((dofc[0] > dofh[0]) > dofb[0])
+doft                    = 3d0*dof0[0]
+chisq_tot_a             = TOTAL((vdf_2d - model_tot)^2d0*ABS(weighttot),/NAN)
+chisq_tot_f             = TOTAL((measr_tot - model_tot)^2d0*ABS(weighttot),/NAN)
+red_chisq_tot_f         = chisq_tot_f[0]/doft[0]
+red_chisq_tot_a         = chisq_tot_a[0]/doft[0]
+chisq_tot               = [chisq_tot_a[0],chisq_tot_f[0]]
+red_chisq_tot           = [red_chisq_tot_a[0],red_chisq_tot_f[0]]
 ;;----------------------------------------------------------------------------------------
 ;;  Define return structure
 ;;----------------------------------------------------------------------------------------
@@ -1683,9 +1722,9 @@ beam_strc               = CREATE_STRUCT(out_tags,vx_in,vy_in,residualb,weightb,b
                                         f_sigb,chisqb[0],dofb[0],iterb[0],statb[0],zerrorb,      $
                                         bfun[0],b_pinfo,bfree_ind,bpegged,vdf_2db,poisson_2db,   $
                                        offset[0], b__trial[0])
-tags                    = ['CORE','HALO','BEAM','model_tot','chisq_tot']
-out_struc               = CREATE_STRUCT(tags,core_strc,halo_strc,beam_strc,model_tot,chisq_tot[0])
-
+tags                    = ['CORE','HALO','BEAM','MODEL_TOT','VDF_FIT_TOT','WEIGHT_TOT','CHISQ_TOT','RED_CHISQ_TOT']
+out_struc               = CREATE_STRUCT(tags,core_strc,halo_strc,beam_strc,model_tot,measr_tot,weighttot,chisq_tot,red_chisq_tot)
+;;  Define new copy structure with thermal speeds instead of temperatures for plotting routine
 out_strucp              = out_struc
 out_strucp.CORE.FIT_PARAMS[1:2] = vthfac[0]*SQRT(out_strucp.CORE.FIT_PARAMS[1:2])
 out_strucp.CORE.SIG_PARAM[1:2]  = vthfac[0]*SQRT(out_strucp.CORE.SIG_PARAM[1:2])
@@ -1724,6 +1763,10 @@ plot_vdfs_4_fitvdf2sumof3funcs,vdf,velxyz,out_strucp,VFRAME=vframe,VEC1=vec1,VEC
                                    SPTHRSHS=spthrshs,MAXFACS=maxfac0,                     $
                                    SAVEF=savef,FILENAME=filename,                         $
                                    _EXTRA=extrakey
+;;  Check status and change if necessary
+IF (out_strucp.CORE.STATUS[0] NE out_struc.CORE.STATUS[0]) THEN out_struc.CORE.STATUS = out_strucp.CORE.STATUS[0]
+IF (out_strucp.HALO.STATUS[0] NE out_struc.HALO.STATUS[0]) THEN out_struc.HALO.STATUS = out_strucp.HALO.STATUS[0]
+IF (out_strucp.BEAM.STATUS[0] NE out_struc.BEAM.STATUS[0]) THEN out_struc.BEAM.STATUS = out_strucp.BEAM.STATUS[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

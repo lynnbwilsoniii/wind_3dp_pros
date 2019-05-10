@@ -48,8 +48,6 @@
 ;                                                                   [09/26/2017   v1.0.0]
 ;             5)  Now wind_h1_swe_to_tplot.pro combines moments internally
 ;                                                                   [02/05/2018   v1.1.0]
-;             6)  Cleaned up
-;                                                                   [05/03/2019   v1.1.1]
 ;
 ;   NOTES:      
 ;               0)  User should not call this routine
@@ -75,13 +73,15 @@
 ;
 ;   CREATED:  07/18/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/03/2019   v1.1.1
+;    LAST MODIFIED:  02/05/2018   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 
 FUNCTION load_swe_and_calc_new_vbulk_scpot,TDATE=tdate,TRANGE=trange
 
+;;  Requires:  
+;;  Requires:  
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
 ;;----------------------------------------------------------------------------------------
@@ -131,6 +131,7 @@ tran1d         = trange
 ;;----------------------------------------------------------------------------------------
 ;;  Load SWE Faraday Cup ion moments
 ;;----------------------------------------------------------------------------------------
+;wind_h1_swe_to_tplot,TDATE=tdate,TRANGE=tran1d,NO_SWE_B=1b
 wind_h1_swe_to_tplot,TDATE=tdate,TRANGE=tran1d,NO_SWE_B=1b,/COMBINE_PA
 ;;  Verify something was loaded
 test_p         = test_tplot_handle(tpn_pronon_var,TPNMS=gd_tpn_p)
@@ -140,6 +141,110 @@ IF (test[0]) THEN RETURN,0b        ;;  Nothing loaded --> exit before user runs 
 ;;  Define logic for later
 no_vel         = 0b
 no_den         = 0b
+;;;----------------------------------------------------------------------------------------
+;;;  Define new combined velocities
+;;;----------------------------------------------------------------------------------------
+;;;  Find velocities
+;get_data,tpn_pronon_var[1],DATA=t_swe_vxp,DLIM=dlim_swe_vxp,LIM=lim_swe_vxp
+;get_data,tpn_pronon_var[2],DATA=t_swe_vyp,DLIM=dlim_swe_vyp,LIM=lim_swe_vyp
+;get_data,tpn_pronon_var[3],DATA=t_swe_vzp,DLIM=dlim_swe_vzp,LIM=lim_swe_vzp
+;get_data,tpn_alpnon_var[1],DATA=t_swe_vxa,DLIM=dlim_swe_vxa,LIM=lim_swe_vxa
+;get_data,tpn_alpnon_var[2],DATA=t_swe_vya,DLIM=dlim_swe_vya,LIM=lim_swe_vya
+;get_data,tpn_alpnon_var[3],DATA=t_swe_vza,DLIM=dlim_swe_vza,LIM=lim_swe_vza
+;check_vs       = [(SIZE(t_swe_vxp,/TYPE) NE 8),(SIZE(t_swe_vyp,/TYPE) NE 8),$
+;                  (SIZE(t_swe_vzp,/TYPE) NE 8),(SIZE(t_swe_vxa,/TYPE) NE 8),$
+;                  (SIZE(t_swe_vya,/TYPE) NE 8),(SIZE(t_swe_vza,/TYPE) NE 8) ]
+;bad_vs         = WHERE(check_vs,bd_vs,COMPLEMENT=good_vs,NCOMPLEMENT=gd_vs)
+;test_vs        = (gd_vs[0] EQ 0)
+;struc_pa       = {VXP:t_swe_vxp,VYP:t_swe_vyp,VZP:t_swe_vzp,VXA:t_swe_vxa,VYA:t_swe_vya,VZA:t_swe_vza}
+;nt             = N_TAGS(struc_pa)
+;IF (test_vs[0]) THEN BEGIN
+;  ;;  No SWE velocities loaded --> Skip defining new Vp and Va TPLOT handles
+;  dumb   = REPLICATE(0e0,10)
+;  velp   = dumb # REPLICATE(0e0,3)
+;  vela   = velp
+;  unix   = DOUBLE(dumb)
+;  no_vel = 1b
+;ENDIF ELSE BEGIN
+;  unix   = t_get_struc_unix(struc_pa.(good_vs[0]))
+;  dumb   = REPLICATE(0e0,N_ELEMENTS(unix))
+;  velp   = dumb # REPLICATE(0e0,3)
+;  vela   = velp
+;  FOR j=0L, gd_vs[0] - 1L DO BEGIN
+;    k     = good_vs[j[0]]
+;    struc = struc_pa.(k[0])
+;    CASE k[0] OF
+;      0L  :  velp[*,0L] = struc.Y
+;      1L  :  velp[*,1L] = struc.Y
+;      2L  :  velp[*,2L] = struc.Y
+;      3L  :  vela[*,0L] = struc.Y
+;      4L  :  vela[*,1L] = struc.Y
+;      5L  :  vela[*,2L] = struc.Y
+;      ELSE:  ;;  do nothing
+;    ENDCASE
+;  ENDFOR
+;  ;;--------------------------------------------------------------------------------------
+;  ;;  Replace NaNs with zeros
+;  ;;--------------------------------------------------------------------------------------
+;  good_p  = WHERE(FINITE(velp) AND ABS(velp) GE 0,gd_p,COMPLEMENT=bad_p,NCOMPLEMENT=bd_p)
+;  good_a  = WHERE(FINITE(vela) AND ABS(vela) GE 0,gd_a,COMPLEMENT=bad_a,NCOMPLEMENT=bd_a)
+;  IF (bd_p[0] GT 0) THEN velp[bad_p] = 0e0
+;  IF (bd_a[0] GT 0) THEN vela[bad_a] = 0e0
+;ENDELSE
+;;;----------------------------------------------------------------------------------------
+;;;  Define total ion density
+;;;    N_i = ∑_s Z_s N_s
+;;;----------------------------------------------------------------------------------------
+;;;  Find densities
+;get_data,tpn_pronon_var[7],DATA=t_swe_np,DLIM=dlim_swe_np,LIM=lim_swe_np
+;get_data,tpn_alpnon_var[7],DATA=t_swe_na,DLIM=dlim_swe_na,LIM=lim_swe_na
+;check_ns       = [(SIZE(t_swe_np,/TYPE) NE 8),(SIZE(t_swe_na,/TYPE) NE 8)]
+;bad_ns         = WHERE(check_ns,bd_ns,COMPLEMENT=good_ns,NCOMPLEMENT=gd_ns)
+;test_ns        = (gd_ns[0] EQ 0)
+;struc_pa       = {NP:t_swe_np,NA:t_swe_na}
+;nt             = N_TAGS(struc_pa)
+;;;  Define dummy arrays to fill if valid data present
+;nn             = N_ELEMENTS(velp[*,0])
+;dumb           = REPLICATE(0e0,nn[0])
+;dens_p         = dumb
+;dens_a         = dumb
+;IF (test_ns[0]) THEN BEGIN
+;  ;;  No SWE densities loaded --> Skip changing Vsw and SC Pot. TPLOT handles
+;  no_den = 1b
+;ENDIF ELSE BEGIN
+;  IF (no_vel[0]) THEN BEGIN
+;    ;;  No SWE velocities loaded --> Need new dummy arrays
+;    unix           = t_get_struc_unix(struc_pa.(good_ns[0]))
+;    nn             = N_ELEMENTS(unix)
+;    dumb           = REPLICATE(0e0,nn[0])
+;    dens_p         = dumb
+;    dens_a         = dumb
+;  ENDIF
+;  FOR j=0L, gd_ns[0] - 1L DO BEGIN
+;    k     = good_ns[j[0]]
+;    struc = struc_pa.(k[0])
+;    CASE k[0] OF
+;      0L  :  dens_p = struc.Y
+;      1L  :  dens_a = struc.Y
+;      ELSE:  ;;  do nothing
+;    ENDCASE
+;  ENDFOR
+;  ;;--------------------------------------------------------------------------------------
+;  ;;  Replace NaNs with zeros
+;  ;;--------------------------------------------------------------------------------------
+;  good_p  = WHERE(FINITE(dens_p) AND dens_p GE 0,gd_p,COMPLEMENT=bad_p,NCOMPLEMENT=bd_p)
+;  good_a  = WHERE(FINITE(dens_a) AND dens_a GE 0,gd_a,COMPLEMENT=bad_a,NCOMPLEMENT=bd_a)
+;  IF (bd_p[0] GT 0) THEN dens_p[bad_p] = 0e0
+;  IF (bd_a[0] GT 0) THEN dens_a[bad_a] = 0e0
+;ENDELSE
+;;;----------------------------------------------------------------------------------------
+;;;  Define N_i (= ∑_s Z_s N_s)
+;;;----------------------------------------------------------------------------------------
+;dens_t         = dens_p + 2e0*dens_a
+;;;  Send to TPLOT
+;struc          = {X:unix,Y:dens_t}
+;tpn_swe_scpot  = scpref[0]+'Ni_tot'+swesuff[0]
+;store_data,tpn_swe_scpot[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
 ;;----------------------------------------------------------------------------------------
 ;;  Define new SC Potential
 ;;----------------------------------------------------------------------------------------
@@ -153,6 +258,22 @@ sc_phi         = sc_pot(dens_t)
 struc          = {X:unix,Y:sc_phi}
 tpn_swe_scpot  = scpref[0]+'sc_pot'+swesuff[0]
 store_data,tpn_swe_scpot[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
+;;;----------------------------------------------------------------------------------------
+;;;  Define Vbulk
+;;;    V_i = ∑_s (M_s N_s V_s)/∑_s (M_s N_s)
+;;;----------------------------------------------------------------------------------------
+;dens_p3d       = ABS(dens_p # REPLICATE(1e0,3))
+;dens_a3d       = ABS(dens_a # REPLICATE(1e0,3))
+;numer          = mp[0]*dens_p3d*velp + ma[0]*dens_a3d*vela
+;denom          = mp[0]*dens_p3d + ma[0]*dens_a3d
+;vbulk          = FLOAT(numer/denom)
+;;;  Account for Earth's abberation velocity [i.e., add ~29.78 km/s to y-component]
+;vbulk[*,1]    += 29.78
+;;;  Send to TPLOT
+;struc          = {X:unix,Y:vbulk}
+;tpn_swe_vbulk  = scpref[0]+'Vbulk_'+coord_gse[0]+swesuff[0]+nonmom_suffs[0]
+;store_data,tpn_swe_vbulk[0],DATA=struc,DLIM=def_dlim,LIM=def__lim
+;options,tpn_swe_vbulk[0],LABELS=vec_str,COLORS=vec_col,YTITLE='Vbulk [km/s, GSE]',/DEF
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
@@ -216,10 +337,7 @@ END
 ;               general_load_and_save_wind_3dp_data [,TDATE=tdate] [,TRANGE=trange]    $
 ;                                        [,/LOAD_EESA] [,/LOAD_PESA] [,/LOAD__SST]     $
 ;                                        [,/LOAD_SWEFC] [,SAVE_DIR=save_dir]           $
-;                                        [,/NO_CLEANT] [,BURST_ON=burst_on]            $
-;                                        [,/NO_SAVE]                                   $
-;                                        [,EESA_OUT=eesa_out] [,PESA_OUT=pesa_out]     $
-;                                        [,SST_FOUT=sst_fout] [,SST_OOUT=sst_oout]
+;                                        [,/NO_CLEANT] [,BURST_ON=burst_on]
 ;
 ;  KEYWORDS:    
 ;               TDATE       :  Scalar [string] defining the start date ['YYYY-MM-DD']
@@ -238,9 +356,6 @@ END
 ;               NO_CLEANT   :  If set, routine will not delete/remove TPLOT data prior to
 ;                                returning to user
 ;                                [Default = FALSE]
-;               NO_SAVE     :  If set, routine will not create IDL save files for the
-;                                3DP particle data
-;                                [Default = FALSE]
 ;
 ;               **********************************
 ;               ***     ALTERED ON OUTPUT      ***
@@ -248,18 +363,6 @@ END
 ;               BURST_ON    :  Set to a named variable that will return a structure
 ;                                informing the user whether a given instrument had burst
 ;                                data available for the time range of interest
-;               EESA_OUT    :  Set to a named variable to return a structure containing
-;                                the EESA Low and High velocity distributions as arrays
-;                                of IDL structures
-;               PESA_OUT    :  Set to a named variable to return a structure containing
-;                                the PESA Low and High velocity distributions as arrays
-;                                of IDL structures
-;               SST_FOUT    :  Set to a named variable to return a structure containing
-;                                the SST Foil velocity distributions as arrays
-;                                of IDL structures
-;               SST_OOUT    :  Set to a named variable to return a structure containing
-;                                the SST Open velocity distributions as arrays
-;                                of IDL structures
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [07/19/2017   v1.0.0]
@@ -279,12 +382,9 @@ END
 ;                                                                   [02/05/2018   v1.0.5]
 ;             9)  Fixed an issue when TDATE is set but TRANGE is not
 ;                                                                   [02/26/2019   v1.0.6]
-;            10)  Cleaned up internal subroutine and
-;                   added keywords:  EESA_OUT, PESA_OUT, SST_FOUT, SST_OOUT, and NO_SAVE
-;                                                                   [05/03/2019   v1.1.0]
 ;
 ;   NOTES:      
-;               NA
+;               .compile $HOME/Desktop/temp_idl/general_load_and_save_wind_3dp_data.pro
 ;
 ;  REFERENCES:  
 ;               0)  Harten, R. and K. Clark "The Design Features of the GGS Wind and
@@ -332,21 +432,17 @@ END
 ;
 ;   CREATED:  07/18/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/03/2019   v1.1.0
+;    LAST MODIFIED:  02/26/2019   v1.0.6
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-PRO general_load_and_save_wind_3dp_data,TDATE=tdate,TRANGE=trange,LOAD_EESA=load_eesa, $     ;;  Input
+PRO general_load_and_save_wind_3dp_data,TDATE=tdate,TRANGE=trange,LOAD_EESA=load_eesa, $
                                         LOAD_PESA=load_pesa,LOAD__SST=load__sst,       $
                                         LOAD_SWEFC=load_swefc,SAVE_DIR=save_dir,       $
-                                        NO_CLEANT=no_cleant,NO_SAVE=no_save,           $
-                                        BURST_ON=burst_on,                             $     ;;  Output
-                                        EESA_OUT=eesa_out,PESA_OUT=pesa_out,           $
-                                        SST_FOUT=sst_fout,SST_OOUT=sst_oout
+                                        NO_CLEANT=no_cleant,BURST_ON=burst_on
 
-tstart             = SYSTIME(1)
 ;;----------------------------------------------------------------------------------------
 ;;  IDL system and OS stuff
 ;;----------------------------------------------------------------------------------------
@@ -474,13 +570,10 @@ IF (test[0]) THEN swefc_on = 0b ELSE swefc_on = 1b
 ;;  Check NO_CLEANT
 test           = KEYWORD_SET(no_cleant) AND (N_ELEMENTS(no_cleant) GT 0)
 IF (test[0]) THEN cleant_on = 0b ELSE cleant_on = 1b
-;;  Check NO_SAVE
-test           = KEYWORD_SET(no_save) AND (N_ELEMENTS(no_save) GT 0)
-IF (test[0]) THEN save_on = 0b ELSE save_on = 1b
 ;;  Check SAVE_DIR
 test           = test_file_path_format(save_dir,EXISTS=exists,DIR_OUT=savdir)
 IF (~test[0]) THEN test = test_file_path_format('.',EXISTS=exists,DIR_OUT=savdir)      ;;  Use current working directory
-IF (~exists[0] AND save_on[0]) THEN FILE_MKDIR,savdir[0],/NOEXPAND_PATH
+IF (~exists[0]) THEN FILE_MKDIR,savdir[0],/NOEXPAND_PATH
 ;;----------------------------------------------------------------------------------------
 ;;  Check TPLOT and keywords
 ;;----------------------------------------------------------------------------------------
@@ -527,9 +620,6 @@ IF (nna[0] EQ '') THEN STOP  ;;  Something failed --> Debug
 ;;  Set TPLOT time range
 delt           = tran1d[1] - tran1d[0]
 timespan,tran1d[0],delt[0],/SECONDS
-;;  Define the default TPLOT handle used by load_wi_h0_mfi.pro
-def_wibmag_tpn = 'wi_B3_MAG(GSE)'
-def_wibgse_tpn = 'wi_B3(GSE)'
 ;;----------------------------------------------------------------------------------------
 ;;  Open window and plot
 ;;----------------------------------------------------------------------------------------
@@ -539,35 +629,11 @@ win_ttl        = 'Wind Plots ['+tdate[0]+']'
 win_str        = {RETAIN:2,XSIZE:wsz[0],YSIZE:wsz[1],TITLE:win_ttl[0],XPOS:10,YPOS:10}
 lbw_window,WIND_N=0,_EXTRA=win_str
 ;;  Plot MFI data for date of interest
-tplot,[def_wibmag_tpn[0],def_wibgse_tpn[0]],TRANGE=tran1d
-;tplot,[1,2],TRANGE=tran1d
-;;----------------------------------------------------------------------------------------
-;;  Rename MFI TPLOT handles from default
-;;----------------------------------------------------------------------------------------
-;;  Get |Bo|
-get_data,def_wibmag_tpn[0],DATA=temp_bo,DLIMIT=dlim_bo,LIMIT=lim_bo
-;;  Get Bo
-get_data,def_wibgse_tpn[0],DATA=temp_bb,DLIMIT=dlim_bb,LIMIT=lim_bb
-;;  Define new TPLOT handles
-new_wibmag_tpn = scpref[0]+'magf_3s_'+coord_mag[0]
-new_wibgse_tpn = scpref[0]+'magf_3s_'+coord_gse[0]
-;;  Store new TPLOT variables and remove old
-store_data,DELETE=tnames()
-store_data,new_wibmag_tpn[0],DATA=temp_bo,DLIMIT=dlim_bo,LIMIT=lim_bo
-store_data,new_wibgse_tpn[0],DATA=temp_bb,DLIMIT=dlim_bb,LIMIT=lim_bb
-;;  Erase old YTITLEs
-options,[new_wibmag_tpn[0],new_wibgse_tpn[0]],'YTITLE'
-options,[new_wibmag_tpn[0],new_wibgse_tpn[0]],'YTITLE',/DEF
-;;  Define new
-options,new_wibmag_tpn[0],YTITLE='|Bo| [nT]',/DEF
-options,new_wibgse_tpn[0],YTITLE='Bo [nT,'+coord_gseu[0]+']',/DEF
-;;  Replot
-tplot,[new_wibmag_tpn[0],new_wibgse_tpn[0]],TRANGE=trange
+tplot,[1,2],TRANGE=tran1d
 ;;----------------------------------------------------------------------------------------
 ;;  Load orbit data
 ;;----------------------------------------------------------------------------------------
-;Bgse_tpnm      = 'wi_B3(GSE)'        ;;  TPLOT handle associated with Bo [GSE, nT]
-Bgse_tpnm      = new_wibgse_tpn[0]        ;;  TPLOT handle associated with Bo [GSE, nT]
+Bgse_tpnm      = 'wi_B3(GSE)'        ;;  TPLOT handle associated with Bo [GSE, nT]
 wind_orbit_to_tplot,BNAME=Bgse_tpnm[0],TRANGE=tran1d
 ;;  Change Y-Axis titles
 options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
@@ -579,8 +645,7 @@ tplot_options,VAR_LABEL=gnames
 ;;----------------------------------------------------------------------------------------
 ;;  Load PESA Low ion moments
 ;;----------------------------------------------------------------------------------------
-;Bgse_tpnm      = 'wi_B3(GSE)'        ;;  TPLOT handle associated with Bo [GSE, nT]
-Bgse_tpnm      = new_wibgse_tpn[0]   ;;  TPLOT handle associated with Bo [GSE, nT]
+Bgse_tpnm      = 'wi_B3(GSE)'        ;;  TPLOT handle associated with Bo [GSE, nT]
 Vgse_tpnm      = 'V_sw2'             ;;  " " Vsw [GSE, km/s]
 pesa_low_moment_calibrate,DATE=date,TRANGE=tran1d,BNAME=Bgse_tpnm[0]
 ;;  Determine which TPLOT handle to use for estimate of spacecraft potential [eV]
@@ -591,20 +656,11 @@ IF (tnames('sc_pot_3') EQ '') THEN scp_tpn = 'sc_pot_2' ELSE scp_tpn = 'sc_pot_3
 get_pmom2,PREFIX=scpref[0],MAGNAME=Bgse_tpnm[0]
 ;;  Set some options
 pmom_tpns      = scpref[0]+['Np','Tp','Vp','T3p']
-amom_tpns      = scpref[0]+['Na','Ta','Va','Na/Np']
-options,[pmom_tpns,amom_tpns],'PSYM'
-options,[pmom_tpns,amom_tpns],'YTITLE'
-options,[pmom_tpns,amom_tpns],'LABELS'
-options,[pmom_tpns,amom_tpns],'COLORS'
-options,[pmom_tpns,amom_tpns],YSUBTITLE='[Onboard Moms]',/DEFAULT
-options,pmom_tpns[0],LABELS='Np',COLORS=50,YTITLE='Np [cm^(-3), 3DP]',/DEFAULT
-options,pmom_tpns[1],LABELS='Tp',COLORS=50,YTITLE='Tp [eV, 3DP]',/DEFAULT
-options,pmom_tpns[2],LABELS=vec_str,COLORS=vec_col,YTITLE='Vp [km/s, 3DP, GSE]',/DEFAULT
-options,pmom_tpns[3],LABELS=fac_vec_str,COLORS=vec_col,YTITLE='Tp3 [eV, 3DP, FAC]',/DEFAULT
-options,amom_tpns[0],LABELS='Na',COLORS=50,YTITLE='Na [cm^(-3), 3DP]',/DEFAULT
-options,amom_tpns[1],LABELS='Ta',COLORS=50,YTITLE='Ta [eV, 3DP]',/DEFAULT
-options,amom_tpns[2],LABELS=vec_str,COLORS=vec_col,YTITLE='Va [km/s, 3DP, GSE]',/DEFAULT
-options,amom_tpns[3],LABELS='Na/Np',COLORS=50,YTITLE='Na/Np [N/A, 3DP]',/DEFAULT
+options,pmom_tpns,'PSYM'
+options,pmom_tpns[[2,3]],'LABELS'
+options,pmom_tpns[[2,3]],'COLORS'
+options,pmom_tpns[2],LABELS=vec_str,COLORS=vec_col,/DEF
+options,pmom_tpns[3],LABELS=fac_vec_str,COLORS=vec_col,/DEF
 ;;----------------------------------------------------------------------------------------
 ;;  Load SWE Faraday Cup ion moments [if desired]
 ;;----------------------------------------------------------------------------------------
@@ -675,9 +731,6 @@ IF (pesa_on[0]) THEN BEGIN
     add_vsw2, apl_,Vgse_tpnm[0]
     add_magf2,apl_,Bgse_tpnm[0]
     add_scpot,apl_,  scp_tpn[0]
-    add_vsw2, apl_,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,apl_,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,apl_,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  PESA Low Burst
@@ -687,9 +740,6 @@ IF (pesa_on[0]) THEN BEGIN
     add_vsw2, aplb,Vgse_tpnm[0]
     add_magf2,aplb,Bgse_tpnm[0]
     add_scpot,aplb,  scp_tpn[0]
-    add_vsw2, aplb,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,aplb,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,aplb,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  PESA High
@@ -699,9 +749,6 @@ IF (pesa_on[0]) THEN BEGIN
     add_vsw2, aph_,Vgse_tpnm[0]
     add_magf2,aph_,Bgse_tpnm[0]
     add_scpot,aph_,  scp_tpn[0]
-    add_vsw2, aph_,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,aph_,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,aph_,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  PESA High Burst
@@ -711,9 +758,6 @@ IF (pesa_on[0]) THEN BEGIN
     add_vsw2, aphb,Vgse_tpnm[0]
     add_magf2,aphb,Bgse_tpnm[0]
     add_scpot,aphb,  scp_tpn[0]
-    add_vsw2, aphb,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,aphb,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,aphb,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Define BURST_ON status for PLB and PHB
@@ -724,27 +768,11 @@ IF (pesa_on[0]) THEN BEGIN
   ;;  Print out name as a check
   ;;--------------------------------------------------------------------------------------
   fname          = savdir[0]+fpref[0]+tsuffx[0]+fsuffx[0]
+  PRINT,';; ',fname[0]
   ;;--------------------------------------------------------------------------------------
   ;;  Create IDL save file
   ;;--------------------------------------------------------------------------------------
-  IF (save_on[0]) THEN BEGIN
-    PRINT,';; ',fname[0]
-    SAVE,apl_,aplb,aph_,aphb,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Define return structure if so desired
-  ;;--------------------------------------------------------------------------------------
-  IF ARG_PRESENT(pesa_out) THEN BEGIN
-    IF (SIZE(apl_,/TYPE) NE 8) THEN apl_ = 0
-    IF (SIZE(aplb,/TYPE) NE 8) THEN aplb = 0
-    IF (SIZE(aph_,/TYPE) NE 8) THEN aph_ = 0
-    IF (SIZE(aphb,/TYPE) NE 8) THEN aphb = 0
-    pesa_out = {PL_:apl_,PLB:aplb,PH_:aph_,PHB:aphb}
-    IF (SIZE(apl_,/TYPE) NE 8) THEN dumb = TEMPORARY(apl_)
-    IF (SIZE(aplb,/TYPE) NE 8) THEN dumb = TEMPORARY(aplb)
-    IF (SIZE(aph_,/TYPE) NE 8) THEN dumb = TEMPORARY(aph_)
-    IF (SIZE(aphb,/TYPE) NE 8) THEN dumb = TEMPORARY(aphb)
-  ENDIF
+  SAVE,apl_,aplb,aph_,aphb,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
   ;;--------------------------------------------------------------------------------------
   ;;  Clean up
   ;;--------------------------------------------------------------------------------------
@@ -784,9 +812,6 @@ IF (eesa_on[0]) THEN BEGIN
     add_vsw2, ael_,Vgse_tpnm[0]
     add_magf2,ael_,Bgse_tpnm[0]
     add_scpot,ael_,  scp_tpn[0]
-    add_vsw2, ael_,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,ael_,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,ael_,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  EESA Low Burst
@@ -796,9 +821,6 @@ IF (eesa_on[0]) THEN BEGIN
     add_vsw2, aelb,Vgse_tpnm[0]
     add_magf2,aelb,Bgse_tpnm[0]
     add_scpot,aelb,  scp_tpn[0]
-    add_vsw2, aelb,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,aelb,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,aelb,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  EESA High
@@ -808,9 +830,6 @@ IF (eesa_on[0]) THEN BEGIN
     add_vsw2, aeh_,Vgse_tpnm[0]
     add_magf2,aeh_,Bgse_tpnm[0]
     add_scpot,aeh_,  scp_tpn[0]
-    add_vsw2, aeh_,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,aeh_,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,aeh_,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  EESA High Burst
@@ -820,9 +839,6 @@ IF (eesa_on[0]) THEN BEGIN
     add_vsw2, aehb,Vgse_tpnm[0]
     add_magf2,aehb,Bgse_tpnm[0]
     add_scpot,aehb,  scp_tpn[0]
-    add_vsw2, aehb,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,aehb,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,aehb,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Define BURST_ON status for ELB and EHB
@@ -833,27 +849,11 @@ IF (eesa_on[0]) THEN BEGIN
   ;;  Print out name as a check
   ;;--------------------------------------------------------------------------------------
   fname          = savdir[0]+fpref[0]+tsuffx[0]+fsuffx[0]
+  PRINT,';; ',fname[0]
   ;;--------------------------------------------------------------------------------------
   ;;  Create IDL save file
   ;;--------------------------------------------------------------------------------------
-  IF (save_on[0]) THEN BEGIN
-    PRINT,';; ',fname[0]
-    SAVE,ael_,aelb,aeh_,aehb,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Define return structure if so desired
-  ;;--------------------------------------------------------------------------------------
-  IF ARG_PRESENT(eesa_out) THEN BEGIN
-    IF (SIZE(ael_,/TYPE) NE 8) THEN ael_ = 0
-    IF (SIZE(aelb,/TYPE) NE 8) THEN aelb = 0
-    IF (SIZE(aeh_,/TYPE) NE 8) THEN aeh_ = 0
-    IF (SIZE(aehb,/TYPE) NE 8) THEN aehb = 0
-    eesa_out = {EL_:ael_,ELB:aelb,EH_:aeh_,EHB:aehb}
-    IF (SIZE(ael_,/TYPE) NE 8) THEN dumb = TEMPORARY(ael_)
-    IF (SIZE(aelb,/TYPE) NE 8) THEN dumb = TEMPORARY(aelb)
-    IF (SIZE(aeh_,/TYPE) NE 8) THEN dumb = TEMPORARY(aeh_)
-    IF (SIZE(aehb,/TYPE) NE 8) THEN dumb = TEMPORARY(aehb)
-  ENDIF
+  SAVE,ael_,aelb,aeh_,aehb,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
   ;;--------------------------------------------------------------------------------------
   ;;  Clean up
   ;;--------------------------------------------------------------------------------------
@@ -893,9 +893,6 @@ IF (sst__on[0]) THEN BEGIN
     add_vsw2, asf_,Vgse_tpnm[0]
     add_magf2,asf_,Bgse_tpnm[0]
     add_scpot,asf_,  scp_tpn[0]
-    add_vsw2, asf_,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,asf_,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,asf_,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  SST Foil Burst
@@ -905,9 +902,6 @@ IF (sst__on[0]) THEN BEGIN
     add_vsw2, asfb,Vgse_tpnm[0]
     add_magf2,asfb,Bgse_tpnm[0]
     add_scpot,asfb,  scp_tpn[0]
-    add_vsw2, asfb,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,asfb,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,asfb,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  SST Open
@@ -917,9 +911,6 @@ IF (sst__on[0]) THEN BEGIN
     add_vsw2, aso_,Vgse_tpnm[0]
     add_magf2,aso_,Bgse_tpnm[0]
     add_scpot,aso_,  scp_tpn[0]
-    add_vsw2, aso_,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,aso_,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,aso_,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  SST Open Burst
@@ -929,9 +920,6 @@ IF (sst__on[0]) THEN BEGIN
     add_vsw2, asob,Vgse_tpnm[0]
     add_magf2,asob,Bgse_tpnm[0]
     add_scpot,asob,  scp_tpn[0]
-    add_vsw2, asob,Vgse_tpnm[0],/LEAVE_ALONE
-    add_magf2,asob,Bgse_tpnm[0],/LEAVE_ALONE
-    add_scpot,asob,  scp_tpn[0],/LEAVE_ALONE
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Define BURST_ON status for SFB and SOB
@@ -942,30 +930,11 @@ IF (sst__on[0]) THEN BEGIN
   ;;  Print out name as a check
   ;;--------------------------------------------------------------------------------------
   fname          = savdir[0]+fpref[0]+tsuffx[0]+fsuffx[0]
+  PRINT,';; ',fname[0]
   ;;--------------------------------------------------------------------------------------
   ;;  Create IDL save file
   ;;--------------------------------------------------------------------------------------
-  IF (save_on[0]) THEN BEGIN
-    PRINT,';; ',fname[0]
-    SAVE,asf_,asfb,aso_,asob,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Define return structure if so desired
-  ;;--------------------------------------------------------------------------------------
-  IF ARG_PRESENT(sst_fout) THEN BEGIN
-    IF (SIZE(asf_,/TYPE) NE 8) THEN asf_ = 0
-    IF (SIZE(asfb,/TYPE) NE 8) THEN asfb = 0
-    sst_fout = {SF_:asf_,SFB:asfb}
-    IF (SIZE(asf_,/TYPE) NE 8) THEN dumb = TEMPORARY(asf_)
-    IF (SIZE(asfb,/TYPE) NE 8) THEN dumb = TEMPORARY(asfb)
-  ENDIF
-  IF ARG_PRESENT(sst_oout) THEN BEGIN
-    IF (SIZE(aso_,/TYPE) NE 8) THEN aso_ = 0
-    IF (SIZE(asob,/TYPE) NE 8) THEN asob = 0
-    sst_oout = {SO_:aso_,SOB:asob}
-    IF (SIZE(aso_,/TYPE) NE 8) THEN dumb = TEMPORARY(aso_)
-    IF (SIZE(asob,/TYPE) NE 8) THEN dumb = TEMPORARY(asob)
-  ENDIF
+  SAVE,asf_,asfb,aso_,asob,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
   ;;--------------------------------------------------------------------------------------
   ;;  Clean up
   ;;--------------------------------------------------------------------------------------
@@ -990,7 +959,6 @@ IF (nna[0] NE '') THEN IF (cleant_on[0]) THEN store_data,DELETE=nna  ;;  Clean u
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
-MESSAGE,STRING(SYSTIME(1) - tstart[0])+' seconds execution time.',/CONTINUE,/INFORMATIONAL
 
 RETURN
 END

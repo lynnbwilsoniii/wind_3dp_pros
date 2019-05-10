@@ -360,12 +360,6 @@
 ;                                                                   [06/25/2018   v1.0.3]
 ;             4)  Cleaned up a few things and removed some spurious STOP statements
 ;                                                                   [08/07/2018   v1.0.4]
-;             5)  Fixed a bug in beam/strahl min/max energy range specification and
-;                   now includes total model fit and total reduced chi-squared values
-;                   on output
-;                                                                   [04/22/2019   v1.0.5]
-;             6)  Now returns two forms of the total value and reduced chi-squared
-;                                                                   [04/25/2019   v1.0.6]
 ;
 ;   NOTES:      
 ;               0)  ***  Do not directly set the RMSTRAHL keyword  ***
@@ -553,7 +547,7 @@
 ;   ADAPTED FROM: wrapper_fit_vdf_2_sumof2funcs.pro
 ;   CREATED:  06/19/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/25/2019   v1.0.6
+;    LAST MODIFIED:  08/07/2018   v1.0.4
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -1213,7 +1207,6 @@ test_core               = (vdf_2dc GE cthrsh[0]*vdfc_max[0])
 ;test_core               = (vdf_2dc GE 1d-2*vdfc_max[0]) AND (eners LE 4d-1*ener_ran[1])
 good_core               = WHERE(test_core,gd_core,COMPLEMENT=bad_core,NCOMPLEMENT=bd_core)
 IF (bd_core[0] GT 0) THEN vdf_2dc[bad_core] = f
-vdf_2dc0                = vdf_2dc
 IF (gd_core[0] GT 0) THEN BEGIN
   ;;  Remove data from halo and beam arrays
   vdf_2dh[good_core]     = f
@@ -1321,7 +1314,7 @@ ENDIF
 IF (b__emin[0] GT 0) THEN BEGIN
   ;;  Exclude data below EMIN_B
   bad3                    = WHERE(eners LE b__emin[0],bd3)
-  IF (bd3[0] GT 0) THEN BEGIN
+  IF (bd2[0] GT 0) THEN BEGIN
     ;;  Zero-out values of weights to tell MPFIT to ignore those points
     weightb[bad3]            = 0d0
     zerrb[bad3]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
@@ -1333,7 +1326,7 @@ ENDIF
 IF (b__emax[0] LT 1d30) THEN BEGIN
   ;;  Exclude data above EMAX_B
   bad3                    = WHERE(eners GE b__emax[0],bd3)
-  IF (bd3[0] GT 0) THEN BEGIN
+  IF (bd2[0] GT 0) THEN BEGIN
     ;;  Zero-out values of weights to tell MPFIT to ignore those points
     weightb[bad3]            = 0d0
     zerrb[bad3]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
@@ -1684,7 +1677,6 @@ corefit_out            /= ffac[0]
 halofit_out            /= ffac[0]
 beamfit_out            /= ffac[0]
 ;;  Remove correction that was added to weights to ensure ≥ 1.0 for chi-squared and one-sigma values
-weighttot               = lbw__add(weightc,lbw__add(weighth,weightb,/NAN),/NAN)
 CASE good_wts[0] OF
   0    : BEGIN       ;;  one-count
     f_sigc                 /= offset[0]
@@ -1693,7 +1685,6 @@ CASE good_wts[0] OF
     chisqc                 *= offset[0]                           ;;  Remove correction that was added to weights to ensure ≥ 1.0
     chisqh                 *= offset[0]                           ;;  Remove correction that was added to weights to ensure ≥ 1.0
     chisqb                 *= offset[0]                           ;;  Remove correction that was added to weights to ensure ≥ 1.0
-    weighttot              *= offset[0]
   END
   1    : BEGIN       ;;  no weighting
     f_sigc                  = f_sigc
@@ -1702,7 +1693,6 @@ CASE good_wts[0] OF
     chisqc                 *= medoff[0]
     chisqh                 *= medoff[0]
     chisqb                 *= medoff[0]
-    weighttot              *= medoff[0]
   END
   2    : BEGIN       ;;  Poisson
     f_sigc                 /= poffst[0]
@@ -1711,7 +1701,6 @@ CASE good_wts[0] OF
     chisqc                 *= (poffst[0]^2d0)
     chisqh                 *= (poffst[0]^2d0)
     chisqb                 *= (poffst[0]^2d0)
-    weighttot              *= (poffst[0]^2d0)
   END
   3    : BEGIN       ;;  10% of data
     f_sigc                 /= (1d-2*offset[0])
@@ -1720,28 +1709,9 @@ CASE good_wts[0] OF
     chisqc                 *= (offset[0]^2d0)
     chisqh                 *= (offset[0]^2d0)
     chisqb                 *= (offset[0]^2d0)
-    weighttot              *= (offset[0]^2d0)
   END
   ELSE : STOP        ;;  Should not be possible --> debug
 ENDCASE
-;;  Calculate total chi-squared
-model_tot               = lbw__add(corefit_out,lbw__add(halofit_out,beamfit_out,/NAN),/NAN)
-measr_tot               = lbw__add(vdf_2dc0,lbw__add(residualh,residualb,/NAN),/NAN)
-test_tot                = (FINITE(measr_tot) EQ 0) OR (measr_tot LE 0) OR   $
-                          (FINITE(weighttot) EQ 0) OR (weighttot LE 0)
-bad_tot                 = WHERE(test_tot,bd_tot,COMPLEMENT=good_tot,NCOMPLEMENT=gd_tot)
-IF (bd_tot[0] GT 0) THEN BEGIN
-  measr_tot[bad]            = 0d0
-  weighttot[bad]            = 0d0
-ENDIF
-dof0                    = ((dofc[0] > dofh[0]) > dofb[0])
-doft                    = 3d0*dof0[0]
-chisq_tot_a             = TOTAL((vdf_2d - model_tot)^2d0*ABS(weighttot),/NAN)
-chisq_tot_f             = TOTAL((measr_tot - model_tot)^2d0*ABS(weighttot),/NAN)
-red_chisq_tot_f         = chisq_tot_f[0]/doft[0]
-red_chisq_tot_a         = chisq_tot_a[0]/doft[0]
-chisq_tot               = [chisq_tot_a[0],chisq_tot_f[0]]
-red_chisq_tot           = [red_chisq_tot_a[0],red_chisq_tot_f[0]]
 ;;----------------------------------------------------------------------------------------
 ;;  Define return structure
 ;;----------------------------------------------------------------------------------------
@@ -1760,8 +1730,7 @@ beam_strc               = CREATE_STRUCT(out_tags,vx_in,vy_in,residualb,weightb,b
                                         f_sigb,chisqb[0],dofb[0],iterb[0],statb[0],zerrorb,      $
                                         bfun[0],b_pinfo,bfree_ind,bpegged,vdf_2db,offset[0],     $
                                         b__trial[0])
-tags                    = ['CORE','HALO','BEAM','MODEL_TOT','VDF_FIT_TOT','WEIGHT_TOT','CHISQ_TOT','RED_CHISQ_TOT']
-out_struc               = CREATE_STRUCT(tags,core_strc,halo_strc,beam_strc,model_tot,measr_tot,weighttot,chisq_tot,red_chisq_tot)
+out_struc               = CREATE_STRUCT(['CORE','HALO','BEAM'],core_strc,halo_strc,beam_strc)
 ;;----------------------------------------------------------------------------------------
 ;;  Plot data with fits
 ;;----------------------------------------------------------------------------------------
