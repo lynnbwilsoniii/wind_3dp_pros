@@ -1,0 +1,336 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   simpsons_38_2d_integration.pro
+;  PURPOSE  :   This routine performs a 2D integration using Simpson's 3/8 Rule
+;                 algorithm based upon user defined X, Y, and Z inputs.  Note that if
+;                 any additional factors are to be included, they should be done so
+;                 prior to calling.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;               delete_variable.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               X       :  [N]-Element [numeric] array of x-coordinate abscissa
+;               Y       :  [M]-Element [numeric] array of y-coordinate abscissa
+;               Z       :  [N,M]-Element [numeric] array of z-function values for each
+;                            X and Y abscissa value
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               result = simpsons_38_2d_integration(x,y,z [,/LOG] [,/NOMSSG])
+;
+;  KEYWORDS:    
+;               LOG     :  If set and routine needs to regrid Z, then the interpolation
+;                            will be done in logarithmic space
+;                            [Default = FALSE]
+;               NOMSSG  :  If set routine will not print out timing analysis
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               ***  Still Testing  ***
+;               1)  N should be odd and must satisfy N > 9
+;               2)  If X, Y, and Z are not on a regular, uniform grid then the routine
+;                     will regrid the results before interpolation as the algorithm
+;                     assumes a regular grid
+;
+;  REFERENCES:  
+;               http://mathfaculty.fullerton.edu/mathews/n2003/SimpsonsRule2DMod.html
+;               http://www.physics.usyd.edu.au/teach_res/mp/doc/math_integration_2D.pdf
+;               https://en.wikipedia.org/wiki/Simpson%27s_rule
+;
+;   CREATED:  06/15/2019
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  06/15/2019   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION simpsons_38_2d_integration,x,y,z,LOG=log,NOMSSG=nomssg
+
+ex_start       = SYSTIME(1)
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+update         = 0b
+asymxy         = 0b
+;;  Dummy error messages
+no_inpt__mssg  = 'User must supply X, Y, and Z as [N]-element [numeric] arrays...'
+badndim__mssg  = 'Inputs X and Y must be one-dimensional [numeric] arrays and Z must be a two-dimensional [numeric] array...'
+badddim__mssg  = 'Inputs X and Y must be [N]-element [numeric] arrays and Z must be a [N,N]-element [numeric] array...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 1) OR (is_a_number(x,/NOMSSG) EQ 0) OR $
+                 (is_a_number(y,/NOMSSG) EQ 0) OR (is_a_number(z,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt__mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+szdx           = SIZE(x,/DIMENSIONS)
+sznx           = SIZE(x,/N_DIMENSIONS)
+szdy           = SIZE(y,/DIMENSIONS)
+szny           = SIZE(y,/N_DIMENSIONS)
+szdz           = SIZE(z,/DIMENSIONS)
+sznz           = SIZE(z,/N_DIMENSIONS)
+test           = (sznx[0] NE 1) OR (szny[0] NE 1) OR (sznz[0] NE 2)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badndim__mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test           = ((szdx[0] NE szdz[0]) OR (szdy[0] NE szdz[1])) OR $
+                 ((szdx[0] LT 9L) OR (szdy[0] LT 9L))
+IF (test[0]) THEN BEGIN
+  MESSAGE,badddim__mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+IF (szdx[0] NE szdy[0]) THEN asymxy = 1b
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(log) THEN log_on = 1b ELSE log_on = 0b
+;;----------------------------------------------------------------------------------------
+;;  Make sure N is odd
+;;----------------------------------------------------------------------------------------
+nx             = N_ELEMENTS(x)
+ny             = N_ELEMENTS(y)
+test           = [((nx[0] MOD 2) EQ 0),((nx[0] MOD 2) EQ 0)]
+ts             = TOTAL(test)
+IF (ts[0] GT 0) THEN BEGIN
+  ;;  N is currently even --> make odd
+  update         = 1b
+  IF (asymxy[0]) THEN BEGIN
+    ;;  Z is NxM
+    IF (test[0]) THEN xx             = x[0L:(nx[0] - 2L)]
+    IF (test[1]) THEN yy             = y[0L:(ny[0] - 2L)]
+    CASE ts[0] OF
+      1    :  IF (test[0]) THEN zz = z[0L:(nx[0] - 2L),*] ELSE zz = z[*,0L:(ny[0] - 2L)]
+      2    :   zz = z[0L:(nx[0] - 2L),0L:(nx[0] - 2L)]
+      ELSE : STOP     ;;  Should not happen --> debug
+    ENDCASE
+  ENDIF ELSE BEGIN
+    ;;  Z is NxN
+    zz = z[0L:(nx[0] - 2L),0L:(nx[0] - 2L)]
+  ENDELSE
+ENDIF ELSE BEGIN
+  xx             = REFORM(x)
+  yy             = REFORM(y)
+  zz             = REFORM(z)
+ENDELSE
+xran           = [MIN(xx,/NAN),MAX(xx,/NAN)]
+yran           = [MIN(yy,/NAN),MAX(yy,/NAN)]
+nx             = N_ELEMENTS(xx)
+ny             = N_ELEMENTS(yy)
+IF (nx[0] NE ny[0]) THEN asymxy = 1b        ;;  Make sure altering output did not affect asymmetry
+;;  Regardless, make sure on uniform grid
+dfx            = SHIFT(xx,-1) - xx
+dfy            = SHIFT(yy,-1) - yy
+unqx           = UNIQ(dfx,SORT(dfx))
+unqy           = UNIQ(dfy,SORT(dfy))
+test           = (N_ELEMENTS(unqx) GT 2) OR (N_ELEMENTS(unqy) GT 2)
+IF (asymxy[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;11111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+  ;;  Z is NxM (asymmetric)
+  ;;11111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+  ;;--------------------------------------------------------------------------------------
+  IF (test[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Do a more thorough check to see if regridding is necessary
+    ;;------------------------------------------------------------------------------------
+    dx             = (xran[1] - xran[0])/(nx[0] - 1L)
+    dy             = (yran[1] - yran[0])/(ny[0] - 1L)
+    xg             = DINDGEN(nx[0])*dx[0] + xran[0]
+    yg             = DINDGEN(ny[0])*dy[0] + yran[0]
+    ;;  Find closest indices of original regularly gridded input velocities
+    ix             = LINDGEN(nx[0])
+    iy             = LINDGEN(ny[0])
+    testx          = VALUE_LOCATE(xx,xg)
+    testy          = VALUE_LOCATE(yy,yg)
+    dfx            = testx - ix
+    dfy            = testy - iy
+    test           = (TOTAL(dfx NE 0) GT 0) OR (TOTAL(dfy NE 0) GT 0)
+    IF (test[0]) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  Need to regrid input
+      ;;----------------------------------------------------------------------------------
+      ;;  Calculate fraction of indices between indices
+      diffx          = (xg - xx[testx])/dx[0]
+      diffy          = (yg - yy[testy])/dy[0]
+      ;;  Define fractional indices
+      index_x        = testx + diffx
+      index_y        = testy + diffy
+      ;;  Regrid Z
+      IF (log_on[0]) THEN BEGIN
+        zg             = 1d1^(INTERPOLATE(ALOG10(zz),index_x,index_y,MISSING=d,/DOUBLE,/GRID))
+      ENDIF ELSE BEGIN
+        zg             = INTERPOLATE(zz,index_x,index_y,MISSING=d,/DOUBLE,/GRID)
+      ENDELSE
+      ;;  Clean up
+      delete_variable,diffx,diffy,index_x,index_y
+    ENDIF ELSE BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  No need to regrid input
+      ;;----------------------------------------------------------------------------------
+      xg             = xx
+      yg             = yy
+      zg             = zz
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  No need to regrid input
+    ;;------------------------------------------------------------------------------------
+    xg             = xx
+    yg             = yy
+    zg             = zz
+  ENDELSE
+  ;;  Should not have changed, but just in case...
+  xran           = [MIN(xg,/NAN),MAX(xg,/NAN)]
+  yran           = [MIN(yg,/NAN),MAX(yg,/NAN)]
+  nx             = N_ELEMENTS(xx)
+  ny             = N_ELEMENTS(yy)
+  dx             = (xran[1] - xran[0])/(nx[0] - 1L)
+  dy             = (yran[1] - yran[0])/(nx[0] - 1L)
+  ;;  Clean up
+  delete_variable,xx,yy,zz,testx,testy,dfx,dfy,ii
+  ;;--------------------------------------------------------------------------------------
+  ;;  2D Simpson's 3/8 Rule
+  ;;--------------------------------------------------------------------------------------
+  ;;  Construct Simpson's 3/8 Rule 1D coefficients
+  ;;    I ~ 3h/8 [f_0 + 3 f_1 + 3 f_2 + 2 f_3  + 3 f_4 + 3 f_5 + 2 f_3  + ... + f_N-1]
+  scxy           = REPLICATE(1d0,nx[0],ny[0])
+  scx            = REFORM(scxy[*,0])
+  scy            = REFORM(scxy[0,*])
+  scx[1:(nx[0] - 2L):3] *= 3d0
+  scx[2:(nx[0] - 2L):3] *= 3d0
+  scx[3:(nx[0] - 2L):3] *= 2d0
+  scx[(nx[0] - 1L)]      = 1d0
+  scy[1:(ny[0] - 2L):3] *= 3d0
+  scy[2:(ny[0] - 2L):3] *= 3d0
+  scy[3:(ny[0] - 2L):3] *= 2d0
+  scy[(ny[0] - 1L)]      = 1d0
+  scxy           = scx # scy
+  scxy[0,0]      = 1d0
+  scxy[(nx[0] - 1L),(ny[0] - 1L)] = 1d0
+  ;;  Define h-factors for 2D Simpson's 3/8 Rule 2D
+  hfac           = dx[0]*dy[0]/9d0
+  ;;  Clean up
+  delete_variable,sc,scx,scy
+  ;;11111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+  ;;11111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;22222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+  ;;  Z is NxN (symmetric)
+  ;;22222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+  ;;--------------------------------------------------------------------------------------
+  IF (test[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Do a more thorough check to see if regridding is necessary
+    ;;------------------------------------------------------------------------------------
+    dx             = (xran[1] - xran[0])/(nx[0] - 1L)
+    dy             = (yran[1] - yran[0])/(nx[0] - 1L)
+    xg             = DINDGEN(nx[0])*dx[0] + xran[0]
+    yg             = DINDGEN(nx[0])*dy[0] + yran[0]
+    ;;  Find closest indices of original regularly gridded input velocities
+    ii             = LINDGEN(nx[0])
+    testx          = VALUE_LOCATE(xx,xg)
+    testy          = VALUE_LOCATE(yy,yg)
+    dfx            = testx - ii
+    dfy            = testy - ii
+    test           = (TOTAL(dfx NE 0) GT 0) OR (TOTAL(dfy NE 0) GT 0)
+    IF (test[0]) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  Need to regrid input
+      ;;----------------------------------------------------------------------------------
+      ;;  Calculate fraction of indices between indices
+      diffx          = (xg - xx[testx])/dx[0]
+      diffy          = (yg - yy[testy])/dy[0]
+      ;;  Define fractional indices
+      index_x        = testx + diffx
+      index_y        = testy + diffy
+      ;;  Regrid Z
+      IF (log_on[0]) THEN BEGIN
+        zg             = 1d1^(INTERPOLATE(ALOG10(zz),index_x,index_y,MISSING=d,/DOUBLE,/GRID))
+      ENDIF ELSE BEGIN
+        zg             = INTERPOLATE(zz,index_x,index_y,MISSING=d,/DOUBLE,/GRID)
+      ENDELSE
+      ;;  Clean up
+      delete_variable,diffx,diffy,index_x,index_y
+    ENDIF ELSE BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  No need to regrid input
+      ;;----------------------------------------------------------------------------------
+      xg             = xx
+      yg             = yy
+      zg             = zz
+    ENDELSE
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  No need to regrid input
+    ;;------------------------------------------------------------------------------------
+    xg             = xx
+    yg             = yy
+    zg             = zz
+  ENDELSE
+  ;;  Should not have changed, but just in case...
+  xran           = [MIN(xg,/NAN),MAX(xg,/NAN)]
+  yran           = [MIN(yg,/NAN),MAX(yg,/NAN)]
+  nx             = N_ELEMENTS(xx)
+  dx             = (xran[1] - xran[0])/(nx[0] - 1L)
+  dy             = (yran[1] - yran[0])/(nx[0] - 1L)
+  ;;  Clean up
+  delete_variable,xx,yy,zz,testx,testy,dfx,dfy,ii
+  ;;--------------------------------------------------------------------------------------
+  ;;  2D Simpson's 3/8 Rule
+  ;;--------------------------------------------------------------------------------------
+  ;;  Construct Simpson's 3/8 Rule 1D coefficients
+  ;;    I ~ 3h/8 [f_0 + 3 f_1 + 3 f_2 + 2 f_3  + 3 f_4 + 3 f_5 + 2 f_3  + ... + f_N-1]
+  sc             = REPLICATE(1d0,nx[0])
+  sc[1:(nx[0] - 2L):3] *= 3d0              ;;  Start at 2nd element and every third element should be 3
+  sc[2:(nx[0] - 2L):3] *= 3d0              ;;  Start at 3rd element and every third element should be 3
+  sc[3:(nx[0] - 2L):3] *= 2d0              ;;  Start at 4th element and every third element should be 2
+  sc[(nx[0] - 1L)]      = 1d0              ;;  Make sure last element is 1
+  ;;  Construct Simpson's 3/8 Rule 2D coefficients
+  ;;    [just outer product to two arrays or the first by the transpose of the second...]
+  scx            = sc # REPLICATE(1d0,nx[0])
+  scy            = REPLICATE(1d0,nx[0]) # sc
+  scxy           = scx*scy
+  ;;  Define h-factors for 2D Simpson's 3/8 Rule 2D
+  hfac           = dx[0]*dy[0]/9d0
+  ;;  Clean up
+  delete_variable,sc,scx,scy
+  ;;22222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+  ;;22222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Compute 2D integral of input
+;;----------------------------------------------------------------------------------------
+output         = TOTAL(hfac[0]*TOTAL(scxy*zg,2,/NAN),/NAN)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+ex_time        = SYSTIME(1) - ex_start[0]
+IF ~KEYWORD_SET(nomssg) THEN MESSAGE,STRING(ex_time[0])+' seconds execution time.',/CONTINUE,/INFORMATIONAL
+
+RETURN,output[0]
+END
+
+
+
+
