@@ -22,7 +22,7 @@
 ;               conv_units.pro
 ;               conv_vdfidlstr_2_f_vs_vxyz_thm_wi.pro
 ;               trange_str.pro
-;               wrapper_fit_vdf_2_sumof3funcs.pro
+;               wrapper_fit_vdf_2_sumof2funcs.pro
 ;               num2int_str.pro
 ;
 ;  REQUIRES:    
@@ -47,8 +47,6 @@
 ;             2)  Fixed issue with events where no burst data is available the previously
 ;                   caused batch routine to crash and exit prematurely
 ;                                                                   [05/22/2018   v1.0.2]
-;             3)  Updated to use wrapper_fit_vdf_2_sumof3funcs.pro
-;                                                                   [08/15/2019   v1.0.3]
 ;
 ;   NOTES:      
 ;               1)  Follow notes in crib and enter each line by hand in the command line
@@ -139,32 +137,15 @@
 ;                      detection efficiency for low energy positive hydrogen ions,"
 ;                      Nucl. Inst. & Meth. in Phys. Res. A Vol. 320, pp. 556--561,
 ;                      doi:10.1016/0168-9002(92)90950-9, 1992.
-;              23)  Wilson III, L.B., et al., "The Statistical Properties of Solar Wind
-;                      Temperature Parameters Near 1 au," Astrophys. J. Suppl. 236(2),
-;                      pp. 41, doi:10.3847/1538-4365/aab71c, 2019.
-;              24)  Wilson III, L.B., et al., "Electron energy partition across
-;                      interplanetary shocks: I. Methodology and Data Product,"
-;                      Astrophys. J. Suppl. 243(8), doi:10.3847/1538-4365/ab22bd, 2019.
-;              25)  Wilson III, L.B., et al., "Supplement to: Electron energy partition
-;                      across interplanetary shocks," Zenodo Dataset,
-;                      doi:10.5281/zenodo.2875806, 2019.
 ;
 ;   CREATED:  04/27/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/15/2019   v1.0.3
+;    LAST MODIFIED:  05/22/2018   v1.0.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-;;----------------------------------------------------------------------------------------
-;;  Turn on vectors and parallel cores
-;;----------------------------------------------------------------------------------------
-nthreads       = !CPU.HW_NCPU[0]
-CPU,TPOOL_MIN_ELTS=10000L,/VECTOR_ENABLE,TPOOL_NTHREADS=nthreads[0]
-PREF_SET,'IDL_CPU_TPOOL_NTHREADS',nthreads[0],/COMMIT
-PREF_SET,'IDL_CPU_TPOOL_MIN_ELTS',10000L,/COMMIT
-PREF_SET,'IDL_CPU_VECTOR_ENABLE',1b,/COMMIT
 ;;---------------------------------------------------
 ;;  1996-04-03
 ;;---------------------------------------------------
@@ -255,65 +236,6 @@ IF (tdate[0] EQ '1996-04-03') THEN ttle_ext       = 'SWF'                       
 vfmag          = mag__vec(vframe,/NAN)
 pttl_pref      = sc[0]+' ['+ttle_ext[0]+'] '+pttl_midf[0]
 ;;----------------------------------------------------------------------------------------
-;;  Plot 2D contour in SWF, in FAC coordinate basis, and fit
-;;----------------------------------------------------------------------------------------
-dumbfix        = REPLICATE(0b,6)
-sm_cuts        = 1b               ;;  Do smooth cuts
-sm_cont        = 1b               ;;  Do smooth contours
-nlev           = 30L
-ngrid          = 101L
-vec1           = REFORM(dat0[0].MAGF)
-vec2           = REFORM(dat0[0].VSW)
-;;  Define an initial guess for the bi-self-similar parameters of the core electrons
-cparm          = [6.5d0,22d2,25d2,-4d2,1d1,3d0]
-;;  Define an initial guess for the bi-kappa parameters of the halo electrons
-hparm          = [4d-1,50d2,50d2, 2d3,0d0,3d0]
-;;  Define an initial guess for the bi-kappa parameters of the strahl electrons
-bparm          = [3d-2,50d2,65d2, 4d3,0d0,3d0]
-emin_ch        = 2.90d0                   ;;  Lowest energy [eV] to allow for core+halo fits
-emin_b         = 10d1                     ;;  Lowest energy [eV] to allow for beam fits
-;;----------------------------------------------------------------------------------------
-;;  Account for strahl and define/set limits
-;;----------------------------------------------------------------------------------------
-;;  Drift Speed constraints
-voahalorn      = [1,1,0d0,15d3]
-voabeamrn      = [1,1,2d3,15d3]
-IF (ABS(strahl[jj]) GT 0) THEN hparm[3]      *= (-1*strahl[jj])
-IF (ABS(strahl[jj]) GT 0) THEN bparm[3]      *= (-1*sign(hparm[3]))
-IF (ABS(strahl[jj]) GT 0) THEN voabeamrn[2]   = (-1*sign(hparm[3]))*ABS(voabeamrn[2])
-IF (ABS(strahl[jj]) GT 0) THEN voabeamrn[3]   = (-1*sign(hparm[3]))*ABS(voabeamrn[3])
-IF (ABS(strahl[jj]) GT 0) THEN sp             = SORT(voabeamrn[2:3])
-IF (ABS(strahl[jj]) GT 0) THEN IF (sp[0] NE 0) THEN voabeamrn[2:3] = voabeamrn[[3,2]]
-
-IF (ABS(strahl[jj]) GT 0) THEN voahalorn[2:3]   = (-1*strahl[jj])*ABS(voahalorn[2:3])
-IF (ABS(strahl[jj]) GT 0) THEN sp               = SORT(voahalorn[2:3])
-IF (ABS(strahl[jj]) GT 0) THEN IF (sp[0] NE 0) THEN voahalorn[2:3] = voahalorn[[3,2]]   ;;  Make sure in proper order
-IF (ABS(strahl[jj]) GT 0) THEN test           = (sign(hparm[3]) EQ sign(bparm[3])) OR ((sign(voabeamrn[3]) EQ sign(voahalorn[3])) AND (voahalorn[0] GT 0))
-IF (test[0]) THEN STOP      ;;  Make sure sign is not screwed up
-;;  Thermal Speed constraints
-vtahalorn      = [1,1,125d-2*cparm[1],1d4]
-vtehalorn      = [1,1,125d-2*cparm[2],1d4]
-vtabeamrn      = [1,1,125d-2*cparm[1],1d4]
-vtebeamrn      = [1,1,125d-2*cparm[2],1d4]
-;;  Exponent constraints
-;;    Note that while the kappa value can, in principle, go down to 3/2, I have found
-;;      that any values below 2.0 start to look like unrealistic ``spiky'' fits, which
-;;      do not seem to care about the data at all.  That is, the output looks obviously
-;;      wrong/bad and even though the reduced chi-squared may look okay.
-expcorern      = [1,1,2d0,1d1]        ;;  Use the ES2CORERN keyword if CFUNC = 'AS' --> also need to change values of CPARM[4] and CPARM[5]
-exphalorn      = [1,1,1.75d0,10d1]
-expbeamrn      = exphalorn
-
-fixed_c        = dumbfix
-fixed_h        = dumbfix
-fixed_b        = dumbfix
-fixed_h[4]     = 1b                       ;;  Prevent fit routines from varying perpendicular drift velocity
-fixed_b[4]     = 1b                       ;;  Prevent fit routines from varying perpendicular drift velocity
-;;  Setup fit function stuff
-cfunc          = 'SS'
-hfunc          = 'KK'
-bfunc          = 'KK'
-;;----------------------------------------------------------------------------------------
 ;;  Define some plot parameters
 ;;----------------------------------------------------------------------------------------
 ;;  Define one-count level VDF
@@ -350,101 +272,78 @@ vels_1d        = dat_fvxyz.VELXYZ               ;;  [N,3]-Element [numeric] arra
 onec_1d        = dat_1cxyz.VDF                  ;;  [N]-Element [numeric] array of one-count levels in units of phase space densities [# s^(+3) km^(-3) cm^(-3)]
 pois_1d        = dat_psxyz.VDF                  ;;  [N]-Element [numeric] array of Poisson statistics [# cm^(-3) km^(-3) s^(+3)]
 ;;----------------------------------------------------------------------------------------
-;;  Fit to sum of 3 functions
+;;  Plot 2D contour in SWF, in FAC coordinate basis, and fit
 ;;----------------------------------------------------------------------------------------
+dumbfix        = REPLICATE(0b,6)
+sm_cuts        = 1b               ;;  Do smooth cuts
+sm_cont        = 1b               ;;  Do smooth contours
+vec1           = REFORM(dat0[0].MAGF)
+vec2           = REFORM(dat0[0].VSW)
+;;  Define an initial guess for the bi-Maxwellian parameters of the core electrons
+bimax          = [6.5d0,22d2,25d2,-4d2,0d0,0d0]
+;;  Define an initial guess for the bi-kappa parameters of the halo electrons
+bikap          = [4d-1,50d2,50d2, 2d3,0d0,3d0]
+bikap[3]      *= -1*strahl[jj]
+;;  Define an initial guess for the bi-kappa parameters of the strahl electrons
+beamp          = [3d-2,50d2,65d2, 4d3,0d0,2d0]
+beamp[3]      *= -1*sign(bikap[3])
+fixed_c        = dumbfix
+fixed_h        = dumbfix
+fixed_b        = dumbfix
+fixed_c[4:5]   = 1b                       ;;  Prevent fit routines from varying perpendicular drift velocity and exponent
+fixed_h[4]     = 1b                       ;;  Prevent fit routines from varying perpendicular drift velocity
+fixed_b[4]     = 1b                       ;;  Prevent fit routines from varying perpendicular drift velocity
+;;  Define range for beam parallel drift speed [km/s]
+voabeamrn      = [1,1,1d3,15d3]
+voabeamrn[2:3] *= -1*sign(bikap[3])       ;;  Make sure the beam is on the strahl side
+sp             = SORT(voabeamrn[2:3])
+IF (sp[0] NE 0) THEN voabeamrn[2:3] = voabeamrn[[3,2]]
+vtabeamrn      = [1,1,5d2,8d3]            ;;  Define range for beam parallel thermal speed [km/s]
+vtebeamrn      = [1,1,1d3,9d3]            ;;  Define range for beam perpendicular thermal speed [km/s]
+expbeamrn      = [1,1,3d0/2d0,2.5d0]      ;;  Define range for beam kappa value [unitless]
+emin_ch        = 2.90d0                   ;;  Lowest energy [eV] to allow for core+halo fits
+emin_b         = 10d1                     ;;  Lowest energy [eV] to allow for beam fits
+
 ;;  Compile necessary routines to make sure IDL paths are okay and routines are available
 .compile mpfit.pro
 .compile mpfit2dfun.pro
-.compile wrapper_fit_vdf_2_sumof3funcs.pro
+.compile wrapper_fit_vdf_2_sumof2funcs.pro
+;;  Plot and fit
+wrapper_fit_vdf_2_sumof2funcs,data_1d,vels_1d,VFRAME=vframe,VEC1=vec1,VEC2=vec2,COREP=bimax,$
+                          HALOP=bikap,CFUNC='MM',HFUNC='KK',VLIM=vlim[0],PLANE=plane[0],    $
+                          NLEV=nlev,SM_CUTS=sm_cuts,SM_CONT=sm_cont,XNAME=xname,YNAME=yname,$
+                          DFRA=dfra,EX_VECS=ex_vecs,EX_INFO=ex_info,V_0X=vxy_offs[0],       $
+                          V_0Y=vxy_offs[1],/SLICE2D,ONE_C=onec_1d,P_TITLE=ptitle,           $
+                          /STRAHL,V1ISB=strahl[jj],OUTSTRC=out_struc,BEAMP=beamp,BFUNC='KK',$
+                          FIXED_C=fixed_c,FIXED_H=fixed_h,FIXED_B=fixed_b,/ONLY_TOT,        $
+                          VOABEAMRN=voabeamrn,VTABEAMRN=vtabeamrn,VTEBEAMRN=vtebeamrn,      $
+                          POISSON=pois_1d,EXPBEAMRN=expbeamrn,EMIN_CH=emin_ch,EMIN_B=emin_b
+
 ;;  Define file name
 vlim_str       = num2int_str(vlim[0],NUM_CHAR=6L,/ZERO_PAD)
 fname_end      = 'para-red_perp-blue_1count-green_plane-'+plane[0]+'_VLIM-'+vlim_str[0]+'km_s'
 fname_pre      = scpref[0]+'df_'+ttle_ext[0]+'_'
-fnams_out2     = fname_pre[0]+fname_mid+'_'+fname_end[0]+'_Fits_Core-SS_Halo-KK_wo-strahl_Beam-KK'
+fnams_out2     = fname_pre[0]+fname_mid+'_'+fname_end[0]+'_Fits_Core-MM_Halo-KK_wo-strahl_Beam-KK'
 
 ;;  Save Plot [showing each 1D cut individually and total sum of three fits]
-out_struc      = 0
-wrapper_fit_vdf_2_sumof3funcs,data_1d,vels_1d,VFRAME=vframe,VEC1=vec1,VEC2=vec2,COREP=cparm,$
-                          HALOP=hparm,BEAMP=bparm,CFUNC=cfunc,HFUNC=hfunc,BFUNC=bfunc,      $
-                          VLIM=vlim[0],PLANE=plane[0],NLEV=nlev,NGRID=ngrid,DFRA=dfra,      $
-                          SM_CUTS=sm_cuts,SM_CONT=sm_cont,XNAME=xname,YNAME=yname,          $
-                          EX_VECS=ex_vecs,EX_INFO=ex_info,V_0X=vxy_offs[0],                 $
+wrapper_fit_vdf_2_sumof2funcs,data_1d,vels_1d,VFRAME=vframe,VEC1=vec1,VEC2=vec2,COREP=bimax,$
+                          HALOP=bikap,CFUNC='MM',HFUNC='KK',VLIM=vlim[0],PLANE=plane[0],    $
+                          NLEV=nlev,SM_CUTS=sm_cuts,SM_CONT=sm_cont,XNAME=xname,YNAME=yname,$
+                          DFRA=dfra,EX_VECS=ex_vecs,EX_INFO=ex_info,V_0X=vxy_offs[0],       $
                           V_0Y=vxy_offs[1],/SLICE2D,ONE_C=onec_1d,P_TITLE=ptitle,           $
-                          /STRAHL,V1ISB=strahl[jj],OUTSTRC=out_struc,                       $
+                          /STRAHL,V1ISB=strahl[jj],OUTSTRC=out_struc,BEAMP=beamp,BFUNC='KK',$
                           FIXED_C=fixed_c,FIXED_H=fixed_h,FIXED_B=fixed_b,                  $
-                          VOABEAMRN=voabeamrn,VOAHALORN=voahalorn,VOACORERN=voacorern,      $
-                          VTABEAMRN=vtabeamrn,VTEBEAMRN=vtebeamrn,NBEAM_RAN=nbeam_ran,      $
-                          VTACORERN=vtacorern,VTECORERN=vtecorern,NCORE_RAN=ncore_ran,      $
-                          VTAHALORN=vtahalorn,VTEHALORN=vtehalorn,NHALO_RAN=nhalo_ran,      $
-                          EXPCORERN=expcorern,EXPBEAMRN=expbeamrn,EXPHALORN=exphalorn,      $
-                          ES2CORERN=es2corern,ES2HALORN=es2halorn,ES2BEAMRN=es2beamrn,      $
-                          EMIN_CH=emin__ch,EMIN_B=emin__b,EMAX_CH=emax__ch,EMAX_B=emax__b,  $
-                          FTOL=def_ftol,GTOL=def_gtol,XTOL=def_xtol,POISSON=pois_1d,        $
-                          /PLOT_BOTH,NOUSECTAB=nousectab,S_SIGN=s_sign,                     $
-                          /SAVEF,/KEEPNAN,FILENAME=fnams_out2[ii]
-;;  Wind [SWF] Eesa Low Burst: 1996-04-03/09:46:17.248 - 09:46:20.408
-;;  
-;;  N_oc     =  +8.1202e+00 +/- 9.4135e-03  cm^(-3)
-;;  V_Tcpar  =  +2.0386e+03 +/- 1.8266e+00  km s^(-1)
-;;  V_Tcper  =  +2.0894e+03 +/- 1.9362e+00  km s^(-1)
-;;  V_ocpar  =  -0.0000e+00 +/- 0.0000e+00  km s^(-1)
-;;  V_ocper  =  +5.7730e+00 +/- 9.6741e-01  km s^(-1)
-;;  SS expc  =  +2.0651e+00 +/- 2.8706e-03
-;;  Model Fit Status  = 000002
-;;  # of Iterations   = 000006
-;;  Deg. of Freedom   = 0000010195
-;;  Chi-Squared       = 8.8203e+03
-;;  Red. Chi-Squared  = 8.6516e-01
-;;  
-;;  N_oh     =  +1.8093e-01 +/- 1.9876e-03  cm^(-3)
-;;  V_Thpar  =  +4.2625e+03 +/- 1.2899e+01  km s^(-1)
-;;  V_Thper  =  +4.4772e+03 +/- 1.3649e+01  km s^(-1)
-;;  V_ohpar  =  -0.0000e+00 +/- 0.0000e+00  km s^(-1)
-;;  V_ohper  =  -0.0000e+00 +/- 0.0000e+00  km s^(-1)
-;;  kappah   =  +6.6349e+00 +/- 4.7530e-02
-;;  Model Fit Status  = 000002
-;;  # of Iterations   = 000010
-;;  Deg. of Freedom   = 0000010196
-;;  Chi-Squared       = 5.2817e+03
-;;  Red. Chi-Squared  = 5.1802e-01
-;;  
-;;  N_ob     =  +8.0117e-02 +/- 1.3661e-03  cm^(-3)
-;;  V_Tbpar  =  +3.3730e+03 +/- 2.0745e+01  km s^(-1)
-;;  V_Tbper  =  +3.3491e+03 +/- 2.2357e+01  km s^(-1)
-;;  V_obpar  =  +2.0000e+03 +/- 0.0000e+00  km s^(-1)
-;;  V_obper  =  -0.0000e+00 +/- 0.0000e+00  km s^(-1)
-;;  kappab   =  +3.5815e+00 +/- 3.9321e-02
-;;  Model Fit Status  = 000002
-;;  # of Iterations   = 000025
-;;  Deg. of Freedom   = 0000010196
-;;  Chi-Squared       = 2.5492e+03
-;;  Red. Chi-Squared  = 2.5002e-01
-;;
-
+                          VOABEAMRN=voabeamrn,VTABEAMRN=vtabeamrn,VTEBEAMRN=vtebeamrn,      $
+                          EXPBEAMRN=expbeamrn,EMIN_CH=emin_ch,EMIN_B=emin_b,/PLOT_BOTH,     $
+                          POISSON=pois_1d,FILENAME=fnams_out2[ii],/SAVEF
 ;;  Print temperatures [eV] and anisotropies
-c__parms       = out_struc.CORE.FIT_PARAMS
-h__parms       = out_struc.HALO.FIT_PARAMS
+ch_parms       = out_struc.CORE_HALO.FIT_PARAMS
 b__parms       = out_struc.BEAM.FIT_PARAMS
-vte_all        = [c__parms[[1,2]],h__parms[[1,2]],b__parms[1:2]]      ;;  V_Tej [km/s]
-tempall        = vte2teevfac[0]*vte_all^2d0                           ;;  T_ej [eV]
+vte_all        = [ch_parms[[1,2,7,8]],b__parms[1:2]]      ;;  V_Tej [km/s]
+tempall        = vte2teevfac[0]*vte_all^2d0               ;;  T_ej [eV]
 PRINT,';;',ptitle[0]  & $
 PRINT,';;',tempall  & $
 PRINT,';;',tempall[1]/tempall[0],tempall[3]/tempall[2],tempall[5]/tempall[4]
-;;Wind [SWF] Eesa Low Burst: 1996-04-03/09:46:17.248 - 09:46:20.408
-;;       11.814735       12.410918       51.650569       56.985424       32.343752       31.886805
-;;       1.0504610       1.1032874      0.98587216
-;;
-;;         Tcpara          Tcperp          Thpara          Thperp          Tspara          Tsperp
-;;         Tcanis          Thanis          Tsanis
-;;
-;;         Tjanis  = Tjperp/Tjpara  =  temperature anisotropy
-
-
-
-
-
-;;  ***  Old/Obsolete  ***
-;;
 ;;Wind [SWF] Eesa Low Burst: 1996-04-03/09:46:17.248 - 09:46:20.408
 ;;       10.608220       11.631794       55.616676       62.470147       17.114096       16.679250
 ;;       1.0964887       1.1232269      0.97459133
@@ -453,6 +352,10 @@ PRINT,';;',tempall[1]/tempall[0],tempall[3]/tempall[2],tempall[5]/tempall[4]
 ;;         Tcanis          Thanis          Tsanis
 ;;
 ;;         Tjanis  = Tjperp/Tjpara  =  temperature anisotropy
+
+
+
+
 
 
 ;;  ***  Old/Obsolete  ***
