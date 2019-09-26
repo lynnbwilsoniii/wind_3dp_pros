@@ -15,7 +15,6 @@
 ;
 ;  CALLS:
 ;               get_os_slash.pro
-;               test_file_path_format.pro
 ;               is_a_number.pro
 ;               get_valid_trange.pro
 ;               add_os_slash.pro
@@ -47,9 +46,8 @@
 ;                              range for which to limit the data in DATA
 ;                              [Default = prompted by get_valid_trange.pro]
 ;
-;   CHANGED:  1)  Fixed a bug when calling get_valid_trange.pro in a specific way and
-;                   now calls test_file_path_format.pro
-;                                                                   [09/12/2019   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               NA
@@ -71,7 +69,7 @@
 ;
 ;   CREATED:  10/20/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  09/12/2019   v1.0.1
+;    LAST MODIFIED:  10/20/2017   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -102,12 +100,6 @@ vec_col        = [250,200,30]
 ;;  Default CDF file location
 def_cdfloc     = '.'+slash[0]+'wind_3dp_pros'+slash[0]+'wind_data_dir'+slash[0]+$
                  'data1'+slash[0]+'wind'+slash[0]+'3dp'+slash[0]+'emfits_e0'+slash[0]
-test           = test_file_path_format(def_cdfloc[0],EXISTS=exists,DIR_OUT=cdfdir)
-IF (~test[0]) THEN BEGIN
-  errmsg = 'No CDF file directory found:  Exiting without loading any TPLOT variables...'
-  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
-  RETURN
-ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
@@ -116,18 +108,8 @@ test           = ((N_ELEMENTS(tdate) GT 0) AND (SIZE(tdate,/TYPE) EQ 7)) OR $
                  ((N_ELEMENTS(trange) EQ 2) AND is_a_number(trange,/NOMSSG))
 IF (test[0]) THEN BEGIN
   ;;  At least one is set --> use that one
-  test           = ((N_ELEMENTS(tdate) GT 0) AND (SIZE(tdate,/TYPE) EQ 7)) AND $
-                   ((N_ELEMENTS(trange) EQ 2) AND is_a_number(trange,/NOMSSG))
-  IF (test[0]) THEN BEGIN
-    ;;  Both are set --> use TRANGE
-    time_ra        = get_valid_trange(TDATE=tdate,TRANGE=trange)
-  ENDIF ELSE BEGIN
-    ;;  Only one is set
-    test           = ((N_ELEMENTS(tdate) GT 0) AND (SIZE(tdate,/TYPE) EQ 7))
-    IF (test[0]) THEN time_ra = get_valid_trange(TDATE=tdate,TRANGE=tran0) ELSE time_ra = get_valid_trange(TDATE=tdat0,TRANGE=trange)
-    IF (N_ELEMENTS(tran0) EQ 2) THEN trange = tran0
-    IF (N_ELEMENTS(tdat0) GT 0) THEN tdate  = tdat0
-  ENDELSE
+  test           = ((N_ELEMENTS(tdate) GT 0) AND (SIZE(tdate,/TYPE) EQ 7))
+  IF (test[0]) THEN time_ra = get_valid_trange(TDATE=tdate) ELSE time_ra = get_valid_trange(TRANGE=trange)
 ENDIF ELSE BEGIN
   ;;  Prompt user and ask user for date/times
   time_ra        = get_valid_trange(TDATE=tdate,TRANGE=trange)
@@ -138,6 +120,21 @@ tdates         = time_ra.DATE_TRANGE        ;;  'YYYY-MM-DD'  e.g., '2009-07-13'
 tdate          = tdates[0]                  ;;  Redefine TDATE on output
 ;;  Convert TDATEs to format used by CDF files [e.g., 'YYYYMMDD']
 fdates         = STRMID(tdates,0L,4L)+STRMID(tdates,5L,2L)+STRMID(tdates,8L,2L)
+;;----------------------------------------------------------------------------------------
+;;  Define CDF file location
+;;----------------------------------------------------------------------------------------
+cdfdir         = add_os_slash(FILE_EXPAND_PATH(def_cdfloc[0]))
+;DEFSYSV,'!wind3dp_umn',EXISTS=exists
+;IF ~KEYWORD_SET(exists) THEN BEGIN
+;  cdfdir = add_os_slash(FILE_EXPAND_PATH(def_cdfloc[0]))
+;ENDIF ELSE BEGIN
+;  cdfdir = !wind3dp_umn.WIND_DATA1
+;  IF (cdfdir[0] EQ '') THEN BEGIN
+;    cdfdir = add_os_slash(FILE_EXPAND_PATH(def_cdfloc[0]))
+;  ENDIF ELSE BEGIN
+;    cdfdir = cdfdir[0]+'swe'+slash[0]+'h1'+slash[0]
+;  ENDELSE
+;ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Get CDF files within time range
 ;;----------------------------------------------------------------------------------------

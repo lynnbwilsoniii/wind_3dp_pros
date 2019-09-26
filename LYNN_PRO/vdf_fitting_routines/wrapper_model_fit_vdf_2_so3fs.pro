@@ -1,7 +1,7 @@
 ;+
 ;*****************************************************************************************
 ;
-;  PROCEDURE:   wrapper_fit_vdf_2_sumof3funcs.pro
+;  PROCEDURE:   wrapper_model_fit_vdf_2_so3fs.pro
 ;  PURPOSE  :   This is a wrapping routine that plots and fits input velocity
 ;                 distributions to the sum of two model functions and then replots the
 ;                 results.  The routine returns a structure to the user for later use,
@@ -17,20 +17,19 @@
 ;               is_a_number.pro
 ;               is_a_3_vector.pro
 ;               lbw_window.pro
-;               get_defaults_4_parinfo_struc4mpfit_4_vdfs.pro
+;               setup_def_4_parinfo_struc4mpfit_4_vdfs.pro
 ;               sign.pro
+;               unit_vec.pro
 ;               str_element.pro
 ;               test_ranges_4_mpfitparinfostruc.pro
 ;               general_vdf_contour_plot.pro
-;               fill_range.pro
 ;               energy_to_vel.pro
+;               fill_range.pro
+;               fit_parm_fact_set_common.pro
 ;               mpfit2dfun.pro
 ;               lbw_diff.pro
 ;               lbw__add.pro
-;               bimaxwellian_fit.pro
-;               bikappa_fit.pro
-;               biselfsimilar_fit.pro
-;               plot_vdfs_4_fitvdf2sumof3funcs.pro
+;               plot_model_fit_vdf_2_so3fs.pro
 ;
 ;  REQUIRES:    
 ;               1)  UMN Modified Wind/3DP IDL Libraries
@@ -44,7 +43,7 @@
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               wrapper_fit_vdf_2_sumof3funcs,vdf,velxyz [,VFRAME=vframe] [,VEC1=vec1]                          $
+;               wrapper_model_fit_vdf_2_so3fs,vdf,velxyz [,VFRAME=vframe] [,VEC1=vec1]                          $
 ;                                          [,VEC2=vec2] [,COREP=corep] [,HALOP=halop] [,BEAMP=beamp]            $
 ;                                          [,CFUNC=cfunc] [,HFUNC=hfunc] [,BFUNC=bfunc]                         $
 ;                                          [,RMSTRAHL=rmstrahl] [,V1ISB=v1isb]                                  $
@@ -58,12 +57,12 @@
 ;                                          [,VOECORERN=voecorern] [,VOEHALORN=voehalorn] [,VOEBEAMRN=voebeamrn] $
 ;                                          [,EXPCORERN=expcorern] [,EXPHALORN=exphalorn] [,EXPBEAMRN=expbeamrn] $
 ;                                          [,ES2CORERN=es2corern] [,ES2HALORN=es2halorn] [,ES2BEAMRN=es2beamrn] $
-;                                          [,EMIN_CH=emin_ch] [,EMIN_B=emin_b]                                  $
-;                                          [,EMAX_CH=emax_ch] [,EMAX_B=emax_b]                                  $
-;                                          [,FTOL=ftol] [,GTOL=gtol] [,XTOL=xtol] [,USE_MM=use_mm]              $
+;                                          [,EMIN_C=emin_c] [,EMIN_H=emin_h] [,EMIN_B=emin_b]                   $
+;                                          [,EMAX_C=emax_c] [,EMAX_H=emax_h] [,EMAX_B=emax_b]                   $
+;                                          [,FTOL=ftol] [,GTOL=gtol] [,XTOL=xtol]                               $
 ;                                          [,USE1C4WGHT=use1c4wght] [,NO_WGHT=no_wght]                          $
 ;                                          [,/ONLY_TOT] [,/PLOT_BOTH] [,CORE_THRSH=core_thrsh]                  $
-;                                          [,POISSON=poisson] [,NB_LT_NH=nb_lt_nh] [,/NOUSECTAB]                $
+;                                          [,POISSON=poisson] [,NB_LT_NH=nb_lt_nh]                              $
 ;                                          [,SPTHRSHS=spthrshs] [,MAXFACS=maxfacs]                              $
 ;                                          [,OUTSTRC=out_struc] [,_EXTRA=extrakey]
 ;
@@ -162,7 +161,6 @@
 ;                                structure with the default values for the tags ANG and
 ;                                E_L and the DIR tag will be set to V1ISB[0]*VEC1.
 ;                                [Default = FALSE]
-;               _EXTRA      :  Other keywords accepted by general_vdf_contour_plot.pro
 ;               ELECTRONS   :  If set, routine uses parameters appropriate for non-
 ;                                relativistic electron velocity distributions
 ;                                [Default = TRUE]
@@ -267,17 +265,25 @@
 ;                                  PARINFO[5].LIMITS[*]  = ES2CORERN[2:3]
 ;               ES2HALORN   :  Same as ES2CORERN but for halo when HFUNC = 'AS'
 ;               ES2BEAMRN   :  Same as ES2CORERN but for beam when BFUNC = 'AS'
-;               EMIN_CH     :  Scalar [numeric] defining the minimum energy [eV] to
+;               EMIN_C      :  Scalar [numeric] defining the minimum energy [eV] to
 ;                                consider during the fitting process (only alters the
-;                                WEIGHTS parameter) for the core+halo distribution
+;                                WEIGHTS parameter) for the core distribution
+;                                [Default = 0]
+;               EMIN_H      :  Scalar [numeric] defining the minimum energy [eV] to
+;                                consider during the fitting process (only alters the
+;                                WEIGHTS parameter) for the halo distribution
 ;                                [Default = 0]
 ;               EMIN_B      :  Scalar [numeric] defining the minimum energy [eV] to
 ;                                consider during the fitting process (only alters the
 ;                                WEIGHTS parameter) for the beam distribution
 ;                                [Default = 0]
-;               EMAX_CH     :  Scalar [numeric] defining the maximum energy [eV] to
+;               EMAX_C      :  Scalar [numeric] defining the maximum energy [eV] to
 ;                                consider during the fitting process (only alters the
-;                                WEIGHTS parameter) for the core+halo distribution
+;                                WEIGHTS parameter) for the core distribution
+;                                [Default = 10^30]
+;               EMAX_H      :  Scalar [numeric] defining the maximum energy [eV] to
+;                                consider during the fitting process (only alters the
+;                                WEIGHTS parameter) for the halo distribution
 ;                                [Default = 10^30]
 ;               EMAX_B      :  Scalar [numeric] defining the maximum energy [eV] to
 ;                                consider during the fitting process (only alters the
@@ -325,13 +331,6 @@
 ;                                has been imposed upon the fitting routines in past
 ;                                studies, not necessarily a rigorous, physically
 ;                                consistent requirement.
-;               NOUSECTAB   :  If set, routine will not force the use of its default
-;                                color table setting of IDL's color table 33
-;                                [Default  :  FALSE]
-;               USE_MM      :  If set, routine will convert input speeds/velocities to
-;                                Mm from km
-;                                ***  Still testing  ***
-;                                [Default = FALSE]
 ;               CORE_THRSH  :  Scalar [float/double] defining the fraction of the peak
 ;                                phase space density above which to consider for the
 ;                                core-only fit (value must be below 50%)
@@ -345,6 +344,7 @@
 ;                                component to allow.  Any component exceeding this value
 ;                                will be nullified and the status set to -20.
 ;                                [ Default = [9.00, 2.25, 2.25] ]
+;               _EXTRA      :  Other keywords accepted by general_vdf_contour_plot.pro
 ;               ***  OUTPUT  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [all the following changed on output]  ***
@@ -352,24 +352,8 @@
 ;               OUTSTRC     :  Set to a named variable to return all the relevant data
 ;                                used to create the contour plot and cuts of the VDF
 ;
-;   CHANGED:  1)  Now includes bi-self-similar VDF without symmetric exponents
-;                                                                   [06/21/2018   v1.0.1]
-;             2)  Added keyword:  CORE_THRSH
-;                                                                   [06/22/2018   v1.0.2]
-;             3)  Added keywords:  SPTHRSHS and MAXFACS
-;                                                                   [06/25/2018   v1.0.3]
-;             4)  Cleaned up a few things and removed some spurious STOP statements
-;                                                                   [08/07/2018   v1.0.4]
-;             5)  Fixed a bug in beam/strahl min/max energy range specification and
-;                   now includes total model fit and total reduced chi-squared values
-;                   on output
-;                                                                   [04/22/2019   v1.0.5]
-;             6)  Now returns two forms of the total value and reduced chi-squared
-;                                                                   [04/25/2019   v1.0.6]
-;             7)  Fixed a bug that only occurs for specific failures of the core fit
-;                   process leading to the output fit array being a scalar zero instead
-;                   of a 2D array
-;                                                                   [09/16/2019   v1.0.7]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               0)  ***  Do not directly set the RMSTRAHL keyword  ***
@@ -560,20 +544,21 @@
 ;                      across interplanetary shocks," Zenodo (data product),
 ;                      doi:10.5281/zenodo.2875806, 2019.
 ;
-;   ADAPTED FROM: wrapper_fit_vdf_2_sumof2funcs.pro
-;   CREATED:  06/19/2018
+;   ADAPTED FROM: wrapper_fit_vdf_2_sumof3funcs.pro    BY: Lynn B. Wilson III
+;   CREATED:  09/17/2019
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  09/16/2019   v1.0.7
+;    LAST MODIFIED:  09/17/2019   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-PRO wrapper_fit_vdf_2_sumof3funcs,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,                $
-                                  COREP=corep,HALOP=halop,CFUNC=cfunc,HFUNC=hfunc,             $
+PRO wrapper_model_fit_vdf_2_so3fs,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,                $
+                                  COREP=corep,HALOP=halop,BEAMP=beamp,                         $
+                                  CFUNC=cfunc,HFUNC=hfunc,BFUNC=bfunc,                         $
                                   RMSTRAHL=rmstrahl,V1ISB=v1isb,                               $
                                   ELECTRONS=electrons,IONS=ions,                               $
-                                  BEAMP=beamp,BFUNC=bfunc,ONLY_TOT=only_tot,                   $
+                                  ONLY_TOT=only_tot,PLOT_BOTH=plot_both,                       $
                                   FIXED_C=fixed_c,FIXED_H=fixed_h,FIXED_B=fixed_b,             $
                                   NCORE_RAN=ncore_ran,NHALO_RAN=nhalo_ran,NBEAM_RAN=nbeam_ran, $
                                   VTACORERN=vtacorern,VTAHALORN=vtahalorn,VTABEAMRN=vtabeamrn, $
@@ -582,12 +567,12 @@ PRO wrapper_fit_vdf_2_sumof3funcs,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2, 
                                   VOECORERN=voecorern,VOEHALORN=voehalorn,VOEBEAMRN=voebeamrn, $
                                   EXPCORERN=expcorern,EXPHALORN=exphalorn,EXPBEAMRN=expbeamrn, $
                                   ES2CORERN=es2corern,ES2HALORN=es2halorn,ES2BEAMRN=es2beamrn, $
-                                  EMIN_CH=emin_ch,EMIN_B=emin_b,EMAX_CH=emax_ch,EMAX_B=emax_b, $
+                                  EMIN_C=emin_c,EMIN_H=emin_h,EMIN_B=emin_b,                   $
+                                  EMAX_C=emax_c,EMAX_H=emax_h,EMAX_B=emax_b,                   $
                                   FTOL=ftol,GTOL=gtol,XTOL=xtol,USE1C4WGHT=use1c4wght,         $
-                                  NO_WGHT=no_wght,PLOT_BOTH=plot_both,POISSON=poisson,         $
+                                  NO_WGHT=no_wght,POISSON=poisson,                             $
                                   NB_LT_NH=nb_lt_nh,SAVEF=savef,FILENAME=filename,             $
-                                  NOUSECTAB=nousectab,USE_MM=use_mm,CORE_THRSH=core_thrsh,     $
-                                  SPTHRSHS=spthrshs,MAXFACS=maxfac0,                           $
+                                  CORE_THRSH=core_thrsh,SPTHRSHS=spthrshs,MAXFACS=maxfac0,     $
                                   _EXTRA=extrakey,                                             $
                                   OUTSTRC=out_struc
 
@@ -625,23 +610,6 @@ def_kapp_lim            = [3d0/2d0,10d1]  ;;  3/2 ≤ kappa ≤ 100
 def_ssex_lim            = [2d0,1d1]       ;;  self-similar exponent:  2 ≤ p ≤ 10
 def_voec_lim            = [-1d0,1d0]*1d3  ;;   -1000 km/s ≤ V_oecj ≤  +1000 km/s
 def_voic_lim            = [-1d0,1d0]*2d3  ;;   -2000 km/s ≤ V_opcj ≤  +2000 km/s
-;;  Check IONS
-test           = (N_ELEMENTS(ions) GT 0) AND KEYWORD_SET(ions)
-IF (test[0]) THEN ion__on = 1b ELSE ion__on = 0b
-;;  Check ELECTRONS
-test           = (N_ELEMENTS(electrons) GT 0) AND KEYWORD_SET(electrons)
-IF (test[0]) THEN elec_on = 1b ELSE elec_on = ([0b,1b])[~ion__on[0]]
-IF (elec_on[0] AND ion__on[0]) THEN ion__on[0] = 0b                    ;;  Make sure only one particle type is set
-IF (elec_on[0]) THEN def_v_oc_lim = def_voec_lim ELSE def_v_oc_lim = def_voic_lim
-;;  Check NOUSECTAB
-IF ((N_ELEMENTS(nousectab) EQ 0) OR ~KEYWORD_SET(nousectab)) THEN BEGIN
-  ;;  Force new color table that minimizes amount of green and yellow on output
-  SET_PLOT,'X'
-  LOADCT,def_ctab[0]
-  SET_PLOT,'PS'
-  LOADCT,def_ctab[0]
-  SET_PLOT,'X'
-ENDIF
 ;;-------------------------------------------------------
 ;;  Define default RMSTRAHL structure
 ;;-------------------------------------------------------
@@ -661,6 +629,13 @@ nn_f                    = szdf[0]         ;;  # of VDF points in input array
 vdf                     = REFORM(vdf,nn_f[0])
 velxyz                  = vv1
 vv1                     = 0
+;;  Check [C,H,B]OREP
+test                    = (N_ELEMENTS(corep) EQ 6) AND is_a_number(corep,/NOMSSG)
+IF (test[0]) THEN cparm = DOUBLE(corep)
+test                    = (N_ELEMENTS(halop) EQ 6) AND is_a_number(halop,/NOMSSG)
+IF (test[0]) THEN hparm = DOUBLE(halop)
+test                    = (N_ELEMENTS(beamp) EQ 6) AND is_a_number(beamp,/NOMSSG)
+IF (test[0]) THEN bparm = DOUBLE(beamp)
 ;;----------------------------------------------------------------------------------------
 ;;  Open 1 plot window
 ;;----------------------------------------------------------------------------------------
@@ -691,21 +666,14 @@ IF (test_wopen0[0]) THEN BEGIN
   cur_xywsz               = [!D.X_SIZE[0],!D.Y_SIZE[0]]
   new_w_0                 = (xywsz[0] NE cur_xywsz[0]) OR (xywsz[1] NE cur_xywsz[1])
 ENDIF ELSE new_w_0 = 1b   ;;  Open new  window
-;;  Temporarily change settings when cleaning windows
-IF ((N_ELEMENTS(nousectab) EQ 0) OR ~KEYWORD_SET(nousectab)) THEN BEGIN
-  LOADCT,def_ctab[0]
-  !P.BACKGROUND = 'FFFFFF'x       ;;  Hex equivalent in RGB of white
-  !P.COLOR      = '000000'x       ;;  Hex equivalent in RGB of black
-ENDIF
 win_ttl                 = 'VDF Initial Guess'
 win_str                 = {RETAIN:2,XSIZE:xywsz[0],YSIZE:xywsz[1],TITLE:win_ttl[0],XPOS:10,YPOS:10}
 lbw_window,WIND_N=wind_ns[0],NEW_W=new_w_0[0],_EXTRA=win_str,/CLEAN
-IF ((N_ELEMENTS(nousectab) EQ 0) OR ~KEYWORD_SET(nousectab)) THEN LOADCT,def_ctab[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Get default PARINFO structure
 ;;----------------------------------------------------------------------------------------
-test                    = get_defaults_4_parinfo_struc4mpfit_4_vdfs(CFUNC=cfunc,HFUNC=hfunc,   $
-                                  ELECTRONS=electrons,IONS=ions,                               $
+test = setup_def_4_parinfo_struc4mpfit_4_vdfs(CFUNC=cfunc,HFUNC=hfunc,BFUNC=bfunc,             $
+                                  CPARM=cparm,HPARM=hparm,BPARM=bparm,/ELECTRONS,              $
                                   FIXED_C=fixed_c,FIXED_H=fixed_h,FIXED_B=fixed_b,             $
                                   NCORE_RAN=ncore_ran,NHALO_RAN=nhalo_ran,NBEAM_RAN=nbeam_ran, $
                                   VTACORERN=vtacorern,VTAHALORN=vtahalorn,VTABEAMRN=vtabeamrn, $
@@ -714,139 +682,23 @@ test                    = get_defaults_4_parinfo_struc4mpfit_4_vdfs(CFUNC=cfunc,
                                   VOECORERN=voecorern,VOEHALORN=voehalorn,VOEBEAMRN=voebeamrn, $
                                   EXPCORERN=expcorern,EXPHALORN=exphalorn,EXPBEAMRN=expbeamrn, $
                                   ES2CORERN=es2corern,ES2HALORN=es2halorn,ES2BEAMRN=es2beamrn, $
-                                  FTOL=ftol,GTOL=gtol,XTOL=xtol,USE_MM=use_mm,                 $
-                                  DEF_OFFST=def_offst,PARINFO=def_pinf,                        $
-                                  BFUNC=bfunc,BARINFO=def_binf,                                $
-                                  FUNC_C=cfun,FUNC_H=hfun,FUNC_B=bfun,XYLAB_PRE=xylabpre,      $
-                                  CORE_LABS=core_labs,HALO_LABS=halo_labs,BEAM_LABS=beam_labs  )
-IF (SIZE(def_pinf,/TYPE) NE 8) THEN STOP ;; Debug
-def_param               = def_pinf.VALUE
-np                      = N_ELEMENTS(def_pinf)
-cf                      = cfunc[0]
-hf                      = hfunc[0]
-bf                      = bfunc[0]
+                                  CFACT=cfact,HFACT=hfact,BFACT=bfact,                         $
+                                  FTOL=ftol,GTOL=gtol,XTOL=xtol,                               $
+                                  PARINFO=def_pinf,HARINFO=def_hinf,BARINFO=def_binf,          $
+                                  FUNC_C=func_c,FUNC_H=func_h,FUNC_B=func_b,                   $
+                                  CORE_LABS=core_labs,HALO_LABS=halo_labs,BEAM_LABS=beam_labs, $
+                                  XYLAB_PRE=xylabpre                                           )
+;;  Check IONS and ELECTRONS
+ion__on                 = (N_ELEMENTS(ions) GT 0) AND KEYWORD_SET(ions)
+elec_on                 = (N_ELEMENTS(electrons) GT 0) AND KEYWORD_SET(electrons)
+IF (~elec_on[0] AND ~ion__on[0]) THEN elec_on[0] = 1b                  ;;  Make sure at least one particle type is set
+IF (elec_on[0] AND ion__on[0]) THEN ion__on[0] = 0b                    ;;  Make sure only one particle type is set
+;;  Define [C,H,B]FUN variable
+cfun = func_c[0] & hfun = func_h[0] & bfun = func_b[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords with default options
 ;;----------------------------------------------------------------------------------------
-;;  Check USE_MM
-test                    = (N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)
-IF (test[0]) THEN vfac = 1d-3 ELSE vfac = 1d0
-ffac                    = 1d0/vfac[0]^3d0                        ;;  km^(-3) --> Mm^(-3)
-pfar                    = [1d0,REPLICATE(vfac[0],4L),1d0]        ;;  Array to multiply with parameters for general_vdf_contour_plot.pro input and use for inversing:  Mm --> km
-pfar1                   = [1d0,REPLICATE(vfac[0],3L),1d0,1d0]
-;;------------------------------
-;;  Check COREP
-;;------------------------------
-test                    = (N_ELEMENTS(corep) EQ 6) AND is_a_number(corep,/NOMSSG)
-IF (test[0]) THEN BEGIN
-  pcore        = DOUBLE(corep)
-  ;;  Adjust parameters by velocity factor
-  IF (cf[0] NE 'AS') THEN pcore[01:04] *= vfac[0] ELSE pcore[01:03] *= vfac[0]
-  ;;  Check limits [*** Required to avoid conflicts in MPFIT.PRO ***]
-  IF (def_pinf[00].LIMITED[0]) THEN pcore[0]  = pcore[0] > def_pinf[00].LIMITS[0]
-  IF (def_pinf[00].LIMITED[1]) THEN pcore[0]  = pcore[0] < def_pinf[00].LIMITS[1]
-  IF (def_pinf[01].LIMITED[0]) THEN pcore[1]  = pcore[1] > def_pinf[01].LIMITS[0]
-  IF (def_pinf[01].LIMITED[1]) THEN pcore[1]  = pcore[1] < def_pinf[01].LIMITS[1]
-  IF (def_pinf[01].LIMITED[0]) THEN pcore[2]  = pcore[2] > def_pinf[01].LIMITS[0]
-  IF (def_pinf[01].LIMITED[1]) THEN pcore[2]  = pcore[2] < def_pinf[01].LIMITS[1]
-  IF (def_pinf[03].LIMITED[0]) THEN pcore[3]  = pcore[3] > def_pinf[03].LIMITS[0]
-  IF (def_pinf[03].LIMITED[1]) THEN pcore[3]  = pcore[3] < def_pinf[03].LIMITS[1]
-  IF (def_pinf[04].LIMITED[0]) THEN pcore[4]  = pcore[4] > def_pinf[04].LIMITS[0]
-  IF (def_pinf[04].LIMITED[1]) THEN pcore[4]  = pcore[4] < def_pinf[04].LIMITS[1]
-  IF (cf[0] NE 'MM') THEN BEGIN
-    IF (cf[0] NE 'AS') THEN BEGIN
-      ;;  Limit kappa or self-similar exponent accordingly
-      IF (def_pinf[05].LIMITED[0]) THEN pcore[5]  = pcore[5] > def_pinf[05].LIMITS[0]
-      IF (def_pinf[05].LIMITED[1]) THEN pcore[5]  = pcore[5] < def_pinf[05].LIMITS[1]
-    ENDIF ELSE BEGIN
-      ;;  Limit asymmetric self-similar exponents accordingly
-      IF (def_pinf[04].LIMITED[0]) THEN pcore[4]  = pcore[4] > def_pinf[04].LIMITS[0]
-      IF (def_pinf[04].LIMITED[1]) THEN pcore[4]  = pcore[4] < def_pinf[04].LIMITS[1]
-      IF (def_pinf[05].LIMITED[0]) THEN pcore[5]  = pcore[5] > def_pinf[05].LIMITS[0]
-      IF (def_pinf[05].LIMITED[1]) THEN pcore[5]  = pcore[5] < def_pinf[05].LIMITS[1]
-    ENDELSE
-  ENDIF
-ENDIF ELSE BEGIN
-  ;;  Use defaults for core
-  pcore        = def_param[0L:5L]
-ENDELSE
-;;------------------------------
-;;  Check HALOP
-;;------------------------------
-test                    = (N_ELEMENTS(halop) EQ 6) AND is_a_number(halop,/NOMSSG)
-IF (test[0]) THEN BEGIN
-  phalo        = DOUBLE(halop)
-  ;;  Adjust parameters by velocity factor
-  IF (hf[0] NE 'AS') THEN phalo[01:04] *= vfac[0] ELSE phalo[01:03] *= vfac[0]
-  ;;  Check limits [*** Required to avoid conflicts in MPFIT.PRO ***]
-  IF (def_pinf[06].LIMITED[0]) THEN phalo[0]  = phalo[0] > def_pinf[06].LIMITS[0]
-  IF (def_pinf[06].LIMITED[1]) THEN phalo[0]  = phalo[0] < def_pinf[06].LIMITS[1]
-  IF (def_pinf[07].LIMITED[0]) THEN phalo[1]  = phalo[1] > def_pinf[07].LIMITS[0]
-  IF (def_pinf[07].LIMITED[1]) THEN phalo[1]  = phalo[1] < def_pinf[07].LIMITS[1]
-  IF (def_pinf[08].LIMITED[0]) THEN phalo[2]  = phalo[2] > def_pinf[08].LIMITS[0]
-  IF (def_pinf[08].LIMITED[1]) THEN phalo[2]  = phalo[2] < def_pinf[08].LIMITS[1]
-  IF (def_pinf[09].LIMITED[0]) THEN phalo[3]  = phalo[3] > def_pinf[09].LIMITS[0]
-  IF (def_pinf[09].LIMITED[1]) THEN phalo[3]  = phalo[3] < def_pinf[09].LIMITS[1]
-  IF (def_pinf[10].LIMITED[0]) THEN phalo[4]  = phalo[4] > def_pinf[10].LIMITS[0]
-  IF (def_pinf[10].LIMITED[1]) THEN phalo[4]  = phalo[4] < def_pinf[10].LIMITS[1]
-  IF (hf[0] NE 'MM') THEN BEGIN
-    IF (hf[0] NE 'AS') THEN BEGIN
-      ;;  Limit kappa or self-similar exponent accordingly
-      IF (def_pinf[11].LIMITED[0]) THEN phalo[5]  = phalo[5] > def_pinf[11].LIMITS[0]
-      IF (def_pinf[11].LIMITED[1]) THEN phalo[5]  = phalo[5] < def_pinf[11].LIMITS[1]
-    ENDIF ELSE BEGIN
-      ;;  Limit asymmetric self-similar exponents accordingly
-      IF (def_pinf[10].LIMITED[0]) THEN phalo[4]  = phalo[4] > def_pinf[10].LIMITS[0]
-      IF (def_pinf[10].LIMITED[1]) THEN phalo[4]  = phalo[4] < def_pinf[10].LIMITS[1]
-      IF (def_pinf[11].LIMITED[0]) THEN phalo[5]  = phalo[5] > def_pinf[11].LIMITS[0]
-      IF (def_pinf[11].LIMITED[1]) THEN phalo[5]  = phalo[5] < def_pinf[11].LIMITS[1]
-    ENDELSE
-  ENDIF
-ENDIF ELSE BEGIN
-  ;;  Use defaults for halo
-  phalo        = def_param[6L:11L]
-ENDELSE
-;;------------------------------
-;;  Check BEAMP
-;;------------------------------
-test                    = (N_ELEMENTS(beamp) EQ 6) AND is_a_number(beamp,/NOMSSG)
-IF (test[0]) THEN BEGIN
-  pbeam        = DOUBLE(beamp)
-  ;;  Adjust parameters by velocity factor
-  IF (bf[0] NE 'AS') THEN pbeam[01:04] *= vfac[0] ELSE pbeam[01:03] *= vfac[0]
-  ;;  Check limits [*** Required to avoid conflicts in MPFIT.PRO ***]
-  IF (def_binf[00].LIMITED[0]) THEN pbeam[0]  = pbeam[0] > def_binf[00].LIMITS[0]
-  IF (def_binf[00].LIMITED[1]) THEN pbeam[0]  = pbeam[0] < def_binf[00].LIMITS[1]
-  IF (def_binf[01].LIMITED[0]) THEN pbeam[1]  = pbeam[1] > def_binf[01].LIMITS[0]
-  IF (def_binf[01].LIMITED[1]) THEN pbeam[1]  = pbeam[1] < def_binf[01].LIMITS[1]
-  IF (def_binf[01].LIMITED[0]) THEN pbeam[2]  = pbeam[2] > def_binf[02].LIMITS[0]
-  IF (def_binf[01].LIMITED[1]) THEN pbeam[2]  = pbeam[2] < def_binf[02].LIMITS[1]
-  IF (def_binf[03].LIMITED[0]) THEN pbeam[3]  = pbeam[3] > def_binf[03].LIMITS[0]
-  IF (def_binf[03].LIMITED[1]) THEN pbeam[3]  = pbeam[3] < def_binf[03].LIMITS[1]
-  IF (def_binf[04].LIMITED[0]) THEN pbeam[4]  = pbeam[4] > def_binf[04].LIMITS[0]
-  IF (def_binf[04].LIMITED[1]) THEN pbeam[4]  = pbeam[4] < def_binf[04].LIMITS[1]
-  IF (bf[0] NE 'MM') THEN BEGIN
-    IF (bf[0] NE 'AS') THEN BEGIN
-      ;;  Limit kappa or self-similar exponent accordingly
-      IF (def_binf[05].LIMITED[0]) THEN pbeam[5]  = pbeam[5] > def_binf[05].LIMITS[0]
-      IF (def_binf[05].LIMITED[1]) THEN pbeam[5]  = pbeam[5] < def_binf[05].LIMITS[1]
-    ENDIF ELSE BEGIN
-      ;;  Limit asymmetric self-similar exponents accordingly
-      IF (def_binf[04].LIMITED[0]) THEN pbeam[4]  = pbeam[4] > def_binf[04].LIMITS[0]
-      IF (def_binf[04].LIMITED[1]) THEN pbeam[4]  = pbeam[4] < def_binf[04].LIMITS[1]
-      IF (def_binf[05].LIMITED[0]) THEN pbeam[5]  = pbeam[5] > def_binf[05].LIMITS[0]
-      IF (def_binf[05].LIMITED[1]) THEN pbeam[5]  = pbeam[5] < def_binf[05].LIMITS[1]
-    ENDELSE
-  ENDIF
-ENDIF ELSE BEGIN
-  ;;  Use defaults for beam
-  pbeam        = REFORM(def_binf.VALUE)
-  ;;  Define beam PARINFO structure
-  def_binf     = def_binf
-ENDELSE
-;;------------------------------
 ;;  Check V1ISB
-;;------------------------------
 test                    = (N_ELEMENTS(v1isb) EQ 1) AND is_a_number(v1isb,/NOMSSG)
 IF (test[0]) THEN test = (ABS(v1isb[0]) GT 0)
 IF (test[0]) THEN test = is_a_3_vector(vec1,V_OUT=vv1,/NOMSSG) ELSE vv1 = REPLICATE(d,3)
@@ -871,19 +723,37 @@ ENDIF ELSE BEGIN
   rm_strahl_on = 0b
 ENDELSE
 ;;------------------------------
-;;  Check EMIN_CH and EMIN_B
+;;  Check EMIN_[C,H,B]
 ;;------------------------------
-test                    = (N_ELEMENTS(emin_ch) GT 0) AND is_a_number(emin_ch,/NOMSSG)
-IF (test[0]) THEN ch_emin = 1d0*ABS(emin_ch[0]) ELSE ch_emin = 0d0
+test                    = (N_ELEMENTS(emin_c) GT 0) AND is_a_number(emin_c,/NOMSSG)
+IF (test[0]) THEN c__emin = 1d0*ABS(emin_c[0]) ELSE c__emin = 0d0
+test                    = (N_ELEMENTS(emin_h) GT 0) AND is_a_number(emin_h,/NOMSSG)
+IF (test[0]) THEN h__emin = 1d0*ABS(emin_h[0]) ELSE h__emin = 0d0
 test                    = (N_ELEMENTS(emin_b) GT 0) AND is_a_number(emin_b,/NOMSSG)
 IF (test[0]) THEN b__emin = 1d0*ABS(emin_b[0]) ELSE b__emin = 0d0
 ;;------------------------------
-;;  Check EMAX_CH and EMAX_B
+;;  Check EMAX_[C,H,B]
 ;;------------------------------
-test                    = (N_ELEMENTS(emax_ch) GT 0) AND is_a_number(emax_ch,/NOMSSG)
-IF (test[0]) THEN ch_emax = 1d0*ABS(emax_ch[0]) ELSE ch_emax = 1d30
+test                    = (N_ELEMENTS(emax_c) GT 0) AND is_a_number(emax_c,/NOMSSG)
+IF (test[0]) THEN c__emax = 1d0*ABS(emax_c[0]) ELSE c__emax = 1d30
+test                    = (N_ELEMENTS(emax_h) GT 0) AND is_a_number(emax_h,/NOMSSG)
+IF (test[0]) THEN h__emax = 1d0*ABS(emax_h[0]) ELSE h__emax = 1d30
 test                    = (N_ELEMENTS(emax_b) GT 0) AND is_a_number(emax_b,/NOMSSG)
 IF (test[0]) THEN b__emax = 1d0*ABS(emax_b[0]) ELSE b__emax = 1d30
+;;;------------------------------
+;;;  Check EMIN_CH and EMIN_B
+;;;------------------------------
+;test                    = (N_ELEMENTS(emin_ch) GT 0) AND is_a_number(emin_ch,/NOMSSG)
+;IF (test[0]) THEN ch_emin = 1d0*ABS(emin_ch[0]) ELSE ch_emin = 0d0
+;test                    = (N_ELEMENTS(emin_b) GT 0) AND is_a_number(emin_b,/NOMSSG)
+;IF (test[0]) THEN b__emin = 1d0*ABS(emin_b[0]) ELSE b__emin = 0d0
+;;;------------------------------
+;;;  Check EMAX_CH and EMAX_B
+;;;------------------------------
+;test                    = (N_ELEMENTS(emax_ch) GT 0) AND is_a_number(emax_ch,/NOMSSG)
+;IF (test[0]) THEN ch_emax = 1d0*ABS(emax_ch[0]) ELSE ch_emax = 1d30
+;test                    = (N_ELEMENTS(emax_b) GT 0) AND is_a_number(emax_b,/NOMSSG)
+;IF (test[0]) THEN b__emax = 1d0*ABS(emax_b[0]) ELSE b__emax = 1d30
 ;;------------------------------
 ;;  Check USE1C4WGHT
 ;;------------------------------
@@ -1006,19 +876,19 @@ IF (rm_strahl_on[0]) THEN BEGIN
       ;;  strahl is parallel to Bo
       ;;----------------------------------------------------------------------------------
       IF (~v_oca_on[0]) THEN BEGIN
-        pcore[3]                = pcore[3] < 0
+        cparm[3]                = cparm[3] < 0
         def_pinf[3].LIMITS[1]   = def_pinf[3].LIMITS[1] < 0
       ENDIF
-      phalo[3]                = phalo[3] < 0
-      def_pinf[9].LIMITS[1]   = def_pinf[9].LIMITS[1] < 0
+      hparm[3]                = hparm[3] < 0
+      def_hinf[3].LIMITS[1]   = def_hinf[3].LIMITS[1] < 0
       ;;  Alter beam limits structure
-      pbeam[3]                = pbeam[3] > 0
+      bparm[3]                = bparm[3] > 0
       def_binf[3].LIMITS[0]   = def_binf[3].LIMITS[0] > 0
       ;;  Check LIMITS
       test                    = (def_pinf[3].LIMITS[0] GT def_pinf[3].LIMITS[1]) AND def_pinf[3].LIMITED[1]
       IF (test[0]) THEN def_pinf[3].LIMITS[1] = -10*ABS(def_pinf[3].LIMITS[0])
-      test                    = (def_pinf[9].LIMITS[0] GT def_pinf[9].LIMITS[1]) AND def_pinf[9].LIMITED[1]
-      IF (test[0]) THEN def_pinf[9].LIMITS[1] = -10*ABS(def_pinf[9].LIMITS[0])
+      test                    = (def_hinf[3].LIMITS[0] GT def_hinf[3].LIMITS[1]) AND def_hinf[3].LIMITED[1]
+      IF (test[0]) THEN def_hinf[3].LIMITS[1] = -10*ABS(def_hinf[3].LIMITS[0])
       test                    = (def_binf[3].LIMITS[0] GT def_binf[3].LIMITS[1]) AND def_binf[3].LIMITED[1]
       IF (test[0]) THEN BEGIN
         ;;  Adjust and sort
@@ -1034,19 +904,19 @@ IF (rm_strahl_on[0]) THEN BEGIN
       ;;  strahl is anti-parallel to Bo
       ;;----------------------------------------------------------------------------------
       IF (~v_oca_on[0]) THEN BEGIN
-        pcore[3]                = pcore[3] > 0
+        cparm[3]                = cparm[3] > 0
         def_pinf[3].LIMITS[0]   = def_pinf[3].LIMITS[0] > 0
       ENDIF
-      phalo[3]                = phalo[3] > 0
-      def_pinf[9].LIMITS[0]   = def_pinf[9].LIMITS[0] > 0
+      hparm[3]                = hparm[3] > 0
+      def_hinf[3].LIMITS[0]   = def_hinf[3].LIMITS[0] > 0
       ;;  Alter beam limits structure
-      pbeam[3]                = pbeam[3] < 0
+      bparm[3]                = bparm[3] < 0
       def_binf[3].LIMITS[1]   = def_binf[3].LIMITS[1] < 0
       ;;  Check LIMITS
       test                    = (def_pinf[3].LIMITS[0] GT def_pinf[3].LIMITS[1]) AND def_pinf[3].LIMITED[1]
       IF (test[0]) THEN def_pinf[3].LIMITS[1] = 10*def_pinf[3].LIMITS[0]
-      test                    = (def_pinf[9].LIMITS[0] GT def_pinf[9].LIMITS[1]) AND def_pinf[9].LIMITED[1]
-      IF (test[0]) THEN def_pinf[9].LIMITS[1] = 10*def_pinf[9].LIMITS[0]
+      test                    = (def_hinf[3].LIMITS[0] GT def_hinf[3].LIMITS[1]) AND def_hinf[3].LIMITED[1]
+      IF (test[0]) THEN def_hinf[3].LIMITS[1] = 10*def_hinf[3].LIMITS[0]
       test                    = (def_binf[3].LIMITS[0] GT def_binf[3].LIMITS[1]) AND def_binf[3].LIMITED[1]
       IF (test[0]) THEN BEGIN
         ;;  Adjust and sort
@@ -1063,27 +933,26 @@ IF (rm_strahl_on[0]) THEN BEGIN
     ;;  VEC1 is not set --> do not ignore either side
     ;;------------------------------------------------------------------------------------
     para_bo                 = -1
-    IF (hf[0] NE 'AS') THEN def_pinf[09:10].LIMITED = 0b ELSE def_pinf[09].LIMITED = 0b       ;;  Shutoff drift velocity limits
+    IF (hf[0] NE 'AS') THEN def_hinf[03:04].LIMITED = 0b ELSE def_hinf[03].LIMITED = 0b       ;;  Shutoff drift velocity limits
     IF (bf[0] NE 'AS') THEN def_binf[03:04].LIMITED = 0b ELSE def_binf[03].LIMITED = 0b       ;;  Shutoff drift velocity limits
   ENDELSE
-  ;;  Plot VDF
-  IF (cf[0] NE 'AS') THEN pcore0 = pcore/pfar ELSE pcore0 = pcore/pfar1
-  IF (hf[0] NE 'AS') THEN phalo0 = phalo/pfar ELSE phalo0 = phalo/pfar1
-  general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,_EXTRA=extrakey,  $
-                           BIMAX=pcore0,BIKAP=phalo0,DAT_OUT=dat_out
 ENDIF ELSE BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  VEC1 is not set --> do not ignore either side
   ;;--------------------------------------------------------------------------------------
   para_bo                 = -1
-  IF (hf[0] NE 'AS') THEN def_pinf[09:10].LIMITED = 0b ELSE def_pinf[09].LIMITED = 0b        ;;  Shutoff drift velocity limits
+  IF (hf[0] NE 'AS') THEN def_hinf[03:04].LIMITED = 0b ELSE def_hinf[03].LIMITED = 0b        ;;  Shutoff drift velocity limits
   IF (bf[0] NE 'AS') THEN def_binf[03:04].LIMITED = 0b ELSE def_binf[03].LIMITED = 0b        ;;  Shutoff drift velocity limits
-  ;;  Call normally without excluding any data
-  IF (cf[0] NE 'AS') THEN pcore0 = pcore/pfar ELSE pcore0 = pcore/pfar1
-  IF (hf[0] NE 'AS') THEN phalo0 = phalo/pfar ELSE phalo0 = phalo/pfar1
-  general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,_EXTRA=extrakey,  $
-                           BIMAX=pcore0,BIKAP=phalo0,DAT_OUT=dat_out
 ENDELSE
+pcore0         = cparm*cfact
+phalo0         = hparm*hfact
+pbeam0         = bparm*bfact
+;;----------------------------------------------------------------------------------------
+;;  Plot 2D contour with 1D cuts and initial guess models as examples
+;;----------------------------------------------------------------------------------------
+general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,_EXTRA=extrakey,  $
+                         BIMAX=pcore0,BIKAP=phalo0,DAT_OUT=dat_out
+;;  Check if plot was successful
 IF (SIZE(dat_out,/TYPE) NE 8) THEN BEGIN
   MESSAGE,'Failure at plot level output!',/INFORMATION,/CONTINUE
   RETURN        ;;  Failed to plot!!!
@@ -1093,22 +962,13 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define gridded VDF parameters
 vdf_2d                  = dat_out.CONT_DATA.VDF_2D          ;;  [# cm^(-3) km^(-3) s^(+3)]
-vdf_2d                 *= ffac[0]                           ;;  km^(-3) --> Mm^(-3)
 vpara                   = dat_out.CONT_DATA.VXGRID          ;;  [Mm/s]
 vperp                   = dat_out.CONT_DATA.VYGRID          ;;  [Mm/s]
-IF (vfac[0] LT 1d0) THEN BEGIN
-  ;;  Use Mm
-  vx_in                   = vpara
-  vy_in                   = vperp
-  vx_km                   = vpara/vfac[0]
-  vy_km                   = vperp/vfac[0]
-ENDIF ELSE BEGIN
-  ;;  Use km
-  vx_km                   = vpara*1d3
-  vy_km                   = vperp*1d3
-  vx_in                   = vx_km
-  vy_in                   = vy_km
-ENDELSE
+;;  Use km
+vx_km                   = vpara*1d3                         ;;  Mm --> km
+vy_km                   = vperp*1d3                         ;;  Mm --> km
+vx_in                   = vx_km
+vy_in                   = vy_km
 good                    = WHERE(ABS(vdf_2d) GT 0,gd)
 IF (gd[0] GT 0) THEN BEGIN
   ;;  Constant by which to offset data
@@ -1151,7 +1011,6 @@ IF (poisson_on[0]) THEN BEGIN
   IF (SIZE(rot_out,/TYPE) EQ 8) THEN BEGIN
     ;;  Currently only allows XY-Plane --> get structure variables
     poisson_2d    = rot_out.PLANE_XY.DF2D_XY          ;;  [# cm^(-3) km^(-3) s^(+3)]
-;    poisson_2d   *= ffac[0]                           ;;  km^(-3) --> Mm^(-3)
     ;;  Shutoff other weighting options (in case user has them on)
     use1c4w_on    = 0b
     use_nowght_on = 0b
@@ -1219,8 +1078,6 @@ ENDIF
 ;;  Keep data ≥ 1% of max VDF phase space density
 vdfc_max                = MAX(ABS(vdf_2dc),/NAN)
 test_core               = (vdf_2dc GE cthrsh[0]*vdfc_max[0])
-;test_core               = (vdf_2dc GE 1d-2*vdfc_max[0])
-;test_core               = (vdf_2dc GE 1d-2*vdfc_max[0]) AND (eners LE 4d-1*ener_ran[1])
 good_core               = WHERE(test_core,gd_core,COMPLEMENT=bad_core,NCOMPLEMENT=bd_core)
 IF (bd_core[0] GT 0) THEN vdf_2dc[bad_core] = f
 vdf_2dc0                = vdf_2dc
@@ -1234,6 +1091,7 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define error and weights
 ;;----------------------------------------------------------------------------------------
+bad_zerr                = 1d50
 ;;  Define error as 1% of data
 vdf_2dp                 = vdf_2dc
 vdf_2dp                *= offset[0]                             ;;  Force values to > 1.0
@@ -1282,7 +1140,6 @@ test                    = (FINITE(vdf_2dc) EQ 0) OR (vdf_2dc LE 0) OR   $
                           (FINITE(weightc) EQ 0) OR (weightc LE 0)
 bad                     = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
 test                    = (1d0*bd[0] GT 98d-2*n_vdf[0])
-;test                    = (1d0*bd[0] GT 96d-2*n_vdf[0])
 IF (test[0]) THEN BEGIN
   ;;  Too many "bad" data points --> Failure!
   MESSAGE,'Failure (Core):  Too many bad data points!',/INFORMATION,/CONTINUE
@@ -1298,55 +1155,63 @@ ENDIF ELSE BEGIN
   ENDELSE
 ENDELSE
 ;;----------------------------------------------------------------------------------------
-;;  Check if user wants to exclude data below EMIN_CH
+;;  Check if user wants to exclude data below EMIN_[C,H,B]
 ;;----------------------------------------------------------------------------------------
-IF (ch_emin[0] GT 0) THEN BEGIN
-  ;;  Exclude data below EMIN_CH
-  bad2                    = WHERE(eners LE ch_emin[0],bd2)
-  IF (bd2[0] GT 0) THEN BEGIN
+IF (c__emin[0] GT 0) THEN BEGIN
+  ;;  Exclude data below EMIN_C
+  bad2c                   = WHERE(eners LE c__emin[0],bd2c)
+  IF (bd2c[0] GT 0) THEN BEGIN
     ;;  Zero-out values of weights to tell MPFIT to ignore those points
-    weightc[bad2]            = 0d0
-    weighth[bad2]            = 0d0
-    zerrc[bad2]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
-    zerrh[bad2]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
+    weightc[bad2c]           = 0d0
+    zerrc[bad2c]             = bad_zerr[0] ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
   ENDIF
 ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Check if user wants to exclude data above EMAX_CH
-;;----------------------------------------------------------------------------------------
-IF (ch_emax[0] LT 1d30) THEN BEGIN
-  ;;  Exclude data above EMAX_CH
-  bad2                    = WHERE(eners GE ch_emax[0],bd2)
-  IF (bd2[0] GT 0) THEN BEGIN
+IF (h__emin[0] GT 0) THEN BEGIN
+  ;;  Exclude data below EMIN_H
+  bad2h                   = WHERE(eners LE h__emin[0],bd2h)
+  IF (bd2h[0] GT 0) THEN BEGIN
     ;;  Zero-out values of weights to tell MPFIT to ignore those points
-    weightc[bad2]            = 0d0
-    weighth[bad2]            = 0d0
-    zerrc[bad2]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
-    zerrh[bad2]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
+    weighth[bad2h]           = 0d0
+    zerrh[bad2h]             = bad_zerr[0] ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
   ENDIF
 ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Check if user wants to exclude data below EMIN_B
-;;----------------------------------------------------------------------------------------
 IF (b__emin[0] GT 0) THEN BEGIN
   ;;  Exclude data below EMIN_B
-  bad3                    = WHERE(eners LE b__emin[0],bd3)
-  IF (bd3[0] GT 0) THEN BEGIN
+  bad2b                   = WHERE(eners LE b__emin[0],bd2b)
+  IF (bd2b[0] GT 0) THEN BEGIN
     ;;  Zero-out values of weights to tell MPFIT to ignore those points
-    weightb[bad3]            = 0d0
-    zerrb[bad3]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
+    weightb[bad2b]           = 0d0
+    zerrb[bad2b]             = bad_zerr[0] ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
   ENDIF
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;  Check if user wants to exclude data above EMAX_B
+;;  Check if user wants to exclude data above EMAX_[C,H,B]
 ;;----------------------------------------------------------------------------------------
+IF (c__emax[0] LT 1d30) THEN BEGIN
+  ;;  Exclude data above EMAX_C
+  bad3c                   = WHERE(eners GE c__emax[0],bd3c)
+  IF (bd3c[0] GT 0) THEN BEGIN
+    ;;  Zero-out values of weights to tell MPFIT to ignore those points
+    weightc[bad3c]           = 0d0
+    zerrc[bad3c]             = bad_zerr[0] ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
+  ENDIF
+ENDIF
+IF (h__emax[0] LT 1d30) THEN BEGIN
+  ;;  Exclude data above EMAX_H
+  bad3h                   = WHERE(eners GE h__emax[0],bd3h)
+  IF (bd3h[0] GT 0) THEN BEGIN
+    ;;  Zero-out values of weights to tell MPFIT to ignore those points
+    weighth[bad3h]           = 0d0
+    zerrh[bad3h]             = bad_zerr[0] ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
+  ENDIF
+ENDIF
 IF (b__emax[0] LT 1d30) THEN BEGIN
   ;;  Exclude data above EMAX_B
-  bad3                    = WHERE(eners GE b__emax[0],bd3)
-  IF (bd3[0] GT 0) THEN BEGIN
+  bad3b                   = WHERE(eners GE b__emax[0],bd3b)
+  IF (bd3b[0] GT 0) THEN BEGIN
     ;;  Zero-out values of weights to tell MPFIT to ignore those points
-    weightb[bad3]            = 0d0
-    zerrb[bad3]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
+    weightb[bad3b]           = 0d0
+    zerrb[bad3b]             = bad_zerr[0] ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
   ENDIF
 ENDIF
 ;;----------------------------------------------------------------------------------------
@@ -1354,19 +1219,24 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define dummy 2D array of expected size/dimensions of the outputs
 dumb2d                  = REPLICATE(d,n_par[0],n_per[0])
-;;  Define input fit parameters
-param                   = [pcore,phalo]
-;;  Define PARINFO structure
-parinfo                 = def_pinf
-parinfo.VALUE           = param                                 ;;  Redefine parameters
-c_pinfo                 = parinfo[0:5]
-h_pinfo                 = parinfo[6:11]
+;;  Define PARINFO structures
+c_pinfo                 = def_pinf
+h_pinfo                 = def_hinf
+b_pinfo                 = def_binf
+;;  Set common block factors
+CASE cfunc[0] OF
+  'MM' : fit_parm_fact_set_common,SET_MM=cfact,STATUS=status_c,INITYES=inityes_c
+  'KK' : fit_parm_fact_set_common,SET_KK=cfact,STATUS=status_c,INITYES=inityes_c
+  'SS' : fit_parm_fact_set_common,SET_SS=cfact,STATUS=status_c,INITYES=inityes_c
+  'AS' : fit_parm_fact_set_common,SET_AS=cfact,STATUS=status_c,INITYES=inityes_c
+ENDCASE
+IF (status_c[0] LE 0) THEN STOP    ;;  Something is goofy --> Debug
 ;;  Define xyz inputs
 x                       = vx_in
 y                       = vy_in
 z                       = vdf_2dc
 func                    = cfun[0]
-c_fit                   = mpfit2dfun(func[0],x,y,z,zerrc,pcore,PARINFO=c_pinfo,PERROR=f_sigc,    $
+c_fit                   = mpfit2dfun(func[0],x,y,z,zerrc,cparm,PARINFO=c_pinfo,PERROR=f_sigc,    $
                                      BESTNORM=chisqc,DOF=dofc,STATUS=statc,NITER=iterc,          $
                                      YFIT=corefit_out,QUIET=1,WEIGHTS=weightc,NAN=nan_on[0],     $
                                      FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,                $
@@ -1388,7 +1258,7 @@ IF (statc[0] EQ -16) THEN BEGIN
   IF (SIZE(zerrorc,/TYPE)     NE 0)      THEN dumb = TEMPORARY(zerrorc)
   IF (SIZE(cfree_ind,/TYPE)   NE 0)      THEN dumb = TEMPORARY(cfree_ind)
   IF (SIZE(cpegged,/TYPE)     NE 0)      THEN dumb = TEMPORARY(cpegged)
-  c_fit                   = mpfit2dfun(func[0],x,y,z,zerrc,pcore,PARINFO=c_pinfo,PERROR=f_sigc,    $
+  c_fit                   = mpfit2dfun(func[0],x,y,z,zerrc,cparm,PARINFO=c_pinfo,PERROR=f_sigc,    $
                                        BESTNORM=chisqc,DOF=dofc,STATUS=statc,NITER=iterc,          $
                                        YFIT=corefit_out,QUIET=1,WEIGHTS=weightc,NAN=nan_on[0],     $
                                        FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,                $
@@ -1410,7 +1280,7 @@ IF (statc[0] EQ -16) THEN BEGIN
     IF (SIZE(zerrorc,/TYPE)     NE 0)      THEN dumb = TEMPORARY(zerrorc)
     IF (SIZE(cfree_ind,/TYPE)   NE 0)      THEN dumb = TEMPORARY(cfree_ind)
     IF (SIZE(cpegged,/TYPE)     NE 0)      THEN dumb = TEMPORARY(cpegged)
-    c_fit                   = mpfit2dfun(func[0],x,y,z,zerrc,pcore,PARINFO=c_pinfo,PERROR=f_sigc,    $
+    c_fit                   = mpfit2dfun(func[0],x,y,z,zerrc,cparm,PARINFO=c_pinfo,PERROR=f_sigc,    $
                                          BESTNORM=chisqc,DOF=dofc,STATUS=statc,NITER=iterc,          $
                                          YFIT=corefit_out,QUIET=1,WEIGHTS=weightc,NAN=nan_on[0],     $
                                          FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,                $
@@ -1452,7 +1322,6 @@ END
 test           = (statc[0] LE 0) OR (N_ELEMENTS(corefit_out) NE N_ELEMENTS(dumb2d)) OR $
                  (N_ELEMENTS(zerrorc) NE N_ELEMENTS(dumb2d))
 IF (test[0]) THEN GOTO,JUMP_QUIT
-;IF (statc[0] LE 0) THEN GOTO,JUMP_QUIT
 ;;----------------------------------------------------------------------------------------
 ;;  Fit to model 2D function to halo
 ;;----------------------------------------------------------------------------------------
@@ -1463,7 +1332,7 @@ test                    = (FINITE(residualh) EQ 0) OR (residualh LE 0) OR $
                           (FINITE(zerrh) EQ 0) OR (zerrh LE 0) OR         $
                           (FINITE(weighth) EQ 0) OR (weighth LE 0)
 bad                     = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
-test                    = (1d0*bd[0] GT 95d-2*n_vdf[0])
+test                    = (1d0*bd[0] GT 98d-2*n_vdf[0])
 IF (test[0]) THEN BEGIN
   ;;  Too many "bad" data points --> Failure!
   MESSAGE,'Failure (Halo):  Too many bad data points!',/INFORMATION,/CONTINUE
@@ -1473,23 +1342,40 @@ ENDIF ELSE BEGIN
   IF (bd[0] GT 0) THEN BEGIN
     ;;  Success!
     residualh[bad]          = 0d0
-    zerrh[bad]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
-    weighth[bad]            = 0d0        ;;  Zero for weights will result in ignoring those points
+    zerrh[bad]              = bad_zerr[0] ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
+    weighth[bad]            = 0d0         ;;  Zero for weights will result in ignoring those points
   ENDIF ELSE BEGIN
     ;;  All "good" data points --> Success!
   ENDELSE
 ENDELSE
+;;  Set common block factors
+CASE hfunc[0] OF
+  'MM' : fit_parm_fact_set_common,SET_MM=hfact,STATUS=status_h,INITYES=inityes_h
+  'KK' : fit_parm_fact_set_common,SET_KK=hfact,STATUS=status_h,INITYES=inityes_h
+  'SS' : fit_parm_fact_set_common,SET_SS=hfact,STATUS=status_h,INITYES=inityes_h
+  'AS' : fit_parm_fact_set_common,SET_AS=hfact,STATUS=status_h,INITYES=inityes_h
+ENDCASE
+IF (status_h[0] LE 0) THEN STOP    ;;  Something is goofy --> Debug
 ;;  Redefine input fit parameters, if necessary
-phalo[0]                = phalo[0] < (15d-2*c_fit[0])
+hparm[0]                = ((hparm[0]) < (85d-2*c_fit[0]))
+h_pinfo[00].VALUE       = hparm[0]
 ;;  Try to keep Nh < 30% of Nc
-IF (h_pinfo[00].LIMITED[0]) THEN h_pinfo[00].LIMITS[0]  = (1d-2*phalo[0]) < (h_pinfo[00].LIMITS[0])
-IF (h_pinfo[00].LIMITED[1]) THEN h_pinfo[00].LIMITS[1]  = (3d-1*c_fit[0]) < (h_pinfo[00].LIMITS[1])
+IF (h_pinfo[00].LIMITED[0]) THEN BEGIN
+  h_pinfo[00].LIMITS[0]   = (1d-2*hparm[0]) < (h_pinfo[00].LIMITS[0])
+  h_pinfo[00].VALUE       = (h_pinfo[00].VALUE) > (h_pinfo[00].LIMITS[0])
+  hparm[0]                = h_pinfo[00].VALUE[0]
+ENDIF
+IF (h_pinfo[00].LIMITED[1]) THEN BEGIN
+  h_pinfo[00].LIMITS[1]   = (95d-2*c_fit[0]) < (h_pinfo[00].LIMITS[1])
+  h_pinfo[00].VALUE       = (h_pinfo[00].VALUE) < (h_pinfo[00].LIMITS[1])
+  hparm[0]                = h_pinfo[00].VALUE[0]
+ENDIF
 ;;  Define xyz inputs
 x                       = vx_in
 y                       = vy_in
 z                       = residualh
 func                    = hfun[0]
-h_fit                   = mpfit2dfun(func[0],x,y,z,zerrh,phalo,PARINFO=h_pinfo,PERROR=f_sigh,    $
+h_fit                   = mpfit2dfun(func[0],x,y,z,zerrh,hparm,PARINFO=h_pinfo,PERROR=f_sigh,    $
                                      BESTNORM=chisqh,DOF=dofh,STATUS=stath,NITER=iterh,          $
                                      YFIT=halofit_out,QUIET=1,WEIGHTS=weighth,NAN=nan_on[0],     $
                                      FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,                $
@@ -1511,7 +1397,7 @@ IF (stath[0] EQ -16) THEN BEGIN
   IF (SIZE(zerrorh,/TYPE)     NE 0)      THEN dumb = TEMPORARY(zerrorh)
   IF (SIZE(hfree_ind,/TYPE)   NE 0)      THEN dumb = TEMPORARY(hfree_ind)
   IF (SIZE(hpegged,/TYPE)     NE 0)      THEN dumb = TEMPORARY(hpegged)
-  h_fit                   = mpfit2dfun(func[0],x,y,z,zerrh,phalo,PARINFO=h_pinfo,PERROR=f_sigh,    $
+  h_fit                   = mpfit2dfun(func[0],x,y,z,zerrh,hparm,PARINFO=h_pinfo,PERROR=f_sigh,    $
                                        BESTNORM=chisqh,DOF=dofh,STATUS=stath,NITER=iterh,          $
                                        YFIT=halofit_out,QUIET=1,WEIGHTS=weighth,NAN=nan_on[0],     $
                                        FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,                $
@@ -1533,7 +1419,7 @@ IF (stath[0] EQ -16) THEN BEGIN
     IF (SIZE(zerrorh,/TYPE)     NE 0)      THEN dumb = TEMPORARY(zerrorh)
     IF (SIZE(hfree_ind,/TYPE)   NE 0)      THEN dumb = TEMPORARY(hfree_ind)
     IF (SIZE(hpegged,/TYPE)     NE 0)      THEN dumb = TEMPORARY(hpegged)
-    h_fit                   = mpfit2dfun(func[0],x,y,z,zerrh,phalo,PARINFO=h_pinfo,PERROR=f_sigh,    $
+    h_fit                   = mpfit2dfun(func[0],x,y,z,zerrh,hparm,PARINFO=h_pinfo,PERROR=f_sigh,    $
                                          BESTNORM=chisqh,DOF=dofh,STATUS=stath,NITER=iterh,          $
                                          YFIT=halofit_out,QUIET=1,WEIGHTS=weighth,NAN=nan_on[0],     $
                                          FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,                $
@@ -1545,8 +1431,6 @@ IF (stath[0] LE 0) THEN GOTO,JUMP_QUIT
 ;;----------------------------------------------------------------------------------------
 ;;  Fit to model 2D function to beam
 ;;----------------------------------------------------------------------------------------
-b_pinfo                 = def_binf
-b_pinfo.VALUE           = pbeam                                             ;;  Redefine parameters
 IF (stath[0] LE 0) THEN ch_fit_out = corefit_out ELSE ch_fit_out = lbw__add(corefit_out,halofit_out,/NAN)
 residualb               = lbw_diff(vdf_2db,ch_fit_out,/NAN) > 0             ;;  Force values to > 1.0
 ;;  Remove negatives and zeros
@@ -1554,7 +1438,7 @@ test                    = (FINITE(residualb) EQ 0) OR (residualb LE 0) OR $
                           (FINITE(zerrb) EQ 0) OR (zerrb LE 0) OR         $
                           (FINITE(weightb) EQ 0) OR (weightb LE 0)
 bad                     = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
-test                    = (1d0*bd[0] GT 95d-2*n_vdf[0])
+test                    = (1d0*bd[0] GT 98d-2*n_vdf[0])
 IF (test[0]) THEN BEGIN
   ;;  Too many "bad" data points --> Failure!
   MESSAGE,'Failure (Beam):  Too many bad data points!',/INFORMATION,/CONTINUE
@@ -1564,31 +1448,49 @@ ENDIF ELSE BEGIN
   IF (bd[0] GT 0) THEN BEGIN
     ;;  Success!
     residualb[bad]          = 0d0
-    zerrb[bad]              = 1d50       ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
-    weightb[bad]            = 0d0        ;;  Zero for weights will result in ignoring those points
+    zerrb[bad]              = bad_zerr[0] ;;  MPFIT.PRO does not allow 0.0 errrors if others are finite
+    weightb[bad]            = 0d0         ;;  Zero for weights will result in ignoring those points
   ENDIF ELSE BEGIN
     ;;  All "good" data points --> Success!
   ENDELSE
 ENDELSE
+;;  Set common block factors
+CASE bfunc[0] OF
+  'MM' : fit_parm_fact_set_common,SET_MM=bfact,STATUS=status_b,INITYES=inityes_b
+  'KK' : fit_parm_fact_set_common,SET_KK=bfact,STATUS=status_b,INITYES=inityes_b
+  'SS' : fit_parm_fact_set_common,SET_SS=bfact,STATUS=status_b,INITYES=inityes_b
+  'AS' : fit_parm_fact_set_common,SET_AS=bfact,STATUS=status_b,INITYES=inityes_b
+ENDCASE
+IF (status_b[0] LE 0) THEN STOP    ;;  Something is goofy --> Debug
+;;  Check NB_LT_NH
 IF KEYWORD_SET(nb_lt_nh) THEN BEGIN
   ;;  Redefine input fit parameters, if necessary
-  pbeam[0]                = pbeam[0] < (25d-2*h_fit[0])
+  bparm[0]                = ((bparm[0]) < (45d-2*h_fit[0]))
   ;;  Try to keep Nb < Nh/2
-  IF (b_pinfo[00].LIMITED[0]) THEN b_pinfo[00].LIMITS[0]  = (1d-2*pbeam[0]) < (b_pinfo[00].LIMITS[0])
-  IF (b_pinfo[00].LIMITED[1]) THEN b_pinfo[00].LIMITS[1]  = (5d-1*h_fit[0]) < (b_pinfo[00].LIMITS[1])
+  IF (b_pinfo[00].LIMITED[0]) THEN b_pinfo[00].LIMITS[0]  = (1d-2*bparm[0]) < (b_pinfo[00].LIMITS[0])
+  IF (b_pinfo[00].LIMITED[1]) THEN b_pinfo[00].LIMITS[1]  = (50d-2*h_fit[0]) < (b_pinfo[00].LIMITS[1])
 ENDIF ELSE BEGIN
   ;;  Redefine input fit parameters, if necessary
-  pbeam[0]                = pbeam[0] < (5d-2*c_fit[0])
+  bparm[0]                = ((bparm[0]) < (85d-2*c_fit[0]))
   ;;  Try to keep Nb < 30% Nc
-  IF (b_pinfo[00].LIMITED[0]) THEN b_pinfo[00].LIMITS[0]  = (1d-2*pbeam[0])  < (b_pinfo[00].LIMITS[0])
-  IF (b_pinfo[00].LIMITED[1]) THEN b_pinfo[00].LIMITS[1]  = (30d-2*c_fit[0]) < (b_pinfo[00].LIMITS[1])
+  IF (b_pinfo[00].LIMITED[0]) THEN b_pinfo[00].LIMITS[0]  = (1d-2*bparm[0])  < (b_pinfo[00].LIMITS[0])
+  IF (b_pinfo[00].LIMITED[1]) THEN b_pinfo[00].LIMITS[1]  = (90d-2*c_fit[0]) < (b_pinfo[00].LIMITS[1])
 ENDELSE
+b_pinfo[00].VALUE       = bparm[0]
+IF (b_pinfo[00].LIMITED[0]) THEN BEGIN
+  b_pinfo[00].VALUE       = (b_pinfo[00].VALUE) > (b_pinfo[00].LIMITS[0])
+  hparm[0]                = b_pinfo[00].VALUE[0]
+ENDIF
+IF (b_pinfo[00].LIMITED[1]) THEN BEGIN
+  b_pinfo[00].VALUE       = (b_pinfo[00].VALUE) < (b_pinfo[00].LIMITS[1])
+  bparm[0]                = b_pinfo[00].VALUE[0]
+ENDIF
 ;;  Define xyz inputs
 x                       = vx_in
 y                       = vy_in
 z                       = residualb
 func                    = bfun[0]
-b_fit                   = mpfit2dfun(func[0],x,y,z,zerrb,pbeam,PARINFO=b_pinfo,PERROR=f_sigb,    $
+b_fit                   = mpfit2dfun(func[0],x,y,z,zerrb,bparm,PARINFO=b_pinfo,PERROR=f_sigb,    $
                                      BESTNORM=chisqb,DOF=dofb,STATUS=statb,NITER=iterb,          $
                                      YFIT=beamfit_out,QUIET=1,WEIGHTS=weightb,NAN=nan_on[0],     $
                                      FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,                $
@@ -1610,7 +1512,7 @@ IF (statb[0] EQ -16) THEN BEGIN
   IF (SIZE(zerrorb,/TYPE)     NE 0)      THEN dumb = TEMPORARY(zerrorb)
   IF (SIZE(bfree_ind,/TYPE)   NE 0)      THEN dumb = TEMPORARY(bfree_ind)
   IF (SIZE(bpegged,/TYPE)     NE 0)      THEN dumb = TEMPORARY(bpegged)
-  b_fit                   = mpfit2dfun(func[0],x,y,z,zerrb,pbeam,PARINFO=b_pinfo,PERROR=f_sigb,    $
+  b_fit                   = mpfit2dfun(func[0],x,y,z,zerrb,bparm,PARINFO=b_pinfo,PERROR=f_sigb,    $
                                        BESTNORM=chisqb,DOF=dofb,STATUS=statb,NITER=iterb,          $
                                        YFIT=beamfit_out,QUIET=1,WEIGHTS=weightb,NAN=nan_on[0],     $
                                        FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,                $
@@ -1632,7 +1534,7 @@ IF (statb[0] EQ -16) THEN BEGIN
     IF (SIZE(zerrorb,/TYPE)     NE 0)      THEN dumb = TEMPORARY(zerrorb)
     IF (SIZE(bfree_ind,/TYPE)   NE 0)      THEN dumb = TEMPORARY(bfree_ind)
     IF (SIZE(bpegged,/TYPE)     NE 0)      THEN dumb = TEMPORARY(bpegged)
-    b_fit                   = mpfit2dfun(func[0],x,y,z,zerrb,pbeam,PARINFO=b_pinfo,PERROR=f_sigb,    $
+    b_fit                   = mpfit2dfun(func[0],x,y,z,zerrb,bparm,PARINFO=b_pinfo,PERROR=f_sigb,    $
                                          BESTNORM=chisqb,DOF=dofb,STATUS=statb,NITER=iterb,          $
                                          YFIT=beamfit_out,QUIET=1,WEIGHTS=weightb,NAN=nan_on[0],     $
                                          FTOL=ftol,GTOL=gtol,XTOL=xtol,ERRMSG=errmsg,                $
@@ -1692,30 +1594,9 @@ IF (N_ELEMENTS(beamfit_out) NE N_ELEMENTS(dumb2d)) THEN beamfit_out  = dumb2d
 IF (N_ELEMENTS(residualb)   NE N_ELEMENTS(dumb2d)) THEN residualb    = dumb2d
 IF (N_ELEMENTS(weightb)     NE N_ELEMENTS(dumb2d)) THEN weightb      = dumb2d
 IF (N_ELEMENTS(zerrorb)     NE N_ELEMENTS(dumb2d)) THEN zerrorb      = dumb2d
-;
-;IF (SIZE(corefit_out,/TYPE) EQ 0) THEN corefit_out  = dumb2d
-;IF (SIZE(weightc,/TYPE)     EQ 0) THEN weightc      = dumb2d
-;IF (SIZE(zerrorc,/TYPE)     EQ 0) THEN zerrorc      = dumb2d
-;IF (SIZE(halofit_out,/TYPE) EQ 0) THEN halofit_out  = dumb2d
-;IF (SIZE(residualh,/TYPE)   EQ 0) THEN residualh    = dumb2d
-;IF (SIZE(weighth,/TYPE)     EQ 0) THEN weighth      = dumb2d
-;IF (SIZE(zerrorh,/TYPE)     EQ 0) THEN zerrorh      = dumb2d
-;IF (SIZE(beamfit_out,/TYPE) EQ 0) THEN beamfit_out  = dumb2d
-;IF (SIZE(residualb,/TYPE)   EQ 0) THEN residualb    = dumb2d
-;IF (SIZE(weightb,/TYPE)     EQ 0) THEN weightb      = dumb2d
-;IF (SIZE(zerrorb,/TYPE)     EQ 0) THEN zerrorb      = dumb2d
 ;;----------------------------------------------------------------------------------------
 ;;  Convert fit results back to standard units
 ;;----------------------------------------------------------------------------------------
-IF (cf[0] NE 'AS') THEN c_fit  /= pfar ELSE c_fit  /= pfar1
-IF (hf[0] NE 'AS') THEN h_fit  /= pfar ELSE h_fit  /= pfar1
-IF (bf[0] NE 'AS') THEN b_fit  /= pfar ELSE b_fit  /= pfar1
-IF (cf[0] NE 'AS') THEN f_sigc /= pfar ELSE f_sigc /= pfar1
-IF (hf[0] NE 'AS') THEN f_sigh /= pfar ELSE f_sigh /= pfar1
-IF (bf[0] NE 'AS') THEN f_sigb /= pfar ELSE f_sigb /= pfar1
-corefit_out            /= ffac[0]
-halofit_out            /= ffac[0]
-beamfit_out            /= ffac[0]
 ;;  Remove correction that was added to weights to ensure ≥ 1.0 for chi-squared and one-sigma values
 weighttot               = lbw__add(weightc,lbw__add(weighth,weightb,/NAN),/NAN)
 CASE good_wts[0] OF
@@ -1757,6 +1638,13 @@ CASE good_wts[0] OF
   END
   ELSE : STOP        ;;  Should not be possible --> debug
 ENDCASE
+;;  Adjust by [C,H,B]FACT
+f_sigc                 *= cfact
+f_sigh                 *= hfact
+f_sigb                 *= bfact
+c_fit                  *= cfact
+h_fit                  *= hfact
+b_fit                  *= bfact
 ;;  Calculate total chi-squared
 model_tot               = lbw__add(corefit_out,lbw__add(halofit_out,beamfit_out,/NAN),/NAN)
 measr_tot               = lbw__add(vdf_2dc0,lbw__add(residualh,residualb,/NAN),/NAN)
@@ -1798,16 +1686,16 @@ out_struc               = CREATE_STRUCT(tags,core_strc,halo_strc,beam_strc,model
 ;;----------------------------------------------------------------------------------------
 ;;  Plot data with fits
 ;;----------------------------------------------------------------------------------------
-plot_vdfs_4_fitvdf2sumof3funcs,vdf,velxyz,out_struc,VFRAME=vframe,VEC1=vec1,VEC2=vec2,    $
-                                   ONLY_TOT=only_tot,PLOT_BOTH=plot_both,                 $
-                                   NOUSECTAB=nousectab,USE_MM=use_mm,                     $
-                                   CORE_LABS=core_labs,HALO_LABS=halo_labs,               $
-                                   BEAM_LABS=beam_labs,XYLAB_PRE=xylabpre,                $
-                                   CFUNC=cfunc,HFUNC=hfunc,BFUNC=bfunc,                   $
-                                   ELECTRONS=electrons,IONS=ions,                         $
-                                   SPTHRSHS=spthrshs,MAXFACS=maxfac0,                     $
-                                   SAVEF=savef,FILENAME=filename,                         $
-                                   _EXTRA=extrakey
+plot_model_fit_vdf_2_so3fs,vdf,velxyz,out_struc,VFRAME=vframe,VEC1=vec1,VEC2=vec2,  $
+                           ONLY_TOT=only_tot,PLOT_BOTH=plot_both,                   $
+                           CORE_LABS=core_labs,HALO_LABS=halo_labs,                 $
+                           BEAM_LABS=beam_labs,XYLAB_PRE=xylabpre,                  $
+                           CFUNC=cfunc,HFUNC=hfunc,BFUNC=bfunc,                     $
+                           CFACT=cfact,HFACT=hfact,BFACT=bfact,                     $
+                           ELECTRONS=electrons,IONS=ions,                           $
+                           SPTHRSHS=spthrshs,MAXFACS=maxfac0,                       $
+                           SAVEF=savef,FILENAME=filename,                           $
+                           _EXTRA=extrakey
 
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
@@ -1815,13 +1703,6 @@ plot_vdfs_4_fitvdf2sumof3funcs,vdf,velxyz,out_struc,VFRAME=vframe,VEC1=vec1,VEC2
 
 RETURN
 END
-
-
-
-
-
-
-
 
 
 
