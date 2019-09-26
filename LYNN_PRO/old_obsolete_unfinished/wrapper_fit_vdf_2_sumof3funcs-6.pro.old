@@ -366,10 +366,6 @@
 ;                                                                   [04/22/2019   v1.0.5]
 ;             6)  Now returns two forms of the total value and reduced chi-squared
 ;                                                                   [04/25/2019   v1.0.6]
-;             7)  Fixed a bug that only occurs for specific failures of the core fit
-;                   process leading to the output fit array being a scalar zero instead
-;                   of a 2D array
-;                                                                   [09/16/2019   v1.0.7]
 ;
 ;   NOTES:      
 ;               0)  ***  Do not directly set the RMSTRAHL keyword  ***
@@ -527,18 +523,18 @@
 ;              11)  Livadiotis, G. "Modeling anisotropic Maxwell-Jüttner distributions:
 ;                      derivation and properties," Ann. Geophys. 34(1),
 ;                      pp. 1145-1158, 2016.
-;              12)  Markwardt, C. B. "Non-Linear Least Squares Fitting in IDL with
-;                     MPFIT," in proc. Astronomical Data Analysis Software and Systems
-;                     XVIII, Quebec, Canada, ASP Conference Series, Vol. 411,
-;                     Editors: D. Bohlender, P. Dowler & D. Durand, (Astronomical
-;                     Society of the Pacific: San Francisco), pp. 251-254,
-;                     ISBN:978-1-58381-702-5, 2009.
-;              13)  Moré, J. 1978, "The Levenberg-Marquardt Algorithm: Implementation and
-;                     Theory," in Numerical Analysis, Vol. 630, ed. G. A. Watson
-;                     (Springer-Verlag: Berlin), pp. 105, doi:10.1007/BFb0067690, 1978.
-;              14)  Moré, J. and S. Wright "Optimization Software Guide," SIAM,
-;                     Frontiers in Applied Mathematics, Number 14,
-;                     ISBN:978-0-898713-22-0, 1993.
+;              12) Markwardt, C. B. "Non-Linear Least Squares Fitting in IDL with
+;                    MPFIT," in proc. Astronomical Data Analysis Software and Systems
+;                    XVIII, Quebec, Canada, ASP Conference Series, Vol. 411,
+;                    Editors: D. Bohlender, P. Dowler & D. Durand, (Astronomical
+;                    Society of the Pacific: San Francisco), pp. 251-254,
+;                    ISBN:978-1-58381-702-5, 2009.
+;              13) Moré, J. 1978, "The Levenberg-Marquardt Algorithm: Implementation and
+;                    Theory," in Numerical Analysis, Vol. 630, ed. G. A. Watson
+;                    (Springer-Verlag: Berlin), pp. 105, doi:10.1007/BFb0067690, 1978.
+;              14) Moré, J. and S. Wright "Optimization Software Guide," SIAM,
+;                    Frontiers in Applied Mathematics, Number 14,
+;                    ISBN:978-0-898713-22-0, 1993.
 ;              15)  The IDL MINPACK routines can be found on Craig B. Markwardt's site at:
 ;                     http://cow.physics.wisc.edu/~craigm/idl/fitting.html
 ;              16)  Wilson III, L.B., et al., "Quantified Energy Dissipation Rates in the
@@ -553,17 +549,11 @@
 ;              19)  Wilson III, L.B., et al., "The Statistical Properties of Solar Wind
 ;                      Temperature Parameters Near 1 au," Astrophys. J. Suppl. 236(2),
 ;                      pp. 41, doi:10.3847/1538-4365/aab71c, 2018.
-;              20)  Wilson III, L.B., et al., "Electron energy partition across
-;                      interplanetary shocks: I. Methodology and Data Product,"
-;                      Astrophys. J. Suppl. 243(8), doi:10.3847/1538-4365/ab22bd, 2019.
-;              21)  Wilson III, L.B., et al., "Supplement to: Electron energy partition
-;                      across interplanetary shocks," Zenodo (data product),
-;                      doi:10.5281/zenodo.2875806, 2019.
 ;
 ;   ADAPTED FROM: wrapper_fit_vdf_2_sumof2funcs.pro
 ;   CREATED:  06/19/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  09/16/2019   v1.0.7
+;    LAST MODIFIED:  04/25/2019   v1.0.6
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -1095,7 +1085,7 @@ ENDIF
 vdf_2d                  = dat_out.CONT_DATA.VDF_2D          ;;  [# cm^(-3) km^(-3) s^(+3)]
 vdf_2d                 *= ffac[0]                           ;;  km^(-3) --> Mm^(-3)
 vpara                   = dat_out.CONT_DATA.VXGRID          ;;  [Mm/s]
-vperp                   = dat_out.CONT_DATA.VYGRID          ;;  [Mm/s]
+vperp                   = dat_out.CONT_DATA.VXGRID          ;;  [Mm/s]
 IF (vfac[0] LT 1d0) THEN BEGIN
   ;;  Use Mm
   vx_in                   = vpara
@@ -1352,8 +1342,6 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Fit to model 2D function to core
 ;;----------------------------------------------------------------------------------------
-;;  Define dummy 2D array of expected size/dimensions of the outputs
-dumb2d                  = REPLICATE(d,n_par[0],n_per[0])
 ;;  Define input fit parameters
 param                   = [pcore,phalo]
 ;;  Define PARINFO structure
@@ -1449,10 +1437,7 @@ END
 ;;             8 = GTOL is too small. fvec is orthogonal to the columns of the
 ;;                   jacobian to machine precision.
 ;;----------------------------------------------------------------------------------------
-test           = (statc[0] LE 0) OR (N_ELEMENTS(corefit_out) NE N_ELEMENTS(dumb2d)) OR $
-                 (N_ELEMENTS(zerrorc) NE N_ELEMENTS(dumb2d))
-IF (test[0]) THEN GOTO,JUMP_QUIT
-;IF (statc[0] LE 0) THEN GOTO,JUMP_QUIT
+IF (statc[0] LE 0) THEN GOTO,JUMP_QUIT
 ;;----------------------------------------------------------------------------------------
 ;;  Fit to model 2D function to halo
 ;;----------------------------------------------------------------------------------------
@@ -1641,11 +1626,7 @@ IF (statb[0] EQ -16) THEN BEGIN
   END
 END
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Check if MPFIT left required parameters undefined on output
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;========================================================================================
 JUMP_QUIT:
@@ -1653,60 +1634,46 @@ JUMP_QUIT:
 dumb2d                  = REPLICATE(d,n_par[0],n_per[0])
 ;;  Core Fit
 IF (SIZE(statc,/TYPE)       EQ 0) THEN statc        = -1
+IF (SIZE(corefit_out,/TYPE) EQ 0) THEN corefit_out  = dumb2d
 IF (SIZE(c_fit,/TYPE)       EQ 0) THEN c_fit        = REPLICATE(d,6)
 IF (SIZE(f_sigc,/TYPE)      EQ 0) THEN f_sigc       = REPLICATE(d,6)
+IF (SIZE(weightc,/TYPE)     EQ 0) THEN weightc      = dumb2d
 IF (SIZE(chisqc,/TYPE)      EQ 0) THEN chisqc       = d
 IF (SIZE(dofc,/TYPE)        EQ 0) THEN dofc         = d
 IF (SIZE(iterc,/TYPE)       EQ 0) THEN iterc        = -1
+IF (SIZE(zerrorc,/TYPE)     EQ 0) THEN zerrorc      = dumb2d
 IF (SIZE(c_pinfo,/TYPE)     EQ 0) THEN c_pinfo      = def_pinf[0:5]
 IF (SIZE(cfree_ind,/TYPE)   EQ 0) THEN cfree_ind    = -1
 IF (SIZE(cpegged,/TYPE)     EQ 0) THEN cpegged      = -1
-IF (N_ELEMENTS(corefit_out) NE N_ELEMENTS(dumb2d)) THEN corefit_out  = dumb2d
-IF (N_ELEMENTS(weightc)     NE N_ELEMENTS(dumb2d)) THEN weightc      = dumb2d
-IF (N_ELEMENTS(zerrorc)     NE N_ELEMENTS(dumb2d)) THEN zerrorc      = dumb2d
 ;;  Halo Fit
 IF (SIZE(stath,/TYPE)       EQ 0) THEN stath        = -1
+IF (SIZE(halofit_out,/TYPE) EQ 0) THEN halofit_out  = dumb2d
+IF (SIZE(residualh,/TYPE)   EQ 0) THEN residualh    = dumb2d
 IF (SIZE(h_fit,/TYPE)       EQ 0) THEN h_fit        = REPLICATE(d,6)
 IF (SIZE(f_sigh,/TYPE)      EQ 0) THEN f_sigh       = REPLICATE(d,6)
+IF (SIZE(weighth,/TYPE)     EQ 0) THEN weighth      = dumb2d
 IF (SIZE(chisqh,/TYPE)      EQ 0) THEN chisqh       = d
 IF (SIZE(dofh,/TYPE)        EQ 0) THEN dofh         = d
 IF (SIZE(iterh,/TYPE)       EQ 0) THEN iterh        = -1
+IF (SIZE(zerrorh,/TYPE)     EQ 0) THEN zerrorh      = dumb2d
 IF (SIZE(h_pinfo,/TYPE)     EQ 0) THEN h_pinfo      = def_pinf[6:11]
 IF (SIZE(hfree_ind,/TYPE)   EQ 0) THEN hfree_ind    = -1
 IF (SIZE(hpegged,/TYPE)     EQ 0) THEN hpegged      = -1
-IF (N_ELEMENTS(halofit_out) NE N_ELEMENTS(dumb2d)) THEN halofit_out  = dumb2d
-IF (N_ELEMENTS(residualh)   NE N_ELEMENTS(dumb2d)) THEN residualh    = dumb2d
-IF (N_ELEMENTS(weighth)     NE N_ELEMENTS(dumb2d)) THEN weighth      = dumb2d
-IF (N_ELEMENTS(zerrorh)     NE N_ELEMENTS(dumb2d)) THEN zerrorh      = dumb2d
 ;;  Beam Fit
 IF (SIZE(statb,/TYPE)       EQ 0) THEN statb        = -1
+IF (SIZE(beamfit_out,/TYPE) EQ 0) THEN beamfit_out  = dumb2d
+IF (SIZE(residualb,/TYPE)   EQ 0) THEN residualb    = dumb2d
 IF (SIZE(b_fit,/TYPE)       EQ 0) THEN b_fit        = REPLICATE(d,6)
 IF (SIZE(f_sigb,/TYPE)      EQ 0) THEN f_sigb       = REPLICATE(d,6)
+IF (SIZE(weightb,/TYPE)     EQ 0) THEN weightb      = dumb2d
 IF (SIZE(chisqb,/TYPE)      EQ 0) THEN chisqb       = d
 IF (SIZE(dofb,/TYPE)        EQ 0) THEN dofb         = d
 IF (SIZE(iterb,/TYPE)       EQ 0) THEN iterb        = -1
+IF (SIZE(zerrorb,/TYPE)     EQ 0) THEN zerrorb      = dumb2d
 IF (SIZE(b_pinfo,/TYPE)     EQ 0) THEN b_pinfo      = def_binf
 IF (SIZE(bfree_ind,/TYPE)   EQ 0) THEN bfree_ind    = -1
 IF (SIZE(bpegged,/TYPE)     EQ 0) THEN bpegged      = -1
-IF (N_ELEMENTS(beamfit_out) NE N_ELEMENTS(dumb2d)) THEN beamfit_out  = dumb2d
-IF (N_ELEMENTS(residualb)   NE N_ELEMENTS(dumb2d)) THEN residualb    = dumb2d
-IF (N_ELEMENTS(weightb)     NE N_ELEMENTS(dumb2d)) THEN weightb      = dumb2d
-IF (N_ELEMENTS(zerrorb)     NE N_ELEMENTS(dumb2d)) THEN zerrorb      = dumb2d
-;
-;IF (SIZE(corefit_out,/TYPE) EQ 0) THEN corefit_out  = dumb2d
-;IF (SIZE(weightc,/TYPE)     EQ 0) THEN weightc      = dumb2d
-;IF (SIZE(zerrorc,/TYPE)     EQ 0) THEN zerrorc      = dumb2d
-;IF (SIZE(halofit_out,/TYPE) EQ 0) THEN halofit_out  = dumb2d
-;IF (SIZE(residualh,/TYPE)   EQ 0) THEN residualh    = dumb2d
-;IF (SIZE(weighth,/TYPE)     EQ 0) THEN weighth      = dumb2d
-;IF (SIZE(zerrorh,/TYPE)     EQ 0) THEN zerrorh      = dumb2d
-;IF (SIZE(beamfit_out,/TYPE) EQ 0) THEN beamfit_out  = dumb2d
-;IF (SIZE(residualb,/TYPE)   EQ 0) THEN residualb    = dumb2d
-;IF (SIZE(weightb,/TYPE)     EQ 0) THEN weightb      = dumb2d
-;IF (SIZE(zerrorb,/TYPE)     EQ 0) THEN zerrorb      = dumb2d
-;;----------------------------------------------------------------------------------------
 ;;  Convert fit results back to standard units
-;;----------------------------------------------------------------------------------------
 IF (cf[0] NE 'AS') THEN c_fit  /= pfar ELSE c_fit  /= pfar1
 IF (hf[0] NE 'AS') THEN h_fit  /= pfar ELSE h_fit  /= pfar1
 IF (bf[0] NE 'AS') THEN b_fit  /= pfar ELSE b_fit  /= pfar1
