@@ -25,7 +25,7 @@
 ;               [calling sequence]
 ;               stats = calc_1var_stats(xx [,/NAN] [,/PRINTOUT] [,RANGE=range]        $
 ;                                          [,/POSITIVE] [,/NEGATIVE] [,CONLIM=conlim] $
-;                                          [,PERCENTILES=percentiles] [,/NOMSSG])
+;                                          [,PERCENTILES=percentiles])
 ;
 ;               ;;  Define dummy array of values for later use
 ;               xx             = [-45.12d3,-25.2d1,-72.88,-2.31738,300.95313,5.15287331e5,$
@@ -84,9 +84,6 @@
 ;                                 a one-sigma value for a Gaussian distribution would
 ;                                 be 0.68.
 ;                                 [Default = 0.68]
-;               NOMSSG       :  If set, routine will not output messages to inform user
-;                                 of failures or status
-;                                 [Default = FALSE]
 ;               ****************
 ;               ***  OUTPUT  ***
 ;               ****************
@@ -104,8 +101,6 @@
 ;                                                                   [04/04/2019   v1.0.3]
 ;             4)  Now calculates fractional indices of Q25 and Q75 if not available
 ;                                                                   [05/22/2019   v1.0.4]
-;             5)  Added keyword:  NOMSSG
-;                                                                   [11/06/2019   v1.0.5]
 ;
 ;   NOTES:      
 ;               1)  The return value, if successful, is a thirteen element array with:
@@ -130,15 +125,14 @@
 ;
 ;   CREATED:  01/17/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  11/06/2019   v1.0.5
+;    LAST MODIFIED:  05/22/2019   v1.0.4
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
 FUNCTION calc_1var_stats,xx,NAN=nan,PRINTOUT=printout,RANGE=range,POSITIVE=positive, $
-                            NEGATIVE=negative,CONLIM=conlim,PERCENTILES=percentiles, $
-                            NOMSSG=nomssg
+                            NEGATIVE=negative,CONLIM=conlim,PERCENTILES=percentiles
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -155,12 +149,12 @@ nofint_msg     = 'No finite data...'
 ;;----------------------------------------------------------------------------------------
 IF (N_PARAMS() NE 1) THEN BEGIN
   ;;  no input???
-  IF ~KEYWORD_SET(nomssg) THEN MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
 test           = (is_a_number(xx,/NOMSSG) EQ 0) OR (N_ELEMENTS(xx) EQ 0)
 IF (test[0]) THEN BEGIN
-  IF ~KEYWORD_SET(nomssg) THEN MESSAGE,notnum_msg[0],/INFORMATIONAL,/CONTINUE
+  MESSAGE,notnum_msg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
 ;;  Define params
@@ -171,12 +165,12 @@ x              = TEMPORARY(x[sp])      ;;  Sort array
 good           = WHERE(FINITE(x),gdx)
 IF (nx[0] LT 3) THEN BEGIN
   ;;  not enough elements!
-  IF ~KEYWORD_SET(nomssg) THEN MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
 IF (gdx[0] LT 1) THEN BEGIN
   ;;  not enough elements!
-  IF ~KEYWORD_SET(nomssg) THEN MESSAGE,nofint_msg[0],/INFORMATIONAL,/CONTINUE
+  MESSAGE,nofint_msg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
 ;;----------------------------------------------------------------------------------------
@@ -220,10 +214,10 @@ IF (ran_on[0] OR pos_on[0] OR neg_on[0]) THEN BEGIN
       IF (gin[0] GT 0) THEN BEGIN
         ;;  Good setting --> Redefine input and re-call
         x2 = x[gind]
-        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout,CONLIM=conlim,PERCENTILES=percentiles,NOMSSG=nomssg)
+        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout,CONLIM=conlim,PERCENTILES=percentiles)
       ENDIF ELSE BEGIN
         ;;  Bad range setting --> Inform user and return 0
-        IF ~KEYWORD_SET(nomssg) THEN MESSAGE,'No data within RANGE boundaries...',/INFORMATIONAL,/CONTINUE
+        MESSAGE,'No data within RANGE boundaries...',/INFORMATIONAL,/CONTINUE
         RETURN,0b
       ENDELSE
     END
@@ -232,11 +226,11 @@ IF (ran_on[0] OR pos_on[0] OR neg_on[0]) THEN BEGIN
       x2 = get_posneg_els_arr(x)
       IF (N_ELEMENTS(x2) LE 1) THEN BEGIN
         ;;  Bad result --> Inform user and return 0
-        IF ~KEYWORD_SET(nomssg) THEN MESSAGE,'No positive-only data provided...',/INFORMATIONAL,/CONTINUE
+        MESSAGE,'No positive-only data provided...',/INFORMATIONAL,/CONTINUE
         RETURN,0b
       ENDIF ELSE BEGIN
         ;;  Good setting --> Re-call with new input
-        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout,CONLIM=conlim,PERCENTILES=percentiles,NOMSSG=nomssg)
+        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout,CONLIM=conlim,PERCENTILES=percentiles)
       ENDELSE
     END
     check[2]  :  BEGIN
@@ -244,11 +238,11 @@ IF (ran_on[0] OR pos_on[0] OR neg_on[0]) THEN BEGIN
       x2 = get_posneg_els_arr(x,/NEGATIVE)
       IF (N_ELEMENTS(x2) LE 1) THEN BEGIN
         ;;  Bad result --> Inform user and return 0
-        IF ~KEYWORD_SET(nomssg) THEN MESSAGE,'No positive-only data provided...',/INFORMATIONAL,/CONTINUE
+        MESSAGE,'No positive-only data provided...',/INFORMATIONAL,/CONTINUE
         RETURN,0b
       ENDIF ELSE BEGIN
         ;;  Good setting --> Re-call with new input
-        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout,CONLIM=conlim,PERCENTILES=percentiles,NOMSSG=nomssg)
+        RETURN,calc_1var_stats(x2,NAN=nan,PRINTOUT=printout,CONLIM=conlim,PERCENTILES=percentiles)
       ENDELSE
     END
     ELSE      : STOP  ;;  should not happen!

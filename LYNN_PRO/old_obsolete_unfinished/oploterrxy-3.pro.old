@@ -22,8 +22,7 @@
 ;                                variable data.
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               input = oploterrxy_input([x,] y, [xerr], yerr)
+;               NA
 ;
 ;  KEYWORDS:    
 ;               NA
@@ -32,9 +31,6 @@
 ;                                                                   [07/28/2015   v1.0.1]
 ;             2)  Cleaned up main routine
 ;                                                                   [07/28/2015   v1.0.1]
-;             3)  Now attempts to correct for error bars extending beyond plotted data
-;                   range
-;                                                                   [10/03/2019   v1.0.2]
 ;
 ;   NOTES:      
 ;               1)  The error inputs should represent the low end range of the data
@@ -48,7 +44,7 @@
 ;
 ;   CREATED:  09/10/2012
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  10/03/2019   v1.0.2
+;    LAST MODIFIED:  07/28/2015   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -192,24 +188,17 @@ ENDCASE
 n              = N_ELEMENTS(xx) < N_ELEMENTS(yy)
 IF (np GT 2) THEN n = n < N_ELEMENTS(yerr)
 IF (np EQ 4) THEN n = n < N_ELEMENTS(xerr)
-;;  Get plotted data range
-ycrange        = !Y.CRANGE
-xcrange        = !X.CRANGE
-xlog           = !X.TYPE
-ylog           = !Y.TYPE
-IF (xlog[0]) THEN xcrange = 1d1^(xcrange)
-IF (ylog[0]) THEN ycrange = 1d1^(ycrange)
-;;  Define output
+
 xx             = xx[0L:(n - 1L)]
 yy             = yy[0L:(n - 1L)]
 yerr           = yerr[0L:(n - 1L),*]
 xerr           = xerr[0L:(n - 1L),*]
 ;; Define high/low values for Y-Error
-ylo            = (yy - yerr[*,0]) > ycrange[0]
-yhi            = (yy + yerr[*,1]) < ycrange[1]
+ylo            = yy - yerr[*,0]
+yhi            = yy + yerr[*,1]
 ;; Define high/low values for X-Error
-xlo            = (xx - xerr[*,0]) > xcrange[0]
-xhi            = (xx + xerr[*,1]) < xcrange[1]
+xlo            = xx - xerr[*,0]
+xhi            = xx + xerr[*,1]
 ;;----------------------------------------------------------------------------------------
 ;;  Define return structure
 ;;----------------------------------------------------------------------------------------
@@ -376,8 +365,7 @@ END
 ;
 ;  EXAMPLES:    
 ;               PLOT,x,y
-;               oploterr, [x,] y, [xerr], yerr [,/NOHAT] [,HATLENGTH=hatlength]
-;                         [,ERRTHICK=errthick] [,ERRSTYLE=errstyle] [,_EXTRA=_extra]
+;               oploterr, [x,] y, [xerr], yerr
 ;
 ;  KEYWORDS:    
 ;               *****************
@@ -389,7 +377,7 @@ END
 ;                               bars in DEVICE units
 ;                               [Default = !D.[X,Y]_VSIZE/100.]
 ;               ERRTHICK   :  The THICK format for error bars
-;                               [Default = defined by THICK keyword setting]
+;                               [Default = defined by THICK]
 ;               ERRSTYLE   :  The LINESTYLE format for error bars
 ;                               [Default = 0]
 ;               ***  Keywords accepted by PLOT.PRO  ***
@@ -401,6 +389,7 @@ END
 ;               SYMSIZE    :  Same as SYMSIZE in PLOT.PRO documentation
 ;               T3D        :  Same as T3D in PLOT.PRO documentation
 ;               THICK      :  Same as THICK in PLOT.PRO documentation
+;               
 ;
 ;   CHANGED:  1)  Updated man page, added comments, cleaned up, and now calls:
 ;                   oploterrxy_input.pro and oploterrxy_keywords.pro
@@ -412,9 +401,6 @@ END
 ;                                                                   [07/28/2015   v1.2.0]
 ;             3)  Cleaned up
 ;                                                                   [07/28/2015   v1.2.1]
-;             4)  Now attempts to correct for error bars extending beyond plotted data
-;                   range
-;                                                                   [10/03/2019   v1.2.2]
 ;
 ;   NOTES:      
 ;               1)  If # of parameters passed are less than 4, here are the results:
@@ -434,16 +420,15 @@ END
 ;
 ;   CREATED:  09/27/2007
 ;   CREATED BY:  J.R. Woodroffe
-;    LAST MODIFIED:  10/03/2019   v1.2.2
+;    LAST MODIFIED:  07/28/2015   v1.2.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
 PRO oploterrxy,x,y,xerr,yerr,NOHAT=nohat,HATLENGTH=hln,ERRTHICK=ethick,ERRSTYLE=estyle,   $
-                             COLOR=color,LINESTYLE=linest,NOCLIP=noclip,NSUM=nsum,        $
-                             PSYM=psym,SYMSIZE=symsize,T3D=t3d,THICK=thick,               $
-                             _EXTRA=extra_options
+                             COLOR=color,LINESTYLE=linest,NOCLIP=noclip,NSUM=nsum,  $
+                             PSYM=psym,SYMSIZE=symsize,T3D=t3d,THICK=thick
 
 ;;  Let IDL know that the following are functions
 FORWARD_FUNCTION oploterrxy_input, is_a_number
@@ -487,28 +472,28 @@ n              = N_ELEMENTS(xx)
 ;;  Initialize plot keywords
 ;;----------------------------------------------------------------------------------------
 oploterrxy_keywords,COLOR=color,LINESTYLE=linest,NOCLIP=noclip,NSUM=nsum, $
-                    PSYM=psym,SYMSIZE=symsize,T3D=t3d,THICK=thick,_EXTRA=extra_options
+                    PSYM=psym,SYMSIZE=symsize,T3D=t3d,THICK=thick
 ;;----------------------------------------------------------------------------------------
 ;;  Initialize error bar keywords (except for HATLENGTH; this one will be taken care
 ;;      of later, when it is time to deal with the error bar hats).
 ;;----------------------------------------------------------------------------------------
 ;;  Check NOHAT
 test           = KEYWORD_SET(nohat)
-IF (test[0]) THEN hat = 0 ELSE hat = 1
+IF (test) THEN hat = 0 ELSE hat = 1
 ;;  Check ERRTHICK
 test           = (N_ELEMENTS(ethick) EQ 0) OR (is_a_number(ethick,/NOMSSG) EQ 0)
-IF (test[0]) THEN eth = thick ELSE eth = ethick[0]
+IF (test) THEN eth = thick ELSE eth = ethick[0]
 ;;  Check ERRSTYLE
 test           = (N_ELEMENTS(estyle) EQ 0) OR (is_a_number(estyle,/NOMSSG) EQ 0)
-IF (test[0]) THEN est = 0 ELSE est = estyle[0]
+IF (test) THEN est = 0 ELSE est = estyle[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Plot the positions
 ;;----------------------------------------------------------------------------------------
-IF (n[0] GT 1) THEN BEGIN
+IF (n GT 1) THEN BEGIN
   OPLOT,xx,yy,COLOR=color,LINESTYLE=linest,THICK=thick,NOCLIP=noclip,NSUM=nsum, $
-              PSYM=psym,SYMSIZE=symsize,T3D=t3d,_EXTRA=extra_options
+              PSYM=psym,SYMSIZE=symsize,T3D=t3d
 ENDIF ELSE BEGIN
-  IF (n[0] EQ 1) THEN PLOTS,xx,yy,COLOR=color,THICK=thick,NOCLIP=noclip,PSYM=psym,SYMSIZE=symsize,T3D=t3d,_EXTRA=extra_options
+  IF (n EQ 1) THEN PLOTS,xx,yy,COLOR=color,THICK=thick,NOCLIP=noclip,PSYM=psym,SYMSIZE=symsize,T3D=t3d
 ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Compute the hat length in device coordinates so that it
@@ -516,7 +501,7 @@ ENDELSE
 ;;----------------------------------------------------------------------------------------
 data_low       = CONVERT_COORD(xx,ylo,/DATA,/TO_DEVICE)
 data_hi        = CONVERT_COORD(xx,yhi,/DATA,/TO_DEVICE)
-IF (np[0] EQ 4) THEN BEGIN
+IF (np EQ 4) THEN BEGIN
   x_low = CONVERT_COORD(xlo,yy,/DATA,/TO_DEVICE)
   x_hi  = CONVERT_COORD(xhi,yy,/DATA,/TO_DEVICE)
 ENDIF
@@ -525,14 +510,14 @@ ycrange        = !Y.CRANGE
 xcrange        = !X.CRANGE
 xlog           = !X.TYPE
 ylog           = !Y.TYPE
-IF (xlog[0]) THEN xcrange = 1d1^(xcrange)
-IF (ylog[0]) THEN ycrange = 1d1^(ycrange)
+IF (xlog) THEN xcrange = 1d1^(xcrange)
+IF (ylog) THEN ycrange = 1d1^(ycrange)
 ;;  Define XY-visible sizes
 xy_v_sz        = [!D.X_VSIZE[0],!D.Y_VSIZE[0]]
 ;;  Check HATLENGTH
 test           = (N_ELEMENTS(hln) EQ 0) OR (is_a_number(hln,/NOMSSG) EQ 0)
-IF (test[0]) THEN hlnx = xy_v_sz[0]/100. ELSE hlnx = hln[0]
-IF (test[0]) THEN hlny = xy_v_sz[1]/100. ELSE hlny = hln[0]
+IF (test) THEN hlnx = xy_v_sz[0]/100. ELSE hlnx = hln[0]
+IF (test) THEN hlny = xy_v_sz[1]/100. ELSE hlny = hln[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Plot the error bars
 ;;----------------------------------------------------------------------------------------
@@ -543,7 +528,7 @@ FOR i=0L, n[0] - 1L DO BEGIN
   test_x     = (xx[i] GT MAX(xcrange,/NAN)) OR (xx[i] LT MIN(xcrange,/NAN))
   test_y     = (yy[i] GT MAX(ycrange,/NAN)) OR (yy[i] LT MIN(ycrange,/NAN))
   IF (test_x OR test_y) THEN noplot = 1b
-  IF (noplot[0] EQ 0) THEN BEGIN
+  IF (noplot EQ 0) THEN BEGIN
     ;;------------------------------------------------------------------------------------
     ;;  Plot Y-error bars
     ;;------------------------------------------------------------------------------------
@@ -551,8 +536,8 @@ FOR i=0L, n[0] - 1L DO BEGIN
     ;;------------------------------------------------------------------------------------
     ;;  Plot X-error bars
     ;;------------------------------------------------------------------------------------
-    IF (np[0] EQ 4) THEN PLOTS,[xlo[i],xhi[i]],[yy[i],yy[i]],LINESTYLE=est,THICK=eth,COLOR=color
-    IF (hat[0] NE 0) THEN BEGIN
+    IF (np EQ 4) THEN PLOTS,[xlo[i],xhi[i]],[yy[i],yy[i]],LINESTYLE=est,THICK=eth,COLOR=color
+    IF (hat NE 0) THEN BEGIN
       ;;----------------------------------------------------------------------------------
       ;;  Plot "hats" on ends of error bars
       ;;----------------------------------------------------------------------------------
@@ -566,7 +551,6 @@ FOR i=0L, n[0] - 1L DO BEGIN
         ;;  Define Y-extent of hat (i.e., length of vertical line on plot)
         eyy1 = x_low[1,i] - hlny[0]/2.
         eyy2 =    eyy1[0] + hlny[0]
-        ;;  Output hats on X-error bars
         PLOTS,[x_low[0,i],x_low[0,i]],[eyy1[0],eyy2[0]],LINESTYLE=est,THICK=eth,/DEVICE,COLOR=color
         PLOTS,[ x_hi[0,i], x_hi[0,i]],[eyy1[0],eyy2[0]],LINESTYLE=est,THICK=eth,/DEVICE,COLOR=color
       ENDIF
@@ -576,11 +560,11 @@ ENDFOR
 ;;----------------------------------------------------------------------------------------
 ;;  Re-plot the positions
 ;;----------------------------------------------------------------------------------------
-IF (n[0] GT 1) THEN BEGIN
+IF (n GT 1) THEN BEGIN
   OPLOT,xx,yy,COLOR=color,LINESTYLE=linest,THICK=thick,NOCLIP=noclip,NSUM=nsum, $
-              PSYM=psym,SYMSIZE=symsize,T3D=t3d,_EXTRA=extra_options
+              PSYM=psym,SYMSIZE=symsize,T3D=t3d
 ENDIF ELSE BEGIN
-  IF (n[0] EQ 1) THEN PLOTS,xx,yy,COLOR=color,THICK=thick,NOCLIP=noclip,PSYM=psym,SYMSIZE=symsize,T3D=t3d,_EXTRA=extra_options
+  IF (n EQ 1) THEN PLOTS,xx,yy,COLOR=color,THICK=thick,NOCLIP=noclip,PSYM=psym,SYMSIZE=symsize,T3D=t3d
 ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
