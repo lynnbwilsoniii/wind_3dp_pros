@@ -59,18 +59,7 @@
 ;  EXAMPLES:    
 ;               [calling sequence]
 ;               intloc = find_intersect_point_plane_hyperboloid(posi, nip [,SEMILR=semilr] $
-;                                                              [,ECCEN=eccen] [,XXO=xxo]   $
-;                                                              [,NNX=nnx] [,NNY=nny]       $
-;                                                              [,NSHOUT=nshout])
-;               ;;  Example
-;               posi            = [250d0,25d0,0d0]
-;               nip             = REFORM(unit_vec([-0.9d0,-0.1d0,0.1d0]))
-;               test            = find_intersect_point_plane_hyperboloid(posi,nip,NSHOUT=nshout)
-;               ;;  Check angle between incident planar normal and hyperboloid normal
-;               nip_dot_nsh     = TOTAL(nip*nshout,/NAN)
-;               theta           = ACOS(nip_dot_nsh)*18d1/!DPI
-;               PRINT,';;  ',theta[0]
-;               ;;         179.82380
+;                                                              [,ECCEN=eccen] [,XXO=xxo]   )
 ;
 ;  KEYWORDS:    
 ;               SEMILR   :  Scalar [numeric] defining the semi-latus rectum of the
@@ -82,17 +71,9 @@
 ;               XXO      :  Scalar [numeric] defining the offset from the focus of the
 ;                             hyperboloid of two-sheets
 ;                             [Default = 3.0 Re]
-;               NNX      :  Scalar [numeric] defining the number of grid points along X
-;                             [Default = 100]
-;               NNY      :  Scalar [numeric] defining the number of grid points along Y
-;                             [Default = 200]
-;               NSHOUT   :  Set to a named variable to return the outward normal of the
-;                             model hyperboloid used to define the intersection point
 ;
-;   CHANGED:  1)  Now tries to focus the range of Y and Z values generated to increase
-;                   resolution based upon NIP and
-;                   added keywords:  NNX and NNY
-;                                                                   [10/22/2019   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               ***********************
@@ -102,8 +83,6 @@
 ;               2)  The routine assumes any aberrations etc. have been handled outside/
 ;                     before calling, thus all outputs are in a coordinate basis aligned
 ;                     with the symmetry axis of the hyperboloid.
-;               3)  By reducing the hyperboloid surface to the quadrant of the expected
-;                     intersection, the solution is significantly more accurate.
 ;
 ;  REFERENCES:  
 ;               1)  https://en.wikipedia.org/wiki/Hyperboloid
@@ -114,14 +93,14 @@
 ;
 ;   CREATED:  04/02/2019
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  10/22/2019   v1.0.1
+;    LAST MODIFIED:  04/02/2019   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION find_intersect_point_plane_hyperboloid,posi,nip,SEMILR=semilr,ECCEN=eccen,$
-                                                XXO=xxo,NNX=nnx,NNY=nny,NSHOUT=nshout
+FUNCTION find_intersect_point_plane_hyperboloid,posi,nip,SEMILR=semilr,ECCEN=eccen,XXO=xxo
+
 
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
@@ -132,8 +111,6 @@ d              = !VALUES.D_NAN
 def__L         = 23.3d0                    ;;  Default semi-latus rectum [Re]
 def__e         = 1.16d0                    ;;  Default eccentricity
 def_xo         = 3d0                       ;;  Default focus offset [Re]
-def_nx         = 100L                      ;;  Default Nx
-def_ny         = 200L                      ;;  Default Ny
 ;;  Dummy error messages
 noinpt_msg     = 'No input supplied...'
 notvec_msg     = 'Both POSI and NIP must be numeric 3-vectors...'
@@ -154,31 +131,6 @@ ENDIF
 n_ip           = REFORM(unit_vec(nout,/NAN))
 pmag           = (mag__vec(pout,/NAN))[0]
 ;;----------------------------------------------------------------------------------------
-;;  Define quadrant in YZ-plane to search based upon NIP
-;;----------------------------------------------------------------------------------------
-;;    y < 0    :  II or III
-;;    y > 0    :  I or IV
-IF (n_ip[1] NE 0) THEN BEGIN
-  IF (n_ip[1] LT 0) THEN BEGIN
-    ymin = 0d0
-    ymax = 1d30
-  ENDIF ELSE BEGIN
-    ymax = 0d0
-    ymin = -1d30
-  ENDELSE
-ENDIF
-;;    z < 0    :  I or II
-;;    z > 0    :  III or IV
-IF (n_ip[2] NE 0) THEN BEGIN
-  IF (n_ip[2] LT 0) THEN BEGIN
-    zmin = 0d0
-    zmax = 1d30
-  ENDIF ELSE BEGIN
-    zmax = 0d0
-    zmin = -1d30
-  ENDELSE
-ENDIF
-;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
 ;;  Check SEMILR
@@ -187,9 +139,6 @@ IF (is_a_number(semilr,/NOMSSG) EQ 0) THEN LL = def__L[0] ELSE LL = ABS(semilr[0
 IF (is_a_number(eccen,/NOMSSG) EQ 0) THEN ee = def__e[0] ELSE ee = ABS(eccen[0]) > 1.0001d0
 ;;  Check XXO
 IF (is_a_number(xxo,/NOMSSG) EQ 0) THEN xo = def_xo[0] ELSE xo = 1d0*xxo[0]
-;;  Check NNX[Y]
-IF (is_a_number(nnx,/NOMSSG) EQ 0) THEN nx = def_nx[0] ELSE nx = LONG(ABS(nnx[0]))
-IF (is_a_number(nny,/NOMSSG) EQ 0) THEN ny = def_ny[0] ELSE ny = LONG(ABS(nny[0]))
 ;;----------------------------------------------------------------------------------------
 ;;  Define hyperboloid parameters
 ;;----------------------------------------------------------------------------------------
@@ -197,8 +146,8 @@ a              = LL[0]/(ee[0]^2 - 1d0)             ;;  semi-major axis
 b              = LL[0]/SQRT(ee[0]^2 - 1d0)         ;;  semi-minor axis
 c              = LL[0]*ee[0]/(ee[0]^2 - 1d0)       ;;  center/focus
 n_vrx          = xo[0] + (c[0] - a[0])             ;;  standoff distance from origin of nose of hyperboloid
-;nx             = 100L                              ;;  # of points to use in dummy arrays
-;ny             = 200L                              ;;  # of points to use in dummy arrays
+nx             = 100L                              ;;  # of points to use in dummy arrays
+ny             = 200L                              ;;  # of points to use in dummy arrays
 IF (n_vrx[0] GT 0) THEN BEGIN
   ;;  standoff is positive --> origin is shifted from normal location
   xran  = n_vrx[0]*(1d0 + [-1.75d0,2d-2])
@@ -208,16 +157,10 @@ ENDIF ELSE BEGIN
 ENDELSE
 yran           = LL[0]*SQRT(2d0)*[-1,1]
 zran           = yran
-;;  Limit YRANGE and ZRANGE to quadrant of expected impact/contact
-yran[0]        = yran[0] > ymin[0]
-yran[1]        = yran[1] < ymax[0]
-zran[0]        = zran[0] > zmin[0]
-zran[1]        = zran[1] < zmax[0]
 ;;  Define arrays of abscissa for surface
 xx             = fill_range(xran[0],xran[1],UNIFORM=nx[0])
 yy             = fill_range(yran[0],yran[1],UNIFORM=ny[0])
-;zz             = yy
-zz             = fill_range(zran[0],zran[1],UNIFORM=ny[0])
+zz             = yy
 ;;----------------------------------------------------------------------------------------
 ;;  Use gradient of the surface equation for a hyperboloid of two sheets with axis of
 ;;    symmetry along X-axis to define shock normal:
@@ -279,8 +222,6 @@ inop3d         = ARRAY_INDICES(sur,inop)
 ixip3d         = ARRAY_INDICES(sur,ixip)
 xyz_int_in     = [xx[inop3d[0]],yy[inop3d[1]],zz[inop3d[2]]]; + [c[0] + xo[0],0d0,0d0]
 xyz_int_ix     = [xx[ixip3d[0]],yy[ixip3d[1]],zz[ixip3d[2]]]; + [c[0] + xo[0],0d0,0d0]
-nsh_int_in     = REFORM(ns_2d[inop[0],*])
-nsh_int_ix     = REFORM(ns_2d[ixip[0],*])
 ;;  Clean up
 delete_variable,n_s,ns_x_nip,nsxnip_mag,ns_d_nip
 ;;----------------------------------------------------------------------------------------
@@ -292,19 +233,13 @@ diff_mag       = mag__vec(ns___nip,/NAN)
 mn_diff        = MIN(diff_mag,idff,/NAN)
 idff3d         = ARRAY_INDICES(sur,idff)
 xyz_int_df     = [xx[idff3d[0]],yy[idff3d[1]],zz[idff3d[2]]]
-nsh_int_df     = REFORM(ns_2d[idff[0],*])
 ;;  Find mean and median of results
 all_xyz_int    = [[xyz_int_in],[xyz_int_ix],[xyz_int_df]]
 med_xyz_int    = MEDIAN(all_xyz_int,DIMENSION=2)
 avg_xyz_int    = MEAN(all_xyz_int,DIMENSION=2,/NAN)
-
-all_nsh_int    = [[nsh_int_in],[nsh_int_ix],[nsh_int_df]]
-med_nsh_int    = MEDIAN(all_nsh_int,DIMENSION=2)
-avg_nsh_int    = MEAN(all_nsh_int,DIMENSION=2,/NAN)
 ;;  Clean up
 delete_variable,ns___nip,diff_mag
-;;  Define output keyword
-nshout         = REFORM(med_nsh_int)
+
 STOP
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
