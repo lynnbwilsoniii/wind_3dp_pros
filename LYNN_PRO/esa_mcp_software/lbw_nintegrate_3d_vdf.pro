@@ -1,0 +1,587 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   lbw_nintegrate_3d_vdf.pro
+;  PURPOSE  :   Performs a numerical integration of a 3D velocity distribution function
+;                 (VDF), using Simpson's 1/3 Rule, to find the velocity moments up to
+;                 the heat flux.  The results are assumed to be in a cartesian
+;                 coordinate basis.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               load_constants_fund_em_atomic_c2014_batch.pro
+;               load_constants_extra_part_co2014_ci2015_batch.pro
+;               is_a_3_vector.pro
+;               mag__vec.pro
+;               unit_vec.pro
+;               get_rotated_and_triangulated_vdf.pro
+;               simpsons_13_3d_integration.pro
+;               delete_variable.pro
+;               rot_mat.pro
+;               rotate_tensor.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               VELS       :  [K,3]-Element [numeric] array of particle velocities [km/s]
+;               DATA       :  [K]-Element [numeric] array of phase (velocity) space
+;                               densities [e.g., s^(3) cm^(-3) km^(-3)]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               
+;
+;  KEYWORDS:    
+;               ***  INPUTS  ***
+;               VLIM       :  Scalar [numeric] defining the speed limit for the velocity
+;                               grids over which to triangulate the data [km/s]
+;                               [Default = max vel. magnitude]
+;               NGRID      :  Scalar [numeric] defining the number of grid points in each
+;                               direction to use when triangulating the data.  The input
+;                               will be limited to values between 30 and 300.
+;                               [Default = 101]
+;               SLICE2D    :  If set, routine will return a 2D slice instead of a 3D
+;                               projection
+;                               [Default = TRUE]
+;               VFRAME     :  [3]-Element [float/double] array defining the 3-vector
+;                               velocity of the K'-frame relative to the K-frame [km/s]
+;                               to use to transform the velocity distribution into the
+;                               bulk flow reference frame
+;                               [ Default = [0,0,0] ]
+;               ELECTRON   :  If set, use electron mass [eV/(km/sec)^2]
+;                                [Default = TRUE if MASS = FALSE]
+;               PROTON     :  If set, use proton mass [eV/(km/sec)^2]
+;                                [Default = FALSE]
+;               ALPHA_P    :  If set, use alpha-particle mass [eV/(km/sec)^2]
+;                               [Default = FALSE]
+;               MAG_DIR    :  [3]-Element vector to be used to define the magnetic field
+;                               direction to which the cartesian data will be rotated
+;                               [ Default = [1,0,0] ]
+;               ***  Pre-Set INPUTS  ***
+;               VEC1       :  [3]-Element vector to be used for X-direction in
+;                               a 3D rotation of the input data
+;                               [e.g., see rotate_3dp_structure.pro]
+;                               [ Default = [1.,0.,0.] ]
+;               VEC2       :  [3]--Element vector to be used with VEC1 to define a 3D
+;                               rotation matrix.  The new basis will have the following:
+;                                 X'  :  parallel to VEC1
+;                                 Z'  :  parallel to (VEC1 x VEC2)
+;                                 Y'  :  completes the right-handed set
+;                               [ Default = [0.,1.,0.] ]
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               F3D_QH     :  Set to a named variable to return the 3D array of phase
+;                               space densities triangulated onto a regular grid
+;                                [e.g., s^(3) cm^(-3) km^(-3)]
+;               V1DGRID    :  Set to a named variable to return the 1D array of regularly
+;                               gridded velocities [km/s]
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               Velocity moments:
+;                 Note:  d^3v --> v_perp dv_perp dv_para dphi --> π |v_perp| dv_perp dv_para
+;                             --> dvx dvy dvz  {for cartesian coordinates}
+;
+;                 Definitions:
+;                   ms        :  particle mass [eV km^(-2) s^(+2)] of species s
+;                   h         :  Simpson's 1/3 Rule integration factor [km^(+3) s^(-3)]
+;                                = ∆vx*∆vy*∆vz/[3 (N - 1)]^3
+;                   S_ijk     :  Simpson's 1/3 Rule coefficients [N/A]
+;                   K_ijk     :  common integration factor [km^(+3) s^(-3) sr]
+;                                = (h S_ijk)
+;                   f_ijk     :  total velocity distribution function (VDF)
+;                                [# cm^(-3) km^(-3) s^(+3)]
+;                   qmax      :  free-streaming heat flux [eV km s^(-1) cm^(-3)]
+;                                = 3/2 me Ne (V_Tec,//)^3
+;
+;                 Velocity Moments:
+;                   Ns        :  Total particle density [cm^(-3)] of species s
+;                                = ∑_i ∑_j ∑_k [ K_ijk f_ijk ]
+;                   Vos_x     :  X-Component drift velocity [km/s] of species s
+;                                = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vx_i f_ijk ]
+;                   Vos_y     :  Y-Component drift velocity [km/s] of species s
+;                                = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vy_j f_ijk ]
+;                   Vos_z     :  Z-Component drift velocity [km/s] of species s
+;                                = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vz_k f_ijk ]
+;                   Ps_xx     :  XX-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i f_ijk ]
+;                   Ps_yy     :  YY-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vy_j f_ijk ]
+;                   Ps_zz     :  ZZ-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vz_k vz_k f_ijk ]
+;                   Ps_xy     :  XY-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vy_j f_ijk ]
+;                   Ps_xz     :  XZ-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vz_k f_ijk ]
+;                   Ps_yz     :  YZ-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vz_k f_ijk ]
+;                   Qs_xxx    :  XXX-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i vx_i f_ijk ]
+;                   Qs_yyy    :  YYY-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vy_j vy_j f_ijk ]
+;                   Qs_zzz    :  ZZZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vz_k vz_k vz_k f_ijk ]
+;                   Qs_xxy    :  XXY-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i vy_j f_ijk ]
+;                   Qs_xxz    :  XXZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i vz_k f_ijk ]
+;                   Qs_yyz    :  YYZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vy_j vz_k f_ijk ]
+;                   Qs_xyy    :  XYY-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vy_j vy_j f_ijk ]
+;                   Qs_xzz    :  XZZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vz_k vz_k f_ijk ]
+;                   Qs_yzz    :  YZZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vz_k vz_k f_ijk ]
+;                   Qs_xyz    :  XYZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vy_j vz_k f_ijk ]
+;
+;  REFERENCES:  
+;               0)  Simpson's 1/3 Rule References:
+;                 http://mathfaculty.fullerton.edu/mathews/n2003/SimpsonsRule2DMod.html
+;                 http://www.physics.usyd.edu.au/teach_res/mp/doc/math_integration_2D.pdf
+;                 https://en.wikipedia.org/wiki/Simpson%27s_rule
+;               1)  See IDL's documentation for:
+;                     QHULL.PRO:        https://harrisgeospatial.com/docs/qhull.html
+;                     QGRID3.PRO:       https://harrisgeospatial.com/docs/QGRID3.html
+;                     TRIANGULATE.PRO:  https://harrisgeospatial.com/docs/TRIANGULATE.html
+;                     TRIGRID.PRO:      https://harrisgeospatial.com/docs/TRIGRID.html
+;               2)  Carlson et al., (1983), "An instrument for rapidly measuring
+;                      plasma distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70.
+;               3)  Curtis et al., (1989), "On-board data analysis techniques for
+;                      space plasma particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372.
+;               4)  Lin et al., (1995), "A Three-Dimensional Plasma and Energetic
+;                      particle investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125.
+;               5)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;               6)  Wilson III, L.B., et al., "The Statistical Properties of Solar Wind
+;                      Temperature Parameters Near 1 au," Astrophys. J. Suppl. 236(2),
+;                      pp. 41, doi:10.3847/1538-4365/aab71c, 2018.
+;               7)  Wilson III, L.B., et al., "Electron energy partition across
+;                      interplanetary shocks: I. Methodology and Data Product,"
+;                      Astrophys. J. Suppl. 243(8), doi:10.3847/1538-4365/ab22bd, 2019a.
+;               8)  Wilson III, L.B., et al., "Electron energy partition across
+;                      interplanetary shocks: II. Statistics,"
+;                      Astrophys. J. Suppl. 245(24), doi:10.3847/1538-4365/ab5445, 2019b.
+;               9)  Wilson III, L.B., et al., "Electron energy partition across
+;                      interplanetary shocks: III. Analysis,"
+;                      Astrophys. J., Accepted Mar. 4, 2020.
+;
+;   CREATED:  04/08/2020
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  04/08/2020   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION lbw_nintegrate_3d_vdf,vels,data,VLIM=vlim,NGRID=ngrid,SLICE2D=slice2d,VFRAME=vframe,$
+                                         ELECTRON=electron,PROTON=proton,ALPHA_P=alpha_p,    $
+                                         MAG_DIR=mag_dir,VEC1=vec1,VEC2=vec2,F3D_QH=fxyz_3d, $
+                                         V1DGRID=v1dgrid
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Get fundamental and astronomical
+@load_constants_fund_em_atomic_c2014_batch.pro
+@load_constants_extra_part_co2014_ci2015_batch.pro
+c2             = c[0]^2d0                 ;;  (m/s)^2
+ckm            = c[0]*1d-3                ;;  m --> km
+ckm2           = ckm[0]^2d0               ;;  (km/s)^2
+;;  Conversion factors
+;;    Energy and Temperature
+f_1eV          = qq[0]/hh[0]              ;;  Freq. associated with 1 eV of energy [ Hz --> f_1eV*energy{eV} = freq{Hz} ]
+eV2J           = hh[0]*f_1eV[0]           ;;  Energy associated with 1 eV of energy [ J --> J_1eV*energy{eV} = energy{J} ]
+eV2K           = qq[0]/kB[0]              ;;  Temp. associated with 1 eV of energy [11,604.5221 K/eV, 2014 CODATA/NIST --> eV2K*energy{eV} = Temp{K}]
+K2eV           = kB[0]/qq[0]              ;;  Energy associated with 1 K Temp. [8.6173303 x 10^(-5) eV/K, 2014 CODATA/NIST --> K2eV*Temp{K} = energy{eV}]
+;;  Define factor for plasma beta
+beta_fac       = 2d0*muo[0]*1d6*eV2J[0]/(1d-9^2)
+;;  Define default
+def_mass       = me_esa[0]
+;;----------------------------------------------------------------------------------------
+;;  Define some tensor maps
+;;----------------------------------------------------------------------------------------
+;;  Rank-2 tensors
+map_r2         = [[0,3,4],[3,1,5],[4,5,2]]       ;;  Rank-2 tensor map
+map_v2         = [0,4,8,1,2,5]                   ;;  Symmetry elements of rank-2 tensor
+diagr2         = [0,4,8]                         ;;  Diagonal " "
+;;  Rank-3 tensors
+map_r3         = [[[3,5,2],[5,6,9],[2,9,7]],[[5,6,9],[6,4,1],[9,1,8]],[[2,9,7],[9,1,8],[7,8,0]]]
+map_v3         = [26,14,2,0,13,1,4,8,17,5]
+ind_r3         = [[0,4,8],[9,13,17],[18,22,26]]
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() NE 2) THEN RETURN,0b
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check SLICE2D
+IF ((N_ELEMENTS(slice2d) EQ 1) AND ~KEYWORD_SET(slice2d)) THEN slice_on = 0b ELSE slice_on = 1b
+;;  Check ELECTRON
+IF ((N_ELEMENTS(electron) EQ 1) AND ~KEYWORD_SET(electron)) THEN elec_on = 0b ELSE elec_on = 1b
+;;  Check PROTON
+IF ((N_ELEMENTS(proton) EQ 1) AND KEYWORD_SET(proton)) THEN prot_on = 1b ELSE prot_on = 0b
+;;  Check ALPHA_P
+IF ((N_ELEMENTS(alpha_p) EQ 1) AND KEYWORD_SET(alpha_p)) THEN alph_on = 1b ELSE alph_on = 0b
+;;  Check mass factors
+checks         = [elec_on[0],prot_on[0],alph_on[0]]
+IF (TOTAL(checks) GT 1) THEN BEGIN
+  ;;  More than one particle type set --> default to electrons
+  elec_on        = 1b
+  prot_on        = 0b
+  alph_on        = 0b
+  ;;  Redefine variable
+  checks         = [elec_on[0],prot_on[0],alph_on[0]]
+ENDIF
+good           = WHERE(checks,gd)
+CASE good[0] OF
+  0L    :  mass = me_esa[0]                           ;;  me [eV km^(-2) s^(+2)]
+  1L    :  mass = mp_esa[0]                           ;;  mp [eV km^(-2) s^(+2)]
+  2L    :  mass = ma_esa[0]                           ;;  ma [eV km^(-2) s^(+2)]
+  ELSE  :  STOP     ;;  Shouldn't happen --> debug
+ENDCASE
+mass_eV        = mass[0]*ckm2[0]                      ;;  [eV km^(-2) s^(+2)] --> [eV]
+mass_kg        = mass_eV[0]*qq[0]/c2[0]               ;;  eV --> kg
+vtsfac         = SQRT(2d0*eV2J[0]/mass_kg[0])*1d-3    ;;  Conversion factor:  Convert T [eV] to thermal speed [km/s]
+;;  Check MAG_DIR
+test           = (is_a_3_vector(mag_dir,V_OUT=bdir,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  brot_on = 0b
+  bdir    = [1d0,0d0,0d0]
+  bmag    = 1d0
+ENDIF ELSE BEGIN
+  brot_on = 1b
+  bmag    = (mag__vec(bdir,/NAN))[0]
+  bdir    = REFORM(unit_vec(bdir,/NAN))
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Force VEC1 and VEC2
+;;----------------------------------------------------------------------------------------
+vec1           = [1d0,0d0,0d0]
+vec2           = [0d0,1d0,0d0]
+;;----------------------------------------------------------------------------------------
+;;  Get rotated and triangulated structures
+;;----------------------------------------------------------------------------------------
+rt_struc       = get_rotated_and_triangulated_vdf(vels,data,VLIM=vlim,NGRID=ngrid,  $
+                                                  SLICE2D=slice_on[0],VFRAME=vframe,$
+                                                  VEC1=vec1,VEC2=vec2,F3D_QH=fxyz_3d)
+;;  Check output
+IF (SIZE(rt_struc,/TYPE) NE 8) THEN STOP
+;;  Define relevant parameters
+v1dgrid        = rt_struc[0].VX2D
+nx             = N_ELEMENTS(v1dgrid)
+;;  Convert to 2D
+v2dgrid        = v1dgrid # REPLICATE(1d0,nx[0])
+;;  Convert to 3D
+v3dx           = REBIN(v2dgrid,nx[0],nx[0],nx[0])
+v3dy           = TRANSPOSE(v3dx,[2,0,1])
+v3dz           = TRANSPOSE(v3dy,[0,2,1])
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Integrate to find velocity moments
+;;
+;;    Definitions:
+;;      ms        :  particle mass [eV km^(-2) s^(+2)] of species s
+;;      h         :  Simpson's 1/3 Rule integration factor [km^(+3) s^(-3)]
+;;                   = ∆vx*∆vy*∆vz/[3 (N - 1)]^3
+;;      S_ijk     :  Simpson's 1/3 Rule coefficients [N/A]
+;;      K_ijk     :  common integration factor [km^(+3) s^(-3) sr]
+;;                   = (h S_ijk)
+;;      f_ijk     :  total velocity distribution function (VDF)
+;;                   [# cm^(-3) km^(-3) s^(+3)]
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Calculate number density [cm^(-3)]
+;;      Ns        :  Total particle density [cm^(-3)] of species s
+;;                   = ∑_i ∑_j ∑_k [ K_ijk f_ijk ]
+x              = v1dgrid
+y              = v1dgrid
+z              = v1dgrid
+ff             = fxyz_3d
+n_s_tot        = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+IF (FINITE(n_s_tot[0]) EQ 0) THEN STOP
+;;  Calculate X-component of the drift velocity [km/s] in VFRAME rest frame
+;;      Vos_x     :  X-Component drift velocity [km/s] of species s
+;;                   = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vx_i f_ijk ]
+ff             = v3dx*fxyz_3d/n_s_tot[0]
+Vos_x          = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate Y-component of the drift velocity [km/s] in VFRAME rest frame
+;;      Vos_y     :  Y-Component drift velocity [km/s] of species s
+;;                   = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vy_j f_ijk ]
+ff             = v3dy*fxyz_3d/n_s_tot[0]
+Vos_y          = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate Z-component of the drift velocity [km/s] in VFRAME rest frame
+;;      Vos_z     :  Z-Component drift velocity [km/s] of species s
+;;                   = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vz_k f_ijk ]
+ff             = v3dz*fxyz_3d/n_s_tot[0]
+Vos_z          = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;----------------------------------------------------------------------------------------
+;;  Define peculiar velocities (w_i = v - Vos_i)
+;;----------------------------------------------------------------------------------------
+;;  Refine 1D random velocity variables
+x              = v1dgrid - Vos_x[0]
+y              = v1dgrid - Vos_y[0]
+z              = v1dgrid - Vos_z[0]
+;;  Refine 3D random velocity variables
+v2dx           = x # REPLICATE(1d0,nx[0])
+v3dx           = REBIN(v2dx,nx[0],nx[0],nx[0])
+v2dy           = y # REPLICATE(1d0,nx[0])
+v3d0           = REBIN(v2dy,nx[0],nx[0],nx[0])
+v3dy           = TRANSPOSE(v3d0,[2,0,1])
+v2dz           = z # REPLICATE(1d0,nx[0])
+v3d0           = REBIN(v2dz,nx[0],nx[0],nx[0])
+v3dz           = TRANSPOSE(v3d0,[1,2,0])
+;;  *** Clean up ***
+delete_variable,v2dgrid,v2dx,v2dy,v2dz,v3d0
+;;  Calculate XX-component pressure tensor component [eV cm^(-3)] in species rest frame
+;;      Ps_xx     :  XX-Component pressure tensor component [eV cm^(-3)] of
+;;                   species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i f_ijk ]
+ff             = mass[0]*v3dx*v3dx*fxyz_3d
+Press_xx       = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate YY-component pressure tensor component [eV cm^(-3)] in species rest frame
+;;      Ps_yy     :  YY-Component pressure tensor component [eV cm^(-3)] of
+;;                   species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vy_j f_ijk ]
+ff             = mass[0]*v3dy*v3dy*fxyz_3d
+Press_yy       = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate ZZ-component pressure tensor component [eV cm^(-3)] in species rest frame
+;;      Ps_zz     :  ZZ-Component pressure tensor component [eV cm^(-3)] of
+;;                   species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vz_k vz_k f_ijk ]
+ff             = mass[0]*v3dz*v3dz*fxyz_3d
+Press_zz       = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate XY-component pressure tensor component [eV cm^(-3)] in species rest frame
+;;      Ps_xy     :  XY-Component pressure tensor component [eV cm^(-3)] of
+;;                   species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vy_j f_ijk ]
+ff             = mass[0]*v3dx*v3dy*fxyz_3d
+Press_xy       = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate XZ-component pressure tensor component [eV cm^(-3)] in species rest frame
+;;      Ps_xz     :  XZ-Component pressure tensor component [eV cm^(-3)] of
+;;                   species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vz_k f_ijk ]
+ff             = mass[0]*v3dx*v3dz*fxyz_3d
+Press_xz       = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate YZ-component pressure tensor component [eV cm^(-3)] in species rest frame
+;;      Ps_yz     :  YZ-Component pressure tensor component [eV cm^(-3)] of
+;;                   species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vz_k f_ijk ]
+ff             = mass[0]*v3dy*v3dz*fxyz_3d
+Press_yz       = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate XXX-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_xxx    :  XXX-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i vx_i f_ijk ]
+ff             = mass[0]*v3dx*v3dx*v3dx*fxyz_3d
+Qflux_xxx      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate YYY-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_yyy    :  YYY-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vy_j vy_j f_ijk ]
+ff             = mass[0]*v3dy*v3dy*v3dy*fxyz_3d
+Qflux_yyy      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate ZZZ-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_zzz    :  ZZZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vz_k vz_k vz_k f_ijk ]
+ff             = mass[0]*v3dz*v3dz*v3dz*fxyz_3d
+Qflux_zzz      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate XXY-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_xxy    :  XXY-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i vy_j f_ijk ]
+ff             = mass[0]*v3dx*v3dx*v3dy*fxyz_3d
+Qflux_xxy      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate XXZ-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_xxz    :  XXZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i vz_k f_ijk ]
+ff             = mass[0]*v3dx*v3dx*v3dz*fxyz_3d
+Qflux_xxz      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate YYZ-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_yyz    :  YYZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vy_j vz_k f_ijk ]
+ff             = mass[0]*v3dy*v3dy*v3dz*fxyz_3d
+Qflux_yyz      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate XYY-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_xyy    :  XYY-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vy_j vy_j f_ijk ]
+ff             = mass[0]*v3dx*v3dy*v3dy*fxyz_3d
+Qflux_xyy      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate XZZ-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_xzz    :  XZZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vz_k vz_k f_ijk ]
+ff             = mass[0]*v3dx*v3dz*v3dz*fxyz_3d
+Qflux_xzz      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate YZZ-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_yzz    :  YZZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vz_k vz_k f_ijk ]
+ff             = mass[0]*v3dy*v3dz*v3dz*fxyz_3d
+Qflux_yzz      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  Calculate XYZ-component of heat flux tensor [eV km s^(-1) cm^(-3)] in species rest frame
+;;      Qs_xyz    :  XYZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;;                   of species s
+;;                   = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vy_j vz_k f_ijk ]
+ff             = mass[0]*v3dx*v3dy*v3dz*fxyz_3d
+Qflux_xyz      = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
+;;  *** Clean up ***
+delete_variable,x,y,z,ff,v3dx,v3dy,v3dz
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define tensors
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define symmetry components
+;;    *** Factor of 1/2 in Qflux to account for double-counting???  ***
+Press_sym_v2   = [Press_xx[0],Press_yy[0],Press_zz[0],Press_xy[0],Press_xz[0],Press_yz[0]]
+Qflux_sym_v3   = 5d-1*[Qflux_zzz[0],Qflux_yyz[0],Qflux_xxz[0],Qflux_xxx[0],Qflux_yyy[0],Qflux_xxy[0],Qflux_xyy[0],Qflux_xzz[0],Qflux_yzz[0],Qflux_xyz[0]]
+;;  Define tensors
+Press_ten_r2   = Press_sym_v2[map_r2]
+Qflux_ten_r3   = Qflux_sym_v3[map_r3]
+;;  Define temperature pseudotensor [eV]
+Temp__ten_r2   = Press_ten_r2/n_s_tot[0]
+;;----------------------------------------------------------------------------------------
+;;  Define scalars
+;;----------------------------------------------------------------------------------------
+;;  Scalar/Avg temperature [eV]
+Temp__avg_sc   = TOTAL(Temp__ten_r2[diagr2],/NAN)/3d0
+;;  Scalar/Avg pressure [eV cm^(-3)]
+Press_avg_sc   = TOTAL(Press_ten_r2[diagr2],/NAN)/3d0
+;;  Scalar/Avg thermal speed [km/s]
+Vthms_avg_sc   = vtsfac[0]*SQRT(Temp__avg_sc[0])
+;;----------------------------------------------------------------------------------------
+;;  Diagonalize temperature pseudotensor
+;;----------------------------------------------------------------------------------------
+T3_eigvec      = Temp__ten_r2
+LA_TRIRED,T3_eigvec,T3,dumb,/DOUBLE
+;;  T3    -->  [3]-element array of diagonal elements of T3_EIGVEC
+;;  DUMB  -->  [3]-element array of off-diagonal " "
+LA_TRIQL,T3,dumb,T3_eigvec,/DOUBLE,STATUS=status
+;;  T3         -->  [3]-element array of eigenvalues
+;;  DUMB       -->  destroyed on output
+;;  T3_EIGVEC  -->  [3,3]-element array of eigen vectors
+IF (status[0] NE 0) THEN T3_eigvec = REPLICATE(d,3L,3L)     ;;  Failed --> fill with NaNs
+;;  Sort the output
+sp             = SORT(T3)
+IF (T3[sp[1]] LT (T3[sp[0]] + T3[sp[2]])/2d0) THEN num = sp[2] ELSE num = sp[0]
+;;  Shift the eigenvalues and vectors from smallest to largest
+shft           = ([-1,1,0])[num[0]]
+T3             = SHIFT(T3,shft)
+T3_eigvec      = SHIFT(T3_eigvec,0,shft)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Rotate into field-aligned coordinates (FACs) [if user desires]
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+IF (brot_on[0]) THEN BEGIN
+  dot            = TOTAL(bdir*T3_eigvec[*,2],/NAN)
+  b_dot_s        = TOTAL((bdir # [1,1,1])*T3_eigvec,1,/NAN)
+  dummy          = MAX(ABS(b_dot_s),numx,/NAN)
+  mrot           = rot_mat(bdir)
+  ;;  Rotate pressure tensor  [perp1,perp2,para,xy,xz,yz]
+  Press_fac_r2   = rotate_tensor(Press_ten_r2,mrot)
+  Press_fac_v2   = Press_fac_r2[map_v2]
+  ;;  Define temperature [eV] components in FACs  [perp1,perp2,para]
+  T3FAC          = Press_fac_v2[0:2]/n_s_tot[0]
+  ;;  Define temperature anisotropy Tperp/Tpara
+  Tanis          = (T3FAC[0] + T3FAC[1])/T3FAC[2]/2d0
+  ;;  Rotate heat flux tensor [eV km s^(-1) cm^(-3)]
+  Qflux_fac_r3   = rotate_tensor(Qflux_ten_r3,mrot)
+  ;;  Define field-aligned heat flux vector [eV km s^(-1) cm^(-3)]
+  Qflux_fac_v3   = TOTAL(Qflux_fac_r3[ind_r3],1,/NAN)
+  ;;  Define free-streaming heat flux [eV km s^(-1) cm^(-3)]
+  ;;    q_s,tot = 3/2 ms Ns (V_Ts,//)^3
+  ;;    [e.g., Gary et al., 1999 Phys. Plasmas Vol. 6(6)]
+  vts_para       = vtsfac[0]*SQRT(T3FAC[2])
+  qet_norm       = 3d0*mass[0]*n_s_tot[0]*vts_para[0]^3d0/2d0/(2d0^(3d0/2d0))
+  ;;  Define normalized heat flux vector
+  Qflux_fac_n3   = Qflux_fac_v3/qet_norm[0]
+ENDIF ELSE BEGIN
+  Press_fac_v2   = d*Press_ten_v2
+  T3FAC          = d*T3
+  Tanis          = d
+  Qflux_fac_v3   = REPLICATE(d,3L)
+  Qflux_fac_n3   = Qflux_fac_v3
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+tags           = ['n_s','vos_xyz','Press_tenxyz','Press_tenfac','Press_scalar',    $
+                  'Temp_3xyz','Tavg','Vthermal','Temp_3fac','Tanisotropy',         $
+                  'Qflux_tensor_xzy','Qflux_fac_vec','Qflux_fac_nor','units']
+units          = ['cm^(-3)','km/s','eV cm^(-3)','eV cm^(-3)','eV','eV','km/s',     $
+                  'eV','N/A','eV km s^(-1) cm^(-3)','eV km s^(-1) cm^(-3)','N/A']
+Vos_xyz        = [Vos_x[0],Vos_y[0],Vos_z[0]]
+struc          = CREATE_STRUCT(tags,n_s_tot[0],Vos_xyz,Press_ten_r2,Press_fac_r2,       $
+                                    Press_avg_sc[0],T3,Temp__avg_sc[0],Vthms_avg_sc[0], $
+                                    T3FAC,Tanis[0],Qflux_ten_r3,Qflux_fac_v3,           $
+                                    Qflux_fac_n3,units)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc[0]
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -25,7 +25,7 @@ USERSYM,0.27*COS(xxo),0.27*SIN(xxo),/FILL
 ;; Define X-Axis ticks for plots
 xtn            = ['1994','1995','1996','1997','1998','1999','2000','2001','2002','2003',$
                   '2004','2005','2006','2007','2008','2009','2010','2011','2012','2013',$
-                  '2014','2015','2016','2017','2018']
+                  '2014','2015','2016','2017','2018','2019','2020']
 xtn_dates      = xtn+'-01-01/00:00:00.000'
 xtv            = time_double(xtn_dates)
 xts            = N_ELEMENTS(xtv) - 1L
@@ -36,12 +36,17 @@ xtn_ps         = ['1994','!C'+'1995','1996','!C'+'1997','1998','!C'+'1999',$
                   '2000','!C'+'2001','2002','!C'+'2003','2004','!C'+'2005',$
                   '2006','!C'+'2007','2008','!C'+'2009','2010','!C'+'2011',$
                   '2012','!C'+'2013','2014','!C'+'2015','2016','!C'+'2017',$
-                  '2018']
+                  '2018','!C'+'2019','2020']
 ft_suffx       = 'Jan-'+xtn[0]+'_to_Jan-'+xtn[xts[0]]
 yttl_sfx       = ' [Jan. '+xtn[0]+' to Jan. '+xtn[xts[0]]+']'
 ;; compile reading functions
 .compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/Wind_Engineering/read_wind_sr_data.pro
 .compile /Users/lbwilson/Desktop/swidl-0.1/wind_3dp_pros/Wind_Engineering/read_wind_regbusvolt_daily.pro
+
+;;  Define current 1st undervoltage loadshed setting
+ls_volt_val    = 19.1d0             ;;  current loadshed [V] setting (i.e., if batteries get this low, SC completely restarts in safe mode)
+ls_volt_str    = STRTRIM(STRING(ls_volt_val[0],FORMAT='(f20.1)'),2L)
+;;  As of Jan. 17, 2020 the 2nd undervoltage loadshed is set to 18.2 V
 
 ;;----------------------------------------------------------------------------------------
 ;;  Load all relevant data
@@ -73,14 +78,19 @@ unix_v         = wind_regbusv.UNIX
 rb_v_avg       = wind_regbusv.REGBUS_V_AVG    ;;  Regulated bus voltage output [Avg., V]
 rb_v_min       = wind_regbusv.REGBUS_V_MIN    ;;  Regulated bus voltage output [Min., V]
 rb_v_max       = wind_regbusv.REGBUS_V_MAX    ;;  Regulated bus voltage output [Max., V]
-
+;;----------------------------------------------------------------------------------------
+;;  Open window
+;;----------------------------------------------------------------------------------------
+windn          = 0L
+DEVICE,GET_SCREEN_SIZE=s_size
+wsz            = s_size*85d-2
+win_str        = {RETAIN:2,XSIZE:(wsz[0] < wsz[1]),YSIZE:(wsz[0] < wsz[1]),XPOS:20,YPOS:20}
+lbw_window,WIND_N=windn[0],/NEW_W,/CLEAN,_EXTRA=win_str
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Plot solar array output
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
-WINDOW,0,RETAIN=2,XSIZE=1200,YSIZE=775
-
 ;; Define Y-Axis range
 yra            = [5d0,19d0]           ;; range of currents
 ;; Define axes labels
@@ -124,18 +134,24 @@ popen,fname[0],/LAND
 pclose
 
 ;;----------------------------------------------------------------------------------------
+;;  Open window
+;;----------------------------------------------------------------------------------------
+windn          = 1L
+DEVICE,GET_SCREEN_SIZE=s_size
+wsz            = s_size*85d-2
+win_str        = {RETAIN:2,XSIZE:(wsz[0] < wsz[1]),YSIZE:(wsz[0] < wsz[1]),XPOS:20,YPOS:20}
+lbw_window,WIND_N=windn[0],/NEW_W,/CLEAN,_EXTRA=win_str
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Plot battery voltage output
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
-WINDOW,1,RETAIN=2,XSIZE=1200,YSIZE=775
-
 ;; Define Y-Axis range
 yra            = [21d0,24d0]           ;; range of bias voltages
 ;; Define axes labels
 yttl           = 'Battery Voltage Output [Volts]'
 xttl           = 'Years'
-pttl           = 'Wind Avg Battery Bias Voltage Output [Jan. 1994 to Jan. 2018]'
+pttl           = 'Wind Avg Battery Bias Voltage Output'+yttl_sfx[0]
 ;; Define plot structure
 pstr           = {YRANGE:yra,XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,YTITLE:yttl,XTITLE:xttl,$
                   TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,YTICKS:6L,XTICKLEN:1.0,$
@@ -156,8 +172,9 @@ WSHOW,1
     ;; Battery 3
     OPLOT,unix,bv3_avg,PSYM=8,SYMSIZE=symsz[0],COLOR=250
     ;; Output current load shed setting
-    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
-    XYOUTS,0.25,0.30,'21.1 V = current load shed setting',COLOR=200,/NORMAL
+    OPLOT,!X.CRANGE,[ls_volt_val[0],ls_volt_val[0]],LINESTYLE=2,COLOR=200
+;;    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
+    XYOUTS,0.25,0.30,ls_volt_str[0]+' V = current load shed setting',COLOR=200,/NORMAL
     ;; Explain Max/Min
     XYOUTS,0.50,0.90,'Battery 1',COLOR= 50,/NORMAL
     XYOUTS,0.50,0.85,'Battery 2',COLOR=150,/NORMAL
@@ -178,8 +195,9 @@ popen,fname[0],/LAND
     ;; Battery 3
     OPLOT,unix,bv3_avg,PSYM=8,SYMSIZE=symsz[0],COLOR=250
     ;; Output current load shed setting
-    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
-    XYOUTS,0.25,0.30,'21.1 V = current load shed setting',COLOR=200,/NORMAL
+    OPLOT,!X.CRANGE,[ls_volt_val[0],ls_volt_val[0]],LINESTYLE=2,COLOR=200
+;;    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
+    XYOUTS,0.25,0.30,ls_volt_str[0]+' V = current load shed setting',COLOR=200,/NORMAL
     ;; Explain Max/Min
     XYOUTS,0.50,0.90,'Battery 1',COLOR= 50,/NORMAL
     XYOUTS,0.50,0.85,'Battery 2',COLOR=150,/NORMAL
@@ -187,18 +205,24 @@ popen,fname[0],/LAND
 pclose
 
 ;;----------------------------------------------------------------------------------------
+;;  Open window
+;;----------------------------------------------------------------------------------------
+windn          = 2L
+DEVICE,GET_SCREEN_SIZE=s_size
+wsz            = s_size*85d-2
+win_str        = {RETAIN:2,XSIZE:(wsz[0] < wsz[1]),YSIZE:(wsz[0] < wsz[1]),XPOS:20,YPOS:20}
+lbw_window,WIND_N=windn[0],/NEW_W,/CLEAN,_EXTRA=win_str
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Plot regulated bus current output
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
-WINDOW,2,RETAIN=2,XSIZE=1200,YSIZE=775
-
 ;; Define Y-Axis range
 yra            = [5d0,19d0]           ;; range of currents
 ;; Define axes labels
 yttl           = 'Regulated Bus Current Output [Amps]'
 xttl           = 'Years'
-pttl           = 'Wind Regulated Bus Current Output [Jan. 1994 to Jan. 2018]'
+pttl           = 'Wind Regulated Bus Current Output'+yttl_sfx[0]
 ;; Define plot structure
 pstr           = {YRANGE:yra,XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,YTITLE:yttl,XTITLE:xttl,$
                   TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,YTICKS:7L,XTICKLEN:1.0,$
@@ -244,18 +268,24 @@ popen,fname[0],/LAND
 pclose
 
 ;;----------------------------------------------------------------------------------------
+;;  Open window
+;;----------------------------------------------------------------------------------------
+windn          = 3L
+DEVICE,GET_SCREEN_SIZE=s_size
+wsz            = s_size*85d-2
+win_str        = {RETAIN:2,XSIZE:(wsz[0] < wsz[1]),YSIZE:(wsz[0] < wsz[1]),XPOS:20,YPOS:20}
+lbw_window,WIND_N=windn[0],/NEW_W,/CLEAN,_EXTRA=win_str
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Plot avg battery temperature
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
-WINDOW,3,RETAIN=2,XSIZE=1200,YSIZE=775
-
 ;; Define Y-Axis range
 yra            = [0d0,18d0]           ;; range of currents
 ;; Define axes labels
 yttl           = 'Battery Temperature [!Uo!N'+'C]'
 xttl           = 'Years'
-pttl           = 'Wind Avg Battery Temperature [Jan. 1994 to Jan. 2018]'
+pttl           = 'Wind Avg Battery Temperature'+yttl_sfx[0]
 ;; Define plot structure
 pstr           = {YRANGE:yra,XTICKNAME:xtn,XTICKV:xtv,XTICKS:xts,YTITLE:yttl,XTITLE:xttl,$
                   TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,YTICKS:9L,XTICKLEN:1.0,$
@@ -319,24 +349,20 @@ bt1_avg_sm     = SMOOTH(bt1_avg,wd[0],/NAN,/EDGE_TRUNCATE)  ;;  Smoothed [Daily]
 bt2_avg_sm     = SMOOTH(bt2_avg,wd[0],/NAN,/EDGE_TRUNCATE)  ;;  Smoothed [Daily] Battery-2 temperature [Avg., deg. C]
 bt3_avg_sm     = SMOOTH(bt3_avg,wd[0],/NAN,/EDGE_TRUNCATE)  ;;  Smoothed [Daily] Battery-3 temperature [Avg., deg. C]
 
-;;  Trends [1st guess]
-;;    Solar Arrays --> after Jan. 1, 2005 to Mar. 1, 2014
-;;    Battery Temp --> after Sep. 1, 2012
-;;    Battery Volt --> after Jan. 1, 2005
-
 ;;  Trends [use]
-;;    Solar Arrays --> after Jan. 1, 2005 to Jan. 1, 2017
-;;    Battery Temp --> after Sep. 1, 2016 to Jan. 1, 2017
-;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2017 [Battery 1]
-;;    Battery Volt --> after Jan. 1, 2005 to Jan. 1, 2017 [Battery 2]
-;;    Battery Volt --> after Jan. 1, 2008 to Jan. 1, 2017 [Battery 3]
+;;    Solar Arrays --> after Jan. 1, 2005 to Jan. 1, 2020
+;;    Battery Temp --> after Jul. 1, 2017 to Jan. 1, 2020
+;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2020 [Battery 1]
+;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2020 [Battery 2]
+;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2020 [Battery 3]
 
 zero_t         = '00:00:00.000'
-tra__sa        = time_double(['2005','2017']+'-01-01/'+zero_t[0])
-tra_bv1        = time_double(['2013','2017']+'-01-01/'+zero_t[0])
-tra_bv2        = time_double(['2005','2017']+'-01-01/'+zero_t[0])
-tra_bv3        = time_double(['2008','2017']+'-01-01/'+zero_t[0])
-tra_bt1        = time_double(['2016-09','2017-01']+'-01/'+zero_t[0])
+tyear_max      = '2020'
+tra__sa        = time_double(['2005',tyear_max[0]]+'-01-01/'+zero_t[0])
+tra_bv1        = time_double(['2013',tyear_max[0]]+'-01-01/'+zero_t[0])
+tra_bv2        = time_double(['2013',tyear_max[0]]+'-01-01/'+zero_t[0])
+tra_bv3        = time_double(['2013',tyear_max[0]]+'-01-01/'+zero_t[0])
+tra_bt1        = time_double(['2017-07',tyear_max[0]+'-01']+'-01/'+zero_t[0])
 good__sa       = WHERE(unix GE tra__sa[0] AND unix LE tra__sa[1],gd__sa)
 good_bv1       = WHERE(unix GE tra_bv1[0] AND unix LE tra_bv1[1],gd_bv1)
 good_bv2       = WHERE(unix GE tra_bv2[0] AND unix LE tra_bv2[1],gd_bv2)
@@ -347,11 +373,29 @@ good_bt3       = WHERE(unix GE tra_bt1[0] AND unix LE tra_bt1[1],gd_bt3)
 
 tra_rbc        = time_double(['2013-01','2014-06']+'-01/'+zero_t[0])
 good_rbc       = WHERE(unix GE tra_rbc[0] AND unix LE tra_rbc[1],gd_rbc)
-PRINT,';;', MIN(rb__max[good_rbc],/NAN), MAX(rb__max[good_rbc],/NAN), MEAN(rb__max[good_rbc],/NAN)
-;;       9.5413000       10.105800       9.8773744
+PRINT,';;', MIN(rb__max[good_rbc],/NAN), MAX(rb__max[good_rbc],/NAN), MEAN(rb__max[good_rbc],/NAN), MEDIAN(rb__max[good_rbc])
+;;       9.5413000       10.105800       9.8773744       9.8800000
 
+rbc_max_v0     = MEDIAN(rb__max[good_rbc])
 avg_rbc_xxx    = time_double(['1994','2150']+'-01-01/'+zero_t[0])
 avg_rbc_yyy    = [1d0,1d0]*MEAN(rb__max[good_rbc],/NAN)
+
+med_rbc_xxx    = avg_rbc_xxx
+med_rbc_yyy    = [1d0,1d0]*MEDIAN(rb__max[good_rbc])
+
+;;  *** Old ***
+;;  Trends [1st guess]
+;;    Solar Arrays --> after Jan. 1, 2005 to Mar. 1, 2014
+;;    Battery Temp --> after Sep. 1, 2012
+;;    Battery Volt --> after Jan. 1, 2005
+;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2017 [Battery 1]
+;;    Battery Volt --> after Jan. 1, 2005 to Jan. 1, 2017 [Battery 2]
+;;    Battery Volt --> after Jan. 1, 2008 to Jan. 1, 2017 [Battery 3]
+;tra_bv1        = time_double(['2013',tyear_max[0]]+'-01-01/'+zero_t[0])
+;tra_bv2        = time_double(['2005',tyear_max[0]]+'-01-01/'+zero_t[0])
+;tra_bv3        = time_double(['2008',tyear_max[0]]+'-01-01/'+zero_t[0])
+;;  *** Old ***
+
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate linear fits [Y = A + B X]
 ;;----------------------------------------------------------------------------------------
@@ -406,9 +450,9 @@ dumb_bt3_sm_3  = fit_bt3_sm_3[0] + fit_bt3_sm_3[1]*dumbx
 ;;----------------------------------------------------------------------------------------
 xx1            = dumbx
 xx2            = dumbx
-sa_ints_val    = 10d0      ;;  10 A   = Max regulated bus current [transmitter and heater on]
-ls_volt_val    = 21.1d0    ;;  21.1 V = current load shed setting (i.e., if batteries get this low, SC completely restarts in safe mode)
-bt_cent_val    = 17d0      ;;  17 C   = temperature [degrees C] that is probably "bad" for the batters (VT levels have been changed prior to reaching 16 C in past)
+sa_ints_val    = rbc_max_v0[0]      ;;  10 A   = Max regulated bus current [transmitter and heater on]
+;;ls_volt_val    = 21.1d0             ;;  21.1 V = current load shed setting (i.e., if batteries get this low, SC completely restarts in safe mode)
+bt_cent_val    = 17d0               ;;  17 C   = temperature [degrees C] that is probably "bad" for the batters (VT levels have been changed prior to reaching 16 C in past)
 sa_ints_yvs    = REPLICATE(sa_ints_val[0],nx[0])
 ls_volt_yvs    = REPLICATE(ls_volt_val[0],nx[0])
 bt_cent_yvs    = REPLICATE(bt_cent_val[0],nx[0])
@@ -425,7 +469,8 @@ yy2            = dumb__sa_sm_3
 find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int__sa_sm_3
 PRINT,';;  ', time_string([xy_int__sa_sm_1[0],xy_int__sa_sm_2[0],xy_int__sa_sm_3[0]],PREC=3)
 ;;  *** Old ***   2018-05-29/18:46:21.082 2042-09-06/08:42:29.514 2055-06-25/09:38:26.444
-;;   2017-12-06/21:04:35.645 2041-12-02/03:03:51.806 2059-07-07/16:30:55.441
+;;  *** Old ***   2017-12-06/21:04:35.645 2041-12-02/03:03:51.806 2059-07-07/16:30:55.441
+;;   2017-11-26/15:21:11.407 2044-01-30/16:33:18.414 2058-08-26/19:35:49.868
 
 ;;  Battery Voltages
 yy1            = ls_volt_yvs
@@ -437,7 +482,9 @@ yy2            = dumb_bv3_sm_3
 find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int_bv3_sm_3
 PRINT,';;  ', time_string([xy_int_bv1_sm_1[0],xy_int_bv2_sm_2[0],xy_int_bv3_sm_3[0]],PREC=3)
 ;;  *** Old ***   2025-04-05/19:53:32.713 2025-06-02/14:39:00.790 2020-09-18/00:23:03.579
-;;   2027-04-26/02:46:17.187 2025-11-02/14:53:47.881 2021-12-18/09:21:41.164
+;;  *** Old ***   2027-04-26/02:46:17.187 2025-11-02/14:53:47.881 2021-12-18/09:21:41.164
+;;  *** Old ***   2030-04-03/16:40:45.351 2029-07-11/21:00:00.564 2029-01-17/14:35:13.804
+;;   2056-08-26/03:10:09.182 2061-04-27/07:49:10.824 2064-09-06/09:43:15.082
 
 ;;  Battery Temperatures
 yy1            = bt_cent_yvs
@@ -449,54 +496,51 @@ yy2            = dumb_bt3_sm_3
 find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int_bt3_sm_3
 PRINT,';;  ', time_string([xy_int_bt1_sm_1[0],xy_int_bt2_sm_2[0],xy_int_bt3_sm_3[0]],PREC=3)
 ;;  *** Old ***   2017-04-21/00:39:01.349 2017-04-13/20:16:53.985 2015-07-09/21:14:31.626
-;;   2023-02-07/00:22:24.315 2022-02-20/03:27:05.576 2020-11-01/10:26:32.179
+;;  *** Old ***   2023-02-07/00:22:24.315 2022-02-20/03:27:05.576 2020-11-01/10:26:32.179
+;;   2100-01-01/00:00:00     2100-01-01/00:00:00     2100-01-01/00:00:00
 
 
 
 
 ;;----------------------------------------------------------------------------------------
-;;  Plot Results
 ;;----------------------------------------------------------------------------------------
-WINDOW,0,RETAIN=2,XSIZE=1200,YSIZE=775
-WINDOW,1,RETAIN=2,XSIZE=1200,YSIZE=775
-WINDOW,2,RETAIN=2,XSIZE=1200,YSIZE=775
-
+;;----------------------------------------------------------------------------------------
+;;  Plot Extrapolation Results
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;; Define extended X-Axis ticks for plots
-xtn_ex         = ['1994','1995','1996','1997','1998','1999','2000','2001','2002','2003',$
-                  '2004','2005','2006','2007','2008','2009','2010','2011','2012','2013',$
-                  '2014','2015','2016','2017','2018','2019','2020','2021','2022','2023',$
-                  '2024','2025','2026','2027','2028','2029']
-xtn_dates_ex   = xtn_ex+'-01-01/00:00:00.000'
+xtn_exw        = ['1994','1996','1998','2000','2002','2004','2006','2008','2010','2012',$
+                  '2014','2016','2018','2020','2022','2024','2026','2028','2030','2032',$
+                  '2034','2036','2038','2040']
+xtn_dates_ex   = xtn_exw+'-01-01/00:00:00.000'
 xtv_ex         = time_double(xtn_dates_ex)
-xts_ex         = N_ELEMENTS(xtv_ex) - 1L
-ft_suffx       = 'Jan-'+xtn_ex[0]+'_to_Jan-'+xtn_ex[xts_ex[0]]+'_with_Fits-to-Trends'
-yttl_sfx       = ' [Jan. '+xtn_ex[0]+' to Jan. '+xtn_ex[xts_ex[0]]+']'
+xts_ex         = N_ELEMENTS(xtn_exw) - 1L
+ft_suffx       = 'Jan-'+xtn_exw[0]+'_to_Jan-'+xtn_exw[xts_ex[0]]+'_with_Fits-to-Trends'
+yttl_sfx       = ' [Jan. '+xtn_exw[0]+' to Jan. '+xtn_exw[xts_ex[0]]+']'
 ;; Define Y-Axis range
 yra            = [5d0,19d0]           ;; range of currents
 ;; Define axes labels
 yttl           = 'Current Output [Amps]'
 pttl           = 'Wind Solar Array Output'+yttl_sfx[0]
 ;; Define plot structure
-pstr           = {YRANGE:yra,XTICKNAME:xtn_ex,XTICKV:xtv_ex,XTICKS:xts_ex,YTITLE:yttl,$
+pstr           = {YRANGE:yra,XTICKNAME:xtn_exw,XTICKV:xtv_ex,XTICKS:xts_ex,YTITLE:yttl,$
                   XTITLE:xttl,TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,YTICKS:7L,       $
                   XTICKLEN:1.0,XGRIDSTYLE:1,XSTYLE:1,YSTYLE:1}
-;;  Plot data
+;;----------------------------------------------------------------------------------------
+;;  Plot Solar Array Extrapolation
+;;----------------------------------------------------------------------------------------
 symsz          = 2.00
 thck           = 2.0
 WSET,0
 WSHOW,0
   PLOT,unix,sa__min,_EXTRA=pstr
-;    ;;  Max Regulated Bus Current [A]
-;    OPLOT,unix,rb__max,PSYM=8,SYMSIZE=symsz[0],COLOR=150
     ;;  Current Avg. of Max Regulated Bus Current [A]
     OPLOT,avg_rbc_xxx,avg_rbc_yyy,LINESTYLE=0,THICK=thck[0],COLOR=150
     ;;  Solar Array Min [A]
     OPLOT,unix,sa__min,PSYM=8,SYMSIZE=symsz[0],COLOR= 50
     ;;  Solar Array Max [A]
     OPLOT,unix,sa__max,PSYM=8,SYMSIZE=symsz[0],COLOR=250
-;    ;;  Smoothed Solar Array Min and Max [A]
-;    OPLOT,unix,sa__min_sm,LINESTYLE=0,THICK=thck[0],COLOR= 30
-;    OPLOT,unix,sa__max_sm,LINESTYLE=0,THICK=thck[0],COLOR=200
     ;;  Fit to Smoothed Solar Array Min and Max [A]
     OPLOT,dumbx,dumb__sa_sm_1,LINESTYLE=0,THICK=thck[0],COLOR= 30
     OPLOT,dumbx,dumb__sa_sm_3,LINESTYLE=0,THICK=thck[0],COLOR=200
@@ -531,20 +575,22 @@ popen,fname[0],/LAND
     XYOUTS,0.50,0.75,'Smoothed [Yearly Avg.] Min',COLOR=100,/NORMAL
 pclose
 
-
-
+;;----------------------------------------------------------------------------------------
+;;  Plot Battery Voltage Extrapolation
+;;----------------------------------------------------------------------------------------
 ;; Define Y-Axis range
-yra            = [21d0,24d0]           ;; range of bias voltages
+yra            = [18d0,24d0]           ;; range of bias voltages
 ;; Define axes labels
 yttl           = 'Battery Voltage Output [Volts]'
 xttl           = 'Years'
 pttl           = 'Wind Avg Battery Bias Voltage Output'+yttl_sfx[0]
 ;; Define plot structure
-pstr           = {YRANGE:yra,XTICKNAME:xtn_ex,XTICKV:xtv_ex,XTICKS:xts_ex,YTITLE:yttl,$
-                  XTITLE:xttl,TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,YTICKS:6L,$
+pstr           = {YRANGE:yra,XTICKNAME:xtn_exw,XTICKV:xtv_ex,XTICKS:xts_ex,YTITLE:yttl,$
+                  XTITLE:xttl,TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:10,YTICKS:6L,       $
                   XTICKLEN:1.0,XGRIDSTYLE:1,XSTYLE:1,YSTYLE:1}
 ;;  Plot data
 symsz          = 2.00
+thck           = 2.0
 WSET,1
 WSHOW,1
   PLOT,unix,bv1_avg,_EXTRA=pstr
@@ -554,17 +600,14 @@ WSHOW,1
     OPLOT,unix,bv2_avg,PSYM=8,SYMSIZE=symsz[0],COLOR=150
     ;; Battery 3
     OPLOT,unix,bv3_avg,PSYM=8,SYMSIZE=symsz[0],COLOR=250
-;    ;;  Smoothed Battery Bias Voltages [V]
-;    OPLOT,unix,bv1_avg_sm,LINESTYLE=0,THICK=thck[0],COLOR=100
-;    OPLOT,unix,bv2_avg_sm,LINESTYLE=0,THICK=thck[0],COLOR= 30
-;    OPLOT,unix,bv3_avg_sm,LINESTYLE=0,THICK=thck[0],COLOR=200
     ;;  Fit to Smoothed Battery Bias Voltages [V]
     OPLOT,dumbx,dumb_bv1_sm_1,LINESTYLE=0,THICK=thck[0],COLOR=100
     OPLOT,dumbx,dumb_bv2_sm_2,LINESTYLE=0,THICK=thck[0],COLOR= 30
     OPLOT,dumbx,dumb_bv3_sm_3,LINESTYLE=0,THICK=thck[0],COLOR=200
     ;; Output current load shed setting
-    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
-    XYOUTS,0.25,0.30,'21.1 V = current load shed setting',COLOR=200,/NORMAL
+    OPLOT,!X.CRANGE,[ls_volt_val[0],ls_volt_val[0]],LINESTYLE=2,COLOR=200
+;;    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
+    XYOUTS,0.25,0.30,ls_volt_str[0]+' V = current load shed setting',COLOR=200,/NORMAL
     ;; Explain Max/Min
     XYOUTS,0.50,0.90,'Battery 1',COLOR= 50,/NORMAL
     XYOUTS,0.50,0.85,'Battery 2',COLOR=150,/NORMAL
@@ -589,15 +632,18 @@ popen,fname[0],/LAND
     OPLOT,dumbx,dumb_bv2_sm_2,LINESTYLE=0,THICK=thck[0],COLOR= 30
     OPLOT,dumbx,dumb_bv3_sm_3,LINESTYLE=0,THICK=thck[0],COLOR=200
     ;; Output current load shed setting
-    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
-    XYOUTS,0.25,0.30,'21.1 V = current load shed setting',COLOR=200,/NORMAL
+    OPLOT,!X.CRANGE,[ls_volt_val[0],ls_volt_val[0]],LINESTYLE=2,COLOR=200
+;;    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
+    XYOUTS,0.25,0.30,ls_volt_str[0]+' V = current load shed setting',COLOR=200,/NORMAL
     ;; Explain Max/Min
     XYOUTS,0.50,0.90,'Battery 1',COLOR= 50,/NORMAL
     XYOUTS,0.50,0.85,'Battery 2',COLOR=150,/NORMAL
     XYOUTS,0.50,0.80,'Battery 3',COLOR=250,/NORMAL
 pclose
 
-
+;;----------------------------------------------------------------------------------------
+;;  Plot Battery Temperature Extrapolation
+;;----------------------------------------------------------------------------------------
 ;; Define Y-Axis range
 yra            = [0d0,18d0]           ;; range of currents
 ;; Define axes labels
@@ -605,8 +651,8 @@ yttl           = 'Battery Temperature [!Uo!N'+'C]'
 xttl           = 'Years'
 pttl           = 'Wind Avg Battery Temperature'+yttl_sfx[0]
 ;; Define plot structure
-pstr           = {YRANGE:yra,XTICKNAME:xtn_ex,XTICKV:xtv_ex,XTICKS:xts_ex,YTITLE:yttl,$
-                  XTITLE:xttl,TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,YTICKS:9L,$
+pstr           = {YRANGE:yra,XTICKNAME:xtn_exw,XTICKV:xtv_ex,XTICKS:xts_ex,YTITLE:yttl,$
+                  XTITLE:xttl,TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,YTICKS:7L,       $
                   XTICKLEN:1.0,XGRIDSTYLE:1,XSTYLE:1,YSTYLE:1}
 ;;  Plot data
 symsz          = 2.00
@@ -621,10 +667,6 @@ WSHOW,2
     OPLOT,unix,bt2_avg,PSYM=8,SYMSIZE=symsz[0],COLOR=150
     ;; Battery 3 [Max Temp]
     OPLOT,unix,bt3_avg,PSYM=8,SYMSIZE=symsz[0],COLOR=250
-;    ;;  Smoothed Battery Temps [deg C]
-;    OPLOT,unix,bt1_avg_sm,LINESTYLE=0,THICK=thck[0],COLOR=100
-;    OPLOT,unix,bt2_avg_sm,LINESTYLE=0,THICK=thck[0],COLOR= 30
-;    OPLOT,unix,bt3_avg_sm,LINESTYLE=0,THICK=thck[0],COLOR=200
     ;;  Fit to Smoothed Battery Temps [deg C]
     OPLOT,dumbx,dumb_bt1_sm_1,LINESTYLE=0,THICK=thck[0],COLOR=100
     OPLOT,dumbx,dumb_bt2_sm_2,LINESTYLE=0,THICK=thck[0],COLOR= 30
@@ -778,8 +820,9 @@ WSHOW,1
     OPLOT,dumbx,dumb_bv2_sm_2,LINESTYLE=0,THICK=thck[0],COLOR= 30
     OPLOT,dumbx,dumb_bv3_sm_3,LINESTYLE=0,THICK=thck[0],COLOR=200
     ;; Output current load shed setting
-    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
-    XYOUTS,0.55,0.30,'21.1 V = current load shed setting',COLOR=200,/NORMAL
+    OPLOT,!X.CRANGE,[ls_volt_val[0],ls_volt_val[0]],LINESTYLE=2,COLOR=200
+;;    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
+    XYOUTS,0.25,0.30,ls_volt_str[0]+' V = current load shed setting',COLOR=200,/NORMAL
     ;; Explain Max/Min
     XYOUTS,0.65,0.90,'Battery 1',COLOR= 50,/NORMAL
     XYOUTS,0.65,0.85,'Battery 2',COLOR=150,/NORMAL
@@ -804,8 +847,9 @@ popen,fname[0],/LAND
     OPLOT,dumbx,dumb_bv2_sm_2,LINESTYLE=0,THICK=thck[0],COLOR= 30
     OPLOT,dumbx,dumb_bv3_sm_3,LINESTYLE=0,THICK=thck[0],COLOR=200
     ;; Output current load shed setting
-    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
-    XYOUTS,0.55,0.30,'21.1 V = current load shed setting',COLOR=200,/NORMAL
+    OPLOT,!X.CRANGE,[ls_volt_val[0],ls_volt_val[0]],LINESTYLE=2,COLOR=200
+;;    OPLOT,!X.CRANGE,[21.1,21.1],LINESTYLE=2,COLOR=200
+    XYOUTS,0.25,0.30,ls_volt_str[0]+' V = current load shed setting',COLOR=200,/NORMAL
     ;; Explain Max/Min
     XYOUTS,0.65,0.90,'Battery 1',COLOR= 50,/NORMAL
     XYOUTS,0.65,0.85,'Battery 2',COLOR=150,/NORMAL

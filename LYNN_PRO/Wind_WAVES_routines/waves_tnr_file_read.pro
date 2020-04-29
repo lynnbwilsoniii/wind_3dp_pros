@@ -8,19 +8,23 @@
 ;  CALLED BY:   
 ;               waves_get_ascii_file_wrapper.pro
 ;
+;  INCLUDES:
+;               NA
+;
 ;  CALLS:
 ;               NA
 ;
 ;  REQUIRES:    
 ;               1)  UMN Modified Wind/3DP IDL Libraries
 ;               2)  ASCII files found at:
-;                     http://www-lep.gsfc.nasa.gov/waves/data_products.html
+;                     https://solar-radio.gsfc.nasa.gov
 ;
 ;  INPUT:
 ;               FILES  :  [N]-Element [string] array of file names, including the full
 ;                           directory path, for WAVES TNR ASCII files
 ;
 ;  EXAMPLES:    
+;               [calling sequence]
 ;               tnr_data = waves_tnr_file_read(files)
 ;
 ;  KEYWORDS:    
@@ -31,6 +35,9 @@
 ;             2)  Updated man page and changed name to waves_tnr_file_read.pro
 ;                   and now moved to ~/wind_3dp_pros/LYNN_PRO/ directory
 ;                                                                 [03/21/2013   v2.0.0]
+;             3)  Fixed an indexing error in definition of background array that
+;                   only seems to matter if more than 96 days of data were loaded
+;                                                                 [02/19/2020   v2.0.1]
 ;
 ;   NOTES:      
 ;               1)  This program should NOT be called by a user, let
@@ -81,10 +88,11 @@
 ;                      L. Sitruk, and S. Hoang (1995) "WAVES:  The Radio and Plasma
 ;                      Wave Investigation on the Wind Spacecraft," Space Sci. Rev.
 ;                      Vol. 71, pp. 231-263, doi:10.1007/BF00751331.
+;               2)  https://solar-radio.gsfc.nasa.gov
 ;
 ;   CREATED:  05/11/2010
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  03/21/2013   v2.0.0
+;    LAST MODIFIED:  02/19/2020   v2.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -93,30 +101,30 @@
 FUNCTION waves_tnr_file_read,files
 
 ;;----------------------------------------------------------------------------------------
-;; => Define Constants and dummy variables
+;;  Define Constants and dummy variables
 ;;----------------------------------------------------------------------------------------
 nfi            = N_ELEMENTS(files)     ;;  # of files
 td             = 1441L                 ;;  # of total columns per file [ = # of timestamps]
-nt             = (td - 1L)             ;;  # of timestamps
+nt             = (td[0] - 1L)          ;;  # of timestamps
 nf             = 96L                   ;;  # of total rows per file [ = # of frequencies]
-nx             = nfi*nt
-data_t         = FLTARR(nx,nf)         ;;  data array to be returned
-bckgrd         = FLTARR(nf,nf)         ;;  Background values of data
+nx             = nfi[0]*nt[0]
+data_t         = FLTARR(nx[0],nf[0])   ;;  data array to be returned
+bckgrd         = FLTARR(nfi[0],nf[0])  ;;  Background values of data
 mform          = '(1440f9.3,1e10.3)'   ;;  Read format of ASCII file
 dn_el          = 0L
 up_el          = 0L
 ;;----------------------------------------------------------------------------------------
-;; => Read in file
+;;  Read in file
 ;;----------------------------------------------------------------------------------------
-FOR j=0L, nfi - 1L DO BEGIN
+FOR j=0L, nfi[0] - 1L DO BEGIN
   nn     = FILE_LINES(files[j])  ;;  Length of any given file
-  data   = FLTARR(td,nn)         ;;  Dummy array for each file
-  dat0   = FLTARR(td)
+  data   = FLTARR(td[0],nn[0])   ;;  Dummy array for each file
+  dat0   = FLTARR(td[0])
   infile = files[j]
   ;;  Open file
   OPENR, gunit, infile, /GET_LUN
     ;;  Read file, row-by-row
-    FOR k=0L, nn - 1L DO BEGIN
+    FOR k=0L, nn[0] - 1L DO BEGIN
       READF,FORMAT=mform,gunit,dat0
       data[*,k] = dat0
     ENDFOR
@@ -127,12 +135,12 @@ FOR j=0L, nfi - 1L DO BEGIN
   dn_el                        = j[0]*n_p_d[0]               ;;  lower bound for elements
   up_el                        = dn_el[0] + (n_p_d[0] - 1L)  ;;  upper " "
   n_el                         = up_el[0] - dn_el[0] + 1L
-  g_tind                       = LINDGEN(n_el) + dn_el[0]
-  data_t[g_tind,0L:(nn - 1L)]  = data[0L:(n_p_d[0] - 1L),*]
-  bckgrd[j,0L:(nn - 1L)]       = data[n_p_d[0],*]
+  g_tind                       = LINDGEN(n_el[0]) + dn_el[0]
+  data_t[g_tind,0L:(nn[0] - 1L)]  = data[0L:(n_p_d[0] - 1L),*]
+  bckgrd[j,0L:(nn[0] - 1L)]       = data[n_p_d[0],*]
 ENDFOR
 ;;----------------------------------------------------------------------------------------
-;; => Return appropriate data
+;;  Return to user
 ;;----------------------------------------------------------------------------------------
 d_str          = CREATE_STRUCT('DATA',data_t,'BKG',bckgrd)
 
