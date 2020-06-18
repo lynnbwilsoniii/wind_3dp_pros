@@ -79,9 +79,6 @@
 ;                   and now correctly removes data outside time range and now calls
 ;                   sample_rate.pro and trange_clip_data.pro
 ;                                                                   [04/21/2016   v1.1.0]
-;             5)  Fixed a bug that shut off all SC position outputs if only 3s resolution
-;                   was selected on input
-;                                                                   [06/15/2020   v1.1.1]
 ;
 ;   NOTES:      
 ;               1)  This routine should be used in place of read_wind_mfi.pro
@@ -94,7 +91,7 @@
 ;
 ;   CREATED:  04/08/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/15/2020   v1.1.1
+;    LAST MODIFIED:  04/21/2016   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -128,9 +125,14 @@ b_v_gse_tpns   = scpref[0]+'B_'+['1min','1hr','3sec']+'_'+coord_gse[0]
 b_v_gsm_tpns   = scpref[0]+'B_'+['1min','1hr','3sec']+'_'+coord_gsm[0]
 scpos_gse_tpn  = scpref[0]+'SCPos_'+['1min','1hr','']+'_'+coord_gse[0]
 scpos_gsm_tpn  = scpref[0]+'SCPos_'+['1min','1hr','']+'_'+coord_gsm[0]
+;b_v_gse_tpns   = scpref[0]+'B_'+['1hr','1min','3sec']+'_'+coord_gse[0]
+;b_v_gsm_tpns   = scpref[0]+'B_'+['1hr','1min','3sec']+'_'+coord_gsm[0]
+;scpos_gse_tpn  = scpref[0]+'SCPos_'+['1hr','1min','']+'_'+coord_gse[0]
+;scpos_gsm_tpn  = scpref[0]+'SCPos_'+['1hr','1min','']+'_'+coord_gsm[0]
 ;;  Define YTITLEs and YSUBTITLEs associated with all of these
 yttl_b_gse_tpn = REPLICATE('B [nT, '+coord_gseu[0]+']',3L)
 ysub_b_gse_tpn = '['+['1min','1hr','3sec']+' Res.]'
+;ysub_b_gse_tpn = '['+['1hr','1min','3sec']+' Res.]'
 yttl_b_gsm_tpn = REPLICATE('B [nT, '+coord_gsmu[0]+']',3L)
 ysub_b_gsm_tpn = ysub_b_gse_tpn
 yttl_p_gse_tpn = REPLICATE('SC Pos. [Re, '+coord_gseu[0]+']',3L)
@@ -255,16 +257,16 @@ IF (~mag1h_on[0]) THEN BEGIN
   epoch_names[1]    = ''
   b_v_gse_names[1]  = ''
   b_v_gsm_names[1]  = ''
-  IF (~scpos_on[0] OR ~mag1m_on[0]) THEN scpos_gse_nms[1]  = ''
-  IF (~scpos_on[0] OR ~mag1m_on[0]) THEN scpos_gsm_nms[1]  = ''
+  scpos_gse_nms[1]  = ''
+  scpos_gsm_nms[1]  = ''
 ENDIF
 IF (~mag1m_on[0]) THEN BEGIN
   ;;  Shutoff CDF variables associated with 1 minute Avg. B-field data
   epoch_names[0]    = ''
   b_v_gse_names[0]  = ''
   b_v_gsm_names[0]  = ''
-  IF (~scpos_on[0]) THEN scpos_gse_nms[0]  = ''   ;;  Keep SC position if user set keyword but only wants 3s Bfield data
-  IF (~scpos_on[0]) THEN scpos_gsm_nms[0]  = ''
+  scpos_gse_nms[0]  = ''
+  scpos_gsm_nms[0]  = ''
 ENDIF
 IF (~mag3s_on[0]) THEN BEGIN
   ;;  Shutoff CDF variables associated with 3 second Avg. B-field data
@@ -312,6 +314,7 @@ IF (gd_vars[0] EQ 0) THEN BEGIN
   RETURN
 ENDIF
 g_cdf_vars     = cdf_vars[good_vars]                 ;;  Case sensitive
+;g_cdf_vars     = STRLOWCASE(cdf_vars[good_vars])
 g_all_tpns     = all_tpns[good_vars]
 g_all_yttls    = all_yttls[good_vars]
 g_all_ysubs    = all_ysubs[good_vars]
@@ -324,6 +327,8 @@ ng             = gd_vars[0]
 ;;  Load data into TPLOT
 cdf2tplot,FILES=files,VARFORMAT=g_cdf_vars,VARNAMES=varnames,$
           TPLOTNAMES=tplotnames,/CONVERT_INT1_TO_INT2
+;cdf2tplot,FILES=files,VARFORMAT=STRUPCASE(g_cdf_vars),VARNAMES=varnames,$
+;          TPLOTNAMES=tplotnames,/CONVERT_INT1_TO_INT2
 test           = (tplotnames[0] EQ '')
 IF (test[0]) THEN BEGIN
   errmsg = 'User did not load any data into TPLOT...'
@@ -334,9 +339,11 @@ ENDIF
 nv             = N_ELEMENTS(varnames)          ;;  # of variables loaded
 FOR j=0L, nv[0] - 1L DO BEGIN
   good0 = WHERE(varnames[j] EQ g_cdf_vars,gd0)
+;  good0 = WHERE(STRLOWCASE(varnames[j]) EQ g_cdf_vars,gd0)
   IF (gd0 EQ 0) THEN CONTINUE         ;;  Move on to next iteration
   IF (j EQ 0) THEN gindv = good0[0] ELSE gindv = [gindv,good0[0]]
   good0 = WHERE(tplotnames[j] EQ g_cdf_vars,gd0)
+;  good0 = WHERE(STRLOWCASE(tplotnames[j]) EQ g_cdf_vars,gd0)
   IF (gd0 EQ 0) THEN CONTINUE         ;;  Move on to next iteration
   IF (j EQ 0) THEN gindt = good0[0] ELSE gindt = [gindt,good0[0]]
 ENDFOR
@@ -352,6 +359,7 @@ o_all_coord    = g_all_coord[gindt]
 ;;----------------------------------------------------------------------------------------
 ntpn           = N_ELEMENTS(tplotnames)
 FOR j=0L, ntpn[0] - 1L DO BEGIN
+;  get_data,tplotnames[j],DATA=temp,DLIM=dlim,LIM=lim
   get_data,tplotnames[j],DATA=temp0,DLIM=dlim,LIM=lim
   ;;  Remove original
   store_data,DELETE=tplotnames[j]
@@ -385,8 +393,10 @@ FOR j=0L, ntpn[0] - 1L DO BEGIN
   t_out  = [[t_vec],[t_mag]]
   struc  = temp
   str_element,struc,'Y',t_out,/ADD_REPLACE
+;  struc  = {X:temp.X,Y:t_out}
   str_element,dlim,            'YTITLE',o_all_yttls[j],/ADD_REPLACE      ;;  Add Y-axis title
   str_element,dlim,         'YSUBTITLE',      ysubt[0],/ADD_REPLACE      ;;  Add Y-axis subtitle
+;  str_element,dlim,         'YSUBTITLE',o_all_ysubs[j],/ADD_REPLACE      ;;  Add Y-axis subtitle
   str_element,dlim,    'DATA_ATT.UNITS',o_all_units[j],/ADD_REPLACE      ;;  Add units to data attributes structure
   str_element,dlim,'DATA_ATT.COORD_SYS',o_all_coord[j],/ADD_REPLACE      ;;  Add coordinate basis
   extract_tags,dlim,def_dlim,EXCEPT_TAGS=['COLORS','LABELS']

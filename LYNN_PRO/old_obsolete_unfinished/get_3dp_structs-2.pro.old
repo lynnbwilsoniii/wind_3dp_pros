@@ -70,10 +70,6 @@
 ;                                                                   [08/05/2013   v2.1.2]
 ;             7)  Fixed an indexing issue that only arose under very rare conditions
 ;                                                                   [08/09/2018   v2.1.3]
-;             8)  Fixed another indexing issue that only arose under very rare conditions
-;                                                                   [06/12/2020   v2.1.4]
-;             9)  Fixed an issue with conflicting map codes that is very rare
-;                                                                   [06/13/2020   v2.1.5]
 ;
 ;   NOTES:      
 ;               1)  See also:  get_??.pro (?? = eh,elb,pl,plb,ph,phb...)
@@ -118,7 +114,7 @@
 ;
 ;   CREATED:  04/10/2008
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/13/2020   v2.1.5
+;    LAST MODIFIED:  08/09/2018   v2.1.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -266,7 +262,6 @@ IF (gtg GT 0) THEN log_ch = 1 ELSE log_ch = 0
 ;;  Get dummy structure for replicating
 ;;----------------------------------------------------------------------------------------
 dumb           = dummy_3dp_str(myn,INDEX=idx)
-IF (SIZE(dumb,/TYPE) NE 8) THEN RETURN,0b
 mypts          = N_ELEMENTS(myto)
 mvi            = INTARR(mypts)
 ;;----------------------------------------------------------------------------------------
@@ -278,23 +273,16 @@ IF (tt_t[0] GT 0L) THEN BEGIN
   ;;  PESA High distributions often change mode which changes NBINS
   test_n         = WHERE(test_tags EQ 'PH3_B',tt_n)
   my_inds        = dumb.INDX1
-  idx1           = my_inds[*,0]
-  idx2           = my_inds[*,1]
-  mypt1          = N_ELEMENTS(idx1)                                   ;;  # of str.'s w/ 1st mapcode
-  mypt2          = N_ELEMENTS(idx2)                                   ;;  # of str.'s w/ 2nd mapcode
+  mypt1          = my_inds[1,0] - my_inds[0,0] + 1L                   ;;  # of str.'s w/ 1st mapcode
+  mypt2          = my_inds[1,1] - my_inds[0,1] + 1L                   ;;  # of str.'s w/ 2nd mapcode
+  idx1           = LINDGEN(mypt1[0]) + my_inds[0,0]
   mvi1           = LONARR(mypt1[0])                                   ;;  Long array of "valid identifier" logic
+  idx2           = LINDGEN(mypt2[0])+ my_inds[0,1]
   mvi2           = LONARR(mypt2[0])                                   ;;  Long array of "valid identifier" logic
-;  mypt1          = my_inds[1,0] - my_inds[0,0] + 1L                   ;;  # of str.'s w/ 1st mapcode
-;  mypt2          = my_inds[1,1] - my_inds[0,1] + 1L                   ;;  # of str.'s w/ 2nd mapcode
-;  idx1           = LINDGEN(mypt1[0]) + my_inds[0,0]
-;  idx2           = LINDGEN(mypt2[0])+ my_inds[0,1]
   IF (tt_n[0] GT 0L) THEN BEGIN
-    idx3   = my_inds[*,2]
-    mypt3  = N_ELEMENTS(idx3)                                         ;;  # of str.'s w/ 3rd mapcode
+    mypt3  = REFORM(my_inds[1,2]) - REFORM(my_inds[0,2]) + 1L         ;;  # of str.'s w/ 3rd mapcode
+    idx3   = LINDGEN(mypt3[0]) + REFORM(my_inds[0,2])
     mvi3   = LONARR(mypt3[0])                                         ;;  Long array of "valid identifier" logic
-;    mypt3  = REFORM(my_inds[1,2]) - REFORM(my_inds[0,2]) + 1L         ;;  # of str.'s w/ 3rd mapcode
-;    idx3   = LINDGEN(mypt3[0]) + REFORM(my_inds[0,2])
-;    mvi3   = LONARR(mypt3[0])                                         ;;  Long array of "valid identifier" logic
   ENDIF ELSE BEGIN
     mypt3  = 0L
     idx3   = -1L
@@ -359,10 +347,8 @@ IF (tt_t[0] GT 0L) THEN BEGIN
       str_element,tth,'VSW',REPLICATE(!VALUES.F_NAN,3),/ADD_REPLACE
       str_element,tth,'SC_POT',!VALUES.F_NAN,/ADD_REPLACE
       bb        = cc[0] + k[0]
-      IF (tth[0].MAPCODE[0] EQ mydd[0].MAPCODE[0]) THEN BEGIN
-        all_v[bb] = tth.VALID
-        mydd[k]   = tth
-      ENDIF
+      all_v[bb] = tth.VALID
+      mydd[k]   = tth
       trk       = (k[0] LT myptt[0] - 1L)
       k        += trk[0]
     ENDWHILE

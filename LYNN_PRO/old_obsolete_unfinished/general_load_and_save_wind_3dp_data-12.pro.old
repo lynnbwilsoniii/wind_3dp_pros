@@ -282,10 +282,6 @@ END
 ;            10)  Cleaned up internal subroutine and
 ;                   added keywords:  EESA_OUT, PESA_OUT, SST_FOUT, SST_OOUT, and NO_SAVE
 ;                                                                   [05/03/2019   v1.1.0]
-;            11)  Fixed a memory allocation setting causing a segmentation fault 11 if
-;                   too much data was loaded and updated duration to load data and
-;                   now calls pesa_high_str_fill.pro
-;                                                                   [06/12/2020   v1.1.1]
 ;
 ;   NOTES:      
 ;               NA
@@ -336,7 +332,7 @@ END
 ;
 ;   CREATED:  07/18/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/12/2020   v1.1.1
+;    LAST MODIFIED:  05/03/2019   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -356,7 +352,6 @@ tstart             = SYSTIME(1)
 ;;----------------------------------------------------------------------------------------
 vers           = !VERSION.OS_FAMILY   ;;  e.g., 'unix'
 vern           = !VERSION.RELEASE     ;;  e.g., '7.1.1'
-verm           = !VERSION.MEMORY_BITS ;;  e.g., 64 for a 64-bit machine
 slash          = get_os_slash()       ;;  '/' for Unix, '\' for Windows
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
@@ -519,10 +514,9 @@ date           = STRMID(tdate[0],5L,2L)+STRMID(tdate[0],8L,2L)+STRMID(tdate[0],2
 ;;  Define a start date and time
 start_t        = tdate[0]+'/'+start_of_day[0]
 ;;  Define a duration of time to load [hours]
-dur            = 200. > ((MAX(tran1d) - MIN(tran1d))/36d2)
+dur            = 200.
 ;;  Define the memory size to limit to [mostly for older systems]
-IF (verm[0] GE 64) THEN memfac = 3 ELSE memfac = 1
-memsz          = 200.*memfac[0]
+memsz          = 200.
 ;;  Define the packet quality [2 allows "invalid" distributions through]
 qual           = 2
 ;;  Load the level zero data files and store in pointer memory
@@ -701,18 +695,7 @@ IF (pesa_on[0]) THEN BEGIN
   ;;  PESA High
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(ph_dat,/TYPE) EQ 8) THEN BEGIN
-    tags = TAG_NAMES(ph_dat)
-    IF (TOTAL(tags EQ 'DATA1') GT 0) THEN BEGIN
-      IF (TOTAL(tags EQ 'DATA3') GT 0) THEN BEGIN
-        ;;  At least 3 different mapcodes
-        pesa_high_str_fill,aph_,NAME='ph',DUM1=ph_dat.DATA1,DUM2=ph_dat.DATA2,DUM3=ph_dat.DATA3
-      ENDIF ELSE BEGIN
-        ;;  At least 2 different mapcodes
-        pesa_high_str_fill,aph_,NAME='ph',DUM1=ph_dat.DATA1,DUM2=ph_dat.DATA2
-      ENDELSE
-    ENDIF ELSE BEGIN
-      aph_ = ph_dat.DATA
-    ENDELSE
+    aph_ = ph_dat.DATA
     add_vsw2, aph_,Vgse_tpnm[0]
     add_magf2,aph_,Bgse_tpnm[0]
     add_scpot,aph_,  scp_tpn[0]
@@ -724,18 +707,7 @@ IF (pesa_on[0]) THEN BEGIN
   ;;  PESA High Burst
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(phbdat,/TYPE) EQ 8) THEN BEGIN
-    tags = TAG_NAMES(phbdat)
-    IF (TOTAL(tags EQ 'DATA1') GT 0) THEN BEGIN
-      IF (TOTAL(tags EQ 'DATA3') GT 0) THEN BEGIN
-        ;;  At least 3 different mapcodes
-        pesa_high_str_fill,aphb,NAME='phb',DUM1=phbdat.DATA1,DUM2=phbdat.DATA2,DUM3=phbdat.DATA3
-      ENDIF ELSE BEGIN
-        ;;  At least 2 different mapcodes
-        pesa_high_str_fill,aphb,NAME='phb',DUM1=phbdat.DATA1,DUM2=phbdat.DATA2
-      ENDELSE
-    ENDIF ELSE BEGIN
-      aphb = phbdat.DATA
-    ENDELSE
+    aphb = phbdat.DATA
     add_vsw2, aphb,Vgse_tpnm[0]
     add_magf2,aphb,Bgse_tpnm[0]
     add_scpot,aphb,  scp_tpn[0]
