@@ -1,0 +1,385 @@
+;*****************************************************************************************
+;
+;  PROCEDURE:   lbw_model_bs_sh1981.pro
+;  PURPOSE  :   Numerically solves for the closest semi-latus rectum that corresponds
+;                 to the given spacecraft position of the last bow shock crossing.
+;
+;  CALLED BY:   
+;               lbw_model_bs_find_l.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               ***  INPUTS  ***
+;               ABC     :  [3]-Element [numeric] providing the guess values for the
+;                            hyperboloid parameters a, b, and c described below in the NOTES
+;               XYZ     :  [N,3]-Element [numeric] array providing the aberated positions
+;                            [Re] of the SC at the point of last crossing the bow shock
+;               ***  OUTPUT  ***
+;               F       :  Set to a named variable to return the functional output values
+;               PDER    :  Set to a named variable to return the partial derivatives
+;                            dF/da =  2 (x - xo - c)^2/a^3
+;                            dF/da = -2 (y^2 + z^2)/b^3
+;                            dF/da = -2 (x - xo - c)/a^2
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               lbw_model_bs_sh1981,xyz,abc,f,pder
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  Definitions
+;                     SC    = spacecraft
+;                     r     = L/[1 + ecc*Cos(theta)]
+;                     L     = semi-latus rectum
+;                           = b^2/a
+;                           = a (e^2 - 1)
+;                     e     = eccentricity
+;                           = c/a
+;                             { a^2 + b^2    for hyperbola
+;                     c^2   = {
+;                             { a^2 - b^2    for ellipse
+;                     Rss   = xo + L/(1 + e) = bow shock standoff distance along x'
+;                     c     = [a^2 + b^2]^(1/2) = L*e/(e^2 - 1)
+;                     a     = L/(e^2 - 1)
+;                     b     = L/(e^2 - 1)^(1/2)
+;                           = a (e^2 - 1)^(1/2)
+;               2)  hyperbolic bow shock, see JGR 1981, p.11401, Slavin Fig.7
+;                     1 = [(x - xo - c)/a]^2 + [(y/b)]^2 + [(z/b)]^2
+;                     Note it should be the folowing for a hyperboloid of two-sheets
+;                     0 = 1 - [(x - xo - c)/a]^2 + [(y/b)]^2 + [(z/b)]^2
+;               3)  Numerically solve the following:
+;                     0 = 1 - [(x - X0 - c)/a]^2 + [(y/b)]^2 + [(z/b)]^2
+;                   Then inverts the resulting fit parameters a, b, and c to find L
+;               4)  Parametric version is given by:
+;                     x = -a Cosh[u] + xo + c
+;                     y = +b Sinh[u] Cos[v]
+;                     z = +b Sinh[u] Sin[v]
+;                     for    0 < v ≤ π
+;                        -0.85 ≤ u ≤ +0.85
+;                     u = ln| X + [X^2 - 1]^(1/2) |
+;                     X = (xo + c - x)/a
+;                     Sinh[u] = X + [X^2 - 1]^(1/2)
+;
+;  REFERENCES:  
+;               0)  https://en.wikipedia.org/wiki/Semi-major_and_semi-minor_axes
+;               1)  https://en.wikipedia.org/wiki/Hyperboloid
+;               2)  http://mathworld.wolfram.com/Two-SheetedHyperboloid.html
+;               3)  Slavin, J.A. and R.E. Holzer "Solar wind flow about the terrestrial
+;                      planets. I - Modeling bow shock position and shape,"
+;                      J. Geophys. Res. 86(A13), pp. 11,401-11,418,
+;                      doi:10.1029/JA086iA13p11401, 1981.
+;
+;   CREATED:  09/28/2020
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/28/2020   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+PRO lbw_model_bs_sh1981,xyz,abc,f,pder
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+xo             = 3d0              ;;  xo = focus shift [Re]
+ee             = 1.16d0           ;;  hyperboloid eccentricity
+;;----------------------------------------------------------------------------------------
+;;  Define hyperboloid parameters
+;;               (x - xo - c)^2     (y - yo)^2     (z - zo)^2
+;;  S(x,y,z) = - --------------  +  ----------  +  ----------  +  1  =  0
+;;                    a^2              b^2            b^2
+;;
+;;   {where:  a = semi-major axis, b = semi-minor axis, and
+;;              [x,y,z]o = location of center }
+;;----------------------------------------------------------------------------------------
+a             = abc[0]
+b             = abc[1]
+c             = abc[2]
+;;----------------------------------------------------------------------------------------
+;;  Define hyperboloid surface positions
+;;----------------------------------------------------------------------------------------
+x             = xyz[*,0]
+y             = xyz[*,1]
+z             = xyz[*,2]
+nn            = N_ELEMENTS(x)
+;;----------------------------------------------------------------------------------------
+;;  Define functional output
+;;----------------------------------------------------------------------------------------
+f              = 1d0 - ((x - xo[0] - c)/a)^2d0 + ((y^2d0 + z^2d0)/b^2d0)
+;;----------------------------------------------------------------------------------------
+;;  Define derivatives of fit parameters of function
+;;    dF/da =  2 (x - xo - c)^2/a^3
+;;    dF/da = -2 (y^2 + z^2)/b^3
+;;    dF/da = -2 (x - xo - c)/a^2
+;;----------------------------------------------------------------------------------------
+pder           = REPLICATE(d,nn[0],3L)
+pder[*,0L]     =  2d0*(x - xo[0] - c)^2d0/a^3d0
+pder[*,1L]     = -2d0*(y^2d0 + z^2d0)/b^3d0
+pder[*,2L]     = -2d0*(x - xo[0] - c)/a^2d0
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   lbw_model_bs_find_l.pro
+;  PURPOSE  :   Numerically solves for the closest semi-latus rectum that corresponds
+;                 to the given spacecraft position of the last bow shock crossing.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               lbw_model_bs_sh1981.pro
+;
+;  CALLS:
+;               is_a_number.pro
+;               lbw_model_bs_sh1981.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               GSLR    :  Scalar [numeric] providing the guess value for the
+;                            parameter L described below in the NOTES
+;               LXYZ    :  [3]-Element [numeric] array providing the aberated positions
+;                            [Re] of the SC at the point of last crossing the bow shock
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               lbw_model_bs_find_l,gslr,lxyz [,ITMAX=itmax] [,L_OUT=l_out] [,ABC=abc]   $
+;                                   [,SIGOUT=sigout] [,CHISQ=chisq] [,ITER=niter]        $
+;                                   [,STATUS=status] [,YERROR=yerror] [,WGHTS=wghts]     $
+;                                   [,SOLN=soln]
+;
+;               ;;  Example
+;               gslr           = [23.3d0]
+;               lxyz           = REFORM([2.3127257d0,23.166302d0,6.5680589d0])
+;               itmax          = 100L
+;               .compile lbw_model_bs_find_l.pro
+;               lbw_model_bs_find_l,gslr,lxyz,L_OUT=l_out,ABC=abc,SIGOUT=sigout,CHISQ=chisq,$
+;                                   ITER=niter,STATUS=status,YERROR=yerror,ITMAX=itmax,     $
+;                                   WGHTS=wghts,SOLN=soln
+;               PRINT,';;  L [Re] = ',l_out[0],' +/- ',l_out[1]                 & $
+;               PRINT,';;  a [Re] = ',abc[0],' +/- ',sigout[0]                  & $
+;               PRINT,';;  b [Re] = ',abc[1],' +/- ',sigout[1]                  & $
+;               PRINT,';;  c [Re] = ',abc[2],' +/- ',sigout[2]                  & $
+;               PRINT,';;  Yerror = ',yerror[0],';;  Red. ChiSq = ',chisq[0]    & $
+;               PRINT,';;  N-iter = ',niter[0],';;  Status = ',status[0]
+;               ;;  L [Re] =        23.299989 +/-        4.5141954
+;               ;;  a [Re] =        67.418951 +/-        12.619435
+;               ;;  b [Re] =        39.620916 +/-        27.506594
+;               ;;  c [Re] =        78.205953 +/-        14.766404
+;               ;;  Yerror =    0.00016439978;;  Red. ChiSq =       0.18288703
+;               ;;  N-iter =        2;;  Status =        0
+;
+;               ;;  Mathematica solution:  L = 23.2920
+;
+;  KEYWORDS:    
+;               ***  INPUTS  ***
+;               ITMAX   :  Scalar [long] defining the maximum number of iterations allowed
+;                            before software quits attempting further
+;                            [Default = 20]
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               L_OUT   :  Set to a named variable that will return the numerical solution
+;                            for the semi-latus rectum and an associated uncertainty.
+;                            L_OUT[0]  :  value of L [Re]
+;                            L_OUT[1]  :  uncertainty in the value of L [Re]
+;               ABC     :  Set to a named variable that will return the numerical solution
+;                            for the hyperboloid of two-sheets parameters a, b, and c
+;                            ABC[0]    :  value of a [Re] or the semi-major axis
+;                            ABC[1]    :  value of b [Re] or the semi-minor axis
+;                            ABC[2]    :  value of c [Re] or the center displacement
+;               SIGOUT  :  Set to a named variable that will return the one-sigma values
+;                            of the new ABC values derived from weights that assume
+;                            a ~1 km positional uncertainty (or ~0.016% uncertainty)
+;               CHISQ   :  Set to a named variable that will return the chi-square
+;                            goodness-of-fit statistic with W_i weights and d DOF given by
+;                              chi^2 = 1/d ∑_i W_i (f_i - fit_i)^2
+;               ITER    :  Set to a named variable that will return the actual number of
+;                            iterations performed
+;               STATUS  :  Set to a named variable that will return the status of the fit
+;                            where the following values are defined as:
+;                              0  :  success
+;                              1  :  fail --> chi-squared increasing without bound
+;                              2  :  fail --> failed to converge in ITMAX iterations
+;               YERROR  :  Set to a named variable that will return the standard error
+;                            between the fit and actual data values given by:
+;                               YERROR = [1/n ∑_i (fit_i - f_i)^2]^(1/2)
+;                                    n = N_ELEMENTS(f) - 3L
+;               WGHTS   :  Set to a named variable that will return the weights used
+;               SOLN    :  Set to a named variable that will return the solutions to
+;                            the hyperboloid of two-sheets surface equation if using
+;                            the output ABC and input LXYZ
+;
+;   CHANGED:  1)  Fixed an error handling bug
+;                                                                   [09/30/2020   v1.0.1]
+;
+;   NOTES:      
+;               1)  Definitions
+;                     SC    = spacecraft
+;                     r     = L/[1 + ecc*Cos(theta)]
+;                     L     = semi-latus rectum
+;                           = b^2/a
+;                     e     = eccentricity
+;                           = c/a
+;                             { a^2 + b^2    for hyperbola
+;                     c^2   = {
+;                             { a^2 - b^2    for ellipse
+;                     Rss   = xo + L/(1 + e) = bow shock standoff distance along x'
+;               2)  hyperbolic bow shock, see JGR 1981, p.11401, Slavin Fig.7
+;                     1 = [(x - X0 - c)/a]^2 + [(y/b)]^2 + [(z/b)]^2
+;                     Note it should be the folowing for a hyperboloid of two-sheets
+;                     0 = 1 - [(x - X0 - c)/a]^2 + [(y/b)]^2 + [(z/b)]^2
+;               3)  Numerically solve the following:
+;                     0 = 1 - [(x - X0 - c)/a]^2 + [(y/b)]^2 + [(z/b)]^2
+;                   Then inverts the resulting fit parameters a, b, and c to find L
+;
+;  REFERENCES:  
+;               0)  https://en.wikipedia.org/wiki/Semi-major_and_semi-minor_axes
+;               1)  https://en.wikipedia.org/wiki/Hyperboloid
+;               2)  http://mathworld.wolfram.com/Two-SheetedHyperboloid.html
+;               3)  Slavin, J.A. and R.E. Holzer "Solar wind flow about the terrestrial
+;                      planets. I - Modeling bow shock position and shape,"
+;                      J. Geophys. Res. 86(A13), pp. 11,401-11,418,
+;                      doi:10.1029/JA086iA13p11401, 1981.
+;               4)  https://harrisgeospatial.com/docs/CURVEFIT.html
+;
+;   CREATED:  09/28/2020
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  09/30/2020   v1.0.1
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO lbw_model_bs_find_l,gslr,lxyz,ITMAX=itmx0,L_OUT=l_out,ABC=abc,SIGOUT=sigout,CHISQ=chisq,$
+                        ITER=niter,STATUS=status,YERROR=yerror,WGHTS=wghts,SOLN=soln
+
+;;----------------------------------------------------------------------------------------
+;;  Define dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define mean equatorial radius [m]
+R_E_m          = 6.3781366d6
+R_E            = R_E_m[0]*1d-3         ;;  m --> km
+;;  Define some defaults
+xo             = 3d0                   ;;  xo = focus shift [Re]
+ee             = 1.16d0                ;;  hyperboloid eccentricity
+def_imax       = 20L                   ;;  Default max number of interations
+;;  Initiate output some keywords
+status         = -1L
+niter          =  0L
+;;  Error messages
+noinput_mssg   = 'No input was supplied...'
+badinpt_mssg   = 'Incorrect input format:  GLUV and LXYZ must be a scalar and [3]-element [numeric] array, respectively'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 2 OR is_a_number(gslr,/NOMSSG) EQ 0 OR is_a_number(lxyz,/NOMSSG) EQ 0) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+sznd           = SIZE(gslr,/N_DIMENSIONS)
+szdd           = SIZE(gslr,/DIMENSIONS)
+sznx           = SIZE(lxyz,/N_DIMENSIONS)
+szdx           = SIZE(lxyz,/DIMENSIONS)
+test           = (sznd[0] GT 1) OR (szdd[0] GT 1) OR $
+                 (sznx[0] GT 1) OR (szdx[0] NE 3)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badinpt_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Make sure L parameter in reasonable range
+;;----------------------------------------------------------------------------------------
+ll             = (gslr[0] < 3d1) > 1d1
+;;  Define hyperboloid parameters a, b, and c
+a              = ll[0]/(ee[0]^2d0 - 1d0)
+b              = ll[0]/SQRT(ee[0]^2d0 - 1d0)
+c              = ll[0]*ee[0]/(ee[0]^2d0 - 1d0)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check ITMAX
+IF (is_a_number(itmx0,/NOMSSG) EQ 0) THEN BEGIN
+  ;;  Use default
+  itmax          = def_imax[0]
+ENDIF ELSE BEGIN
+  ;;  Check user's input value
+  itmax          = (LONG(ABS(itmx0[0])) > 10) < 300L
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Make sure to clear parameters in case of multiple calls
+;;----------------------------------------------------------------------------------------
+IF (N_ELEMENTS(abc)    EQ 3) THEN dumb = TEMPORARY(abc)
+IF (N_ELEMENTS(sigout) EQ 3) THEN dumb = TEMPORARY(sigout)
+IF (SIZE(chisq,/TYPE)  NE 0) THEN dumb = TEMPORARY(chisq)
+IF (SIZE(niter,/TYPE)  NE 0) THEN dumb = TEMPORARY(niter)
+IF (SIZE(status,/TYPE) NE 0) THEN dumb = TEMPORARY(status)
+IF (SIZE(yerror,/TYPE) NE 0) THEN dumb = TEMPORARY(yerror)
+IF (SIZE(wghts,/TYPE)  NE 0) THEN dumb = TEMPORARY(wghts)
+IF (SIZE(soln,/TYPE)   NE 0) THEN dumb = TEMPORARY(soln)
+;;----------------------------------------------------------------------------------------
+;;  Define inputs for fit
+;;----------------------------------------------------------------------------------------
+;;  Need to make dummy copies to avoid error in fitting procedure
+nc             = 5L
+pert           = [-1d0,-5d-1,1d-8,5d-1,1d0]*1d-4
+xyz            = REPLICATE(d,nc[0],nc[0],3L)
+zeros          = REPLICATE(0d0,nc[0],nc[0])
+FOR k=0L, nc[0] - 1L DO BEGIN
+  FOR i=0L, 2L DO BEGIN
+    xyz[*,k,i]     = lxyz[i]*(1d0 + pert[k])
+    zeros[*,k]    += (pert[k]*1d0)
+  ENDFOR
+ENDFOR
+;;  Resize arrays
+xyz            = REFORM(xyz,nc[0]*nc[0],3L)
+zeros          = REFORM(zeros,nc[0]*nc[0])
+sigs           = ABS(MEDIAN(xyz,DIMENSION=2))
+wghts          = 1d0/sigs
+;;  Shift weights to avoid numerical instability
+fac            = MEDIAN(ABS(zeros))
+wghts         /= fac[0]
+abc            = [a[0],b[0],c[0]]
+;;  Solve hyperboloid of two-sheets equations
+soln           = CURVEFIT(xyz,zeros,wghts,abc,sigout,FUNCTION_NAME='lbw_model_bs_sh1981',CHISQ=chisq,$
+                          ITER=niter,STATUS=status,YERROR=yerror,ITMAX=itmax,/DOUBLE,/NODERIVATIVE)
+;;  Adjust chi-squared by weighting factor (SIGOUT need not as WEIGHT factors are canceled out)
+chisq         /= fac[0]
+;;  ABC is altered on output --> Re-calculate L and ∂L (assume 5% uncertainty in e)
+llout          = abc[0]*(ee[0]^2d0 - 1d0)
+dlout          = llout[0]*SQRT((5d-2)^2d0 + (sigout[0]/abc[0])^2d0)
+l_out          = [llout[0],dlout[0]]
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+

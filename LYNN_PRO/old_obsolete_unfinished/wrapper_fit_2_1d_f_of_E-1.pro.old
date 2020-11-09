@@ -1,0 +1,561 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   f_of_E_1d.pro
+;  PURPOSE  :   Generates a one-dimensional exponential function of the following form:
+;                   f(X) = A B^(-3) e^[-(X - C)*(bo B^2)] + D
+;
+;                 A physical example would be an isotropic Maxwellian where:
+;                   X  -->  E                   [i.e., energy]
+;                   A  -->  No π^(-3/2)         [i.e., amplitude of Maxwellian]
+;                   B  -->  Vt                  [i.e., most probable thermal speed]
+;                   C  -->  ø                   [i.e., spacecraft potential]
+;                   D  -->  0
+;                   bo -->  me/2
+;
+;  CALLED BY:   
+;               wrapper_fit_2_1d_f_of_E.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               NA
+;
+;  REQUIRES:    
+;               NA
+;
+;  INPUT:
+;               XX        :  [N]-Element array of independent variable values
+;               PARAM     :  [4]-Element array containing the following initialization
+;                               quantities for the model functions (see below):
+;                                 PARAM[0] = A
+;                                 PARAM[1] = B
+;                                 PARAM[2] = C
+;                                 PARAM[3] = D
+;               PDER      :  [4]-Element array defining for which of the variable
+;                              coefficients, A-D, to compute the partial derivatives
+;                              containing the partial derivatives of Y with respect to
+;                              each element of PARAM.  For instance, to take the partial
+;                              derivative with respect to only A and C, then do:
+;                              PDER = [1,0,1,0]
+;                              [Default  :  PDER[*] = 0]
+;
+;  OUTPUT:
+;               PDER      :  On output, the routine returns an [N,4]-element array
+;                              containing the partial derivatives of Y with respect to
+;                              each element of PARAM that were not set to zero in PDER
+;                              on input.
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               model = f_of_E_1d(xx,param [,pder] [,FF=ff])
+;
+;  KEYWORDS:    
+;               FF        :  Set to a named variable to return an [N]-element array of
+;                              values corresponding to the evaluated function
+;
+;   CHANGED:  1)  Fixed several issues including correcting some errors in the
+;                   input function
+;                                                                   [10/31/2020   v1.1.0]
+;
+;   NOTES:      
+;               User should not call this routine
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  10/30/2020
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/31/2020   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION f_of_E_1d,xx,param,pder,FF=ff
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+c              = 2.9979245800d+08         ;;  Speed of light in vacuum [m s^(-1), 2014 CODATA/NIST]
+kB             = 1.3806485200d-23         ;;  Boltzmann Constant [J K^(-1), 2014 CODATA/NIST]
+qq             = 1.6021766208d-19         ;;  Fundamental charge [C, 2014 CODATA/NIST]
+hh             = 6.6260700400d-34         ;;  Planck Constant [J s, 2014 CODATA/NIST]
+me             = 9.1093835600d-31         ;;  Electron mass [kg, 2014 CODATA/NIST]
+f_1eV          = qq[0]/hh[0]              ;;  Freq. associated with 1 eV of energy [ Hz --> f_1eV*energy{eV} = freq{Hz} ]
+eV2J           = hh[0]*f_1eV[0]           ;;  Energy associated with 1 eV of energy [ J --> J_1eV*energy{eV} = energy{J} ]
+bo             = me[0]/2d0*1d6/eV2J[0]
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 2) THEN BEGIN
+  ;;  no input???
+  RETURN,0
+ENDIF
+
+np             = N_ELEMENTS(param)
+IF (np LT 4) THEN BEGIN
+  ;;  bad input???
+  RETURN,0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Calculate function
+;;    Y = PARAM[0]*PARAM[1]^3*EXP(-(bo*PARAM[1]^2)*(X - PARAM[2])) + PARAM[3]
+;;----------------------------------------------------------------------------------------
+ff             = param[0]*param[1]^(-3d0)*EXP(-1d0*(bo[0]*param[1]^2d0)*(xx - param[2])) + param[3]
+;;----------------------------------------------------------------------------------------
+;;  Calculate partial derivatives of the function Y = A B^(-3) e^[-(X - C)*(bo B^2)] + D
+;;    dY/dA = (Y - D)/A
+;;    dY/dB = -(Y - D)*[3 + 2*bo*B^2(X - C)]/B
+;;    dY/dC = bo*B^2*(Y - D)
+;;    dY/dD = 1
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() GT 2) THEN BEGIN
+  nx             = N_ELEMENTS(xx)
+  ;;  Save original (input) partial derivative settings
+  requested      = pder
+  pder           = MAKE_ARRAY(nx,np,VALUE=xx[0]*0)  ;;  Define dummy array
+  pder[*,0]      = (ff - param[3])/param[0]
+  pder[*,1]      = -1d0*(ff - param[3])*(3d0 + 2d0*bo[0]*param[1]^2d0*(xx - param[2]))/param[1]
+  pder[*,2]      = bo[0]*param[1]^2d0*(ff - param[3])
+  pder[*,3]      = 1d0
+  ;;  Only keep derivatives if user desires it
+  FOR j=0L, np - 1L DO IF (requested[j] EQ 0) THEN pder[*,j] = ff[0]*0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,ff
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   wrapper_fit_2_1d_f_of_E.pro
+;  PURPOSE  :   This is a wrapping routine for mpfitfun.pro and f_of_E_1d.pro to fit
+;                 some input data to a model exponential of the form:
+;                   f(X) = A B^(-3) e^[-(X - C)*(bo B^2)] + D
+;
+;                 A physical example would be an isotropic Maxwellian where:
+;                   X  -->  E                   [i.e., energy]
+;                   A  -->  No π^(-3/2)         [i.e., amplitude of Maxwellian]
+;                   B  -->  Vt                  [i.e., most probable thermal speed]
+;                   C  -->  ø                   [i.e., spacecraft potential]
+;                   D  -->  0
+;                   bo -->  me/2
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               f_of_E_1d.pro
+;
+;  CALLS:
+;               is_a_number.pro
+;               mpfitfun.pro
+;               is_a_number.pro
+;               is_a_number.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;               2)  Craig B. Markwardt's MPFIT IDL routines
+;
+;  INPUT:
+;               XX        :  [N]-Element array of independent variable values
+;               YY        :  [N]-Element array of dependent variable values
+;               PARAM     :  [4]-Element array containing the following initialization
+;                               quantities for the model functions (see below):
+;                                 PARAM[0] = A
+;                                 PARAM[1] = B
+;                                 PARAM[2] = C
+;                                 PARAM[3] = D
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               test = wrapper_fit_2_1d_f_of_E(x,y,param [,FIXED_P=fixed_p] [,ERROR=error] $
+;                                              [,WEIGHTS=weights] [,ITMAX=itmax]           $
+;                                              [,CTOL=ctol] [,PARINFO=parinfo]             $
+;                                              [,A_RANGE=a_range] [,B_RANGE=b_range]       $
+;                                              [,C_RANGE=c_range] [,D_RANGE=d_range])
+;
+;  KEYWORDS:    
+;               FIXED_P   :  [4]-Element array containing ones for each element of
+;                              PARAM the user does NOT wish to vary (i.e., if FIXED_P[0]
+;                              is = 1, then PARAM[0] will not change when calling
+;                              MPFITFUN.PRO).
+;                              [Default  :  All elements = 0]
+;               ITMAX     :  Scalar [long] defining the maximum number of iterations that
+;                              MPFITFUN.PRO will perform before quitting.
+;                              [Default  :  20]
+;               CTOL      :  Scalar [float/double] defining the desired convergence
+;                              tolerance. The routine returns when the relative
+;                              decrease in chi-squared is less than CTOL in one
+;                              iteration.
+;                              [Default  :  1e-3]
+;               A_RANGE   :  [4]-Element [float/double] array defining the range of
+;                              allowed values to use for A or PARAM[0].  Note, if this
+;                              keyword is set, it is equivalent to telling the routine
+;                              that A should be limited by these bounds.  Setting this
+;                              keyword will define:
+;                                PARINFO[0].LIMITED[*] = BYTE(A_RANGE[0:1])
+;                                PARINFO[0].LIMITS[*]  = A_RANGE[2:3]
+;                              [Default  :  [not set] ]
+;               B_RANGE   :  Same as A_RANGE but for B or PARAM[1], PARINFO[1].
+;               C_RANGE   :  Same as A_RANGE but for C or PARAM[2], PARINFO[2].
+;               D_RANGE   :  Same as A_RANGE but for D or PARAM[3], PARINFO[3].
+;               **********************************
+;               ***  INPUTS FOR MPFITFUN.PRO   ***
+;               **********************************
+;               ERROR     :  [N]-Element array of standard errors for the input
+;                              values, YY <--> "measured" 1-sigma uncertainties
+;                              [Default = 1% of YY]
+;               WEIGHTS   :  [N]-Element array of weights to be used in calculating the
+;                              chi-squared value.  Example inputs include:
+;                                1/ERROR^2  -->  Normal weighting
+;                                                  (i.e., ERROR is measurement error)
+;                                1/Y        -->  Poisson weighting
+;                                                  (i.e., counting statistics)
+;                                1          -->  Unweighted
+;                              [Default  :  1/ERROR^2]
+;               ******************************************
+;               ***  Do not set this keyword yourself  ***
+;               ******************************************
+;               PARINFO   :  [4]-Element array [structure] used by MPFIT.PRO
+;                              where the i-th contains the following tags and
+;                              definitions:
+;                              VALUE    =  Scalar [float/double] value defined by
+;                                            PARAM[i].  The user need not set this value.
+;                                            [Default = PARAM[i] ]
+;                              FIXED    =  Scalar [boolean] value defining whether to
+;                                            allow MPFIT.PRO to vary PARAM[i] or not
+;                                            TRUE   :  parameter constrained
+;                                                      (i.e., no variation allowed)
+;                                            FALSE  :  parameter unconstrained
+;                              LIMITED  =  [2]-Element [boolean] array defining if the
+;                                            lower/upper bounds defined by LIMITS
+;                                            are imposed(TRUE) otherwise it has no effect
+;                                            [Default = FALSE]
+;                              LIMITS   =  [2]-Element [float/double] array defining the
+;                                            [lower,upper] bounds on PARAM[i].  Both
+;                                            LIMITED and LIMITS must be given together.
+;                                            [Default = [0.,0.] ]
+;                              TIED     =  Scalar [string] that mathematically defines
+;                                            how PARAM[i] is forcibly constrained.  For
+;                                            instance, assume that PARAM[0] is always
+;                                            equal to 2 Pi times PARAM[1], then one would
+;                                            define the following:
+;                                              PARINFO[0].TIED = '2 * !DPI * P[1]'
+;                                            [Default = '']
+;                              MPSIDE   =  Scalar value with the following
+;                                            consequences:
+;                                             0 : 1-sided deriv. computed automatically
+;                                             1 : 1-sided deriv. (f(x+h) - f(x)  )/h
+;                                            -1 : 1-sided deriv. (f(x)   - f(x-h))/h
+;                                             2 : 2-sided deriv. (f(x+h) - f(x-h))/(2*h)
+;                                             3 : explicit deriv. used for this parameter
+;                                            See MPFIT.PRO and MPFITFUN.PRO for more...
+;                                            [Default = 0]
+;
+;   CHANGED:  1)  Fixed several issues including correcting some errors in the
+;                   input function
+;                                                                   [10/31/2020   v1.1.0]
+;
+;   NOTES:      
+;               1)  This was written to examine photoelectrons so it assumes an electron
+;                     mass in f_of_E_1d.pro
+;               2)  To use explicit derivatives, set AUTODERIVATIVE=0 or set MPSIDE=3 for
+;                     each parameter for which the user wishes to use explicit
+;                     derivatives.
+;               3)  **  Do NOT set PARINFO, let the routine set it up for you  **
+;               4)  Fit Status Interpretations
+;                     > 0 = success
+;                     -18 = a fatal execution error has occurred.  More information may
+;                           be available in the ERRMSG string.
+;                     -16 = a parameter or function value has become infinite or an
+;                           undefined number.  This is usually a consequence of numerical
+;                           overflow in the user's model function, which must be avoided.
+;                     -15 to -1 = 
+;                           these are error codes that either MYFUNCT or ITERPROC may
+;                           return to terminate the fitting process (see description of
+;                           MPFIT_ERROR common below).  If either MYFUNCT or ITERPROC
+;                           set ERROR_CODE to a negative number, then that number is
+;                           returned in STATUS.  Values from -15 to -1 are reserved for
+;                           the user functions and will not clash with MPFIT.
+;                     0 = improper input parameters.
+;                     1 = both actual and predicted relative reductions in the sum of
+;                           squares are at most FTOL.
+;                     2 = relative error between two consecutive iterates is at most XTOL
+;                     3 = conditions for STATUS = 1 and STATUS = 2 both hold.
+;                     4 = the cosine of the angle between fvec and any column of the
+;                           jacobian is at most GTOL in absolute value.
+;                     5 = the maximum number of iterations has been reached
+;                           (may indicate failure to converge)
+;                     6 = FTOL is too small. no further reduction in the sum of squares
+;                           is possible.
+;                     7 = XTOL is too small. no further improvement in the approximate
+;                           solution x is possible.
+;                     8 = GTOL is too small. fvec is orthogonal to the columns of the
+;                           jacobian to machine precision.
+;               5)  MPFIT routines can be found at:
+;                     http://cow.physics.wisc.edu/~craigm/idl/idl.html
+;               6)  Definition of WEIGHTS keyword input for MPFIT routines
+;                     Array of weights to be used in calculating the chi-squared
+;                     value.  If WEIGHTS is specified then the ERR parameter is
+;                     ignored.  The chi-squared value is computed as follows:
+;
+;                         CHISQ = TOTAL( ( Y - MYFUNCT(X,P) )^2 * ABS(WEIGHTS) )
+;
+;                     where ERR = the measurement error (yerr variable herein).
+;
+;                     Here are common values of WEIGHTS for standard weightings:
+;                       1D/ERR^2 - Normal or Gaussian weighting
+;                       1D/Y     - Poisson weighting (counting statistics)
+;                       1D       - Unweighted
+;
+;                     NOTE: the following special cases apply:
+;                       -- if WEIGHTS is zero, then the corresponding data point
+;                            is ignored
+;                       -- if WEIGHTS is NaN or Infinite, and the NAN keyword is set,
+;                            then the corresponding data point is ignored
+;                       -- if WEIGHTS is negative, then the absolute value of WEIGHTS
+;                            is used
+;               
+;
+;  REFERENCES:  
+;               1) Markwardt, C. B. "Non-Linear Least Squares Fitting in IDL with
+;                    MPFIT," in proc. Astronomical Data Analysis Software and Systems
+;                    XVIII, Quebec, Canada, ASP Conference Series, Vol. 411,
+;                    Editors: D. Bohlender, P. Dowler & D. Durand, (Astronomical
+;                    Society of the Pacific: San Francisco), pp. 251-254,
+;                    ISBN:978-1-58381-702-5, 2009.
+;               2) Moré, J. 1978, "The Levenberg-Marquardt Algorithm: Implementation and
+;                    Theory," in Numerical Analysis, Vol. 630, ed. G. A. Watson
+;                    (Springer-Verlag: Berlin), pp. 105, doi:10.1007/BFb0067690, 1978.
+;               3) Moré, J. and S. Wright "Optimization Software Guide," SIAM,
+;                    Frontiers in Applied Mathematics, Number 14,
+;                    ISBN:978-0-898713-22-0, 1993.
+;               4)  The IDL MINPACK routines can be found on Craig B. Markwardt's site at:
+;                     http://cow.physics.wisc.edu/~craigm/idl/fitting.html
+;
+;   CREATED:  10/30/2020
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/31/2020   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION wrapper_fit_2_1d_f_of_E,x,y,param,FIXED_P=fixed_p,ERROR=error,WEIGHTS=weights,$
+                                 ITMAX=itmax,CTOL=ctol,PARINFO=parinfo,A_RANGE=a_range,$
+                                 B_RANGE=b_range,C_RANGE=c_range,D_RANGE=d_range
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+struc          = 0
+dumb0          = d
+dumb2          = REPLICATE(d,2)
+dumb4          = REPLICATE(d,4)
+dumb10         = REPLICATE(d,10)
+func           = 'f_of_E_1d'
+;;----------------------------------------------------------------------------------------
+;;  Initialize parameters for MPFITFUN.PRO
+;;----------------------------------------------------------------------------------------
+tags           = ['VALUE','FIXED','LIMITED','LIMITS','TIED','MPSIDE']
+;;  For now, force explicit derivatives
+autoderiv      = 0
+tags           = [tags,'MPDERIV_DEBUG','MPDERIV_RELTOL','MPDERIV_ABSTOL']
+pinfo_1        = CREATE_STRUCT(tags,d,0b,[0b,0b],[0d0,0d0],'',3,0,1d-3,1d-7)
+;;  Define dummy return structure
+tags00         = ['YFIT','FIT_PARAMS',  'SIG_PARAM','CHISQ','DOF','N_ITER','STATUS','YERROR','FUNC','PARINFO','PFREE_INDEX','NPEGGED']
+struc          = CREATE_STRUCT(tags00,dumb10,dumb4,dumb4,dumb0,dumb0,-1,-1,dumb10,'',pinfo_1,-1,-1)
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 3)
+IF (test[0]) THEN BEGIN
+  ;;  no input???
+  MESSAGE,'Incorrect # of inputs',/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+
+np             = N_ELEMENTS(param)
+test           = (np[0] LT 4)
+IF (test[0]) THEN BEGIN
+  ;;  bad input???
+  MESSAGE,'Incorrect input format:  PARAM',/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+
+test           = (N_ELEMENTS(x) NE N_ELEMENTS(y)) OR (is_a_number(x,/NOMSSG) EQ 0) OR $
+                 (is_a_number(y,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  ;;  bad input format???
+  MESSAGE,'Incorrect input format:  XX and/or YY',/INFORMATIONAL,/CONTINUE
+  RETURN,0
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Define new parameters
+;;----------------------------------------------------------------------------------------
+xx             = REFORM(x)
+yy             = REFORM(y)
+pp             = REFORM(param)
+nx             = N_ELEMENTS(x)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check FIXED_P
+test           = (N_ELEMENTS(fixed_p) NE 4)
+IF (test) THEN fitp = REPLICATE(0b,4) ELSE fitp = (REFORM(fixed_p) EQ 1)
+;;  Check ERROR
+test           = (N_ELEMENTS(error) NE 1) AND (N_ELEMENTS(error) NE nx)
+IF (test) THEN yerr = 1d-2*yy ELSE yerr = REFORM(error)
+IF (N_ELEMENTS(yerr) EQ 1) THEN yerr = REPLICATE(yerr[0],nx)
+;;  Check WEIGHTS
+test           = (N_ELEMENTS(weights) NE 1) AND (N_ELEMENTS(weights) NE nx)
+IF (test) THEN wghts = 1d0/yerr^2 ELSE wghts = REFORM(weights)
+IF (N_ELEMENTS(wghts) EQ 1) THEN wghts = REPLICATE(wghts[0],nx)
+
+;;  Check [A,B,C,D]_RANGE
+p_lmd          = REPLICATE(0b,4L,2L)    ;;  values [logic] used for PARINFO[*].LIMITED
+p_lms          = REPLICATE(0d0,4L,2L)   ;;  values [float/double] used for PARINFO[*].LIMITS
+test           = [(N_ELEMENTS(a_range) EQ 4),(N_ELEMENTS(b_range) EQ 4),$
+                  (N_ELEMENTS(c_range) EQ 4),(N_ELEMENTS(d_range) EQ 4) ]
+FOR j=0L, 3L DO BEGIN
+  IF (test[j]) THEN BEGIN
+    CASE j[0] OF
+      0L   : BEGIN
+        p_lmd[j,*] = BYTE(a_range[0:1])
+        p_lms[j,*] = DOUBLE(a_range[2:3])
+      END
+      1L   : BEGIN
+        p_lmd[j,*] = BYTE(b_range[0:1])
+        p_lms[j,*] = DOUBLE(b_range[2:3])
+      END
+      2L   : BEGIN
+        p_lmd[j,*] = BYTE(c_range[0:1])
+        p_lms[j,*] = DOUBLE(c_range[2:3])
+      END
+      3L   : BEGIN
+        p_lmd[j,*] = BYTE(d_range[0:1])
+        p_lms[j,*] = DOUBLE(d_range[2:3])
+      END
+      ELSE :  ;;  Do nothing because I don't know how this happened...
+    ENDCASE
+  ENDIF
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Initialize PARINFO structure
+;;----------------------------------------------------------------------------------------
+pin            = REPLICATE(pinfo_1[0],4L)
+;;  Set VALUE tag
+pin[*].VALUE   = pp
+;;  Set LIMITED and LIMITS tags
+pin[*].LIMITED = TRANSPOSE(p_lmd)
+pin[*].LIMITS  = TRANSPOSE(p_lms)
+;;  Set FIXED tag
+pin[*].FIXED   = fitp
+pder           = REPLICATE(0,4)
+ind            = LINDGEN(4)
+;;  For now, force explicit derivatives
+pin[*].MPSIDE  = 3
+pder[*]        = 1
+farg           = {FF:yy}
+;;----------------------------------------------------------------------------------------
+;;  Calculate Fit
+;;----------------------------------------------------------------------------------------
+;;  Use mpfitfun.pro instead
+;;
+;;  To enable explicit derivatives for all parameters, set
+;;  AUTODERIVATIVE=0.
+;;
+;;  When AUTODERIVATIVE=0, the user function is responsible for
+;;  calculating the derivatives of the user function with respect to
+;;  each parameter.  The user function should be declared as follows:
+;;
+;;----------------------------------------------------------------------------------------
+fit_params     = mpfitfun(func[0],xx,yy,yerr,pp,PARINFO=pin,PERROR=sig_p,    $
+                         BESTNORM=chisq,DOF=dof,STATUS=status,NITER=niter,   $
+                         YFIT=y_fit,/QUIET,WEIGHTS=wghts,BEST_RESID=yerrors, $
+                         FTOL=1d-14,GTOL=1d-14,ERRMSG=errmsg,/NAN,           $
+                         AUTODERIVATIVE=autoderiv[0],MAXITER=itmax,          $
+                         PFREE_INDEX=pfree_ind,NPEGGED=npegged)
+;;----------------------------------------------------------------------------------------
+;;   STATUS : 
+;;             > 0 = success
+;;             -18 = a fatal execution error has occurred.  More information may be
+;;                   available in the ERRMSG string.
+;;             -16 = a parameter or function value has become infinite or an undefined
+;;                   number.  This is usually a consequence of numerical overflow in the
+;;                   user's model function, which must be avoided.
+;;             -15 to -1 = 
+;;                   these are error codes that either MYFUNCT or ITERPROC may return to
+;;                   terminate the fitting process (see description of MPFIT_ERROR
+;;                   common below).  If either MYFUNCT or ITERPROC set ERROR_CODE to a
+;;                   negative number, then that number is returned in STATUS.  Values
+;;                   from -15 to -1 are reserved for the user functions and will not
+;;                   clash with MPFIT.
+;;             0 = improper input parameters.
+;;             1 = both actual and predicted relative reductions in the sum of squares
+;;                   are at most FTOL.
+;;             2 = relative error between two consecutive iterates is at most XTOL
+;;             3 = conditions for STATUS = 1 and STATUS = 2 both hold.
+;;             4 = the cosine of the angle between fvec and any column of the jacobian
+;;                   is at most GTOL in absolute value.
+;;             5 = the maximum number of iterations has been reached
+;;                   (may indicate failure to converge)
+;;             6 = FTOL is too small. no further reduction in the sum of squares is
+;;                   possible.
+;;             7 = XTOL is too small. no further improvement in the approximate
+;;                   solution x is possible.
+;;             8 = GTOL is too small. fvec is orthogonal to the columns of the
+;;                   jacobian to machine precision.
+;;----------------------------------------------------------------------------------------
+;;  Check status of computation and define return structure
+tags           = ['YFIT','FIT_PARAMS','SIG_PARAM','CHISQ','DOF','N_ITER','STATUS','YERROR','FUNC','PARINFO','PFREE_INDEX','NPEGGED']
+test           = (status[0] GT 0)
+IF (test[0]) THEN BEGIN
+  ;;  Success!  -->  Print out info
+  PRINT,''
+  PRINT,'A  =  ',fit_params[0],'   +/- ',ABS(sig_p[0])
+  PRINT,'B  =  ',fit_params[1],'   +/- ',ABS(sig_p[1])
+  PRINT,'C  =  ',fit_params[2],'   +/- ',ABS(sig_p[2])
+  PRINT,'D  =  ',fit_params[3],'   +/- ',ABS(sig_p[3])
+  PRINT,''
+  PRINT,'Model Fit Status                    = ',status[0]
+  PRINT,'Number of Iterations                = ',niter[0]
+  PRINT,'Degrees of Freedom                  = ',dof[0]
+  PRINT,'Chi-Squared                         = ',chisq[0]
+  PRINT,'Reduced Chi-Squared                 = ',chisq[0]/dof[0]
+  PRINT,''
+ENDIF ELSE BEGIN
+  ;;  Failed!
+  MESSAGE,errmsg[0],/INFORMATIONAL,/CONTINUE
+  ;;  Make sure outputs are defined
+  IF (SIZE(y_fit,/TYPE) EQ 0)      THEN y_fit = REPLICATE(d,nx)
+  IF (SIZE(fit_params,/TYPE) EQ 0) THEN fit_params = REPLICATE(d,4)
+  IF (SIZE(sig_p,/TYPE) EQ 0)      THEN sig_p = REPLICATE(d,4)
+  IF (SIZE(chisq,/TYPE) EQ 0)      THEN chisq = d
+  IF (SIZE(dof,/TYPE) EQ 0)        THEN dof = d
+  IF (SIZE(niter,/TYPE) EQ 0)      THEN niter = -1
+  IF (SIZE(yerrors,/TYPE) EQ 0)    THEN yerrors = REPLICATE(d,nx)
+  IF (SIZE(pin,/TYPE) EQ 0)        THEN pin = pinfo_1
+  IF (SIZE(pfree_ind,/TYPE) EQ 0)  THEN pfree_ind = -1
+  IF (SIZE(npegged,/TYPE) EQ 0)    THEN npegged = -1
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define return structure
+;;----------------------------------------------------------------------------------------
+struc          = CREATE_STRUCT(tags,y_fit,fit_params,sig_p,chisq[0],dof[0],niter[0],$
+                                    status[0],yerrors,func[0],pin,pfree_ind,npegged)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END

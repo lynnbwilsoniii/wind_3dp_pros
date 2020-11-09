@@ -1,0 +1,249 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   t_4sc_normal_calc.pro
+;  PURPOSE  :   This routine takes the TPLOT handles associated with spacecraft positions
+;                 from at least 4 spacecraft and calculates the associated normal unit
+;                 vector associated with user defined time stamps.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;               test_tplot_handle.pro
+;               get_data.pro
+;               tplot_struct_format_test.pro
+;               t_resample_tplot_struc.pro
+;               lbw_diff.pro
+;               mag__vec.pro
+;               unit_vec.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TPHANDLES    :  [4]-Element [string] array defining set and valid TPLOT
+;                                 handles associated with spacecraft positions all in
+;                                 the same coordinate basis
+;               UNIX         :  [N,4]-Element [double] array defining the time stamps of
+;                                 points of interest to use for calculating the normal
+;                                 unit vector.
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               struc = t_4sc_normal_calc(tphandles,unix [,/NOMSSG])
+;
+;  KEYWORDS:    
+;               NOMSSG       :  If set, routine will not inform user of elapsed
+;                                 computational time [s]
+;                                 [Default = FALSE]
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  This routine uses LU decomposition
+;                     A . X = B
+;                       A_ijk = (∆r_ij)_k
+;                       B_ijk = (T_i - T_j)_k
+;               2)  ICB  =  Input Coordinate Basis
+;               3)  Coordinate Systems
+;                     SPG    :  Spinning Probe Geometric
+;                     SSL    :  Spinning Sun-Sensor L-Vector
+;                     DSL    :  Despun Sun-L-VectorZ (THEMIS and MMS Mission)
+;                     BCS    :  Body Coordinate System (MMS Mission)
+;                     DBCS   :  despun-BCS (MMS Mission)
+;                     SMPA   :  Spinning, Major Principal Axis (MMS Mission)
+;                     DMPA   :  Despun, Major Principal Axis (MMS Mission)
+;                     GEI    :  Geocentric Equatorial Inertial
+;                     GEO    :  Geographic
+;                     GSE    :  Geocentric Solar Ecliptic
+;                     GSM    :  Geocentric Solar Magnetospheric
+;                     ICB    :  Input Coordinate Basis (e.g., GSE)
+;
+;  REFERENCES:  
+;               0)  See IDL's documentation for:
+;                     https://www.harrisgeospatial.com/docs/LA_LUDC.html
+;                     https://www.harrisgeospatial.com/docs/LA_LUSOL.html
+;               1)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;
+;   CREATED:  08/12/2020
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  08/12/2020   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION t_4sc_normal_calc,tphandles,unix,NOMSSG=nomssg
+
+ex_start       = SYSTIME(1)
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define defaults
+npert          = 33L
+npmid          = 16L
+perd           = DINDGEN(npert[0]) - npmid[0]
+pert           = perd*1d-5
+;;----------------------------------------------------------------------------------------
+;;  Coordinates and vectors
+;;----------------------------------------------------------------------------------------
+;;  Define some default strings
+coord_dsl      = 'dsl'
+coord_gse      = 'gse'
+coord_gsm      = 'gsm'
+coord_bcs      = 'bcs'                    ;;  Body Coordinate System (of MMS spacecraft)
+coord_dbcs     = 'dbcs'                   ;;  despun-BCS
+coord_dmpa     = 'dmpa'                   ;;  Despun, Major Principal Axis (coordinate system)
+coordj2000     = 'j2000'                  ;;  GEI/J2000
+coord_mag      = 'mag'
+vec_str        = ['x','y','z']
+vec_col        = [250,150, 50]
+fac_lab        = ['par','per','tot']
+start_of_day_t = '00:00:00.000000000'
+end___of_day_t = '23:59:59.999999999'
+start_of_day   = '00:00:00.000000'
+end___of_day   = '23:59:59.999999'
+;;  Error messages
+noinput_mssg   = 'No input was supplied...'
+no_tpns_mssg   = 'Not enough valid TPLOT handles supplied...'
+badinpt_mssg   = 'Incorrect input format was supplied:  UNIX must be an [N,4]-element [double] array'
+battpdt_mssg   = 'The TPLOT handles supplied did not contain data...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 2 OR SIZE(tphandles,/TYPE) NE 7 OR is_a_number(unix,/NOMSSG) EQ 0) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test           = test_tplot_handle(tphandles,TPNMS=tpns)
+good           = WHERE(tpns NE '',gd)
+IF (gd[0] LT 4 OR ~test[0]) THEN BEGIN
+  MESSAGE,no_tpns_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+sznd           = SIZE(unix,/N_DIMENSIONS)
+szdd           = SIZE(unix,/DIMENSIONS)
+test           = ((N_ELEMENTS(unix) MOD 4) NE 0) OR ((sznd[0] NE 2) AND (N_ELEMENTS(unix) NE 4))
+IF (test[0]) THEN BEGIN
+  MESSAGE,badinpt_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Define relevant info
+IF (sznd[0] NE 2) THEN BEGIN
+  times = 1d0*REFORM(unix,1,4)
+ENDIF ELSE BEGIN
+  IF (szdd[1] NE 4) THEN times = 1d0*TRANSPOSE(unix) ELSE times = 1d0*unix
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Calculate spacecraft positions at time of interest
+;;----------------------------------------------------------------------------------------
+;;  Get positions
+get_data,tpns[0],DATA=scpos0
+get_data,tpns[1],DATA=scpos1
+get_data,tpns[2],DATA=scpos2
+get_data,tpns[3],DATA=scpos3
+test           = (tplot_struct_format_test(scpos0,/NOMSSG) EQ 0) OR $
+                 (tplot_struct_format_test(scpos1,/NOMSSG) EQ 0) OR $
+                 (tplot_struct_format_test(scpos2,/NOMSSG) EQ 0) OR $
+                 (tplot_struct_format_test(scpos3,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,battpdt_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Define times of SC positions
+unix0          = t_get_struc_unix(scpos0,TSHFT_ON=tshft_on)
+unix1          = t_get_struc_unix(scpos1,TSHFT_ON=tshft_on)
+unix2          = t_get_struc_unix(scpos2,TSHFT_ON=tshft_on)
+unix3          = t_get_struc_unix(scpos3,TSHFT_ON=tshft_on)
+;;  Define params for looping
+nt             = N_ELEMENTS(times[*,0])
+new_posi       = REPLICATE(d,nt[0],4L,3L)
+new_unix       = REPLICATE(d,nt[0],4L)
+posi_str       = {T0:scpos0,T1:scpos1,T2:scpos2,T3:scpos3}
+unix_str       = {T0:unix0,T1:unix1,T2:unix2,T3:unix3}
+FOR k=0L, 3L DO BEGIN
+  refts          = times[*,k]
+  d_pos          = posi_str.(k)
+  FOR j=0L, nt[0] - 1L DO BEGIN
+    newt             = refts[j] + pert
+    d_spl            = t_resample_tplot_struc(d_pos,newt,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+    IF (SIZE(d_spl,/TYPE) NE 8) THEN CONTINUE
+    new_pos0         = REFORM(d_spl.Y[npmid[0],*])
+    new_unix[j,k]    = refts[j]
+    new_posi[j,k,*]  = new_pos0
+  ENDFOR
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Perform LU decomposition
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+V_out__n       = REPLICATE(d,nt[0])      ;;  Speed along outward normal [distance units per second]
+n_icb_st       = REPLICATE(d,nt[0],3L)   ;;  Outward normal unit vector [ICB]
+FOR j=0L, nt[0] - 1L DO BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Construct difference 3x3 tensors
+  ;;--------------------------------------------------------------------------------------
+  ;;  ∆r_ij = r_i - r_j
+  dr_12_st       = lbw_diff(REFORM(new_posi[j,0L,*]),REFORM(new_posi[j,1L,*]),/NAN)
+  dr_13_st       = lbw_diff(REFORM(new_posi[j,0L,*]),REFORM(new_posi[j,2L,*]),/NAN)
+  dr_14_st       = lbw_diff(REFORM(new_posi[j,0L,*]),REFORM(new_posi[j,3L,*]),/NAN)
+  ;;  ∆t_ij = t_i - t_j
+  dt_12_st       = lbw_diff(REFORM(new_unix[j,0L]),REFORM(new_unix[j,1L]),/NAN)
+  dt_13_st       = lbw_diff(REFORM(new_unix[j,0L]),REFORM(new_unix[j,2L]),/NAN)
+  dt_14_st       = lbw_diff(REFORM(new_unix[j,0L]),REFORM(new_unix[j,3L]),/NAN)
+  ;;  Define tensors
+  dr_tens_st     = [[dr_12_st],[dr_13_st],[dr_14_st]]
+  dt_tens_st     = [dt_12_st[0],dt_13_st[0],dt_14_st[0]]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Find unit normal vector using LU decomposition
+  ;;--------------------------------------------------------------------------------------
+  ;;  Use LU decomposition
+  ;;    A . X = B
+  ;;      A_ijk = (∆r_ij)_k
+  ;;      B_ijk = (T_i - T_j)_k
+  aludc          = dr_tens_st
+  bvec           = dt_tens_st
+  LA_LUDC,aludc,index,/DOUBLE,STATUS=stat
+  IF (stat[0] GT 0) THEN BEGIN
+    MESSAGE,'LU decomposition failed!  Check input for colinearity or NaNs',/INFORMATIONAL,/CONTINUE
+    ;;  Jump to next iteration
+    CONTINUE
+  ENDIF
+  mvec           = LA_LUSOL(aludc,index,bvec,/DOUBLE)
+  mmag           = mag__vec(mvec,/NAN)
+  umvc           = REFORM(unit_vec(mvec))
+  ;;  Define V_n in spacecraft frame and n [ICB]
+  V_out__n[j]    = 1d0/mmag[0]          ;;  speed [distance units per second]
+  n_icb_st[j,*]  = umvc                 ;;  shock normal vector [ICB]
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define output
+;;----------------------------------------------------------------------------------------
+tags           = ['UNIX','SC_POSI','V_N_OUT','N_ICB_OUT']
+struc          = CREATE_STRUCT(tags,new_unix,new_posi,V_out__n,n_icb_st)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+ex_time        = SYSTIME(1) - ex_start[0]
+IF ~KEYWORD_SET(nomssg) THEN MESSAGE,STRING(ex_time[0])+' seconds execution time.',/CONTINUE,/INFORMATIONAL
+
+RETURN,struc[0]
+END
+
+
+
+
+

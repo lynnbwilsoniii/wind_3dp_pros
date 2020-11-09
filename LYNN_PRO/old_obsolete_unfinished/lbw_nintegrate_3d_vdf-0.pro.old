@@ -35,11 +35,7 @@
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               vmom_str = lbw_nintegrate_3d_vdf(vels,data [,VLIM=vlim] [,NGRID=ngrid] $
-;                                 [,/SLICE2D] [,VFRAME=vframe] [,/ELECTRON] [,/PROTON] $
-;                                 [,/ALPHA_P] [,MAG_DIR=mag_dir] [,VEC1=vec1]          $
-;                                 [,VEC2=vec2] [,/N_S_ONLY] [,F3D_QH=fxyz_3d]          $
-;                                 [,V1DGRID=v1dgrid])
+;               
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -67,8 +63,6 @@
 ;               MAG_DIR    :  [3]-Element vector to be used to define the magnetic field
 ;                               direction to which the cartesian data will be rotated
 ;                               [ Default = [1,0,0] ]
-;               N_S_ONLY   :  If set, routine will return the velocity moment structure
-;                               but only with the number density value calculated
 ;               ***  Pre-Set INPUTS  ***
 ;               VEC1       :  [3]-Element vector to be used for X-direction in
 ;                               a 3D rotation of the input data
@@ -90,8 +84,8 @@
 ;               V1DGRID    :  Set to a named variable to return the 1D array of regularly
 ;                               gridded velocities [km/s]
 ;
-;   CHANGED:  1)  Added keyword:  N_S_ONLY
-;                                                                   [10/28/2020   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               Velocity moments:
@@ -205,7 +199,7 @@
 ;
 ;   CREATED:  04/08/2020
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  10/28/2020   v1.0.1
+;    LAST MODIFIED:  04/08/2020   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -214,7 +208,7 @@
 FUNCTION lbw_nintegrate_3d_vdf,vels,data,VLIM=vlim,NGRID=ngrid,SLICE2D=slice2d,VFRAME=vframe,$
                                          ELECTRON=electron,PROTON=proton,ALPHA_P=alpha_p,    $
                                          MAG_DIR=mag_dir,VEC1=vec1,VEC2=vec2,F3D_QH=fxyz_3d, $
-                                         V1DGRID=v1dgrid,N_S_ONLY=n_s_only
+                                         V1DGRID=v1dgrid
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -237,18 +231,6 @@ K2eV           = kB[0]/qq[0]              ;;  Energy associated with 1 K Temp. [
 beta_fac       = 2d0*muo[0]*1d6*eV2J[0]/(1d-9^2)
 ;;  Define default
 def_mass       = me_esa[0]
-;;----------------------------------------------------------------------------------------
-;;  Define dummy output structure
-;;----------------------------------------------------------------------------------------
-tags           = ['N_S','VOS_XYZ','PRESS_TENXYZ','PRESS_TENFAC','PRESS_SCALAR',    $
-                  'TEMP_3XYZ','TAVG','VTHERMAL','TEMP_3FAC','TANISOTROPY',         $
-                  'QFLUX_TENSOR_XZY','QFLUX_FAC_VEC','QFLUX_FAC_NOR','UNITS']
-units          = ['cm^(-3)','km/s','eV cm^(-3)','eV cm^(-3)','eV','eV','km/s',     $
-                  'eV','N/A','eV km s^(-1) cm^(-3)','eV km s^(-1) cm^(-3)','N/A']
-dumb3          = REPLICATE(d,3L)
-dumb33         = REPLICATE(d,3L,3L)
-dumb333        = REPLICATE(d,3L,3L,3L)
-dumb_out       = CREATE_STRUCT(tags,d,dumb3,dumb33,dumb33,d,dumb3,d,d,dumb3,d,dumb333,dumb3,dumb3,units)
 ;;----------------------------------------------------------------------------------------
 ;;  Define some tensor maps
 ;;----------------------------------------------------------------------------------------
@@ -306,8 +288,6 @@ ENDIF ELSE BEGIN
   bmag    = (mag__vec(bdir,/NAN))[0]
   bdir    = REFORM(unit_vec(bdir,/NAN))
 ENDELSE
-;;  Check N_S_ONLY
-IF KEYWORD_SET(n_s_only) THEN n_s_stop_on = 1b ELSE n_s_stop_on = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Force VEC1 and VEC2
 ;;----------------------------------------------------------------------------------------
@@ -356,12 +336,6 @@ z              = v1dgrid
 ff             = fxyz_3d
 n_s_tot        = simpsons_13_3d_integration(x,y,z,ff,/LOG,/NOMSSG)
 IF (FINITE(n_s_tot[0]) EQ 0) THEN STOP
-IF (n_s_stop_on[0]) THEN BEGIN
-  ;;  User only wants the number density (for testing spacecraft potential values)
-  dumb_out[0].N_S = n_s_tot[0]
-  RETURN,dumb_out
-ENDIF
-IF KEYWORD_SET(n_s_only) THEN n_s_stop_on = 1b ELSE n_s_stop_on = 0b
 ;;  Calculate X-component of the drift velocity [km/s] in VFRAME rest frame
 ;;      Vos_x     :  X-Component drift velocity [km/s] of species s
 ;;                   = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vx_i f_ijk ]
@@ -577,9 +551,9 @@ ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Define output structure
 ;;----------------------------------------------------------------------------------------
-tags           = ['N_S','VOS_XYZ','PRESS_TENXYZ','PRESS_TENFAC','PRESS_SCALAR',    $
-                  'TEMP_3XYZ','TAVG','VTHERMAL','TEMP_3FAC','TANISOTROPY',         $
-                  'QFLUX_TENSOR_XZY','QFLUX_FAC_VEC','QFLUX_FAC_NOR','UNITS']
+tags           = ['n_s','vos_xyz','Press_tenxyz','Press_tenfac','Press_scalar',    $
+                  'Temp_3xyz','Tavg','Vthermal','Temp_3fac','Tanisotropy',         $
+                  'Qflux_tensor_xzy','Qflux_fac_vec','Qflux_fac_nor','units']
 units          = ['cm^(-3)','km/s','eV cm^(-3)','eV cm^(-3)','eV','eV','km/s',     $
                   'eV','N/A','eV km s^(-1) cm^(-3)','eV km s^(-1) cm^(-3)','N/A']
 Vos_xyz        = [Vos_x[0],Vos_y[0],Vos_z[0]]

@@ -1,0 +1,743 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   t_4sc_bwave_phase_vel_calc.pro
+;  PURPOSE  :   This routine takes the TPLOT handles associated with spacecraft positions
+;                 and magnetic fields, from at least 4 spacecraft, to calculate the
+;                 phase speed and wave normal unit vector of the waves within the user
+;                 defined time ranges from each spacecraft.  If the user provides the
+;                 bulk flow velocity of the plasma, then the rest frame phase speed and
+;                 velocity can be calculated.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;               test_tplot_handle.pro
+;               is_a_3_vector.pro
+;               test_plot_axis_range.pro
+;               get_data.pro
+;               t_get_struc_unix.pro
+;               sample_rate.pro
+;               vector_bandpass.pro
+;               trange_clip_data.pro
+;               t_resample_tplot_struc.pro
+;               lbw_diff.pro
+;               mag__vec.pro
+;               unit_vec.pro
+;               calc_1var_stats.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TPN_POSI     :  [4]-Element [string] array defining set and valid TPLOT
+;                                 handles associated with spacecraft positions all in
+;                                 the same coordinate basis
+;               TPN_MAGF     :  [4]-Element [string] array defining set and valid TPLOT
+;                                 handles associated with magnetic field data all in
+;                                 the same coordinate basis
+;               TRAN_SE      :  [4,2]-Element [double] array defining the time stamps of
+;                                 points of interest to use for calculating the normal
+;                                 unit vector.
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               struc = t_4sc_bwave_phase_vel_calc(tpn_posi,tpn_magf,tran_se [,PERTDT=pertdt] $
+;                                                  [,VBULK=vbulk] [,DELVB=delvb] [,/NOMSSG])
+;
+;  KEYWORDS:    
+;               PERTDT       :  Scalar [numeric] defining the delta-t for the perturbing
+;                                 time stamps about the time of interest
+;                                 [Default = 0.01]
+;               VBULK        :  [3]-Element [numeric] array defining the plasma bulk
+;                                 flow velocity to use to convert the spacecraft frame
+;                                 phase speed to the plasma rest frame speed [km/s]
+;                                 [Default = [0,0,0]]
+;               DELVB        :  [3]-Element [numeric] array defining the uncertainty in
+;                                 VBULK [km/s]
+;                                 [Default = [0,0,0]]
+;               FRAN         :  [2]-Element [numeric] array defining the range of
+;                                 frequencies to use to filter the data before applying
+;                                 the cross-correlation algorithm
+;                                 [Default = FALSE]
+;               NOMSSG       :  If set, routine will not inform user of elapsed
+;                                 computational time [s]
+;                                 [Default = FALSE]
+;
+;   CHANGED:  1)  Added keyword: FRAN and
+;                   now calls test_plot_axis_range.pro and vector_bandpass.pro
+;                                                                   [10/07/2020   v1.0.1]
+;             2)  Now includes wave unit vector in both plasma and spacecraft frames
+;                                                                   [10/08/2020   v1.0.2]
+;             3)  Now calls lbw_lu_decomp_4sc_timing.pro
+;                                                                   [10/08/2020   v1.0.3]
+;             4)  Fixed a typo in Man. page and cleaned up routine
+;                                                                   [10/13/2020   v1.0.4]
+;
+;   NOTES:      
+;               1)  This routine uses LU decomposition
+;                     A . X = B
+;                       A_ijm = (∆r_ij)_m
+;                       B_ijm = (t_i - t_j)_m
+;                       X     = (k/|k|)/V_ph,sc
+;               2)  ∆r . k = V_ph,sc ∆t
+;                       V_ph,sc         = 1/|X|
+;                       (k/|k|)         = X/|X|
+;                       V_ph,sc (k/|k|) = V_ph (k/|k|) + (k/|k|) . Vsw
+;                       V_ph (k/|k|)    = V_ph,sc (k/|k|) - [(k/|k|) . Vsw]
+;               3)  ICB  =  Input Coordinate Basis
+;               4)  Coordinate Systems
+;                     SPG    :  Spinning Probe Geometric
+;                     SSL    :  Spinning Sun-Sensor L-Vector
+;                     DSL    :  Despun Sun-L-VectorZ (THEMIS and MMS Mission)
+;                     BCS    :  Body Coordinate System (MMS Mission)
+;                     DBCS   :  despun-BCS (MMS Mission)
+;                     SMPA   :  Spinning, Major Principal Axis (MMS Mission)
+;                     DMPA   :  Despun, Major Principal Axis (MMS Mission)
+;                     GEI    :  Geocentric Equatorial Inertial
+;                     GEO    :  Geographic
+;                     GSE    :  Geocentric Solar Ecliptic
+;                     GSM    :  Geocentric Solar Magnetospheric
+;                     ICB    :  Input Coordinate Basis (e.g., GSE)
+;
+;  REFERENCES:  
+;               0)  See IDL's documentation for:
+;                     https://www.harrisgeospatial.com/docs/LA_LUDC.html
+;                     https://www.harrisgeospatial.com/docs/LA_LUSOL.html
+;                     https://www.harrisgeospatial.com/docs/C_CORRELATE.html
+;               1)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;
+;   CREATED:  10/02/2020
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/13/2020   v1.0.4
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION t_4sc_bwave_phase_vel_calc,tpn_posi,tpn_magf,tran_se,PERTDT=pertdt,VBULK=vbulk,$
+                                    DELVB=delvb,FRAN=fran,NOMSSG=nomssg
+
+ex_start       = SYSTIME(1)
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define defaults
+npert          = 33L                                   ;;  # of perturbing points about selected time
+npmid          = 16L                                   ;;  Element of midpoint in perturbing array
+perd           = DINDGEN(npert[0]) - npmid[0]          ;;  Array of perturbing elements
+usearr         = LINDGEN(5) + (npmid[0] - 2L)          ;;  Array of perturbing elements to use in analysis
+del            = [-1d0,-5d-1,0d0,5d-1,1d0]
+nd             = N_ELEMENTS(del)
+;;----------------------------------------------------------------------------------------
+;;  Coordinates and vectors
+;;----------------------------------------------------------------------------------------
+;;  Define some default strings
+coord_dsl      = 'dsl'
+coord_gse      = 'gse'
+coord_gsm      = 'gsm'
+coord_bcs      = 'bcs'                    ;;  Body Coordinate System (of MMS spacecraft)
+coord_dbcs     = 'dbcs'                   ;;  despun-BCS
+coord_dmpa     = 'dmpa'                   ;;  Despun, Major Principal Axis (coordinate system)
+coordj2000     = 'j2000'                  ;;  GEI/J2000
+coord_mag      = 'mag'
+vec_str        = ['x','y','z']
+vec_col        = [250,150, 50]
+fac_lab        = ['par','per','tot']
+start_of_day_t = '00:00:00.000000000'
+end___of_day_t = '23:59:59.999999999'
+start_of_day   = '00:00:00.000000'
+end___of_day   = '23:59:59.999999'
+;;  Error messages
+noinput_mssg   = 'No input was supplied...'
+no_tpns_mssg   = 'Not enough valid TPLOT handles supplied...'
+badinpt_mssg   = 'Incorrect input format was supplied:  TRAN_SE must be an [4,2]-element [double] array'
+battpdt_mssg   = 'The TPLOT handles supplied did not contain data...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = ((N_PARAMS() LT 2) OR (SIZE(tpn_posi,/TYPE) NE 7) OR                 $
+                  (SIZE(tpn_magf,/TYPE) NE 7) OR (is_a_number(tran_se,/NOMSSG) EQ 0))
+IF (test[0]) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+testp          = test_tplot_handle(tpn_posi,TPNMS=tpnposi)
+testm          = test_tplot_handle(tpn_magf,TPNMS=tpnmagf)
+test           = testp[0] AND testm[0]
+goodp          = WHERE(tpnposi NE '',gdp)
+goodm          = WHERE(tpnmagf NE '',gdm)
+IF (gdp[0] LT 4 OR gdm[0] LT 4 OR ~test[0]) THEN BEGIN
+  MESSAGE,no_tpns_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+sznd           = SIZE(tran_se,/N_DIMENSIONS)
+szdd           = SIZE(tran_se,/DIMENSIONS)
+test           = ((N_ELEMENTS(tran_se) MOD 4) NE 0) OR ((sznd[0] NE 2) AND (N_ELEMENTS(tran_se) NE 8))
+IF (test[0]) THEN BEGIN
+  MESSAGE,badinpt_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Define time ranges
+IF (szdd[1] NE 2) THEN trans = TRANSPOSE(tran_se) ELSE trans = REFORM(tran_se,4,2)
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check PERTDT
+IF (is_a_number(pertdt,/NOMSSG)) THEN pdt = ABS(1d0*pertdt[0]) ELSE pdt = 1d-2
+;;  Define perturbing time array
+pert           = perd*pdt[0]                             ;;  Converted to ∆t about t_j
+;;  Check VBULK
+test           = (is_a_3_vector(vbulk,V_OUT=vswo ,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  vbulk_on = 0b
+  delvb_on = 0b
+  vswo     = REPLICATE(0d0,3L)
+ENDIF ELSE BEGIN
+  ;;  VBULK is on --> check if it's properly used
+  vswo     = REFORM(vswo)
+  vbulk_on = (TOTAL(FINITE(vswo)) EQ 3)
+  IF (vbulk_on[0]) THEN BEGIN
+    ;;  Check DELVB
+    test   = (is_a_3_vector(delvb,V_OUT=dvsw ,/NOMSSG) EQ 0)
+    IF (test[0]) THEN BEGIN
+      delvb_on = 0b
+    ENDIF ELSE BEGIN
+      dvsw     = ABS(REFORM(dvsw))
+      delvb_on = (TOTAL(FINITE(dvsw)) EQ 3)
+    ENDELSE
+  ENDIF ELSE delvb_on = 0b
+ENDELSE
+;;  Check FRAN
+IF (test_plot_axis_range(fran,/NOMSSG)) THEN BEGIN
+  frq_ran = 1d0*fran[SORT(fran)]
+  filt_on = 1b
+ENDIF ELSE BEGIN
+  filt_on = 0b
+  frq_ran = REPLICATE(d,2L)
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Get TPLOT data
+;;----------------------------------------------------------------------------------------
+;;  Get Bo [nT, GSE]
+get_data,tpn_magf[0],DATA=temp_magfv_1
+get_data,tpn_magf[1],DATA=temp_magfv_2
+get_data,tpn_magf[2],DATA=temp_magfv_3
+get_data,tpn_magf[3],DATA=temp_magfv_4
+;;  Get SC positions [km, GSE]
+get_data,tpn_posi[0],DATA=mms_gsepos_1
+get_data,tpn_posi[1],DATA=mms_gsepos_2
+get_data,tpn_posi[2],DATA=mms_gsepos_3
+get_data,tpn_posi[3],DATA=mms_gsepos_4
+;;  Make sure we haven't grabbed nothing from TPLOT
+test           = (SIZE(temp_magfv_1,/TYPE) NE 8) OR (SIZE(temp_magfv_2,/TYPE) NE 8) OR $
+                 (SIZE(temp_magfv_3,/TYPE) NE 8) OR (SIZE(temp_magfv_4,/TYPE) NE 8) OR $
+                 (SIZE(mms_gsepos_1,/TYPE) NE 8) OR (SIZE(mms_gsepos_2,/TYPE) NE 8) OR $
+                 (SIZE(mms_gsepos_3,/TYPE) NE 8) OR (SIZE(mms_gsepos_4,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  MESSAGE,battpdt_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Filter data if user desires
+;;----------------------------------------------------------------------------------------
+IF (filt_on[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define and check parameters
+  ;;--------------------------------------------------------------------------------------
+  bunix_1        = t_get_struc_unix(temp_magfv_1)
+  bunix_2        = t_get_struc_unix(temp_magfv_2)
+  bunix_3        = t_get_struc_unix(temp_magfv_3)
+  bunix_4        = t_get_struc_unix(temp_magfv_4)
+  ;;  Calculate sample rate [samples per second]
+  srate          = sample_rate(bunix_1,/AVE)
+  ;;  Make sure the lower frequency bound isn't above the Nyquist frequency
+  test           = (frq_ran[0] LT (95d-2*srate[0]/2d0))
+  IF (test[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Seems like the lower bound is okay but make sure it's at least zero
+    ;;------------------------------------------------------------------------------------
+    nn1            = N_ELEMENTS(bunix_1) & nn2 = N_ELEMENTS(bunix_2) & nn3 = N_ELEMENTS(bunix_3) & nn4 = N_ELEMENTS(bunix_4)
+    frq_ran[0]     = frq_ran[0] > 0d0
+    filt1          = vector_bandpass(temp_magfv_1.Y,srate[0],frq_ran[0],frq_ran[1],/MIDF)
+    filt2          = vector_bandpass(temp_magfv_2.Y,srate[0],frq_ran[0],frq_ran[1],/MIDF)
+    filt3          = vector_bandpass(temp_magfv_3.Y,srate[0],frq_ran[0],frq_ran[1],/MIDF)
+    filt4          = vector_bandpass(temp_magfv_4.Y,srate[0],frq_ran[0],frq_ran[1],/MIDF)
+    ;;------------------------------------------------------------------------------------
+    ;;  Check output
+    ;;------------------------------------------------------------------------------------
+    szdb1          = SIZE(filt1,/DIMENSIONS)
+    szdb2          = SIZE(filt2,/DIMENSIONS)
+    szdb3          = SIZE(filt3,/DIMENSIONS)
+    szdb4          = SIZE(filt4,/DIMENSIONS)
+    testv          = is_a_3_vector(filt1,/NOMSSG) AND is_a_3_vector(filt2,/NOMSSG) AND $
+                     is_a_3_vector(filt3,/NOMSSG) AND is_a_3_vector(filt4,/NOMSSG)
+    testf          = (TOTAL(FINITE(filt1)) EQ TOTAL(FINITE(temp_magfv_1.Y)))       AND $
+                     (TOTAL(FINITE(filt2)) EQ TOTAL(FINITE(temp_magfv_2.Y)))       AND $
+                     (TOTAL(FINITE(filt3)) EQ TOTAL(FINITE(temp_magfv_3.Y)))       AND $
+                     (TOTAL(FINITE(filt4)) EQ TOTAL(FINITE(temp_magfv_4.Y)))
+    test           = (nn1[0] EQ szdb1[0]) AND (nn2[0] EQ szdb2[0]) AND $
+                     (nn3[0] EQ szdb3[0]) AND (nn4[0] EQ szdb4[0]) AND $
+                     testv[0] AND testf[0]
+    IF (test[0]) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  Seems like the output is okay --> redefine structures
+      ;;----------------------------------------------------------------------------------
+      temp_magfv_1   = {X:bunix_1,Y:filt1}
+      temp_magfv_2   = {X:bunix_2,Y:filt2}
+      temp_magfv_3   = {X:bunix_3,Y:filt3}
+      temp_magfv_4   = {X:bunix_4,Y:filt4}
+    ENDIF
+    ;;------------------------------------------------------------------------------------
+    ;;  Clean up
+    ;;------------------------------------------------------------------------------------
+    dumb           = TEMPORARY(filt1) & dumb = TEMPORARY(filt2) & dumb = TEMPORARY(filt3) & dumb = TEMPORARY(filt4)
+    dumb           = TEMPORARY(bunix_1) & dumb = TEMPORARY(bunix_2) & dumb = TEMPORARY(bunix_3) & dumb = TEMPORARY(bunix_4)
+  ENDIF
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Clip to time range of interest
+;;----------------------------------------------------------------------------------------
+bgse_clip_1    = trange_clip_data(temp_magfv_1,TRANGE=REFORM(trans[0,*]),PRECISION=3)
+bgse_clip_2    = trange_clip_data(temp_magfv_2,TRANGE=REFORM(trans[1,*]),PRECISION=3)
+bgse_clip_3    = trange_clip_data(temp_magfv_3,TRANGE=REFORM(trans[2,*]),PRECISION=3)
+bgse_clip_4    = trange_clip_data(temp_magfv_4,TRANGE=REFORM(trans[3,*]),PRECISION=3)
+bunix_1        = t_get_struc_unix(bgse_clip_1)
+bunix_2        = t_get_struc_unix(bgse_clip_2)
+bunix_3        = t_get_struc_unix(bgse_clip_3)
+bunix_4        = t_get_struc_unix(bgse_clip_4)
+bgsev_1        = bgse_clip_1.Y
+bgsev_2        = bgse_clip_2.Y
+bgsev_3        = bgse_clip_3.Y
+bgsev_4        = bgse_clip_4.Y
+;;----------------------------------------------------------------------------------------
+;;  Trim off excess edge points
+;;----------------------------------------------------------------------------------------
+nn1            = N_ELEMENTS(bunix_1) & nn2 = N_ELEMENTS(bunix_2) & nn3 = N_ELEMENTS(bunix_3) & nn4 = N_ELEMENTS(bunix_4)
+nmin           = MIN([nn1[0],nn2[0],nn3[0],nn4[0]],ln)
+nmnodd         = (nmin[0] MOD 2) NE 0                   ;;  Check if odd or even
+IF (ln[0] EQ 0) THEN IF (nmnodd[0]) THEN ind1 = LINDGEN(nn1[0] - 1L) ELSE ind1 = LINDGEN(nn1[0])
+IF (ln[0] EQ 1) THEN IF (nmnodd[0]) THEN ind2 = LINDGEN(nn2[0] - 1L) ELSE ind2 = LINDGEN(nn2[0])
+IF (ln[0] EQ 2) THEN IF (nmnodd[0]) THEN ind3 = LINDGEN(nn3[0] - 1L) ELSE ind3 = LINDGEN(nn3[0])
+IF (ln[0] EQ 3) THEN IF (nmnodd[0]) THEN ind4 = LINDGEN(nn4[0] - 1L) ELSE ind4 = LINDGEN(nn4[0])
+nmin           = ([N_ELEMENTS(ind1),N_ELEMENTS(ind2),N_ELEMENTS(ind3),N_ELEMENTS(ind4)])[ln[0]]
+ndif           = [nn1[0],nn2[0],nn3[0],nn4[0]] - nmin[0]
+IF (ln[0] NE 0) THEN ind1 = LINDGEN(nmin[0]) + ndif[0]/2L
+IF (ln[0] NE 1) THEN ind2 = LINDGEN(nmin[0]) + ndif[1]/2L
+IF (ln[0] NE 2) THEN ind3 = LINDGEN(nmin[0]) + ndif[2]/2L
+IF (ln[0] NE 3) THEN ind4 = LINDGEN(nmin[0]) + ndif[3]/2L
+;;  Redefine parameters
+bunix_1        = bunix_1[ind1]
+bunix_2        = bunix_2[ind2]
+bunix_3        = bunix_3[ind3]
+bunix_4        = bunix_4[ind4]
+bgsev_1        = bgsev_1[ind1,*]
+bgsev_2        = bgsev_2[ind2,*]
+bgsev_3        = bgsev_3[ind3,*]
+bgsev_4        = bgsev_4[ind4,*]
+;;----------------------------------------------------------------------------------------
+;;  Resample data
+;;----------------------------------------------------------------------------------------
+;;  Resample position data
+posi_clip_1    = t_resample_tplot_struc(mms_gsepos_1,bunix_1,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+posi_clip_2    = t_resample_tplot_struc(mms_gsepos_2,bunix_2,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+posi_clip_3    = t_resample_tplot_struc(mms_gsepos_3,bunix_3,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+posi_clip_4    = t_resample_tplot_struc(mms_gsepos_4,bunix_4,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+;;----------------------------------------------------------------------------------------
+;;  Cross-correlate field data
+;;----------------------------------------------------------------------------------------
+;;  Define index shift array
+nshft          = nmin[0] - 3L
+jshft          = LINDGEN(nshft[0]) - nshft[0]/2L
+;;  Cross-correlation between 1 and 2
+bx_12_cc       = C_CORRELATE(bgsev_1[*,0],bgsev_2[*,0],jshft,/DOUBLE)
+by_12_cc       = C_CORRELATE(bgsev_1[*,1],bgsev_2[*,1],jshft,/DOUBLE)
+bz_12_cc       = C_CORRELATE(bgsev_1[*,2],bgsev_2[*,2],jshft,/DOUBLE)
+;;  Cross-correlation between 1 and 3
+bx_13_cc       = C_CORRELATE(bgsev_1[*,0],bgsev_3[*,0],jshft,/DOUBLE)
+by_13_cc       = C_CORRELATE(bgsev_1[*,1],bgsev_3[*,1],jshft,/DOUBLE)
+bz_13_cc       = C_CORRELATE(bgsev_1[*,2],bgsev_3[*,2],jshft,/DOUBLE)
+;;  Cross-correlation between 1 and 4
+bx_14_cc       = C_CORRELATE(bgsev_1[*,0],bgsev_4[*,0],jshft,/DOUBLE)
+by_14_cc       = C_CORRELATE(bgsev_1[*,1],bgsev_4[*,1],jshft,/DOUBLE)
+bz_14_cc       = C_CORRELATE(bgsev_1[*,2],bgsev_4[*,2],jshft,/DOUBLE)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Determine the best time lag
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Shift between 1 and 2
+mx_bx12_cc     = MAX(ABS(bx_12_cc),/NAN,ix_bx12)
+mx_by12_cc     = MAX(ABS(by_12_cc),/NAN,ix_by12)
+mx_bz12_cc     = MAX(ABS(bz_12_cc),/NAN,ix_bz12)
+;;  Shift between 1 and 3
+mx_bx13_cc     = MAX(ABS(bx_13_cc),/NAN,ix_bx13)
+mx_by13_cc     = MAX(ABS(by_13_cc),/NAN,ix_by13)
+mx_bz13_cc     = MAX(ABS(bz_13_cc),/NAN,ix_bz13)
+;;  Shift between 1 and 4
+mx_bx14_cc     = MAX(ABS(bx_14_cc),/NAN,ix_bx14)
+mx_by14_cc     = MAX(ABS(by_14_cc),/NAN,ix_by14)
+mx_bz14_cc     = MAX(ABS(bz_14_cc),/NAN,ix_bz14)
+;;  Find the maximum CC coefficient to use as the correct shift index value
+mx_cc_12       = MAX([mx_bx12_cc[0],mx_by12_cc[0],mx_bz12_cc[0]],ix_mx_12)
+mx_cc_13       = MAX([mx_bx13_cc[0],mx_by13_cc[0],mx_bz13_cc[0]],ix_mx_13)
+mx_cc_14       = MAX([mx_bx14_cc[0],mx_by14_cc[0],mx_bz14_cc[0]],ix_mx_14)
+mx_cc_ij       = [mx_cc_12[0],mx_cc_13[0],mx_cc_14[0]]
+;;  Define proper shift value and corresponding array index
+ii_b_12        = ([ix_bx12[0],ix_by12[0],ix_bz12[0]])[ix_mx_12[0]]
+ii_b_13        = ([ix_bx13[0],ix_by13[0],ix_bz13[0]])[ix_mx_13[0]]
+ii_b_14        = ([ix_bx14[0],ix_by14[0],ix_bz14[0]])[ix_mx_14[0]]
+jshft_arr      = [jshft[ii_b_12[0]],jshft[ii_b_13[0]],jshft[ii_b_14[0]]]
+;;----------------------------------------------------------------------------------------
+;;  Shift applies to first
+;;    --> add or subtract JSHFT sample periods to first array times to make data match up
+;;    --> ∆t_12 = (t_2 - t_1)
+;;      --> t_1 = MEAN(t_1) + JSHFT[0]*T_peri[0]
+;;      --> t_2 = MEAN(t_2)
+;;----------------------------------------------------------------------------------------
+;;  Calculate sample rate [samples per second]
+srate          = sample_rate(bunix_1,/AVE)
+speri          = 1d0/srate[0]
+;;  Define midpoint times for each spacecraft (SC1 will have 3)
+t_234          = [MEAN(bunix_2),MEAN(bunix_3),MEAN(bunix_4)]
+t_12_j         = REPLICATE(d,3L)
+FOR k=0L, 2L DO t_12_j[k] = MEAN(bunix_1) + speri[0]*jshft_arr[k[0]]
+;;  Define dummy arrays
+;;  [P,S,V] {P = # of perturbed pts, S = # of SC, V = # of vector components}
+t_1j_all       = REPLICATE(d,5L,4L,3L)
+FOR k=0L, 3L DO BEGIN
+  FOR j=0L, 2L DO BEGIN
+    IF (k EQ 0) THEN t_1j_all[*,k,j] = t_12_j[j]     + pert[usearr]
+    IF (k EQ 1) THEN t_1j_all[*,k,j] = t_234[k - 1L] + pert[usearr]
+    IF (k EQ 2) THEN t_1j_all[*,k,j] = t_234[k - 1L] + pert[usearr]
+    IF (k EQ 3) THEN t_1j_all[*,k,j] = t_234[k - 1L] + pert[usearr]
+  ENDFOR
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Re-interpolate positions to new times
+;;----------------------------------------------------------------------------------------
+d_spl_12       = t_resample_tplot_struc(mms_gsepos_1,t_12_j[0] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+d_spl_13       = t_resample_tplot_struc(mms_gsepos_1,t_12_j[1] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+d_spl_14       = t_resample_tplot_struc(mms_gsepos_1,t_12_j[2] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+d_spl_2        = t_resample_tplot_struc(mms_gsepos_2, t_234[0] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+d_spl_3        = t_resample_tplot_struc(mms_gsepos_3, t_234[1] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+d_spl_4        = t_resample_tplot_struc(mms_gsepos_4, t_234[2] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+;;  Define dummy arrays
+;;  [P,S,V] {P = # of perturbed pts, S = # of SC, V = # of vector components}
+new_p1j          = REPLICATE(d,5L,3L,3L)
+new_p234         = REPLICATE(d,5L,3L,3L)
+new_posi         = REPLICATE(d,5L,4L,3L)
+new_unix         = REPLICATE(d,5L,4L)
+new_p1j[*,0L,*]  = REFORM(d_spl_12.Y[usearr,*])
+new_p1j[*,1L,*]  = REFORM(d_spl_13.Y[usearr,*])
+new_p1j[*,2L,*]  = REFORM(d_spl_14.Y[usearr,*])
+new_p234[*,0L,*] = REFORM(d_spl_2.Y[usearr,*])
+new_p234[*,1L,*] = REFORM(d_spl_3.Y[usearr,*])
+new_p234[*,2L,*] = REFORM(d_spl_4.Y[usearr,*])
+;;  Define output spacecraft median positions and times
+new_posi[*,0L,*] = MEDIAN(new_p1j,DIMENSION=2)
+FOR k=0L, 2L DO new_posi[*,(k + 1L),*] = new_p234[*,k,*]
+new_unix[*,0L]   = MEDIAN(REFORM(t_1j_all[*,0L,*]),DIMENSION=2)
+FOR k=1L, 3L DO new_unix[*,k]          = t_1j_all[*,k,0L]
+;;----------------------------------------------------------------------------------------
+;;  Define differences
+;;----------------------------------------------------------------------------------------
+;;  ∆r_ij = r_i - r_j
+dr_12_12_all   = lbw_diff(REFORM(new_p1j[*,0L,*]),REFORM(new_p234[*,0L,*]),/NAN)
+dr_12_13_all   = lbw_diff(REFORM(new_p1j[*,0L,*]),REFORM(new_p234[*,1L,*]),/NAN)
+dr_12_14_all   = lbw_diff(REFORM(new_p1j[*,0L,*]),REFORM(new_p234[*,2L,*]),/NAN)
+dr_13_12_all   = lbw_diff(REFORM(new_p1j[*,1L,*]),REFORM(new_p234[*,0L,*]),/NAN)
+dr_13_13_all   = lbw_diff(REFORM(new_p1j[*,1L,*]),REFORM(new_p234[*,1L,*]),/NAN)
+dr_13_14_all   = lbw_diff(REFORM(new_p1j[*,1L,*]),REFORM(new_p234[*,2L,*]),/NAN)
+dr_14_12_all   = lbw_diff(REFORM(new_p1j[*,2L,*]),REFORM(new_p234[*,0L,*]),/NAN)
+dr_14_13_all   = lbw_diff(REFORM(new_p1j[*,2L,*]),REFORM(new_p234[*,1L,*]),/NAN)
+dr_14_14_all   = lbw_diff(REFORM(new_p1j[*,2L,*]),REFORM(new_p234[*,2L,*]),/NAN)
+;;  ∆t_ij = t_i - t_j
+dt_12_12_all   = lbw_diff(REFORM(t_1j_all[*,0L,0L]),REFORM(t_1j_all[*,1L,0L]),/NAN)
+dt_12_13_all   = lbw_diff(REFORM(t_1j_all[*,0L,0L]),REFORM(t_1j_all[*,2L,0L]),/NAN)
+dt_12_14_all   = lbw_diff(REFORM(t_1j_all[*,0L,0L]),REFORM(t_1j_all[*,3L,0L]),/NAN)
+dt_13_12_all   = lbw_diff(REFORM(t_1j_all[*,0L,1L]),REFORM(t_1j_all[*,1L,1L]),/NAN)
+dt_13_13_all   = lbw_diff(REFORM(t_1j_all[*,0L,1L]),REFORM(t_1j_all[*,2L,1L]),/NAN)
+dt_13_14_all   = lbw_diff(REFORM(t_1j_all[*,0L,1L]),REFORM(t_1j_all[*,3L,1L]),/NAN)
+dt_14_12_all   = lbw_diff(REFORM(t_1j_all[*,0L,2L]),REFORM(t_1j_all[*,1L,2L]),/NAN)
+dt_14_13_all   = lbw_diff(REFORM(t_1j_all[*,0L,2L]),REFORM(t_1j_all[*,2L,2L]),/NAN)
+dt_14_14_all   = lbw_diff(REFORM(t_1j_all[*,0L,2L]),REFORM(t_1j_all[*,3L,2L]),/NAN)
+;;----------------------------------------------------------------------------------------
+;;  Define tensors
+;;----------------------------------------------------------------------------------------
+dr_tens_12_all = REPLICATE(d,5L,3L,3L)
+dr_tens_13_all = dr_tens_12_all
+dr_tens_14_all = dr_tens_12_all
+dt_tens_12_all = REFORM(dr_tens_12_all[*,*,0L])
+dt_tens_13_all = dt_tens_12_all
+dt_tens_14_all = dt_tens_12_all
+FOR k=0L, 4L DO BEGIN
+  ;;  (∆r_ij)_m = r_i,m - r_j,m
+  dr_tens_12_all[k,*,*] = [[REFORM(dr_12_12_all[k,*])],[REFORM(dr_12_13_all[k,*])],[REFORM(dr_12_14_all[k,*])]]
+  dr_tens_13_all[k,*,*] = [[REFORM(dr_13_12_all[k,*])],[REFORM(dr_13_13_all[k,*])],[REFORM(dr_13_14_all[k,*])]]
+  dr_tens_14_all[k,*,*] = [[REFORM(dr_14_12_all[k,*])],[REFORM(dr_14_13_all[k,*])],[REFORM(dr_14_14_all[k,*])]]
+  ;;  (∆t_ij)_m = t_i,m - t_j,m
+  dt_tens_12_all[k,*]   = [[dt_12_12_all[k]],[dt_12_13_all[k]],[dt_12_14_all[k]]]
+  dt_tens_13_all[k,*]   = [[dt_13_12_all[k]],[dt_13_13_all[k]],[dt_13_14_all[k]]]
+  dt_tens_14_all[k,*]   = [[dt_14_12_all[k]],[dt_14_13_all[k]],[dt_14_14_all[k]]]
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Decompose tensors
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  - Use LU decomposition to find (i.e., t_4sc_normal_calc.pro)
+;;      A . X = B
+;;        A_ijm = (∆r_ij)_m
+;;        B_ijm = (t_i - t_j)_m
+;;        X     = (k/|k|)/V_ph,sc
+;;  - V_ph,sc = 1/|X| and (k/|k|) = X/|X|
+;;  - V_ph,sc (k/|k|) = V_ph (k/|k|) + (k/|k|) . Vsw
+;;       V_ph (k/|k|) = V_ph,sc (k/|k|) - [(k/|k|) . Vsw]
+V_ph_12        = REPLICATE(d,5L,2L)      ;;  Speed along outward normal [distance units per second]
+V_ph_13        = V_ph_12
+V_ph_14        = V_ph_12
+khat_12        = REPLICATE(d,5L,3L,2L)   ;;  Outward normal unit vector [ICB]
+khat_13        = khat_12
+khat_14        = khat_12
+dr_ten_str     = {T0:dr_tens_12_all,T1:dr_tens_13_all,T2:dr_tens_14_all}
+dt_ten_str     = {T0:dt_tens_12_all,T1:dt_tens_13_all,T2:dt_tens_14_all}
+nt             = N_TAGS(dr_ten_str)
+FOR k=0L, 4L DO BEGIN
+  dr_tensor      = {T0:REFORM(dr_tens_12_all[k,*,*]),T1:REFORM(dr_tens_13_all[k,*,*]),T2:REFORM(dr_tens_14_all[k,*,*])}
+  dt_tensor      = {T0:REFORM(dt_tens_12_all[k,*,*]),T1:REFORM(dt_tens_13_all[k,*,*]),T2:REFORM(dt_tens_14_all[k,*,*])}
+  struc          = lbw_lu_decomp_4sc_timing(dr_tensor,dt_tensor,DEL_R=1d0,DEL_T=50d-6,NOMSSG=nomssg)
+  ;;  Define phase speed [km/s, SCF] and wave unit vector
+  V_ph_12[k,*]   = struc.VPH_SC_SPD[0L,*]
+  khat_12[k,*,*] =   struc.KHAT_ICB[0L,*,*]
+  V_ph_13[k,*]   = struc.VPH_SC_SPD[1L,*]
+  khat_13[k,*,*] =   struc.KHAT_ICB[1L,*,*]
+  V_ph_14[k,*]   = struc.VPH_SC_SPD[2L,*]
+  khat_14[k,*,*] =   struc.KHAT_ICB[2L,*,*]
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define median SCF stuff
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+Vphv__scf      = REPLICATE(d,3L,2L)
+Vphs__scf      = REPLICATE(d,2L)
+dumbv          = REPLICATE(d,5L,nd[0],3L)
+khat__scf      = Vphv__scf
+;;  Define wave unit vector [ICB]
+dumbkx         = [khat_12[*,0L,0L],khat_13[*,0L,0L],khat_14[*,0L,0L]]
+dumbky         = [khat_12[*,1L,0L],khat_13[*,1L,0L],khat_14[*,1L,0L]]
+dumbkz         = [khat_12[*,2L,0L],khat_13[*,2L,0L],khat_14[*,2L,0L]]
+onvs_khat_x    = calc_1var_stats(dumbkx,/NAN)
+onvs_khat_y    = calc_1var_stats(dumbky,/NAN)
+onvs_khat_z    = calc_1var_stats(dumbkz,/NAN)
+khat__scf[*,0] = [onvs_khat_x[3],onvs_khat_y[3],onvs_khat_z[3]]
+khat__scf[0,1] = (onvs_khat_x[9] - onvs_khat_x[8])/2d0
+khat__scf[1,1] = (onvs_khat_y[9] - onvs_khat_y[8])/2d0
+khat__scf[2,1] = (onvs_khat_z[9] - onvs_khat_z[8])/2d0
+;;  Define SCF phase speed and associated velocity [km/s, ICB]
+FOR i=0L, nd[0] - 1L DO BEGIN         ;;  ∂V_ph
+  vph1d          =        [[V_ph_12[*,0]],[V_ph_13[*,0]],[V_ph_14[*,0]]] + $
+                   del[i]*[[V_ph_12[*,1]],[V_ph_13[*,1]],[V_ph_14[*,1]]]
+  dumbv[*,i,*]   = vph1d
+ENDFOR
+onvs_Vphs_a    = calc_1var_stats(dumbv,/NAN)
+;;----------------------------------------------------------------------------------------
+;;  Define SCF scalar phase speed [km/s]
+;;----------------------------------------------------------------------------------------
+Vphs__scf[0]   = onvs_Vphs_a[3]
+Vphs__scf[1]   = (onvs_Vphs_a[9] - onvs_Vphs_a[8])/2d0
+;;----------------------------------------------------------------------------------------
+;;  Define SCF vector phase velocity
+;;----------------------------------------------------------------------------------------
+dumbv          = REPLICATE(d,nd[0],nd[0],3L)
+FOR l=0L, nd[0] - 1L DO BEGIN           ;;  ∂k
+  khat                  = REFORM(khat__scf[*,0L] + del[l]*khat__scf[*,1L])
+  FOR i=0L, nd[0] - 1L DO BEGIN         ;;  ∂V_ph
+    vph1d          = Vphs__scf[0] + del[i]*Vphs__scf[1]
+    dumbv[l,i,*]   = vph1d[0]*khat
+  ENDFOR
+ENDFOR
+onvs_Vphv_x    = calc_1var_stats(dumbv[*,*,0],/NAN)
+onvs_Vphv_y    = calc_1var_stats(dumbv[*,*,1],/NAN)
+onvs_Vphv_z    = calc_1var_stats(dumbv[*,*,2],/NAN)
+Vphv__scf[*,0] = [onvs_Vphv_x[3],onvs_Vphv_y[3],onvs_Vphv_z[3]]
+Vphv__scf[0,1] = (onvs_Vphv_x[9] - onvs_Vphv_x[8])/2d0
+Vphv__scf[1,1] = (onvs_Vphv_y[9] - onvs_Vphv_y[8])/2d0
+Vphv__scf[2,1] = (onvs_Vphv_z[9] - onvs_Vphv_z[8])/2d0
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Find rest frame phase speed
+;;    V_ph = V_ph,sc - (k . Vup)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+IF (vbulk_on[0]) THEN BEGIN
+  IF (delvb_on[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;------------------------------------------------------------------------------------
+    ;;------------------------------------------------------------------------------------
+    ;;  Calculate rest frame phase speed with ∂Vbulk included
+    ;;------------------------------------------------------------------------------------
+    ;;------------------------------------------------------------------------------------
+    ;;------------------------------------------------------------------------------------
+    Vph_rest_120   = REPLICATE(d,5L,nd[0],nd[0],nd[0])
+    Vph_rest_130   = Vph_rest_120
+    Vph_rest_140   = Vph_rest_120
+    FOR m=0L, nd[0] - 1L DO BEGIN           ;;  ∂Vup
+      Vup1d  = REFORM(vswo + del[m]*dvsw)
+      Vup2d  = REPLICATE(1d0,5L) # Vup1d
+      FOR l=0L, nd[0] - 1L DO BEGIN         ;;  ∂k
+        FOR i=0L, nd[0] - 1L DO BEGIN       ;;  ∂V_ph,sc
+          khat                  = REFORM(khat_12[*,*,0L] + del[l]*khat_12[*,*,1L])
+          kdV                   = TOTAL(khat*Vup2d,2L,/NAN)
+          Vph_rest_120[*,i,l,m] = (V_ph_12[*,0L] + del[i]*V_ph_12[*,1L]) - kdV
+          khat                  = REFORM(khat_13[*,*,0L] + del[l]*khat_13[*,*,1L])
+          kdV                   = TOTAL(khat*Vup2d,2L,/NAN)
+          Vph_rest_130[*,i,l,m] = (V_ph_13[*,0L] + del[i]*V_ph_13[*,1L]) - kdV
+          khat                  = REFORM(khat_14[*,*,0L] + del[l]*khat_14[*,*,1L])
+          kdV                   = TOTAL(khat*Vup2d,2L,/NAN)
+          Vph_rest_140[*,i,l,m] = (V_ph_14[*,0L] + del[i]*V_ph_14[*,1L]) - kdV
+        ENDFOR
+      ENDFOR
+    ENDFOR
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;------------------------------------------------------------------------------------
+    ;;------------------------------------------------------------------------------------
+    ;;  Calculate rest frame phase speed without ∂Vbulk included
+    ;;------------------------------------------------------------------------------------
+    ;;------------------------------------------------------------------------------------
+    ;;------------------------------------------------------------------------------------
+    Vph_rest_120   = REPLICATE(d,5L,nd[0],nd[0])
+    Vph_rest_130   = Vph_rest_120
+    Vph_rest_140   = Vph_rest_120
+    Vup2d          = REPLICATE(1d0,5L) # vswo
+    FOR l=0L, nd[0] - 1L DO BEGIN         ;;  ∂k
+      FOR i=0L, nd[0] - 1L DO BEGIN       ;;  ∂V_ph,sc
+        khat                  = REFORM(khat_12[*,*,0L] + del[l]*khat_12[*,*,1L])
+        kdV                   = TOTAL(khat*Vup2d,2L,/NAN)
+        Vph_rest_120[*,i,l]   = (V_ph_12[*,0L] + del[i]*V_ph_12[*,1L]) - kdV
+        khat                  = REFORM(khat_13[*,*,0L] + del[l]*khat_13[*,*,1L])
+        kdV                   = TOTAL(khat*Vup2d,2L,/NAN)
+        Vph_rest_130[*,i,l]   = (V_ph_13[*,0L] + del[i]*V_ph_13[*,1L]) - kdV
+        khat                  = REFORM(khat_14[*,*,0L] + del[l]*khat_14[*,*,1L])
+        kdV                   = TOTAL(khat*Vup2d,2L,/NAN)
+        Vph_rest_140[*,i,l]   = (V_ph_14[*,0L] + del[i]*V_ph_14[*,1L]) - kdV
+      ENDFOR
+    ENDFOR
+  ENDELSE
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define rest frame phase speeds and uncertainties [km/s, scalar]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Calculate one-variable stats on results
+  onvs_Vphr_12   = calc_1var_stats(Vph_rest_120,/NAN)
+  onvs_Vphr_13   = calc_1var_stats(Vph_rest_130,/NAN)
+  onvs_Vphr_14   = calc_1var_stats(Vph_rest_140,/NAN)
+  ;;  Define rest frame phase speeds and uncertainties [km/s, scalar]
+  Vphsrest_12    = REPLICATE(d,2L)
+  Vphsrest_13    = Vphsrest_12
+  Vphsrest_14    = Vphsrest_12
+  Vphsrest_12[0] = onvs_Vphr_12[3]
+  Vphsrest_13[0] = onvs_Vphr_13[3]
+  Vphsrest_14[0] = onvs_Vphr_14[3]
+  Vphsrest_12[1] = (onvs_Vphr_12[9] - onvs_Vphr_12[8])/2d0
+  Vphsrest_13[1] = (onvs_Vphr_13[9] - onvs_Vphr_13[8])/2d0
+  Vphsrest_14[1] = (onvs_Vphr_14[9] - onvs_Vphr_14[8])/2d0
+  ;;--------------------------------------------------------------------------------------
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define rest frame phase velocities and uncertainties [km/s, ICB]
+  ;;--------------------------------------------------------------------------------------
+  ;;--------------------------------------------------------------------------------------
+  Vphv_rest_120  = REPLICATE(d,5L,nd[0],nd[0],3L)
+  Vphv_rest_130  = Vphv_rest_120
+  Vphv_rest_140  = Vphv_rest_120
+  FOR l=0L, nd[0] - 1L DO BEGIN         ;;  ∂k
+    FOR i=0L, nd[0] - 1L DO BEGIN       ;;  ∂V_ph
+      khat                   = REFORM(khat_12[*,*,0L] + del[l]*khat_12[*,*,1L])
+      Vph2d                  = REPLICATE((Vphsrest_12[0L] + del[i]*Vphsrest_12[1L]),5L,3L)
+      Vphv_rest_120[*,i,l,*] = khat*Vph2d
+      khat                   = REFORM(khat_13[*,*,0L] + del[l]*khat_13[*,*,1L])
+      Vph2d                  = REPLICATE((Vphsrest_13[0L] + del[i]*Vphsrest_13[1L]),5L,3L)
+      Vphv_rest_130[*,i,l,*] = khat*Vph2d
+      khat                   = REFORM(khat_14[*,*,0L] + del[l]*khat_14[*,*,1L])
+      Vph2d                  = REPLICATE((Vphsrest_14[0L] + del[i]*Vphsrest_14[1L]),5L,3L)
+      Vphv_rest_140[*,i,l,*] = khat*Vph2d
+    ENDFOR
+  ENDFOR
+  ;;--------------------------------------------------------------------------------------
+  ;;  Reduce three sets of solutions to one
+  ;;--------------------------------------------------------------------------------------
+  ;;  Calculate one-variable stats on results
+  Vphv_rx        = [Vphv_rest_120[*,*,*,0L],Vphv_rest_130[*,*,*,0L],Vphv_rest_140[*,*,*,0L]]
+  Vphv_ry        = [Vphv_rest_120[*,*,*,1L],Vphv_rest_130[*,*,*,1L],Vphv_rest_140[*,*,*,1L]]
+  Vphv_rz        = [Vphv_rest_120[*,*,*,2L],Vphv_rest_130[*,*,*,2L],Vphv_rest_140[*,*,*,2L]]
+  onvs_Vphv_x    = calc_1var_stats(Vphv_rx,/NAN)
+  onvs_Vphv_y    = calc_1var_stats(Vphv_ry,/NAN)
+  onvs_Vphv_z    = calc_1var_stats(Vphv_rz,/NAN)
+  ;;  Define rest frame phase velocities and uncertainties [km/s, ICB]
+  dumbv          = REPLICATE(d,nd[0],3L)
+  dumbk          = dumbv
+  Vphv_rest      = dumbv[0L:2L,0L:1L]
+  khat_rest      = Vphv_rest
+  Vphs_rest      = dumbv[0L:1L,0L]
+  Vphv_rest[*,0] = [onvs_Vphv_x[3],onvs_Vphv_y[3],onvs_Vphv_z[3]]
+  Vphv_rest[0,1] = (onvs_Vphv_x[9] - onvs_Vphv_x[8])/2d0
+  Vphv_rest[1,1] = (onvs_Vphv_y[9] - onvs_Vphv_y[8])/2d0
+  Vphv_rest[2,1] = (onvs_Vphv_z[9] - onvs_Vphv_z[8])/2d0
+  FOR i=0L, nd[0] - 1L DO BEGIN         ;;  ∂V_ph
+    vph1d          = Vphv_rest[*,0] + del[i]*Vphv_rest[*,1]
+    vmag           = mag__vec(vph1d,/NAN)
+    dumbv[i,*]     = vmag[0]
+    dumbk[i,*]     = REFORM(unit_vec(vph1d,/NAN))
+  ENDFOR
+  ;;  Define scalar phase speed [km/s] with uncertainty
+  Vphs_rest[0]   = MEDIAN(dumbv[*,0])
+  Vphs_rest[1]   = STDDEV(dumbv[*,0],/NAN)
+  khat_rest[*,0] = MEDIAN(dumbk,DIMENSION=1)
+  khat_rest[*,1] = STDDEV(dumbk,/NAN,DIMENSION=1)
+ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Cannot calculate rest frame phase velocity
+  ;;--------------------------------------------------------------------------------------
+  Vphv_rest      = REPLICATE(d,3L,2L)
+  Vphs_rest      = REPLICATE(d,2L)
+  khat_rest      = Vphv_rest
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define output
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+tags           = ['UNIX','SC_POSI','VPH_SC_SPD','VPH_SC_VEC','VPH_RF_SPD','VPH_RF_VEC',$
+                  'KHAT_SC_ICB','KHAT_RF_ICB','max_cc_ij','cc_shift_arr']
+struc          = CREATE_STRUCT(tags,new_unix,new_posi,Vphs__scf,Vphv__scf,Vphs_rest,   $
+                               Vphv_rest,khat__scf,khat_rest,mx_cc_ij,jshft_arr)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+ex_time        = SYSTIME(1) - ex_start[0]
+IF ~KEYWORD_SET(nomssg) THEN MESSAGE,STRING(ex_time[0])+' seconds execution time.',/CONTINUE,/INFORMATIONAL
+
+RETURN,struc[0]
+END
+
+

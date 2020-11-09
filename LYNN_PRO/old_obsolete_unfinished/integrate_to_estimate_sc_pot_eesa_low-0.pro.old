@@ -1,0 +1,368 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   integrate_to_estimate_sc_pot_eesa_low.pro
+;  PURPOSE  :   This routine estimates the correct spacecraft potential, phi_sc, necessary
+;                 to make the 3D numerical zeroth velocity moment integral match the
+;                 number density estimated from the WAVES TNR data.  The routine assumes
+;                 that the average of PHI_LU.Y corresponds to the phi_sc dividing the
+;                 photoelectrons from the ambient electrons, i.e., in a 1D cut it looks
+;                 like a V in the energy flux if Emin < phi_sc.  This will be used to
+;                 remove the photoelectrons.  The routine will then find a new phi_sc
+;                 that actually makes the numerically integrated number density match
+;                 the real value determined from the WAVES TNR data.  The routine will
+;                 attempt to find boundaries that correctly result in number densities
+;                 matching the bounds from the WAVES TNR result.  This is all assuming
+;                 the spacecraft is in the solar wind, i.e., in sunlight such that the
+;                 true phi_sc > 0.  Note if the anode efficiencies were properly
+;                 calculated for the Wind 3DP EESA Low instrument at all times, then
+;                 the phi_sc on input would match the phi_sc on output from this routine.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               load_constants_fund_em_atomic_c2014_batch.pro
+;               load_constants_extra_part_co2014_ci2015_batch.pro
+;               test_wind_vs_themis_esa_struct.pro
+;               tplot_struct_format_test.pro
+;               t_resample_tplot_struc.pro
+;               remove_nans.pro
+;               conv_vdfidlstr_2_f_vs_vxyz_thm_wi.pro
+;               lbw_nintegrate_3d_vdf.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               ALL_EL     :  [N]-Element [numeric] array of IDL data structures from
+;                               the Wind/3DP EESA Low instrument
+;                               [see get_el.pro and/or get_elb.pro]
+;               NETNR      :  Scalar [TPLOT structure] containing the electron number
+;                               density [cm^(-3)] estimated from the WAVES TNR data
+;                               with the following tags and formats:
+;                                 X  :  [K]-Element [double] array of Unix times
+;                                 Y  :  [K,2]-Element [numeric] array of Ne values [low/upp]
+;               PHI_LU     :  Scalar [TPLOT structure] containing the lower/upper bound
+;                               on the spacecraft potential [eV] estimated from examining
+;                               the 1D cuts of the electron velocity distribution function
+;                               to determine where the photoelectrons stop and the
+;                               ambient electrons begin, i.e., output from
+;                               estimate_scpot_wind_eesa_low.pro (user decides which
+;                               is best but the SCPOT_DFDE_INFLECT seems to work well),
+;                               with the following tags and formats:
+;                                 X  :  [L]-Element [double] array of Unix times
+;                                 Y  :  [L,2]-Element [numeric] array of phi_sc values [low/upp]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               int_str = integrate_to_estimate_sc_pot_eesa_low(all_el,netnr,phi_lu  $
+;                                           [,FXYZ_ALL=fxyz_all] [,VXYZ_ALL=velxyz_a])
+;
+;  KEYWORDS:    
+;               NOMSSG     :  If set, routine will not inform user of elapsed computational
+;                               time [s]
+;                               [Default = FALSE]
+;               ***  OUTPUT  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               ***  [all the following changed on output]  ***
+;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+;               FXYZ_ALL   :  Set to a named variable to return all the different
+;                               f(Vx,Vy,Vz) used in the numerical integrations.  The
+;                               output will be an [N,21,1320]-element array.
+;               VXYZ_ALL   :  Set to a named variable to return all the different
+;                               (Vx,Vy,Vz) used in the numerical integrations.  The
+;                               output will be an [N,21,1320,3]-element array.
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  See also:
+;                     get_el.pro
+;                     get_elb.pro
+;               2)  This routine assumes the following tags are properly defined within
+;                     each scalar structure of ALL_EL, in addition to the usually
+;                     required ones like DATA and ENERGY etc.
+;                       MAGF
+;                       VSW
+;                       SC_POT
+;
+;  REFERENCES:  
+;               1)  Lavraud, B., and D.E. Larson "Correcting moments of in situ particle
+;                      distribution functions for spacecraft electrostatic charging,"
+;                      J. Geophys. Res. 121, pp. 8462--8474, doi:10.1002/2016JA022591,
+;                      2016.
+;
+;   CREATED:  10/28/2020
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/28/2020   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION integrate_to_estimate_sc_pot_eesa_low,all_el,netnr,phi_lus,FXYZ_ALL=fxyz_all,$
+                                               VXYZ_ALL=velxyz_a,NOMSSG=nomssg
+
+ex_start       = SYSTIME(1)
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+@load_constants_fund_em_atomic_c2014_batch.pro
+@load_constants_extra_part_co2014_ci2015_batch.pro
+def_scpmin     = 1d-1
+def_scpmax     = 3d1
+;;  Energy and Temperature
+f_1eV          = qq[0]/hh[0]          ;;  Freq. associated with 1 eV of energy [ Hz --> f_1eV*energy{eV} = freq{Hz} ]
+eV2J           = hh[0]*f_1eV[0]       ;;  Energy associated with 1 eV of energy [ J --> J_1eV*energy{eV} = energy{J} ]
+eV2K           = qq[0]/kB[0]          ;;  Temp. associated with 1 eV of energy [11,604.5221 K/eV, 2014 CODATA/NIST --> K_eV*energy{eV} = Temp{K}]
+K2eV           = kB[0]/qq[0]          ;;  Energy associated with 1 K Temp. [8.6173303 x 10^(-5) eV/K, 2014 CODATA/NIST --> eV_K*Temp{K} = energy{eV}]
+;;  Define some constants for lbw_nintegrate_3d_vdf.pro
+vlim           = 2e4
+ngrid          = 101L
+slice2d        = 1b
+vec1           = [1d0,0d0,0d0]
+vec2           = [0d0,1d0,0d0]
+;;  Error messages
+noinput_mssg   = 'No input was supplied...'
+badstr_mssg    = 'Not an appropriate 3DP structure...'
+badtpn_mssg    = 'NETNR is not an appropriate TPLOT structure...'
+badtpp_mssg    = 'PHI_LU is not an appropriate TPLOT structure...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 3) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check ALL_EL structure format
+test0          = test_wind_vs_themis_esa_struct(all_el,/NOM)
+test           = (test0.(0) + test0.(1)) NE 1
+IF (test[0]) THEN BEGIN
+  MESSAGE,badstr_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Check NETNR and PHI_LU
+test           = (tplot_struct_format_test(netnr,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badtpn_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test           = (tplot_struct_format_test(phi_lus,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badtpp_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Interpolate NETNR and PHI_LU to EESA Low times
+;;----------------------------------------------------------------------------------------
+;;  Define times of 3DP VDFs
+st_el          = all_el.TIME
+en_el          = all_el.END_TIME
+se_el          = [[st_el],[en_el]]
+av_el          = MEAN(se_el,/NAN,DIMENSION=2)
+n_e            = all_el[0].NENERGY
+n_a            = all_el[0].NBINS
+n_el           = N_ELEMENTS(all_el)
+;;  Interpolate to EESA Low times
+net_at_el      = t_resample_tplot_struc(netnr,av_el,/NO_EXTRAPOLATE,/IGNORE_INT)
+phi_at_el      = t_resample_tplot_struc(phi_lus,av_el,/NO_EXTRAPOLATE,/IGNORE_INT)
+;;  Define relevant parameters
+phi_sc__lu     = phi_at_el.Y                                  ;;  lower/upper phi_sc [eV]
+ne_tnr_lu      = net_at_el.Y                                  ;;  Ne [cm^(-3), TNR]  {low/upp}
+;;  Remove NaNs if necessary
+test           = (TOTAL(FINITE(phi_sc__lu)) NE 2L*n_el[0])
+IF (test[0]) THEN BEGIN
+  ;;  Remove NaNs
+  low            = remove_nans(av_el,phi_sc__lu[*,0],/NO_EXTRAPOLATE)
+  upp            = remove_nans(av_el,phi_sc__lu[*,1],/NO_EXTRAPOLATE)
+  phi_sc__lu[*,0] = low
+  phi_sc__lu[*,1] = upp
+ENDIF
+test           = (TOTAL(FINITE(ne_tnr_lu)) NE 2L*n_el[0])
+IF (test[0]) THEN BEGIN
+  low            = remove_nans(av_el,ne_tnr_lu[*,0],/NO_EXTRAPOLATE)
+  upp            = remove_nans(av_el,ne_tnr_lu[*,1],/NO_EXTRAPOLATE)
+  ne_tnr_lu[*,0] = low
+  ne_tnr_lu[*,1] = upp
+ENDIF
+phi_sc_est     = MEAN(phi_sc__lu,/NAN,DIMENSION=2)            ;;  Avg. phi_sc [eV] to use on 3DP data
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Find phi_sc [eV] necessary to make zeroth velocity moment match NeTNR
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  First remove data below estimated phi_sc
+all_el_copy    = all_el
+n_d            = 10L
+jint           = (n_el[0]/10L) > 5L
+ones           = DINDGEN(n_d[0])
+fxyz_all       = REPLICATE(d,n_el[0],n_d[0] + 1L,n_e[0]*n_a[0])      ;;  All f(Vx,Vy,Vz) used
+velxyz_a       = REPLICATE(d,n_el[0],n_d[0] + 1L,n_e[0]*n_a[0],3L)   ;;  All (Vx,Vy,Vz) used
+phi_netnr      = REPLICATE(d,n_el[0],n_d[0] + 1L)
+int_ne_t       = phi_netnr
+best_phi       = REPLICATE(d,n_el[0],2L)                             ;;  "Best" phi_sc [eV] bounds
+best_net       = best_phi                                            ;;  "Best" Ne [cm^(-3)] bounds
+FOR j=0L, n_el[0] - 1L DO BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define some initial parameters
+  ;;--------------------------------------------------------------------------------------
+  dat            = all_el_copy[j]
+  phi_in         = phi_sc_est[j]
+  dat[0].SC_POT  = phi_in[0]
+  phi_lu         = REFORM(phi_sc__lu[j,*])
+  net_lu         = REFORM(ne_tnr_lu[j,*])
+  vframe         = dat[0].VSW
+  magf           = dat[0].MAGF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check validity of values before proceeding
+  ;;--------------------------------------------------------------------------------------
+  test           = (TOTAL(FINITE(magf)) EQ 3) AND (TOTAL(FINITE(vframe)) EQ 3) AND         $
+                   (TOTAL(FINITE(phi_lu)) EQ 2) AND (TOTAL(FINITE(net_lu)) EQ 2) AND       $
+                   FINITE(phi_sc_est[j])
+  IF (~test[0]) THEN CONTINUE                                        ;;  Something failed --> jump to next iteration
+  ;;--------------------------------------------------------------------------------------
+  ;;  Prevent interpolation below SC potential
+  ;;--------------------------------------------------------------------------------------
+  temp           = dat[0].DATA
+  bad            = WHERE(dat[0].ENERGY LE 1.3e0*dat[0].SC_POT,bd)
+  IF (bd[0] GT 0) THEN temp[bad] = f
+  dat[0].DATA    = temp
+  all_el_copy[j] = dat[0]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define array of f(Vx,Vy,Vz) with associated (Vx,Vy,Vz)
+  ;;--------------------------------------------------------------------------------------
+  fxyz_str       = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(dat[0])
+  IF (SIZE(fxyz_str,/TYPE) NE 8) THEN CONTINUE                       ;;  Something failed --> jump to next iteration
+  velxyz_a[j,0L,*,*] = fxyz_str.VELXYZ
+  fxyz_all[j,0L,*]   = fxyz_str.VDF
+  phi_netnr[j,0L]    = dat[0].SC_POT[0]                              ;;  Keep track of initial phi_sc [eV]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Setup for first integration
+  ;;--------------------------------------------------------------------------------------
+  vxyz           = REFORM(velxyz_a[j,0L,*,*])
+  fxyz           = REFORM(fxyz_all[j,0L,*])
+  ;;  Run first integration
+  test_t3        = lbw_nintegrate_3d_vdf(vxyz,fxyz,VLIM=vlim,NGRID=ngrid,SLICE2D=slice2d,   $
+                                         VFRAME=vframe,/ELECTRON,VEC1=vec1,VEC2=vec2,       $
+                                         MAG_DIR=magf,/N_S_ONLY)
+  IF (SIZE(test_t3,/TYPE) NE 8) THEN CONTINUE                        ;;  Something failed --> jump to next iteration
+  test_ne        = test_t3[0].N_S[0]                                ;;  Initial integrated Ne [cm^(-3)]
+  int_ne_t[j,0L] = test_ne[0]                                       ;;  Keep track of initial Ne [cm^(-3)]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Determine if initial phi_sc was too high or too low
+  ;;--------------------------------------------------------------------------------------
+  test_lu        = [(test_ne[0] LT net_lu[0L]),(test_ne[0] GT net_lu[1L])]
+  good_lu        = WHERE(test_lu,gd_lu)
+  CASE good_lu[0] OF
+    0L    :  BEGIN
+      ;;  Int[ f d^3v] < NeTNR  -->  Decrease phi_sc
+      phi_ran        = phi_in[0]*[1d-2,95d-2]
+    END
+    1L    :  BEGIN
+      ;;  Int[ f d^3v] > NeTNR  -->  Increase phi_sc
+      phi_ran        = [phi_in[0]*1.05d0,phi_lu[1]*1.5e0]
+    END
+    ELSE  :  BEGIN
+      ;;  NeTNR[0] < Int[ f d^3v] < NeTNR[1]  -->  Vary phi_sc between bounds
+      phi_ran        = phi_lu
+    END
+  ENDCASE
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define new dummy phi_sc and integrate to Ne values
+  ;;--------------------------------------------------------------------------------------
+  dumb_phi       = ones*(phi_ran[1] - phi_ran[0])/(n_d[0] - 1L) + phi_ran[0]
+  phi_netnr[j,1L:n_d[0]] = dumb_phi                                  ;;  Keep track of used phi_sc
+  FOR k=1L, n_d[0] DO BEGIN
+    ;;  Use new phi_sc and re-calculate f(Vx,Vy,Vz) with associated (Vx,Vy,Vz)
+    dat[0].SC_POT  = phi_netnr[j,k[0]]
+    fxyz_str       = conv_vdfidlstr_2_f_vs_vxyz_thm_wi(dat[0])
+    vxyz           = fxyz_str.VELXYZ
+    fxyz           = fxyz_str.VDF
+    velxyz_a[j,0L,*,*] = vxyz
+    fxyz_all[j,0L,*]   = fxyz
+    ;;  Integrate to find Ne
+    test_t3         = lbw_nintegrate_3d_vdf(vxyz,fxyz,VLIM=vlim,NGRID=ngrid,SLICE2D=slice2d,$
+                                            VFRAME=vframe,/ELECTRON,VEC1=vec1,VEC2=vec2,    $
+                                            MAG_DIR=magf,/N_S_ONLY)
+    IF (SIZE(test_t3,/TYPE) NE 8) THEN CONTINUE                      ;;  Something failed --> jump to next iteration
+    test_ne         = test_t3[0].N_S[0]
+    int_ne_t[j,k]   = test_ne[0]                                     ;;  Keep track of integrated Ne
+  ENDFOR
+  ;;--------------------------------------------------------------------------------------
+  ;;  Determine the "best" phi_sc and Ne
+  ;;--------------------------------------------------------------------------------------
+  dumb_ne        = REFORM(int_ne_t[j,*])
+  diffnel        = ABS(dumb_ne - net_lu[0])
+  diffneu        = ABS(dumb_ne - net_lu[1])
+  min_nel        = MIN(diffnel,/NAN,ln_l)
+  min_neu        = MIN(diffneu,/NAN,ln_u)
+  testl          = (ln_l[0] GE 0) AND (ln_l[0] LT n_d[0])
+  testu          = (ln_u[0] GE 0) AND (ln_u[0] LT n_d[0])
+  test           = testl[0] AND testu[0]
+  IF (test[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Both are okay --> set results
+    ;;------------------------------------------------------------------------------------
+    t_phi          = REFORM(phi_netnr[j[0],[ln_l[0],ln_u[0]]])
+    t_net          = REFORM(int_ne_t[j[0],[ln_l[0],ln_u[0]]])
+    best_phi[j,*]  = t_phi[SORT(t_phi)]
+    best_net[j,*]  = t_net[SORT(t_net)]
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Check if at least one of the bounds is okay
+    ;;------------------------------------------------------------------------------------
+    IF (testl[0] OR testu[0]) THEN BEGIN
+      ;;----------------------------------------------------------------------------------
+      ;;  One is okay --> set results
+      ;;----------------------------------------------------------------------------------
+      IF (testl[0]) THEN BEGIN
+        ;;  Lower is okay --> set results
+        best_phi[j,1L] = phi_netnr[j[0],ln_l[0]]
+        best_net[j,0L] = int_ne_t[j[0],ln_l[0]]
+        ;;  Define converse by 10% shift
+        best_phi[j,0L] = best_phi[j,1L]*90d-2
+        best_net[j,1L] = best_net[j,0L]*11d-1
+      ENDIF ELSE BEGIN
+        ;;  Upper is okay --> set results
+        best_phi[j,0L] = phi_netnr[j[0],ln_u[0]]
+        best_net[j,1L] = int_ne_t[j[0],ln_u[0]]
+        ;;  Define converse by 10% shift
+        best_phi[j,1L] = best_phi[j,0L]*11d-2
+        best_net[j,0L] = best_net[j,1L]*90d-1
+      ENDELSE
+    ENDIF
+  ENDELSE
+  ;;  Update user on progress
+  IF ~KEYWORD_SET(nomssg) THEN IF ((j[0] MOD jint[0]) EQ 0) THEN PRINT,';;  j =  ',j[0]
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define output
+;;----------------------------------------------------------------------------------------
+tags           = ['ALL__PHI_SC','ALL__NE_INT','BEST_PHI_SC','BEST_NE_INT']
+struc          = CREATE_STRUCT(tags,phi_netnr,int_ne_t,best_phi,best_net)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+ex_time        = SYSTIME(1) - ex_start[0]
+IF ~KEYWORD_SET(nomssg) THEN MESSAGE,STRING(ex_time[0])+' seconds execution time.',/CONTINUE,/INFORMATIONAL
+
+RETURN,struc[0]
+END
+
+
+
+
+
+
+
+
+

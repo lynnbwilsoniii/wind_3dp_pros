@@ -9,7 +9,7 @@
 ;               NA
 ;
 ;  INCLUDES:
-;               NA
+;               
 ;
 ;  CALLS:
 ;               str_element.pro
@@ -22,10 +22,7 @@
 ;               MAGF     :  [N,3]-Element array of magnetic field values
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               cal_bs_param,pos,magf [,BOW=bow] [,VSW=vsw] [,BSN=bsn] [,LSN=lsn] $
-;                            [,SHPOS=shpos] [,SHNORM=shnorm] [,CONNECT=connect]   $
-;                            [,STRUCT=struct]
+;               
 ;
 ;  KEYWORDS:    
 ;               BOW      :  Structure with the format {L, ecc, X0}, where:
@@ -35,20 +32,20 @@
 ;                               [Default:  ecc = c/a = 1.16]
 ;                             X0  = focus location [Re]
 ;                               [Default:  X0 = 3]
+;               VPAR     :  **Obsolete**
 ;               VSW      :  [N,3]-Element array of solar wind velocities [km/s]
-;               BSN      :  Set to a named variable to return the angle [deg] between the
+;               BSN      :  Set to a named variable to return the angle between the
 ;                             shock normal and field line that passes through the SC
 ;               LSN      :  " " the distance along the field line to the shock [Re]
+;               NSN      :  ***  Not actually calculated  ***
+;                             " " the distance from the shock nose to the field line
+;                             crossing [Re]
 ;               SHPOS    :  " " the position at the shock B-field intersection
 ;               SHNORM   :  " " the shock normal vector at the shock B-field intersection
 ;               CONNECT  :  " " a logic parameter that defines whether the SC is
 ;                             magnetically connected to the shock
 ;                             [0 = unconnected, 1 = connected]
 ;               STRUCT   :  " " all output keyword parameters in a structure
-;               VPAR     :  **Obsolete**
-;               NSN      :  ***  Not actually calculated  ***
-;                             " " the distance from the shock nose to the field line
-;                             crossing [Re]
 ;
 ;   CHANGED:  1)  Davin Larson changed major mods and added shock normal vector
 ;                                                                   [10/01/1995   v1.0.?]
@@ -66,8 +63,6 @@
 ;                   but now uses a hyperboloid of two sheets and
 ;                   updated Man. page
 ;                                                                   [04/11/2017   v1.2.0]
-;             8)  Fixed a typo in keyword output
-;                                                                   [08/31/2020   v1.2.1]
 ;
 ;   NOTES:      
 ;               1)  SC = spacecraft
@@ -86,13 +81,13 @@
 ;
 ;   CREATED:  09/20/1995
 ;   CREATED BY:  Jim McFadden
-;    LAST MODIFIED:  08/31/2020   v1.2.1
+;    LAST MODIFIED:  04/11/2017   v1.2.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-PRO cal_bs_param,pos,magf,BOW=bow,VPAR=vpar,VSW=vsw,BSN=bsn,LSN=lsh,NSN=nsn, $
+PRO cal_bs_param,pos,magf,BOW=bow,VPAR=vpar,VSW=vsw,BSN=bsn,LSN=lsn,NSN=nsn, $
                  SHPOS=shpos,SHNORM=shnorm,CONNECT=connect,STRUCT=struct
 
 ;;----------------------------------------------------------------------------------------
@@ -216,6 +211,7 @@ good           = WHERE(b24ac GE 0,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
 ;IF (bd GE 0) THEN b24ac[bad] = !VALUES.D_NAN
 ;  LBW III  12/16/2011
 IF (bd GT 0) THEN b24ac[bad] = !VALUES.D_NAN
+
 ;IF (gd GE 0) THEN BEGIN
 ;  LBW III  12/16/2011
 IF (gd GT 0) THEN BEGIN
@@ -260,7 +256,7 @@ IF (gd GT 0) THEN BEGIN
   temp    = 1d0 - (shpos[*,0] - x0[0] - c[0])^2/a[0]^2 + (shpos[*,1]^2 + shpos[*,2]^2)/b[0]^2
   test    = ABS(temp) GT 0.0001
   bad     = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
-  IF (bd[0] GT 0) THEN BEGIN
+  IF (bd GT 0) THEN BEGIN
     PRINT,'   Shock calculation error!!!'
     shpos[bad,*] = !VALUES.D_NAN
   ENDIF
@@ -281,9 +277,7 @@ IF (gd GT 0) THEN BEGIN
   shnorm      = shnorm/(SQRT(TOTAL(shnorm^2,2L,/NAN)) # REPLICATE(1e0,3L))
   ;;  Calc. angle between local B-field and projection of shock normal at spacecraft
   b_dot_n     = shnorm[*,0]*bfld[*,0] + shnorm[*,1]*bfld[*,1] + shnorm[*,2]*bfld[*,2]
-  bsn0        = ACOS(b_dot_n)*18d1/!DPI
-  bsn1        = 18d1 - ACOS(b_dot_n)*18d1/!DPI
-  bsn         = bsn0 < bsn1
+  bsn         = ACOS(b_dot_n)*18d1/!DPI
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define return structure
