@@ -3,7 +3,7 @@
 ; INPUT:
 ;   file = CDF filename(s)
 ; OUTPUT:
-;   CDFI = A structure containing pointers to the data and attributes
+;   CDFI = A strucutre containing pointers to the data and attributes
 ;          for the files, with tags:
 ;   CDFI.FILENAME = The filename(s)
 ;
@@ -19,7 +19,7 @@
 ;   CDFI.INQ.NATTS = number of variable attributes 
 ;   CDFI.INQ.DIM = dimensions of rVariables
 ;
-;   CDFI.g_atttributes = CDF global attributes, structure varies
+;   CDFI.g_atttributes = CDF global attributes, strucuture varies
 ;   Here is a sample from THEMIS EFI:
 ;
 ;   PROJECT         STRING    'THEMIS'
@@ -76,7 +76,7 @@
 ;  CDFI.VARS.D = A six-element array with the number of dimensions for
 ;                each index
 ;  CDFI.VARS.DATAPTR = A pointer to the data array:
-;  CDFI.VARS.ATTRPTR  = A pointer to the variable attributes
+;  CDFI.VARS.ATTRPTR  = A pointer to the varaible attributes
 ;                       structure for each variable. Content varies,
 ;                       here is a sample from THEMIS EFI Electric
 ;                       field data:
@@ -134,11 +134,11 @@
 ; Side Effects:
 ;   Data is returned in pointer variables. Calling routine is responsible for freeing up heap memory - otherwise a memory leak will occur.
 ;
-; $LastChangedBy: ali $
-; $LastChangedDate: 2020-03-05 13:22:41 -0800 (Thu, 05 Mar 2020) $
-; $LastChangedRevision: 28380 $
+; $LastChangedBy: davin-mac $
+; $LastChangedDate: 2014-06-04 08:35:27 -0700 (Wed, 04 Jun 2014) $
+; $LastChangedRevision: 15302 $
 ; $URL: svn+ssh://thmsvn@ambrosia.ssl.berkeley.edu/repos/spdsoft/trunk/general/CDF/cdf_load_vars.pro $
-; $ID: $
+;
 ;-
 function cdf_load_vars,files,varnames=vars,varformat=vars_fmt,info=info,verbose=verbose,all=all, $
     record=record,convert_int1_to_int2=convert_int1_to_int2, $
@@ -150,13 +150,7 @@ function cdf_load_vars,files,varnames=vars,varformat=vars_fmt,info=info,verbose=
 vb = keyword_set(verbose) ? verbose : 0
 vars=''
 info = 0
-dprint,dlevel=4,verbose=verbose,'$Id: cdf_load_vars.pro 28380 2020-03-05 21:22:41Z ali $'
-
-;Get cdf version, hacked from read_myCDF, jmm, 2019-10-07
-CDF_LIB_INFO, VERSION=V, RELEASE=R, COPYRIGHT=C, INCREMENT=I
-cdfversion = string(V, R, I, FORMAT='(I0,".",I0,".",I0,A)')
-;set readonly for versions prior to cdf 3.7.0
-if cdfversion Lt '3.7.0' then readonly = 1b else readonly = 0b
+dprint,dlevel=4,verbose=verbose,'$Id: cdf_load_vars.pro 15302 2014-06-04 15:35:27Z davin-mac $'
 
 on_ioerror, ferr
 for fi=0,n_elements(files)-1 do begin
@@ -164,11 +158,7 @@ for fi=0,n_elements(files)-1 do begin
         dprint,dlevel=1,verbose=verbose,'File not found: "'+files[fi]+'"'
         continue
     endif
-    if (file_info(files[fi])).size eq 0 then begin
-      dprint,dlevel=1,verbose=verbose,'Zero file-size: "'+files[fi]+'"'
-      continue
-    endif
-    id=cdf_open(files[fi], readonly = readonly)
+    id=cdf_open(files[fi])
     if not keyword_set(info) then begin
         info = cdf_info(id,verbose=verbose) ;, convert_int1_to_int2=convert_int1_to_int2)
     endif  
@@ -292,11 +282,8 @@ for fi=0,n_elements(files)-1 do begin
                     if not keyword_set(vi.dataptr) then vi.dataptr = ptr_new(value,/no_copy)
                 endelse
             endif
-            if not keyword_set(vi.attrptr) then begin
-                var_atts = cdf_var_atts(id,vi.name,convert_int1_to_int2=convert_int1_to_int2)
-                if not keyword_set(var_atts) then vi.attrptr = ptr_new(/allocate_heap) $
-                else vi.attrptr = ptr_new(var_atts)
-            end
+            if not keyword_set(vi.attrptr) then $
+                vi.attrptr = ptr_new( cdf_var_atts(id,vi.name,convert_int1_to_int2=convert_int1_to_int2) )
             info.vars[w] = vi
         endif else  dprint,dlevel=1,verbose=verbose,'variable "'+vars2[j]+'" not found!'
     endfor

@@ -62,9 +62,6 @@
 ;                                                                   [10/28/2020   v1.1.0]
 ;             2)  Fixed an issue that sometimes occurs when E_min > phi_sc
 ;                                                                   [11/02/2020   v1.1.1]
-;             3)  Fixed an issue if the user inputs the incorrect format for the Y tag
-;                   for the NETNR input structure and added some more comments
-;                                                                   [05/11/2021   v1.1.2]
 ;
 ;   NOTES:      
 ;               1)  See also:
@@ -77,32 +74,10 @@
 ;                      distribution functions for spacecraft electrostatic charging,"
 ;                      J. Geophys. Res. 121, pp. 8462--8474, doi:10.1002/2016JA022591,
 ;                      2016.
-;               2)  Meyer-Vernet, N., and C. Perche "Tool kit for antennae and thermal
-;                      noise near the plasma frequency," J. Geophys. Res. 94(A3),
-;                      pp. 2405--2415, doi:10.1029/JA094iA03p02405, 1989.
-;               3)  Meyer-Vernet, N., K. Issautier, and M. Moncuquet "Quasi-thermal noise
-;                      spectroscopy: The art and the practice," J. Geophys. Res. 122(8),
-;                      pp. 7925--7945, doi:10.1002/2017JA024449, 2017.
-;               4)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
-;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
-;                      The Netherlands., Int. Space Sci. Inst.
-;               5)  Lin et al., "A Three-Dimensional Plasma and Energetic particle
-;                      investigation for the Wind spacecraft," Space Sci. Rev.
-;                      71, pp. 125--153, 1995.
-;               6)  Bougeret, J.-L., M.L. Kaiser, P.J. Kellogg, R. Manning, K. Goetz,
-;                      S.J. Monson, N. Monge, L. Friel, C.A. Meetre, C. Perche,
-;                      L. Sitruk, and S. Hoang "WAVES:  The Radio and Plasma Wave
-;                      Investigation on the Wind Spacecraft," Space Sci. Rev. 71,
-;                      pp. 231--263, doi:10.1007/BF00751331, 1995.
-;               7)  M. Wüest, D.S. Evans, and R. von Steiger "Calibration of Particle
-;                      Instruments in Space Physics," ESA Publications Division,
-;                      Keplerlaan 1, 2200 AG Noordwijk, The Netherlands, 2007.
-;               8)  M. Wüest, et al., "Review of Instruments," ISSI Sci. Rep. Ser.
-;                      Vol. 7, pp. 11--116, 2007.
 ;
 ;   CREATED:  10/27/2020
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/11/2021   v1.1.2
+;    LAST MODIFIED:  11/02/2020   v1.1.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -172,19 +147,6 @@ ENDIF ELSE nelb = 0L
 IF (tplot_struct_format_test(netnr,/NOMSSG)) THEN BEGIN
   ne_tnr_on      = 1b
   net_str        = netnr
-  szdnety        = SIZE(net_str.Y,/N_DIMENSIONS)
-  IF (szdnety[0] EQ 2) THEN BEGIN
-    szddety        = SIZE(net_str.Y,/DIMENSIONS)
-    IF (szddety[1] NE 2) THEN BEGIN
-      ;;  Incorrect input format for NETNR keyword!!!
-      MESSAGE,"Incorrect input format for NETNR keyword:  Must be [N,2]-element array!",/INFORMATIONAL,/CONTINUE
-      ne_tnr_on      = 0b
-    ENDIF
-  ENDIF ELSE BEGIN
-    ;;  Incorrect input format for NETNR keyword!!!
-    MESSAGE,"Incorrect input format for NETNR keyword:  Must be 2D array!",/INFORMATIONAL,/CONTINUE
-    ne_tnr_on      = 0b
-  ENDELSE
 ENDIF ELSE BEGIN
   ne_tnr_on      = 0b
 ENDELSE
@@ -258,10 +220,6 @@ ext_ens        = 1d1^l10_exe
 ;;----------------------------------------------------------------------------------------
 ;;  Loop through to find SC potential
 ;;----------------------------------------------------------------------------------------
-;;  Array dimensions are defined as:
-;;    N  :  # of EESA Low VDFs (combined survey and burst VDFs)
-;;    3  :  # of pitch-angle average directions, i.e., parallel, perpendicular, and anti-parallel
-;;    2  :  [lower,upper] bounds corresponding to the [lower,upper] bounds of the total electron density provided on input
 scpot_pcurv    = REPLICATE(d,n_el[0],3L,2L)                      ;;  SC potential [eV] from positive curvature test
 scpot_mxnfE    = scpot_pcurv                                     ;;  " " from the inflection point where df/dE < 0 --> df/dE > 0
 scpot_mnxcr    = scpot_pcurv                                     ;;  " " from minimum/maximum of curvature --> bounds on SC potential
@@ -374,9 +332,7 @@ FOR jj=0L, n_el[0] - 1L DO BEGIN
     good_para      = WHERE(test_para,gd_para)
     good_perp      = WHERE(test_perp,gd_perp)
     good_anti      = WHERE(test_anti,gd_anti)
-    ;;------------------------------------------------------------------------------------
     ;;  Find inflection point
-    ;;------------------------------------------------------------------------------------
     IF (gd_para[0] GT 0) THEN BEGIN
       low            = (MIN(good_para) > 1L) < (ne2[0] - 1L)
       gind_para      = low[0] + [-1L,1L]
@@ -392,9 +348,7 @@ FOR jj=0L, n_el[0] - 1L DO BEGIN
       gind_anti      = low[0] + [-1L,1L]
       scpot_mxnfE[jj,2L,*] = ext_ens[gind_anti]
     ENDIF
-    ;;------------------------------------------------------------------------------------
     ;;  Find positive curvature below SCPot_max
-    ;;------------------------------------------------------------------------------------
     test_para      = (d2f_de2[*,0] GT 0) AND (FINITE(d2f_de2[*,0]) AND FINITE(ext_ens)) AND (ext_ens LE scpot_max[0])
     test_perp      = (d2f_de2[*,1] GT 0) AND (FINITE(d2f_de2[*,1]) AND FINITE(ext_ens)) AND (ext_ens LE scpot_max[0])
     test_anti      = (d2f_de2[*,2] GT 0) AND (FINITE(d2f_de2[*,2]) AND FINITE(ext_ens)) AND (ext_ens LE scpot_max[0])
@@ -492,7 +446,6 @@ FOR jj=0L, n_el[0] - 1L DO BEGIN
     IF (ne_tnr_on[0]) THEN BEGIN
       ;;----------------------------------------------------------------------------------
       ;;  Check if user wants to use velocity moments to find SC potential
-      ;;    [***  Less reliable if anodes are not properly calibrated  ***]
       ;;----------------------------------------------------------------------------------
       net_lu_st      = REFORM(net_at_elst.Y[jj,*])            ;;  Ne [cm^(-3)]  {low,upp} at start of EL
       net_lu_en      = REFORM(net_at_elen.Y[jj,*])            ;;  Ne [cm^(-3)]  {low,upp} at end   of EL

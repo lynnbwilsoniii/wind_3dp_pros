@@ -193,7 +193,6 @@ END
 ;               pesa_low_moment_calibrate.pro
 ;               get_pmom2.pro
 ;               load_swe_and_calc_new_vbulk_scpot.pro
-;               waves_merge_tnr_rad_to_tplot.pro
 ;               lbw_tplot_set_defaults.pro
 ;               file_name_times.pro
 ;               get_3dp_structs.pro
@@ -232,9 +231,6 @@ END
 ;               LOAD_SWEFC  :  If set, routine will load SWE Faraday Cup (FC) data into
 ;                                TPLOT and try to use resulting data for VSW and
 ;                                SC_POT definitions in 3DP IDL structures
-;                                [Default = FALSE]
-;               LOAD_WAVES  :  If set, routine will load the WAVES radio data into
-;                                TPLOT
 ;                                [Default = FALSE]
 ;               SAVE_DIR    :  Scalar [string] defining the directory where IDL save
 ;                                files will be stored
@@ -290,9 +286,6 @@ END
 ;                   too much data was loaded and updated duration to load data and
 ;                   now calls pesa_high_str_fill.pro
 ;                                                                   [06/12/2020   v1.1.1]
-;            12)  Updated to get WAVES radio data using the routine
-;                   waves_merge_tnr_rad_to_tplot.pro with the new keyword LOAD_WAVES
-;                                                                   [05/10/2021   v1.1.2]
 ;
 ;   NOTES:      
 ;               NA
@@ -343,7 +336,7 @@ END
 ;
 ;   CREATED:  07/18/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/10/2021   v1.1.2
+;    LAST MODIFIED:  06/12/2020   v1.1.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -353,7 +346,6 @@ PRO general_load_and_save_wind_3dp_data,TDATE=tdate,TRANGE=trange,LOAD_EESA=load
                                         LOAD_PESA=load_pesa,LOAD__SST=load__sst,       $
                                         LOAD_SWEFC=load_swefc,SAVE_DIR=save_dir,       $
                                         NO_CLEANT=no_cleant,NO_SAVE=no_save,           $
-                                        LOAD_WAVES=load_waves,                         $
                                         BURST_ON=burst_on,                             $     ;;  Output
                                         EESA_OUT=eesa_out,PESA_OUT=pesa_out,           $
                                         SST_FOUT=sst_fout,SST_OOUT=sst_oout
@@ -484,9 +476,6 @@ IF (test[0]) THEN sst__on = 0b ELSE sst__on = 1b
 ;;  Check LOAD_SWEFC
 test           = (N_ELEMENTS(load_swefc) EQ 0) OR ~KEYWORD_SET(load_swefc)
 IF (test[0]) THEN swefc_on = 0b ELSE swefc_on = 1b
-;;  Check LOAD_WAVES
-test           = (N_ELEMENTS(load_waves) EQ 0) OR ~KEYWORD_SET(load_waves)
-IF (test[0]) THEN waves_on = 0b ELSE waves_on = 1b
 ;;  Check NO_CLEANT
 test           = KEYWORD_SET(no_cleant) AND (N_ELEMENTS(no_cleant) GT 0)
 IF (test[0]) THEN cleant_on = 0b ELSE cleant_on = 1b
@@ -557,6 +546,7 @@ win_str        = {RETAIN:2,XSIZE:wsz[0],YSIZE:wsz[1],TITLE:win_ttl[0],XPOS:10,YP
 lbw_window,WIND_N=0,_EXTRA=win_str
 ;;  Plot MFI data for date of interest
 tplot,[def_wibmag_tpn[0],def_wibgse_tpn[0]],TRANGE=tran1d
+;tplot,[1,2],TRANGE=tran1d
 ;;----------------------------------------------------------------------------------------
 ;;  Rename MFI TPLOT handles from default
 ;;----------------------------------------------------------------------------------------
@@ -582,6 +572,7 @@ tplot,[new_wibmag_tpn[0],new_wibgse_tpn[0]],TRANGE=trange
 ;;----------------------------------------------------------------------------------------
 ;;  Load orbit data
 ;;----------------------------------------------------------------------------------------
+;Bgse_tpnm      = 'wi_B3(GSE)'        ;;  TPLOT handle associated with Bo [GSE, nT]
 Bgse_tpnm      = new_wibgse_tpn[0]        ;;  TPLOT handle associated with Bo [GSE, nT]
 wind_orbit_to_tplot,BNAME=Bgse_tpnm[0],TRANGE=tran1d
 ;;  Change Y-Axis titles
@@ -594,6 +585,7 @@ tplot_options,VAR_LABEL=gnames
 ;;----------------------------------------------------------------------------------------
 ;;  Load PESA Low ion moments
 ;;----------------------------------------------------------------------------------------
+;Bgse_tpnm      = 'wi_B3(GSE)'        ;;  TPLOT handle associated with Bo [GSE, nT]
 Bgse_tpnm      = new_wibgse_tpn[0]   ;;  TPLOT handle associated with Bo [GSE, nT]
 Vgse_tpnm      = 'V_sw2'             ;;  " " Vsw [GSE, km/s]
 pesa_low_moment_calibrate,DATE=date,TRANGE=tran1d,BNAME=Bgse_tpnm[0]
@@ -636,19 +628,6 @@ IF (swefc_on[0]) THEN BEGIN
       scp_tpn   = (tnames(tpn_swe_scpot[0]))[0]
     ENDIF
   ENDIF
-ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Load WAVES radio data [if desired]
-;;----------------------------------------------------------------------------------------
-IF (waves_on[0]) THEN BEGIN
-  flow           = 4d0                 ;;  lower frequency bound of output [kHz]
-  fupp           = 15d3                ;;  upper " "
-  zran           = [1d0,1d2]           ;;  dynamic range of spectra [dB above background]
-  ;;  Load radio data
-  waves_merge_tnr_rad_to_tplot,FLOW=flow,FUPP=fupp,TRANGE=trange,ZRANGE=zran
-  ;;  Alter options
-  waves_tpn      = scpref[0]+'WAVES_radio_spectra'
-  options,waves_tpn[0],YTICKV=[1d1,1d2,1d3,1d4],YTICKNAME=['10!U+01!N','10!U+02!N','10!U+03!N','10!U+04!N'],YTICKS=3,ZTICKS=3,/DEFAULT
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Inform User of TPLOT handles being used for VDF tags
@@ -1043,6 +1022,34 @@ MESSAGE,STRING(SYSTIME(1) - tstart[0])+' seconds execution time.',/CONTINUE,/INF
 
 RETURN
 END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

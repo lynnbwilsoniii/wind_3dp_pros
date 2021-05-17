@@ -29,8 +29,7 @@
 ;               lbw__add.pro
 ;               bimaxwellian_fit.pro
 ;               bikappa_fit.pro
-;               biselfsimilar_fit_new.pro
-;               biselfsimilar_2exp_fit_new.pro
+;               biselfsimilar_fit.pro
 ;               plot_vdfs_4_fitvdf2sumof3funcs.pro
 ;
 ;  REQUIRES:    
@@ -371,10 +370,6 @@
 ;                   process leading to the output fit array being a scalar zero instead
 ;                   of a 2D array
 ;                                                                   [09/16/2019   v1.0.7]
-;             8)  Updated self-similar model function normalization constants and Man.
-;                   page and cleaned up a little and now outputs the Fit Flag values
-;                   defined in Wilson et al. [2019a]
-;                                                                   [05/13/2021   v1.0.8]
 ;
 ;   NOTES:      
 ;               0)  ***  Do not directly set the RMSTRAHL keyword  ***
@@ -561,20 +556,14 @@
 ;              20)  Wilson III, L.B., et al., "Electron energy partition across
 ;                      interplanetary shocks: I. Methodology and Data Product,"
 ;                      Astrophys. J. Suppl. 243(8), doi:10.3847/1538-4365/ab22bd, 2019.
-;              21)  Wilson III, L.B., et al., "Electron energy partition across
-;                      interplanetary shocks: II.  Statistics," Astrophys. J. Suppl.
-;                      245(24), doi:10.3847/1538-4365/ab5445, 2019b.
-;              22)  Wilson III, L.B., et al., "Electron energy partition across
-;                      interplanetary shocks: III. Analysis," Astrophys. J. 893(22),
-;                      doi:10.3847/1538-4357/ab7d39, 2020.
-;              23)  Wilson III, L.B., et al., "Supplement to: Electron energy partition
+;              21)  Wilson III, L.B., et al., "Supplement to: Electron energy partition
 ;                      across interplanetary shocks," Zenodo (data product),
 ;                      doi:10.5281/zenodo.2875806, 2019.
 ;
 ;   ADAPTED FROM: wrapper_fit_vdf_2_sumof2funcs.pro
 ;   CREATED:  06/19/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/13/2021   v1.0.8
+;    LAST MODIFIED:  09/16/2019   v1.0.7
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -1162,6 +1151,7 @@ IF (poisson_on[0]) THEN BEGIN
   IF (SIZE(rot_out,/TYPE) EQ 8) THEN BEGIN
     ;;  Currently only allows XY-Plane --> get structure variables
     poisson_2d    = rot_out.PLANE_XY.DF2D_XY          ;;  [# cm^(-3) km^(-3) s^(+3)]
+;    poisson_2d   *= ffac[0]                           ;;  km^(-3) --> Mm^(-3)
     ;;  Shutoff other weighting options (in case user has them on)
     use1c4w_on    = 0b
     use_nowght_on = 0b
@@ -1229,6 +1219,8 @@ ENDIF
 ;;  Keep data ≥ 1% of max VDF phase space density
 vdfc_max                = MAX(ABS(vdf_2dc),/NAN)
 test_core               = (vdf_2dc GE cthrsh[0]*vdfc_max[0])
+;test_core               = (vdf_2dc GE 1d-2*vdfc_max[0])
+;test_core               = (vdf_2dc GE 1d-2*vdfc_max[0]) AND (eners LE 4d-1*ener_ran[1])
 good_core               = WHERE(test_core,gd_core,COMPLEMENT=bad_core,NCOMPLEMENT=bd_core)
 IF (bd_core[0] GT 0) THEN vdf_2dc[bad_core] = f
 vdf_2dc0                = vdf_2dc
@@ -1290,6 +1282,7 @@ test                    = (FINITE(vdf_2dc) EQ 0) OR (vdf_2dc LE 0) OR   $
                           (FINITE(weightc) EQ 0) OR (weightc LE 0)
 bad                     = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
 test                    = (1d0*bd[0] GT 98d-2*n_vdf[0])
+;test                    = (1d0*bd[0] GT 96d-2*n_vdf[0])
 IF (test[0]) THEN BEGIN
   ;;  Too many "bad" data points --> Failure!
   MESSAGE,'Failure (Core):  Too many bad data points!',/INFORMATION,/CONTINUE
@@ -1459,6 +1452,7 @@ END
 test           = (statc[0] LE 0) OR (N_ELEMENTS(corefit_out) NE N_ELEMENTS(dumb2d)) OR $
                  (N_ELEMENTS(zerrorc) NE N_ELEMENTS(dumb2d))
 IF (test[0]) THEN GOTO,JUMP_QUIT
+;IF (statc[0] LE 0) THEN GOTO,JUMP_QUIT
 ;;----------------------------------------------------------------------------------------
 ;;  Fit to model 2D function to halo
 ;;----------------------------------------------------------------------------------------
@@ -1698,6 +1692,18 @@ IF (N_ELEMENTS(beamfit_out) NE N_ELEMENTS(dumb2d)) THEN beamfit_out  = dumb2d
 IF (N_ELEMENTS(residualb)   NE N_ELEMENTS(dumb2d)) THEN residualb    = dumb2d
 IF (N_ELEMENTS(weightb)     NE N_ELEMENTS(dumb2d)) THEN weightb      = dumb2d
 IF (N_ELEMENTS(zerrorb)     NE N_ELEMENTS(dumb2d)) THEN zerrorb      = dumb2d
+;
+;IF (SIZE(corefit_out,/TYPE) EQ 0) THEN corefit_out  = dumb2d
+;IF (SIZE(weightc,/TYPE)     EQ 0) THEN weightc      = dumb2d
+;IF (SIZE(zerrorc,/TYPE)     EQ 0) THEN zerrorc      = dumb2d
+;IF (SIZE(halofit_out,/TYPE) EQ 0) THEN halofit_out  = dumb2d
+;IF (SIZE(residualh,/TYPE)   EQ 0) THEN residualh    = dumb2d
+;IF (SIZE(weighth,/TYPE)     EQ 0) THEN weighth      = dumb2d
+;IF (SIZE(zerrorh,/TYPE)     EQ 0) THEN zerrorh      = dumb2d
+;IF (SIZE(beamfit_out,/TYPE) EQ 0) THEN beamfit_out  = dumb2d
+;IF (SIZE(residualb,/TYPE)   EQ 0) THEN residualb    = dumb2d
+;IF (SIZE(weightb,/TYPE)     EQ 0) THEN weightb      = dumb2d
+;IF (SIZE(zerrorb,/TYPE)     EQ 0) THEN zerrorb      = dumb2d
 ;;----------------------------------------------------------------------------------------
 ;;  Convert fit results back to standard units
 ;;----------------------------------------------------------------------------------------
@@ -1751,9 +1757,7 @@ CASE good_wts[0] OF
   END
   ELSE : STOP        ;;  Should not be possible --> debug
 ENDCASE
-;;----------------------------------------------------------------------------------------
 ;;  Calculate total chi-squared
-;;----------------------------------------------------------------------------------------
 model_tot               = lbw__add(corefit_out,lbw__add(halofit_out,beamfit_out,/NAN),/NAN)
 measr_tot               = lbw__add(vdf_2dc0,lbw__add(residualh,residualb,/NAN),/NAN)
 test_tot                = (FINITE(measr_tot) EQ 0) OR (measr_tot LE 0) OR   $
@@ -1765,61 +1769,12 @@ IF (bd_tot[0] GT 0) THEN BEGIN
 ENDIF
 dof0                    = ((dofc[0] > dofh[0]) > dofb[0])
 doft                    = 3d0*dof0[0]
-;;  Chi-squared for all data
 chisq_tot_a             = TOTAL((vdf_2d - model_tot)^2d0*ABS(weighttot),/NAN)
-;;  Chi-squared only data used in fits
 chisq_tot_f             = TOTAL((measr_tot - model_tot)^2d0*ABS(weighttot),/NAN)
 red_chisq_tot_f         = chisq_tot_f[0]/doft[0]
 red_chisq_tot_a         = chisq_tot_a[0]/doft[0]
 chisq_tot               = [chisq_tot_a[0],chisq_tot_f[0]]
 red_chisq_tot           = [red_chisq_tot_a[0],red_chisq_tot_f[0]]
-;;----------------------------------------------------------------------------------------
-;;  Calculate fit flags
-;;----------------------------------------------------------------------------------------
-;;  Calculate R = f^(0)/f^(mod)
-r_ratio                 = (vdf_2d/model_tot)
-r_value                 = ABS(1d0 - MEDIAN(r_ratio))*1d2         ;;  ∂R [%]
-r_val_3                 = REPLICATE(r_value[0],3L)
-;;  Define dummy array of total reduced chi-squared values, X_tot
-tot_rchisq_3            = REPLICATE(red_chisq_tot[1],3L)
-;;  Define reduced chi-squared values by component, X_s
-rchisq_by_comps         = [chisqc[0]/dofc[0],chisqh[0]/dofh[0],chisqb[0]/dofb[0]]
-;;  Define sum of reduced chi-squared values by component, Ω = ∑_s X_s
-Sig_by_comps            = REPLICATE(TOTAL(rchisq_by_comps),3L)
-;;  Define tests
-;;    0  :  (∂R ≥ 100%) OR nonfinite for any {∑_s X_s, ∂R, X_s}
-test_ff0                = (r_val_3 GE 1d2) OR ((FINITE(r_val_3) EQ 0) OR (FINITE(rchisq_by_comps) EQ 0) OR (FINITE(Sig_by_comps) EQ 0))
-;;    1  :  (100 ≤ X_tot < 10^(30)) AND ((Ω < 200) OR (X_s ≤ 200)) AND (∂R < 95%)
-test_ff1                = (r_val_3 LT 95d0) AND ((tot_rchisq_3 LT 1d30) AND (tot_rchisq_3 GE 1d2)) AND ((Sig_by_comps LT 2d2) OR (rchisq_by_comps LE 2d2))
-;;    2  :  (0 ≤ X_tot < 100) AND ((Ω < 100) OR (X_s ≤ 100)) AND (∂R < 75%)
-test_ff2                = (r_val_3 LT 75d0) AND ((tot_rchisq_3 LT 1d2) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 1d2) OR (rchisq_by_comps LE 1d2))
-;;    3  :  (0 ≤ X_tot < 100) AND ((Ω < 50) OR (X_s ≤ 40)) AND (∂R < 55%)
-test_ff3                = (r_val_3 LT 55d0) AND ((tot_rchisq_3 LT 1d2) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 5d1) OR (rchisq_by_comps LE 4d1))
-;;    4  :  (0 ≤ X_tot < 100) AND ((Ω < 40) OR (X_s ≤ 30)) AND (∂R < 50%)
-test_ff4                = (r_val_3 LT 50d0) AND ((tot_rchisq_3 LT 1d2) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 4d1) OR (rchisq_by_comps LE 3d1))
-;;    5  :  (0 ≤ X_tot < 100) AND ((Ω < 30) OR (X_s ≤ 20)) AND (∂R < 45%)
-test_ff5                = (r_val_3 LT 45d0) AND ((tot_rchisq_3 LT 1d2) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 3d1) OR (rchisq_by_comps LE 2d1))
-;;    6  :  (0 ≤ X_tot < 100) AND ((Ω < 20) OR (X_s ≤ 10)) AND (∂R < 40%)
-test_ff6                = (r_val_3 LT 40d0) AND ((tot_rchisq_3 LT 1d2) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 2d1) OR (rchisq_by_comps LE 1d1))
-;;    7  :  (0 ≤ X_tot < 30) AND ((Ω < 15) OR (X_s ≤ 9)) AND (∂R < 30%)
-test_ff7                = (r_val_3 LT 30d0) AND ((tot_rchisq_3 LT 3d1) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 15d0) OR (rchisq_by_comps LE 9d0))
-;;    8  :  (0 ≤ X_tot < 30) AND ((Ω < 10) OR (X_s ≤ 7)) AND (∂R < 20%)
-test_ff8                = (r_val_3 LT 20d0) AND ((tot_rchisq_3 LT 3d1) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 10d0) OR (rchisq_by_comps LE 7d0))
-;;    9  :  (0 ≤ X_tot < 15) AND ((Ω < 7) OR (X_s ≤ 5)) AND (∂R < 15%)
-test_ff9                = (r_val_3 LT 15d0) AND ((tot_rchisq_3 LT 15d0) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 7d0) OR (rchisq_by_comps LE 5d0))
-;;   10  :  (0 ≤ X_tot < 7) AND ((Ω < 5) OR (X_s ≤ 3)) AND (∂R ≤ 10%)
-test_f10                = (r_val_3 LE 10d0) AND ((tot_rchisq_3 LT 7d0) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 5d0) OR (rchisq_by_comps LE 3d0))
-;;  Determine maximum flag criteria satisfied
-test_call               = [test_ff0[0],test_ff1[0],test_ff2[0],test_ff3[0],test_ff4[0],test_ff5[0],test_ff6[0],test_ff7[0],test_ff8[0],test_ff9[0],test_f10[0]]
-test_hall               = [test_ff0[1],test_ff1[1],test_ff2[1],test_ff3[1],test_ff4[1],test_ff5[1],test_ff6[1],test_ff7[1],test_ff8[1],test_ff9[1],test_f10[1]]
-test_ball               = [test_ff0[2],test_ff1[2],test_ff2[2],test_ff3[2],test_ff4[2],test_ff5[2],test_ff6[2],test_ff7[2],test_ff8[2],test_ff9[2],test_f10[2]]
-good_call               = WHERE(test_call,gd_call)
-good_hall               = WHERE(test_hall,gd_hall)
-good_ball               = WHERE(test_ball,gd_ball)
-IF (gd_call[0] GT 0) THEN fflag_c = LONG(MAX(good_call)) ELSE fflag_c = 0L
-IF (gd_hall[0] GT 0) THEN fflag_h = LONG(MAX(good_hall)) ELSE fflag_h = 0L
-IF (gd_ball[0] GT 0) THEN fflag_b = LONG(MAX(good_ball)) ELSE fflag_b = 0L
-fflag_a                 = [fflag_c[0],fflag_h[0],fflag_b[0]]
 ;;----------------------------------------------------------------------------------------
 ;;  Define return structure
 ;;----------------------------------------------------------------------------------------
@@ -1838,8 +1793,8 @@ beam_strc               = CREATE_STRUCT(out_tags,vx_in,vy_in,residualb,weightb,b
                                         f_sigb,chisqb[0],dofb[0],iterb[0],statb[0],zerrorb,      $
                                         bfun[0],b_pinfo,bfree_ind,bpegged,vdf_2db,offset[0],     $
                                         b__trial[0])
-tags                    = ['CORE','HALO','BEAM','MODEL_TOT','VDF_FIT_TOT','WEIGHT_TOT','CHISQ_TOT','RED_CHISQ_TOT','FIT_FLAGS']
-out_struc               = CREATE_STRUCT(tags,core_strc,halo_strc,beam_strc,model_tot,measr_tot,weighttot,chisq_tot,red_chisq_tot,fflag_a)
+tags                    = ['CORE','HALO','BEAM','MODEL_TOT','VDF_FIT_TOT','WEIGHT_TOT','CHISQ_TOT','RED_CHISQ_TOT']
+out_struc               = CREATE_STRUCT(tags,core_strc,halo_strc,beam_strc,model_tot,measr_tot,weighttot,chisq_tot,red_chisq_tot)
 ;;----------------------------------------------------------------------------------------
 ;;  Plot data with fits
 ;;----------------------------------------------------------------------------------------
