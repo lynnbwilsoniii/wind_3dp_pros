@@ -13,12 +13,11 @@
 ;
 ;  CALLS:
 ;               tnames.pro
-;               t_set_trange.pro
+;               set_tplot_times.pro
 ;               tplot_com.pro
 ;               str_element.pro
 ;               ctime.pro
 ;               gettime.pro
-;               kill_data_tr.pro
 ;               get_data.pro
 ;               store_data.pro
 ;               tplot.pro
@@ -119,11 +118,6 @@
 ;             4)  Changed use of TSHIFT to offset TRANGE, not all times in arrays to
 ;                   minimize any potential rounding error issues
 ;                                                                   [04/21/2016   v2.2.1]
-;             5)  Now makes sure to sort the two input times either from user or output
-;                   from ctime.pro to avoid accidentally killing 100% of data if
-;                   t[0] > t[1] and now calls t_set_trange.pro instead of
-;                   set_tplot_times.pro
-;                                                                   [05/28/2021   v2.2.2]
 ;
 ;   NOTES:      
 ;               1)  Make sure you either define the TPLOT handles to be "killed" or
@@ -143,7 +137,7 @@
 ;
 ;   CREATED:  02/01/2010
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/28/2021   v2.2.2
+;    LAST MODIFIED:  04/21/2016   v2.2.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -180,7 +174,7 @@ n              = N_PARAMS()
 ;;  Set TPLOT times
 ;;      --> Ensures that the TPLOT common block structure is formatted and filled
 ;;----------------------------------------------------------------------------------------
-t_set_trange
+set_tplot_times
 ;;----------------------------------------------------------------------------------------
 ;;  Load common blocks
 ;;----------------------------------------------------------------------------------------
@@ -229,14 +223,18 @@ ENDIF ELSE gnames = gnames[good]
 ;;  Check MKILL
 test           = (N_ELEMENTS(mkill) EQ 0) OR (KEYWORD_SET(mkill) NE 1)
 IF (test[0]) THEN multi_kill = 0 ELSE multi_kill = 1
+
 ;;  Check NKILL
 test           = (N_ELEMENTS(nkill) EQ 0)
 IF (test[0]) THEN num_kill = 1 ELSE num_kill = LONG(nkill[0])
-known_nkill    = (num_kill[0] GT 1)
+
+known_nkill    = (num_kill GT 1)
+
 ;;  LBW  02/06/2015   v2.1.0
 ;;  Check IND_2D
 test           = (N_ELEMENTS(ind_2d) EQ 0) OR (SIZE(ind_2d,/N_DIMENSIONS) GT 1)
 IF (test[0]) THEN bad_2d_ind = 0 ELSE bad_2d_ind = 1
+
 ;;  LBW  02/06/2015   v2.1.0
 ;;  Check IND_3D
 test           = (N_ELEMENTS(ind_3d) EQ 0) OR (SIZE(ind_3d,/N_DIMENSIONS) GT 1)
@@ -260,9 +258,6 @@ WHILE (true) DO BEGIN
       ctime,t,PROMPT=cur_prompt[0],HOURS=hours,MINUTES=minutes,SECONDS=seconds,DAYS=days,$
               NPOINTS=2
       IF N_ELEMENTS(t) NE 2 THEN RETURN    ;;  failed --> leave routine
-      ;;  First sort
-      t     = t[SORT(t)]
-      ;;  Define start/end times
       t1    = t[0]
       t2    = t[1]
       delta = tr[1] - tr[0]
@@ -272,11 +267,11 @@ WHILE (true) DO BEGIN
                 (t2 LT t1)]
       good  = WHERE(test,gd)
       CASE good[0] OF
-        0    :  trange = trange_full      ;;  full range
-        1    :  trange = tr + delta       ;;  pan right
-        2    :  trange = tr - delta       ;;  pan left
-        3    :  trange = trange_old       ;;  last limits
-        ELSE :  trange = [t1[0],t2[0]]    ;;  new range
+        0    :  trange = trange_full      ; full range
+        1    :  trange = tr + delta       ; pan right
+        2    :  trange = tr - delta       ; pan left
+        3    :  trange = trange_old       ; last limits
+        ELSE :  trange = [t1,t2]          ; new range
       ENDCASE
     END
     1    :  BEGIN
@@ -285,41 +280,21 @@ WHILE (true) DO BEGIN
       ;;----------------------------------------------------------------------------------
       IF (N_ELEMENTS(d1) EQ 2) THEN BEGIN
         ;;  D1 has 2 elements
-        ;;    First sort
-        sp     = SORT(d1)
-        d1     = d1[sp]
         trange = gettime(d1)
       ENDIF ELSE BEGIN
-        ;;  D1 has 1 element
         IF (N_ELEMENTS(d1) NE 1) THEN BEGIN
           ;;  Input had an incorrect number of elements
           MESSAGE,badform_mssg[0],/INFORMATIONAL,/CONTINUE
           RETURN
         ENDIF
-        trange = [gettime(d1[0]),gettime(d1[0]) + tr[1] - tr[0]]
+        trange = [gettime(d1),gettime(d1) + tr[1] - tr[0]]
       ENDELSE
     END
     2    :  BEGIN
       ;;----------------------------------------------------------------------------------
       ;;  User entered 2 values
       ;;----------------------------------------------------------------------------------
-      ;;  First sort
-      IF (d1[0] LT d2[0]) THEN BEGIN
-        ;;  Correct input --> Proceed
-        trange = gettime([d1[0],d2[0]])
-      ENDIF ELSE BEGIN
-        ;;  Incorrect input --> Fix
-        IF (d1[0] EQ d2[0]) THEN BEGIN
-          ;;  Times are identical --> re-call routine
-          kill_data_tr,d1[0],NAMES=names,MKILL=mkill,NKILL=nkill,TRA_KILLED=tra_killed,$
-                             IND_2D=ind_2d,IND_3D=ind_3d
-          ;;  Return to user
-          RETURN
-        ENDIF ELSE BEGIN
-          ;;  Order is flipped --> correct
-          trange = gettime([d2[0],d1[0]])
-        ENDELSE
-      ENDELSE
+      trange = gettime([d1,d2])
     END
     ELSE :  BEGIN
       ;;----------------------------------------------------------------------------------
@@ -353,9 +328,7 @@ WHILE (true) DO BEGIN
     bad    = WHERE(times LE tra_rm[1] AND times GE tra_rm[0],bd)
 ;    bad    = WHERE(times LE trange[1] AND times GE trange[0],bd)
 ;    bad    = WHERE(dat0.X LE trange[1] AND dat0.X GE trange[0],bd)
-    ;;------------------------------------------------------------------------------------
     ;;  Define some parameters used later
-    ;;------------------------------------------------------------------------------------
     CASE szn[0] OF
       2    : BEGIN
         CASE match[0] OF
@@ -384,9 +357,7 @@ WHILE (true) DO BEGIN
       END
       ELSE :          ;;  Don't worry about this here
     ENDCASE
-    ;;------------------------------------------------------------------------------------
-    ;;  Remove data between selected time stamps
-    ;;------------------------------------------------------------------------------------
+    
     IF (bd GT 0) THEN BEGIN
       CASE szn[0] OF
         1    : BEGIN
@@ -512,13 +483,13 @@ WHILE (true) DO BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  Check if user wants to remove multiple or single interval
   ;;--------------------------------------------------------------------------------------
-  IF (multi_kill[0] OR known_nkill[0]) THEN BEGIN
-    IF (known_nkill[0]) THEN BEGIN
+  IF (multi_kill OR known_nkill) THEN BEGIN
+    IF (known_nkill) THEN BEGIN
       ;;----------------------------------------------------------------------------------
       ;;  User specified they wanted to remove a known # of intervals
       ;;----------------------------------------------------------------------------------
       ;;  make sure index has not exceeded the user specified value
-      true     = (kind[0] LT num_kill[0] - 1L)
+      true     = (kind LT num_kill - 1L)
     ENDIF ELSE BEGIN
       read_out = ''
       ;;----------------------------------------------------------------------------------
@@ -527,18 +498,18 @@ WHILE (true) DO BEGIN
       info0    = "To kill data in another interval type 'y', else type 'n'."
       info1    = "To quit at any time type 'q'."
       mssg     = "Do you wish to kill more data (y/n)?  "
-      WHILE (read_out[0] NE 'n' AND read_out[0] NE 'y' AND read_out[0] NE 'q') DO BEGIN
+      WHILE (read_out NE 'n' AND read_out NE 'y' AND read_out NE 'q') DO BEGIN
         PRINT, ""
         PRINT, info0[0]
         PRINT, info1[0]
         PRINT, ""
-        READ,read_out[0],PROMPT=mssg
+        READ,read_out,PROMPT=mssg
         PRINT, ""
-        IF (read_out[0] EQ 'debug') THEN STOP
+        IF (read_out EQ 'debug') THEN STOP
       ENDWHILE
       ;;  make sure index has not exceeded 9999 and user wishes to continue
-      true     = (kind[0] LT 9999L) AND (read_out[0] EQ 'y')
-      IF (read_out[0] EQ 'q') THEN true = 0  ;; user wishes to quit
+      true     = (kind LT 9999L) AND (read_out EQ 'y')
+      IF (read_out EQ 'q') THEN true = 0  ;; user wishes to quit
     ENDELSE
   ENDIF ELSE BEGIN
     ;;  User only wants to remove 1 interval
