@@ -26,7 +26,6 @@
 ;               is_a_number.pro
 ;               get_valid_trange.pro
 ;               tnames.pro
-;               lbw_mms_fpi_correct_photoelectrons.pro
 ;               mms_get_fpi_dist.pro
 ;               add_velmagscpot_to_mms_dist.pro
 ;               delete_variable.pro
@@ -45,8 +44,7 @@
 ;               [calling sequence]
 ;               struc = conv_vdftpn_2_f_vs_vxyz_mms(tpname [,TRANGE=trange]               $
 ;                                                   [,BTPNAME=btpname] [,VTPNAME=vtpname] $
-;                                                   [,STPNAME=stpname] [,FPIVDF=dis_vdf]  $
-;                                                   )
+;                                                   [,STPNAME=stpname] [,FPIVDF=dis_vdf])
 ;
 ;  KEYWORDS:    
 ;               ***  INPUTS  ***
@@ -59,36 +57,15 @@
 ;                               flow velocity 3-vector in DBCS coordinates
 ;               STPNAME    :  Scalar [string] TPLOT handle associated with the
 ;                               spacecraft potential
-;               TPN_ERR    :  Scalar [string] TPLOT handle associated with the VDF error
-;                               for each distribution
-;               RMVERROR   :  If set, routine will subtract the error given by the TPN_ERR
-;                               TPLOT handle for each distribution before returning the
-;                               results
-;                               [Default = FALSE]
-;               GET_CNTS   :  If set, routine will compute the counts from the data and
-;                               the error estimates
-;                               [Default = FALSE]
 ;               ***  OUTPUT  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [all the following changed on output]  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               FPIVDF     :  Set to a named variable to return the array of IDL
 ;                               structures associated with the TPNAME VDFs
-;               ONECNT     :  Set to a named variable to return the 2D array of one-count
-;                               levels in phase space density units
-;                               [i.e., s^(3) km^(-3) cm^(-3)]
-;               PSTATS     :  Set to a named variable to return the 2D array of Poisson
-;                               statistics in phase space density units
-;                               [i.e., s^(3) km^(-3) cm^(-3)]
 ;
 ;   CHANGED:  1)  Fixed an indexing bug
 ;                                                                   [08/06/2020   v1.0.1]
-;             2)  Added photoelectron removal routines for DES and
-;                   added keywords:  TPN_ERR and RMVERROR
-;                                                                   [07/05/2021   v1.1.0]
-;             3)  Added options to return one-count levels and Poisson statistics
-;                   added keywords:  GET_CNTS, ONECNT, and PSTATS
-;                                                                   [07/06/2021   v1.1.1]
 ;
 ;   NOTES:      
 ;               1)  Definitions:
@@ -211,16 +188,14 @@
 ;
 ;   CREATED:  08/05/2020
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/06/2021   v1.1.1
+;    LAST MODIFIED:  08/06/2020   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION conv_vdftpn_2_f_vs_vxyz_mms,tpname,TRANGE=trange,BTPNAME=btpname,VTPNAME=vtpname,    $
-                                            STPNAME=stpname,TPN_ERR=tpn_err,RMVERROR=rmverror,$
-                                            GET_CNTS=get_cnts,FPIVDF=dis_vdf,ONECNT=onecnt,   $
-                                            PSTATS=pstats
+FUNCTION conv_vdftpn_2_f_vs_vxyz_mms,tpname,TRANGE=trange,BTPNAME=btpname,VTPNAME=vtpname,$
+                                            STPNAME=stpname,FPIVDF=dis_vdf
 
 ;;----------------------------------------------------------------------------------------
 ;;  Define some constants and dummy variables
@@ -295,32 +270,10 @@ IF (~test[0]) THEN BEGIN
   IF (check[0] EQ '') THEN STOP  ;;  No B-field TPLOT handle?
   sc_poten_tpn   = check[0]
 ENDIF
-;;  Check TPN_ERR and RMVERROR
-test           = test_tplot_handle(tpn_err,TPNMS=fpi_err_tpn,GIND=gind) AND KEYWORD_SET(rmverror)
-IF (test[0]) THEN rm_err_on = 1b ELSE rm_err_on = 0b
-test           = (fpi_err_tpn[0] NE '') AND KEYWORD_SET(get_cnts)
-IF (test[0]) THEN cnts_on = 1b ELSE cnts_on = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Get FPI distributions
 ;;----------------------------------------------------------------------------------------
-IF (rm_err_on[0]) THEN BEGIN
-  ;;  User wants to remove the background/error
-  CASE species[0] OF
-    'e'  :  dat_iarr       = lbw_mms_fpi_correct_photoelectrons(fpi_vdf_tpn[0],TRANGE=trange,SCPOT=sc_poten_tpn[0],SPECIES=species[0],PROBE=probe[0],ERROR=fpi_err_tpn[0],/SUBTRACT_ERROR)
-    'i'  :  dat_iarr       = mms_get_fpi_dist(fpi_vdf_tpn[0],TRANGE=trange,/STRUCTURE,SPECIES=species[0],PROBE=probe[0],ERROR=fpi_err_tpn[0],/SUBTRACT_ERROR)
-    ELSE :  STOP       ;;  Shouldn't happen
-  ENDCASE
-ENDIF ELSE BEGIN
-  ;;  User doesn't want to remove the background/error
-  CASE species[0] OF
-    'e'  :  dat_iarr       = lbw_mms_fpi_correct_photoelectrons(fpi_vdf_tpn[0],TRANGE=trange,SCPOT=sc_poten_tpn[0],SPECIES=species[0],PROBE=probe[0])
-    'i'  :  dat_iarr       = mms_get_fpi_dist(fpi_vdf_tpn[0],TRANGE=trange,/STRUCTURE,SPECIES=species[0],PROBE=probe[0])
-    ELSE :  STOP       ;;  Shouldn't happen
-  ENDCASE
-ENDELSE
-;;----------------------------------------------------------------------------------------
-;;  Add Bo, Vbulk, and SC Potential to each structure
-;;----------------------------------------------------------------------------------------
+dat_iarr       = mms_get_fpi_dist(fpi_vdf_tpn[0],TRANGE=trange,/STRUCTURE,SPECIES=species[0],PROBE=probe[0])
 dis_vdf        = add_velmagscpot_to_mms_dist(dat_iarr,fgm_dbcs_tpn[0],vel_dbcs_tpn[0],sc_poten_tpn[0])
 ;;  Clean up
 delete_variable,dat_iarr
@@ -337,53 +290,6 @@ nes_i          = N_ELEMENTS(REFORM(dis_vdf[0].DATA[*,0,0]))  ;;  # of energy bin
 nph_i          = N_ELEMENTS(REFORM(dis_vdf[0].DATA[0,*,0]))  ;;  # of azimuthal bins
 nth_i          = N_ELEMENTS(REFORM(dis_vdf[0].DATA[0,0,*]))  ;;  # of latitudinal/poloidal bins
 kk_i           = nes_i[0]*nph_i[0]*nth_i[0]
-;;----------------------------------------------------------------------------------------
-;;  Get FPI counts
-;;----------------------------------------------------------------------------------------
-IF (cnts_on[0]) THEN BEGIN
-  ;;  Get FPI data in terms of counts
-  cnt_dqs_str    = lbw_mms_compute_counts_from_f_df(fpi_vdf_tpn[0],fpi_err_tpn[0],FACTORS=cnts2psd_dqs,TRANGE=trange)
-  ;;  Define one-count and Poisson stats levels
-  one_cnt_dqs    = cnt_dqs_str
-  poisson_dqs    = cnt_dqs_str
-  one_cnt_dqs.Y  = 1d0
-  poisson_dqs.Y  = SQRT(poisson_dqs.Y)
-  ;;  Convert back to phase space density
-  one_cnt_dqs.Y *= (cnts2psd_dqs*1d15)              ;;  cm^(-3)  -->  km^(-3)
-  poisson_dqs.Y *= (cnts2psd_dqs*1d15)              ;;  cm^(-3)  -->  km^(-3)
-  ;;  Send to TPLOT
-  one_cnt_tpn    = scpref[0]+'d'+species[0]+'s_onecnt_'+mode[0]
-  poisson_tpn    = scpref[0]+'d'+species[0]+'s_poissn_'+mode[0]
-  ;;  Get D?S structure for the V[1,2,3] tags
-  get_data,fpi_vdf_tpn[0],DATA=dqs_vdf_str0,DLIMIT=dlim,LIMIT=lim
-  dqs_vdf_str    = trange_clip_data(dqs_vdf_str0,PREC=4,TRANGE=trange)
-  ;;  Clean up
-  delete_variable,dqs_vdf_str0,cnts2psd_dqs,cnt_dqs_str
-  ;;  Extract tags
-  extract_tags,one_cnt_dqs,dqs_vdf_str,TAGS=['V1','V2','V3']
-  extract_tags,poisson_dqs,dqs_vdf_str,TAGS=['V1','V2','V3']
-  ;;  Send result back to TPLOT (solely to take advantage of built-in SPEDAS software)
-  store_data,one_cnt_tpn[0],DATA=one_cnt_dqs,DLIMIT=dlim,LIMIT=lim
-  store_data,poisson_tpn[0],DATA=poisson_dqs,DLIMIT=dlim,LIMIT=lim
-  ;;  Clean up
-  delete_variable,dqs_vdf_str,dlim,lim,one_cnt_dqs,poisson_dqs
-  ;;  Convert one-count data to proper structure
-  onec_earr      = mms_get_fpi_dist(one_cnt_tpn[0],TRANGE=trange,/STRUCTURE,SPECIES=species[0],PROBE=probe[0])
-  pois_earr      = mms_get_fpi_dist(poisson_tpn[0],TRANGE=trange,/STRUCTURE,SPECIES=species[0],PROBE=probe[0])
-  ;;  Clean up TPLOT
-  store_data,DELETE=[one_cnt_tpn[0],poisson_tpn[0]]
-  ;;  Define 4D array
-  ;;        dat.DATA  -->  [E,A,P,N]
-  ;;    Want
-  ;;        arrays    -->  [N,E,A,P]
-  onec_e_4d      = TRANSPOSE(onec_earr.DATA,[3,0,1,2])
-  pois_e_4d      = TRANSPOSE(pois_earr.DATA,[3,0,1,2])
-  ;;  Reform to 2D arrays
-  onecnt         = REFORM(onec_e_4d,nts_i[0],kk_i[0])
-  pstats         = REFORM(pois_e_4d,nts_i[0],kk_i[0])
-  ;;  Clean up
-  delete_variable,onec_e_4d,pois_e_4d
-ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Remove data below SC Potential to prevent interpolation/smoothing later
 ;;----------------------------------------------------------------------------------------

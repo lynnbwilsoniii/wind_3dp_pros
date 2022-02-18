@@ -157,11 +157,6 @@ END
 ;                                                                   [10/16/2020   v2.0.0]
 ;             7)  Fixed an issue in the velocity transformation from SCF to PRF
 ;                                                                   [10/17/2020   v2.0.1]
-;             8)  Added array of indices indicating which B-field component had the largest
-;                   correlation coefficient, i.e., which components to trust
-;                                                                   [08/13/2021   v2.0.2]
-;             9)  Now includes SC2-SC4 outputs for positions, times, and CC stuff only
-;                                                                   [09/22/2021   v2.0.3]
 ;
 ;   NOTES:      
 ;               1)  This routine uses LU decomposition
@@ -200,7 +195,7 @@ END
 ;
 ;   CREATED:  10/02/2020
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  09/22/2021   v2.0.3
+;    LAST MODIFIED:  10/17/2020   v2.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -454,10 +449,6 @@ bz_13_cc       = C_CORRELATE(bgsev_1[*,2],bgsev_3[*,2],jshft,/DOUBLE)
 bx_14_cc       = C_CORRELATE(bgsev_1[*,0],bgsev_4[*,0],jshft,/DOUBLE)
 by_14_cc       = C_CORRELATE(bgsev_1[*,1],bgsev_4[*,1],jshft,/DOUBLE)
 bz_14_cc       = C_CORRELATE(bgsev_1[*,2],bgsev_4[*,2],jshft,/DOUBLE)
-;;  Cross-correlation between 2 and 4
-bx_24_cc       = C_CORRELATE(bgsev_2[*,0],bgsev_4[*,0],jshft,/DOUBLE)
-by_24_cc       = C_CORRELATE(bgsev_2[*,1],bgsev_4[*,1],jshft,/DOUBLE)
-bz_24_cc       = C_CORRELATE(bgsev_2[*,2],bgsev_4[*,2],jshft,/DOUBLE)
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
@@ -477,23 +468,16 @@ mx_bz13_cc     = MAX(ABS(bz_13_cc),/NAN,ix_bz13)
 mx_bx14_cc     = MAX(ABS(bx_14_cc),/NAN,ix_bx14)
 mx_by14_cc     = MAX(ABS(by_14_cc),/NAN,ix_by14)
 mx_bz14_cc     = MAX(ABS(bz_14_cc),/NAN,ix_bz14)
-;;  Shift between 2 and 4
-mx_bx24_cc     = MAX(ABS(bx_24_cc),/NAN,ix_bx24)
-mx_by24_cc     = MAX(ABS(by_24_cc),/NAN,ix_by24)
-mx_bz24_cc     = MAX(ABS(bz_24_cc),/NAN,ix_bz24)
 ;;  Find the maximum CC coefficient to use as the correct shift index value
 mx_cc_12       = MAX([mx_bx12_cc[0],mx_by12_cc[0],mx_bz12_cc[0]],ix_mx_12)
 mx_cc_13       = MAX([mx_bx13_cc[0],mx_by13_cc[0],mx_bz13_cc[0]],ix_mx_13)
 mx_cc_14       = MAX([mx_bx14_cc[0],mx_by14_cc[0],mx_bz14_cc[0]],ix_mx_14)
-mx_cc_24       = MAX([mx_bx24_cc[0],mx_by24_cc[0],mx_bz24_cc[0]],ix_mx_24)
-ix_mx_ij       = [ix_mx_12[0],ix_mx_13[0],ix_mx_14[0],ix_mx_24[0]]
-mx_cc_ij       = [mx_cc_12[0],mx_cc_13[0],mx_cc_14[0],mx_cc_24[0]]
+mx_cc_ij       = [mx_cc_12[0],mx_cc_13[0],mx_cc_14[0]]
 ;;  Define proper shift value and corresponding array index
 ii_b_12        = ([ix_bx12[0],ix_by12[0],ix_bz12[0]])[ix_mx_12[0]]
 ii_b_13        = ([ix_bx13[0],ix_by13[0],ix_bz13[0]])[ix_mx_13[0]]
 ii_b_14        = ([ix_bx14[0],ix_by14[0],ix_bz14[0]])[ix_mx_14[0]]
-ii_b_24        = ([ix_bx24[0],ix_by24[0],ix_bz24[0]])[ix_mx_24[0]]
-jshft_arr      = [jshft[ii_b_12[0]],jshft[ii_b_13[0]],jshft[ii_b_14[0]],jshft[ii_b_24[0]]]
+jshft_arr      = [jshft[ii_b_12[0]],jshft[ii_b_13[0]],jshft[ii_b_14[0]]]
 ;;----------------------------------------------------------------------------------------
 ;;  Shift applies to first
 ;;    --> add or subtract JSHFT sample periods to first array times to make data match up
@@ -506,12 +490,11 @@ srate          = sample_rate(bunix_1,/AVE)
 speri          = 1d0/srate[0]
 ;;  Define midpoint times for each spacecraft (SC1 will have 3)
 t_234          = [MEAN(bunix_2),MEAN(bunix_3),MEAN(bunix_4)]
-t_12_j         = REPLICATE(d,4L)                                ;;  time of SC1 shifted to 2,3,4 and SC2 to 4
+t_12_j         = REPLICATE(d,3L)
 FOR k=0L, 2L DO t_12_j[k] = MEAN(bunix_1) + speri[0]*jshft_arr[k[0]]
-t_12_j[3L]     = MEAN(bunix_2) + speri[0]*jshft_arr[3L]
 ;;  Define dummy arrays
 ;;  [P,S,V] {P = # of perturbed pts, S = # of SC, V = # of vector components}
-t_1j_all       = REPLICATE(d,5L,4L,3L)                           ;;  time shift of SC1 relative to 2,3,4
+t_1j_all       = REPLICATE(d,5L,4L,3L)
 FOR k=0L, 3L DO BEGIN
   FOR j=0L, 2L DO BEGIN
     IF (k EQ 0) THEN t_1j_all[*,k,j] = t_12_j[j]     + pert[usearr]
@@ -520,15 +503,12 @@ FOR k=0L, 3L DO BEGIN
     IF (k EQ 3) THEN t_1j_all[*,k,j] = t_234[k - 1L] + pert[usearr]
   ENDFOR
 ENDFOR
-t_24_all       = t_12_j[3L] + pert[usearr]
 ;;----------------------------------------------------------------------------------------
 ;;  Re-interpolate positions to new times
 ;;----------------------------------------------------------------------------------------
-;;  Original position arrays interpolated to time-shifts corresponding to highest CC
 d_spl_12       = t_resample_tplot_struc(mms_gsepos_1,t_12_j[0] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
 d_spl_13       = t_resample_tplot_struc(mms_gsepos_1,t_12_j[1] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
 d_spl_14       = t_resample_tplot_struc(mms_gsepos_1,t_12_j[2] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
-d_spl_24       = t_resample_tplot_struc(mms_gsepos_2,t_12_j[3] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
 d_spl_2        = t_resample_tplot_struc(mms_gsepos_2, t_234[0] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
 d_spl_3        = t_resample_tplot_struc(mms_gsepos_3, t_234[1] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
 d_spl_4        = t_resample_tplot_struc(mms_gsepos_4, t_234[2] + pert,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
@@ -536,9 +516,8 @@ d_spl_4        = t_resample_tplot_struc(mms_gsepos_4, t_234[2] + pert,/ISPLINE,/
 ;;  [P,S,V] {P = # of perturbed pts, S = # of SC, V = # of vector components}
 new_p1j          = REPLICATE(d,5L,3L,3L)
 new_p234         = REPLICATE(d,5L,3L,3L)
-new_posi         = REPLICATE(d,5L,5L,3L)
-new_unix         = REPLICATE(d,5L,5L)
-;;  Selection of interpolated positions about mid-point times corresponding to highest CC
+new_posi         = REPLICATE(d,5L,4L,3L)
+new_unix         = REPLICATE(d,5L,4L)
 new_p1j[*,0L,*]  = REFORM(d_spl_12.Y[usearr,*])
 new_p1j[*,1L,*]  = REFORM(d_spl_13.Y[usearr,*])
 new_p1j[*,2L,*]  = REFORM(d_spl_14.Y[usearr,*])
@@ -546,27 +525,21 @@ new_p234[*,0L,*] = REFORM(d_spl_2.Y[usearr,*])
 new_p234[*,1L,*] = REFORM(d_spl_3.Y[usearr,*])
 new_p234[*,2L,*] = REFORM(d_spl_4.Y[usearr,*])
 ;;  Define output spacecraft median positions and times
-new_posi[*,0L,*] = MEDIAN(new_p1j,DIMENSION=2)                 ;;  Median of SC1 positions over the time shifts for SC2,3,4
+new_posi[*,0L,*] = MEDIAN(new_p1j,DIMENSION=2)
 FOR k=0L, 2L DO new_posi[*,(k + 1L),*] = new_p234[*,k,*]
-new_posi[*,4L,*] = REFORM(d_spl_24.Y[usearr,*])
 new_unix[*,0L]   = MEDIAN(REFORM(t_1j_all[*,0L,*]),DIMENSION=2)
 FOR k=1L, 3L DO new_unix[*,k]          = t_1j_all[*,k,0L]
-new_unix[*,4L]   = REFORM(t_24_all)
 ;;----------------------------------------------------------------------------------------
 ;;  Define differences
 ;;----------------------------------------------------------------------------------------
 ;;  ∆r_ij = r_i - r_j
-;;  Variable names below are defined as:
-;;    dr_ij_kl_all
-;;  where ij is the time of SCi shifted to maximum CC of SCj and
-;;  kl is the difference between positions of SCk and SCl
-dr_12_12_all   = lbw_diff(REFORM(new_p1j[*,0L,*]),REFORM(new_p234[*,0L,*]),/NAN)      ;;  ∆r btwn SC1 and SC2 of SC1 at shifted time for SC2 
+dr_12_12_all   = lbw_diff(REFORM(new_p1j[*,0L,*]),REFORM(new_p234[*,0L,*]),/NAN)
 dr_12_13_all   = lbw_diff(REFORM(new_p1j[*,0L,*]),REFORM(new_p234[*,1L,*]),/NAN)
 dr_12_14_all   = lbw_diff(REFORM(new_p1j[*,0L,*]),REFORM(new_p234[*,2L,*]),/NAN)
 dr_13_12_all   = lbw_diff(REFORM(new_p1j[*,1L,*]),REFORM(new_p234[*,0L,*]),/NAN)
 dr_13_13_all   = lbw_diff(REFORM(new_p1j[*,1L,*]),REFORM(new_p234[*,1L,*]),/NAN)
 dr_13_14_all   = lbw_diff(REFORM(new_p1j[*,1L,*]),REFORM(new_p234[*,2L,*]),/NAN)
-dr_14_12_all   = lbw_diff(REFORM(new_p1j[*,2L,*]),REFORM(new_p234[*,0L,*]),/NAN)      ;;  ∆r btwn SC1 and SC2 of SC1 at shifted time for SC4
+dr_14_12_all   = lbw_diff(REFORM(new_p1j[*,2L,*]),REFORM(new_p234[*,0L,*]),/NAN)
 dr_14_13_all   = lbw_diff(REFORM(new_p1j[*,2L,*]),REFORM(new_p234[*,1L,*]),/NAN)
 dr_14_14_all   = lbw_diff(REFORM(new_p1j[*,2L,*]),REFORM(new_p234[*,2L,*]),/NAN)
 ;;  ∆t_ij = t_i - t_j
@@ -585,11 +558,9 @@ dt_14_14_all   = lbw_diff(REFORM(t_1j_all[*,0L,2L]),REFORM(t_1j_all[*,3L,2L]),/N
 dr_tens_12_all = REPLICATE(d,5L,3L,3L)
 dr_tens_13_all = dr_tens_12_all
 dr_tens_14_all = dr_tens_12_all
-dr_tens_24_all = dr_tens_12_all
 dt_tens_12_all = REFORM(dr_tens_12_all[*,*,0L])
 dt_tens_13_all = dt_tens_12_all
 dt_tens_14_all = dt_tens_12_all
-dt_tens_24_all = dt_tens_12_all
 FOR k=0L, 4L DO BEGIN
   ;;  (∆r_ij)_m = r_i,m - r_j,m
   dr_tens_12_all[k,*,*] = [[REFORM(dr_12_12_all[k,*])],[REFORM(dr_12_13_all[k,*])],[REFORM(dr_12_14_all[k,*])]]
@@ -845,9 +816,9 @@ ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 tags           = ['UNIX','SC_POSI','VGR_SC_SPD','VGR_SC_VEC','VGR_RF_SPD','VGR_RF_VEC',$
-                  'GHAT_SC_ICB','GHAT_RF_ICB','MAX_CC_IJ','CC_SHIFT_ARR','MAX_CC_IND']
+                  'GHAT_SC_ICB','GHAT_RF_ICB','MAX_CC_IJ','CC_SHIFT_ARR']
 struc          = CREATE_STRUCT(tags,new_unix,new_posi,Vgrs__scf,Vgrv__scf,Vgrs_rest,   $
-                               Vgrv_rest,ghat__scf,ghat_rest,mx_cc_ij,jshft_arr,ix_mx_ij)
+                               Vgrv_rest,ghat__scf,ghat_rest,mx_cc_ij,jshft_arr)
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

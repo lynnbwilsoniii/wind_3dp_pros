@@ -1,0 +1,175 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   simpsons_13_1d_irreg_integration.pro
+;  PURPOSE  :   This routine performs a 1D integration using Simpson's 1/3 Rule
+;                 algorithm based upon user defined X and Y inputs.  This routine allows
+;                 for an irregularly sampled X grid on input, unlike
+;                 simpsons_13_1d_integration.pro, which requires a regular grid spacing.
+;                 Note that if any additional factors are to be included, they should be
+;                 done so prior to calling.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;               delete_variable.pro
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               X       :  [N]-Element [numeric] array of x-coordinate abscissa on an
+;                            irregular grid.  If X is on a regular grid, then the
+;                            simpsons_13_1d_integration.pro would be faster/better
+;               Y       :  [N]-Element [numeric] array of y-function values for each
+;                            X abscissa value
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               result = simpsons_13_1d_irreg_integration(x,y [,/NOMSSG])
+;
+;  KEYWORDS:    
+;               LOG     :  If set and routine needs to regrid Z, then the interpolation
+;                            will be done in logarithmic space
+;                            [***  Obsolete  ***]
+;               NOMSSG  :  If set, routine will not inform user of elapsed computational
+;                            time
+;                            [Default = FALSE]
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               0)  See also:  simpsons_13_2d_integration.pro and simpsons_13_3d_integration.pro
+;               1)  N should be odd and must satisfy N > 6
+;               2)  X and Y need NOT be on a regular grid for this routine, unlike
+;                     simpsons_13_1d_integration.pro
+;
+;  REFERENCES:  
+;               http://mathfaculty.fullerton.edu/mathews/n2003/SimpsonsRule2DMod.html
+;               http://www.physics.usyd.edu.au/teach_res/mp/doc/math_integration_2D.pdf
+;               https://en.wikipedia.org/wiki/Simpson%27s_rule
+;
+;   CREATED:  01/18/2022
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  01/18/2022   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION simpsons_13_1d_irreg_integration,x,y,LOG=log,NOMSSG=nomssg
+
+ex_start       = SYSTIME(1)
+;;----------------------------------------------------------------------------------------
+;;  Constants
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Dummy error messages
+no_inpt__mssg  = 'User must supply X and Y as [N]-element [numeric] arrays...'
+badndim__mssg  = 'Inputs X and Y must be one-dimensional [numeric] arrays...'
+badddim__mssg  = 'Inputs X and Y must be [N]-element [numeric] arrays...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = (N_PARAMS() LT 2) OR (is_a_number(x,/NOMSSG) EQ 0) OR $
+                 (is_a_number(y,/NOMSSG) EQ 0)
+IF (test[0]) THEN BEGIN
+  MESSAGE,no_inpt__mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+szdx           = SIZE(x,/DIMENSIONS)
+sznx           = SIZE(x,/N_DIMENSIONS)
+szdy           = SIZE(y,/DIMENSIONS)
+szny           = SIZE(y,/N_DIMENSIONS)
+test           = (sznx[0] NE 1) OR (szny[0] NE 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badndim__mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+test           = (szdx[0] NE szdy[0]) OR (szdx[0] LT 6L)
+IF (test[0]) THEN BEGIN
+  MESSAGE,badddim__mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+IF KEYWORD_SET(log) THEN log_on = 1b ELSE log_on = 0b
+;;----------------------------------------------------------------------------------------
+;;  Make sure N is odd
+;;----------------------------------------------------------------------------------------
+nx             = N_ELEMENTS(x)
+IF ((nx[0] MOD 2) EQ 0) THEN BEGIN
+  ;;  N is currently even --> make odd
+  xx             = x[0L:(nx[0] - 2L)]
+  yy             = y[0L:(nx[0] - 2L)]
+ENDIF ELSE BEGIN
+  xx             = REFORM(x)
+  yy             = REFORM(y)
+ENDELSE
+nx             = N_ELEMENTS(xx)
+;;----------------------------------------------------------------------------------------
+;;  Compute all h_k values (i.e., bin widths)
+;;----------------------------------------------------------------------------------------
+;;  Don't keep last element as that is negative
+h_k            = (SHIFT(xx,-1) - xx)[0L:(nx[0] - 2L)]
+nh             = N_ELEMENTS(h_k)
+;;  Define h_2i and h_2i+1 indices
+ind            = LINDGEN(nh[0])
+i2i            = ind[0L:*:2L]
+i2ip1          = (i2i + 1L) < (nh[0] - 1L)
+;;  Define h_2i and h_2i+1 values
+h_2i           = h_k[i2i]
+h_2ip1         = h_k[i2ip1]
+;;  Define f_2i and f_2i+1 values
+f_2i           = yy[i2i]
+f_2ip1         = yy[i2ip1]
+;;----------------------------------------------------------------------------------------
+;;  Compute all terms
+;;----------------------------------------------------------------------------------------
+;;  Define (h_2i + h_2i+1)/6
+term0          = (h_2i + h_2ip1)/6d0
+;;  Define (2 - h_2i+1/h_2i)*f_2i
+term1          = (2d0 - h_2ip1/h_2i)*f_2i
+;;  Define (h_2i + h_2i+1)^2/(h_2i * h_2i+1)*f_2i+1
+term2          = (h_2i + h_2ip1)^2d0/(h_2i * h_2ip1)*f_2ip1
+;;  Define (2 - h_2i/h_2i+1)*f_2i+1
+term3          = (2d0 - h_2i/h_2ip1)*f_2ip1
+;;  *** Clean up ***
+delete_variable,h_2i,h_2ip1,f_2i,f_2ip1,i2i,i2ip1,ind
+;;----------------------------------------------------------------------------------------
+;;  Sum over all terms
+;;----------------------------------------------------------------------------------------
+output         = TOTAL(term0*(term1 + term2 + term3),/NAN)
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+ex_time        = SYSTIME(1) - ex_start[0]
+IF ~KEYWORD_SET(nomssg) THEN MESSAGE,STRING(ex_time[0])+' seconds execution time.',/CONTINUE,/INFORMATIONAL
+
+RETURN,output[0]
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

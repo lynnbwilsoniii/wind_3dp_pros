@@ -30,8 +30,6 @@
 ;               [calling sequence]
 ;               vpeak = get_3d_triangulated_vdf_and_find_peak_psd(vels, data [,VLIM=vlim] $
 ;                                            [,NGRID=ngrid] [,VFRAME=vframe] [,VEC1=vec1] $
-;                                            [,VXRANGE=vxrange] [,VYRANGE=vyrange]        $
-;                                            [,VZRANGE=vzrange]                           $
 ;                                            [,VEC2=vec2] [,F3D_QH=f3d_qh]                $
 ;                                            [,ROT_STR=r_struc])
 ;
@@ -58,9 +56,6 @@
 ;                                 Z'  :  parallel to (VEC1 x VEC2)
 ;                                 Y'  :  completes the right-handed set
 ;                               [ Default = [0.,1.,0.] ]
-;               V?RANGE    :  [2]-Element [numeric] array defining the range of velocities
-;                               over which to search for the peak PSD, where ? = X,Y,Z
-;                               [ Default = [-VLIM,VLIM] ]
 ;               INFORM     :  If set, routine will inform the user of the number of
 ;                               iterations necessary to find the peak, the indices of
 ;                               the peak, the peak phase space density, and the velocity
@@ -75,8 +70,8 @@
 ;               ROT_STR    :  Set to a named variable to return the IDL structure
 ;                               returned by get_rotated_and_triangulated_vdf.pro
 ;
-;   CHANGED:  1)  Added keywords:  V[X,Y,Z]RANGE
-;                                                                   [06/25/2021   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               NA
@@ -90,7 +85,7 @@
 ;
 ;   CREATED:  05/02/2019
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/25/2021   v1.0.1
+;    LAST MODIFIED:  05/02/2019   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -98,8 +93,6 @@
 
 FUNCTION get_3d_triangulated_vdf_and_find_peak_psd,vels,data,VLIM=vlim,NGRID=ngrid,   $
                                                    VFRAME=vframe,VEC1=vec1,VEC2=vec2, $
-                                                   VXRANGE=vxrange,VYRANGE=vyrange,   $
-                                                   VZRANGE=vzrange,                   $
                                                    F3D_QH=f3d_qh,ROT_STR=r_struc,     $
                                                    INFORM=inform
 
@@ -121,10 +114,6 @@ test           = (N_ELEMENTS(ngrid) EQ 0) OR (is_a_number(ngrid,/NOMSSG) EQ 0)
 IF (test[0]) THEN nm = 101L ELSE nm = (LONG(ngrid[0]) > 30L) < 300L
 ;;  Check INFORM
 IF KEYWORD_SET(inform) THEN info_on = 1b
-;;  Check V[X,Y,Z]RANGE
-IF (test_plot_axis_range(vxrange,/NOMSSG)) THEN vxr_on = 1b ELSE vxr_on = 0b
-IF (test_plot_axis_range(vyrange,/NOMSSG)) THEN vyr_on = 1b ELSE vyr_on = 0b
-IF (test_plot_axis_range(vzrange,/NOMSSG)) THEN vzr_on = 1b ELSE vzr_on = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Get rotated and triangulated results
 ;;----------------------------------------------------------------------------------------
@@ -148,24 +137,9 @@ FOR j=0L, nx[0] - 1L DO BEGIN
   vxyz_out[ind,ind,j,2]   = vx2d[j]
 ENDFOR
 ;;----------------------------------------------------------------------------------------
-;;  Remove data outside of user-specified search range
-;;----------------------------------------------------------------------------------------
-vdf_copy       = f3d_qh                      ;;  [X,Y,Z]-coordinates of output phase space densities [e.g., s^(3) cm^(-3) km^(-3)]
-IF (vxr_on[0]) THEN BEGIN
-  good_vx        = WHERE(vx2d GE vxrange[0] AND vx2d LE vxrange[1],gd_vx,COMPLEMENT=bad_vx,NCOMPLEMENT=bd_vx)
-  IF (bd_vx[0] GT 0) THEN vdf_copy[bad_vx,*,*] = d
-ENDIF
-IF (vyr_on[0]) THEN BEGIN
-  good_vy        = WHERE(vx2d GE vyrange[0] AND vx2d LE vyrange[1],gd_vy,COMPLEMENT=bad_vy,NCOMPLEMENT=bd_vy)
-  IF (bd_vy[0] GT 0) THEN vdf_copy[bad_vy,*,*] = d
-ENDIF
-IF (vzr_on[0]) THEN BEGIN
-  good_vz        = WHERE(vx2d GE vzrange[0] AND vx2d LE vzrange[1],gd_vz,COMPLEMENT=bad_vz,NCOMPLEMENT=bd_vz)
-  IF (bd_vz[0] GT 0) THEN vdf_copy[bad_vz,*,*] = d
-ENDIF
-;;----------------------------------------------------------------------------------------
 ;;  Try finding peak
 ;;----------------------------------------------------------------------------------------
+vdf_copy       = f3d_qh                      ;;  [X,Y,Z]-coordinates of output phase space densities [e.g., s^(3) cm^(-3) km^(-3)]
 test           = 0b
 lln            = -1L
 low            = 0L

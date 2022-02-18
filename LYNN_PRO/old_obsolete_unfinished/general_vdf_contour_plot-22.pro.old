@@ -157,43 +157,33 @@
 ;                             is positive, then the output from find_strahl_direction.pro
 ;                             will be used, otherwise the sign will flip.
 ;                             [Default = +1]
-;               PSTATS   :  [N]-Element [float/double] array defining particle VDF
-;                             Poisson statistics in phase space density units
-;                             [i.e., s^(3) km^(-3) cm^(-3)]
-;               RMBELOW  :  Scalar [numeric] defining the speed [km/s] below which all
-;                             data will be killed before plotting
-;                             [Default = 0]
 ;
 ;   CHANGED:  1)  Fixed a bug that occurs when VDF input contains zeros
-;                                                                   [05/16/2016   v1.0.1]
+;                                                                  [05/16/2016   v1.0.1]
 ;             2)  Fixed a bug that occurs when user sets the EX_INFO keyword
-;                                                                   [05/17/2016   v1.0.2]
+;                                                                  [05/17/2016   v1.0.2]
 ;             3)  Added keyword C_LOG to main routine
-;                                                                   [05/26/2017   v1.0.3]
+;                                                                  [05/26/2017   v1.0.3]
 ;             4)  Cleaned up
-;                                                                   [05/26/2017   v1.0.4]
+;                                                                  [05/26/2017   v1.0.4]
 ;             5)  Added keyword P_LOG to main routine
-;                                                                   [05/30/2017   v1.0.5]
+;                                                                  [05/30/2017   v1.0.5]
 ;             6)  Fixed an issue that occurs when user wants small VLIM with proper
 ;                   VFRAME setting that was previously causing the default setting to
 ;                   be used
-;                                                                   [02/28/2018   v1.0.6]
+;                                                                  [02/28/2018   v1.0.6]
 ;             7)  Added keyword BIMAX to main routine
-;                                                                   [04/02/2018   v1.0.7]
+;                                                                  [04/02/2018   v1.0.7]
 ;             8)  Added keyword BIKAP to main routine
-;                                                                   [04/04/2018   v1.0.8]
+;                                                                  [04/04/2018   v1.0.8]
 ;             9)  Added STRAHL keyword
-;                                                                   [04/19/2018   v1.0.9]
+;                                                                  [04/19/2018   v1.0.9]
 ;            10)  Added keywords:  NGRID, SLICE2D, P_TITLE, ONE_C, BPARM, and KPARM
-;                                                                   [05/09/2018   v1.1.0]
+;                                                                  [05/09/2018   v1.1.0]
 ;            11)  Added error handling for non-finite VEC1 and/or VEC2 inputs
-;                                                                   [06/19/2018   v1.1.1]
+;                                                                  [06/19/2018   v1.1.1]
 ;            12)  Added S_SIGN keyword
-;                                                                   [08/07/2018   v1.1.2]
-;            13)  Added PSTATS keyword
-;                                                                   [07/06/2021   v1.1.3]
-;            14)  Added keyword:  RMBELOW
-;                                                                   [11/01/2021   v1.1.4]
+;                                                                  [08/07/2018   v1.1.2]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -209,7 +199,7 @@
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  11/01/2021   v1.1.4
+;    LAST MODIFIED:  06/19/2018   v1.1.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -219,8 +209,7 @@ FUNCTION defaults_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,
                              SM_CONT=sm_cont,NSMCUT=nsmcut,NSMCON=nsmcon,PLANE=plane,     $
                              DFMIN=dfmin,DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,       $
                              STRAHL=strahl,NGRID=ngrid,SLICE2D=slice2d,P_TITLE=p_title,   $
-                             ONE_C=one_c,BPARM=bimax,KPARM=bikap,S_SIGN=s_sign,           $
-                             PSTATS=pstats,RMBELOW=rmbelow
+                             ONE_C=one_c,BPARM=bimax,KPARM=bikap,S_SIGN=s_sign
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range
 ;;----------------------------------------------------------------------------------------
@@ -390,9 +379,6 @@ IF (SIZE(p_title,/TYPE) NE 7) OR (N_ELEMENTS(p_title) LT 1) THEN p_title = def_c
 ;;  Check ONE_C
 onec_on        = (N_ELEMENTS(one_c) EQ kk[0]) AND is_a_number(one_c,/NOMSSG)
 IF (onec_on[0]) THEN one_c = REFORM(one_c,kk[0])
-;;  Check PSTATS
-pstt_on        = (N_ELEMENTS(pstats) EQ kk[0]) AND is_a_number(pstats,/NOMSSG)
-IF (pstt_on[0]) THEN pstats = REFORM(pstats,kk[0])
 ;;  Check BPARM
 IF ((N_ELEMENTS(bimax) GE 4) AND is_a_number(bimax,/NOMSSG)) THEN BEGIN
   CASE N_ELEMENTS(bimax) OF
@@ -409,14 +395,6 @@ ENDELSE
 ;;  Check KPARM
 bikap_on       = (N_ELEMENTS(bikap) EQ 6) AND is_a_number(bikap,/NOMSSG)
 IF (bikap_on[0]) THEN bikap = DOUBLE(bikap) ELSE bikap = 0
-;;  Check RMBELOW
-IF (is_a_number(rmbelow,/NOMSSG)) THEN BEGIN
-  ;;  Is numeric --> Make sure it's at least 0 (i.e., not negative)
-  rmbelow        = rmbelow[0] > 0d0
-ENDIF ELSE BEGIN
-  ;;  Not numeric or not set --> Default to 0.0
-  rmbelow        = 0d0
-ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Now make sure user hasn't set "dumb" values (i.e., make sure data falls within ranges)
 ;;----------------------------------------------------------------------------------------
@@ -471,7 +449,6 @@ END
 ;               test_plot_axis_range.pro
 ;               defaults_vdf_contour_plot.pro
 ;               get_rotated_and_triangulated_vdf.pro
-
 ;               find_1d_cuts_2d_dist.pro
 ;               bimaxwellian.pro
 ;               bikappa.pro
@@ -624,12 +601,6 @@ END
 ;               KEEPNAN  :  If set, routine will keep track of places where NaNs were
 ;                             originally located and replace them if they are interpolated
 ;                             out
-;               PSTATS   :  [N]-Element [float/double] array defining particle VDF
-;                             Poisson statistics in phase space density units
-;                             [i.e., s^(3) km^(-3) cm^(-3)]
-;               RMBELOW  :  Scalar [numeric] defining the speed [km/s] below which all
-;                             data will be killed before plotting
-;                             [Default = 0]
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ;               ***  [none of the following have default settings]  ***
 ;               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -699,72 +670,66 @@ END
 ;                             space densities triangulated onto a regular grid
 ;
 ;   CHANGED:  1)  Fixed a bug that occurs when VDF input contains zeros
-;                                                                   [05/16/2016   v1.0.1]
+;                                                                  [05/16/2016   v1.0.1]
 ;             2)  Fixed a bug that occurs when user sets the EX_INFO keyword
-;                                                                   [05/17/2016   v1.0.2]
+;                                                                  [05/17/2016   v1.0.2]
 ;             3)  Added keyword: C_LOG
-;                                                                   [05/26/2017   v1.0.3]
+;                                                                  [05/26/2017   v1.0.3]
 ;             4)  Cleaned up
-;                                                                   [05/26/2017   v1.0.4]
+;                                                                  [05/26/2017   v1.0.4]
 ;             5)  Added keywords: SLICE2D and NGRID
-;                                                                   [05/27/2017   v1.1.0]
+;                                                                  [05/27/2017   v1.1.0]
 ;             6)  Added keyword: P_LOG
-;                                                                   [05/30/2017   v1.1.1]
+;                                                                  [05/30/2017   v1.1.1]
 ;             7)  Added keywords: P_TITLE and DAT_OUT
-;                                                                   [07/26/2017   v1.1.2]
+;                                                                  [07/26/2017   v1.1.2]
 ;             8)  No longer calls log10_tickmarks.pro,
 ;                   now calls get_power_of_ten_ticks.pro
-;                                                                   [08/01/2017   v1.1.3]
+;                                                                  [08/01/2017   v1.1.3]
 ;             9)  Added ONE_C keyword and
 ;                   now outputs the value of VFRAME to inform the user of the
 ;                   currently used reference frame
-;                                                                   [08/24/2017   v1.2.0]
+;                                                                  [08/24/2017   v1.2.0]
 ;            10)  Fixed an issue that occurs when user wants small VLIM with proper
 ;                   VFRAME setting that was previously causing the default setting to
 ;                   be used
-;                                                                   [02/28/2018   v1.2.1]
+;                                                                  [02/28/2018   v1.2.1]
 ;            11)  Added BIMAX keyword and
 ;                   updated Man. page and changed other minor things
-;                                                                   [04/02/2018   v1.2.2]
+;                                                                  [04/02/2018   v1.2.2]
 ;            12)  Added BIKAP keyword
-;                                                                   [04/04/2018   v1.2.3]
+;                                                                  [04/04/2018   v1.2.3]
 ;            13)  Added STRAHL keyword and
 ;                   Now calls find_strahl_direction.pro and
 ;                   outputs the direction to the plot if the EX_INFO and STRAHL keywords
 ;                   are properly set
-;                                                                   [04/19/2018   v1.2.4]
+;                                                                  [04/19/2018   v1.2.4]
 ;            14)  Altered output structure to now return information regarding the
 ;                   one-count level
-;                                                                   [05/07/2018   v1.2.5]
+;                                                                  [05/07/2018   v1.2.5]
 ;            15)  Added keywords:  GET_ROT and ROT_OUT
-;                                                                   [05/07/2018   v1.2.6]
+;                                                                  [05/07/2018   v1.2.6]
 ;            16)  Now calls get_rotated_and_triangulated_vdf.pro and no longer calls
 ;                   rot_matrix_array_dfs.pro, rel_lorentz_trans_3vec.pro, or
 ;                   rotate_and_triangulate_dfs.pro and
 ;                   moved some error handling to defaults_vdf_contour_plot.pro
-;                                                                   [05/09/2018   v1.3.0]
+;                                                                  [05/09/2018   v1.3.0]
 ;            17)  Increased line and character thickness when saving to PS files
-;                                                                   [05/23/2018   v1.3.1]
+;                                                                  [05/23/2018   v1.3.1]
 ;            18)  Added error handling for non-finite VEC1 and/or VEC2 inputs
-;                                                                   [06/19/2018   v1.3.2]
+;                                                                  [06/19/2018   v1.3.2]
 ;            19)  Added error handling for case where user does not supply
 ;                   EX_INFO structure
-;                                                                   [07/02/2018   v1.3.3]
+;                                                                  [07/02/2018   v1.3.3]
 ;            20)  Added S_SIGN keyword to correct strahl direction for events where
 ;                   the sun direction is nearly orthogonal to Bo and the strahl is
 ;                   not along the direction predicted by find_strahl_direction.pro
-;                                                                   [08/07/2018   v1.3.4]
+;                                                                  [08/07/2018   v1.3.4]
 ;            21)  Fixed an issue where the one-count data does not return a valid
 ;                   triangulated structure
-;                                                                   [04/10/2019   v1.3.5]
+;                                                                  [04/10/2019   v1.3.5]
 ;            22)  Added keywords:  CLOSED, KEEPNAN, and F3D_QH
-;                                                                   [04/12/2019   v1.3.6]
-;            23)  Added PSTATS keyword
-;                                                                   [07/06/2021   v1.3.7]
-;            24)  Added keyword:  RMBELOW
-;                                                                   [11/01/2021   v1.3.8]
-;            25)  Fixed a typo in a structure tag reference for the Poisson stats
-;                                                                   [01/21/2022   v1.3.9]
+;                                                                  [04/12/2019   v1.3.6]
 ;
 ;   NOTES:      
 ;               1)  Setting DFRA trumps any values set in DFMIN and DFMAX
@@ -819,7 +784,7 @@ END
 ;
 ;   CREATED:  04/07/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  01/21/2022   v1.3.9
+;    LAST MODIFIED:  04/12/2019   v1.3.6
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -834,8 +799,7 @@ PRO general_vdf_contour_plot,vdf,velxyz,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=v
                              CIRCS=circs,EX_VECS=ex_vecs,EX_INFO=ex_info,             $
                              BIMAX=bimax,BIKAP=bikap,STRAHL=strahl,GET_ROT=get_rot,   $
                              ROT_OUT=rot_out,S_SIGN=s_sign,CLOSED=closed,             $
-                             KEEPNAN=keep_nans,F3D_QH=f3d_qh,PSTATS=pstats,           $
-                             RMBELOW=rmbelow
+                             KEEPNAN=keep_nans,F3D_QH=f3d_qh
 
 FORWARD_FUNCTION is_a_number, is_a_3_vector, mag__vec, test_plot_axis_range,              $
                  defaults_vdf_contour_plot, rot_matrix_array_dfs, rel_lorentz_trans_3vec, $
@@ -910,8 +874,7 @@ tests          = defaults_vdf_contour_plot(df1d,vxyz,VFRAME=vframe,VEC1=vec1,VEC
                                            DFMAX=dfmax,DFRA=dfra,V_0X=v_0x,V_0Y=v_0y,    $
                                            STRAHL=strahl,NGRID=ngrid,SLICE2D=slice2d,    $
                                            P_TITLE=p_title,ONE_C=one_c,BPARM=bimax,      $
-                                           KPARM=bikap,S_SIGN=s_sign,PSTATS=pstats,      $
-                                           RMBELOW=rmbelow                               )
+                                           KPARM=bikap,S_SIGN=s_sign                     )
 IF (N_ELEMENTS(tests) EQ 1) THEN RETURN      ;;  Something failed --> exit without plotting
 ;;  Check some outputs from default routine
 nm             = ngrid[0]
@@ -924,8 +887,6 @@ IF (bikap_on[0]) THEN kparm = bikap
 kk             = N_ELEMENTS(df1d)                      ;;  # of phase space density values
 onec_on        = (N_ELEMENTS(one_c) EQ kk[0])
 IF (onec_on[0]) THEN vdf1c = one_c
-pstt_on        = (N_ELEMENTS(pstats) EQ kk[0])
-IF (pstt_on[0]) THEN vdf1p = pstats
 ;;  Check P_LOG
 plog_on        = (N_ELEMENTS(p_log) EQ 1) AND KEYWORD_SET(p_log)
 ;;  Check C_LOG
@@ -943,8 +904,6 @@ ENDELSE
 IF KEYWORD_SET(closed) THEN close_only = 1b ELSE close_only = 0b
 ;;  Check KEEPNAN
 IF KEYWORD_SET(keep_nans) THEN nans_on = 1b ELSE nans_on = 0b
-;;  Check RMBELOW
-IF (rmbelow[0] GT 0) THEN rmlow = 1b ELSE rmlow = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Rotate velocities and VDF into new coordinate basis and triangulate
 ;;----------------------------------------------------------------------------------------
@@ -966,14 +925,6 @@ IF (onec_on[0]) THEN BEGIN
                                                     P_LOG=plog_on,VFRAME=vframe,             $
                                                     VEC1=vec1,VEC2=vec2                      )
   IF (SIZE(r_onec,/TYPE) NE 8) THEN onec_on = 0b
-ENDIF
-IF (pstt_on[0]) THEN BEGIN
-  ;;  Compute one-count equivalent
-  r_pstt         = get_rotated_and_triangulated_vdf(vxyz,vdf1p,VLIM=vlim[0],C_LOG=clog_on[0],$
-                                                    NGRID=nm[0],SLICE2D=slice_on[0],         $
-                                                    P_LOG=plog_on,VFRAME=vframe,             $
-                                                    VEC1=vec1,VEC2=vec2                      )
-  IF (SIZE(r_pstt,/TYPE) NE 8) THEN pstt_on = 0b
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords without default options
@@ -1031,14 +982,6 @@ def_con_zttl   = '('+xname[0]+' x '+yname[0]+') [1000 km/s]'
 vx2d           = r_vels.VX2D
 vy2d           = r_vels.VY2D
 nnct           = N_ELEMENTS(vx2d)
-IF (rmlow[0]) THEN BEGIN
-  v2dx          = vx2d # REPLICATE(1d0,nnct[0])
-  v2dy          = REPLICATE(1d0,nnct[0]) # vy2d
-  v2dspd        = SQRT(v2dx^2d0 + v2dy^2d0)
-  spdmin        = rmbelow[0]
-  badlow        = WHERE(v2dspd LE spdmin[0],bdlow)
-ENDIF ELSE bdlow = 0L
-
 CASE plane[0] OF
   'xy'  : BEGIN
     ;;------------------------------------------------------------------------------------
@@ -1057,8 +1000,6 @@ CASE plane[0] OF
     vzpts    = r_vels.PLANE_XY.VELZ_XY
     ;;  Define one-count equivalent
     IF (onec_on[0]) THEN df1c = r_onec.PLANE_XY.DF2D_XY
-    ;;  Define Poisson statistics equivalent
-    IF (pstt_on[0]) THEN df1p = r_pstt.PLANE_XY.DF2D_XY
     ;;  Define elements [x,y]
     gels     = [0L,1L]
   END
@@ -1079,8 +1020,6 @@ CASE plane[0] OF
     vzpts    = r_vels.PLANE_XZ.VELZ_XZ
     ;;  Define one-count equivalent
     IF (onec_on[0]) THEN df1c = r_onec.PLANE_XZ.DF2D_XZ
-    ;;  Define Poisson statistics equivalent
-    IF (pstt_on[0]) THEN df1p = r_pstt.PLANE_XZ.DF2D_XZ
     ;;  Define elements [x,y]
     gels     = [2L,0L]
   END
@@ -1101,8 +1040,6 @@ CASE plane[0] OF
     vzpts    = r_vels.PLANE_YZ.VELZ_YZ
     ;;  Define one-count equivalent
     IF (onec_on[0]) THEN df1c = r_onec.PLANE_YZ.DF2D_YZ
-    ;;  Define Poisson statistics equivalent
-    IF (pstt_on[0]) THEN df1p = r_pstt.PLANE_YZ.DF2D_YZ
     ;;  define elements [x,y]
     gels     = [0L,1L]
   END
@@ -1123,22 +1060,12 @@ CASE plane[0] OF
     vzpts    = r_vels.PLANE_XY.VELZ_XY
     ;;  Define one-count equivalent
     IF (onec_on[0]) THEN df1c = r_onec.PLANE_XY.DF2D_XY
-    ;;  Define Poisson statistics equivalent
-    IF (pstt_on[0]) THEN df1p = r_pstt.PLANE_XY.DF2D_XY
     ;;  Define elements [x,y]
     gels     = [0L,1L]
   END
 ENDCASE
 ;;----------------------------------------------------------------------------------------
-;;  Remove data below minimim speed if desired
-;;----------------------------------------------------------------------------------------
-IF (rmlow[0] AND bdlow[0] GT 0) THEN df2d[badlow] = d
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Define cut through f(x,y) at offset {V_0X, V_0Y}
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 cuts_struc     = find_1d_cuts_2d_dist(df2d,vx2d,vy2d,X_0=v_0x,Y_0=v_0y)
 vdf_para_cut   = cuts_struc.X_1D_FXY           ;;  horizontal 1D cut
@@ -1155,12 +1082,6 @@ IF (onec_on[0]) THEN BEGIN
   onec_cpara     = onec_struc.X_1D_FXY         ;;  horizontal 1D cut
   onec_cperp     = onec_struc.Y_1D_FXY         ;;  horizontal 1D cut
 ENDIF
-;;  Define Poisson statistics equivalent
-IF (pstt_on[0]) THEN BEGIN
-  pstt_struc     = find_1d_cuts_2d_dist(df1p,vx2d,vy2d,X_0=v_0x,Y_0=v_0y)
-  pstt_cpara     = pstt_struc.X_1D_FXY         ;;  horizontal 1D cut
-  pstt_cperp     = pstt_struc.Y_1D_FXY         ;;  horizontal 1D cut
-ENDIF
 ;;  Define bi-Maxwellian cuts (if set)
 IF (bimax_on[0]) THEN BEGIN
   bimax_vdf     = bimaxwellian(vx2d,vy2d,param)
@@ -1169,28 +1090,11 @@ IF (bimax_on[0]) THEN BEGIN
   bimax_cperp   = bimax_struc.Y_1D_FXY         ;;  vertical 1D cut
 ENDIF
 ;;  Define bi-kappa cuts (if set)
-IF (bikap_on[0]) THEN BEGIN
+IF (bimax_on[0]) THEN BEGIN
   bikap_vdf     = bikappa(vx2d,vy2d,kparm)
   bikap_struc   = find_1d_cuts_2d_dist(bikap_vdf,vx2d,vy2d,X_0=0d0,Y_0=0d0)
   bikap_cpara   = bikap_struc.X_1D_FXY         ;;  horizontal 1D cut
   bikap_cperp   = bikap_struc.Y_1D_FXY         ;;  vertical 1D cut
-ENDIF
-;;----------------------------------------------------------------------------------------
-;;  Remove data below minimim speed if desired
-;;----------------------------------------------------------------------------------------
-IF (rmlow[0] AND bdlow[0] GT 0) THEN BEGIN
-  badfcx         = WHERE(ABS(vpara_cut)*1d3 LE spdmin[0],bdfcx)
-  badfcy         = WHERE(ABS(vperp_cut)*1d3 LE spdmin[0],bdfcy)
-  IF (bdfcx[0] GT 0) THEN BEGIN
-    vdf_para_cut[badfcx] = d
-    IF (onec_on[0])  THEN onec_cpara[badfcx] = d
-    IF (pstt_on[0])  THEN pstt_cpara[badfcx] = d
-  ENDIF
-  IF (bdfcy[0] GT 0) THEN BEGIN
-    vdf_perp_cut[badfcy] = d
-    IF (onec_on[0])  THEN onec_cperp[badfcy] = d
-    IF (pstt_on[0])  THEN pstt_cperp[badfcy] = d
-  ENDIF
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Define the 2D projection of the extra vectors in EX_VECS
@@ -1311,25 +1215,15 @@ ENDIF ELSE BEGIN
   cut_ytv        = tick_str.XTICKV
 ENDELSE
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Smooth cuts and contour if desired [typically necessary for ions or noisy data]
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 IF KEYWORD_SET(sm_cuts) THEN BEGIN
   ;;  Smooth cuts
   vdf_cut_para0  = SMOOTH(vdf_para_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
   vdf_cut_perp0  = SMOOTH(vdf_perp_cut,nsmcut[0],/NAN,/EDGE_TRUNCATE)
-  ;;  Define one-count equivalent
   IF (onec_on[0]) THEN BEGIN
     onec_cut_par0 = SMOOTH(onec_cpara,nsmcut[0],/NAN,/EDGE_TRUNCATE)
     onec_cut_per0 = SMOOTH(onec_cperp,nsmcut[0],/NAN,/EDGE_TRUNCATE)
-  ENDIF
-  ;;  Define Poisson statistics equivalent
-  IF (pstt_on[0]) THEN BEGIN
-    pstt_cut_par0 = SMOOTH(pstt_cpara,nsmcut[0],/NAN,/EDGE_TRUNCATE)
-    pstt_cut_per0 = SMOOTH(pstt_cperp,nsmcut[0],/NAN,/EDGE_TRUNCATE)
   ENDIF
   IF (nans_on[0]) THEN BEGIN
     ;;  Replace indices originally having NaNs with NaNs
@@ -1341,15 +1235,9 @@ IF KEYWORD_SET(sm_cuts) THEN BEGIN
 ENDIF ELSE BEGIN
   vdf_cut_para0  = vdf_para_cut
   vdf_cut_perp0  = vdf_perp_cut
-  ;;  Define one-count equivalent
   IF (onec_on[0]) THEN BEGIN
     onec_cut_par0 = onec_cpara
     onec_cut_per0 = onec_cperp
-  ENDIF
-  ;;  Define Poisson statistics equivalent
-  IF (pstt_on[0]) THEN BEGIN
-    pstt_cut_par0 = pstt_cpara
-    pstt_cut_per0 = pstt_cperp
   ENDIF
 ENDELSE
 IF KEYWORD_SET(sm_cont) THEN BEGIN
@@ -1370,15 +1258,9 @@ IF (plog_on[0] AND ~clog_on[0]) THEN BEGIN
   vdf_cut_para   = ALOG10(vdf_cut_para0)
   vdf_cut_perp   = ALOG10(vdf_cut_perp0)
   cut_yrange     = ALOG10(df_ran)
-  ;;  Define one-count equivalent
   IF (onec_on[0]) THEN BEGIN
     onec_cut_para = ALOG10(onec_cut_par0)
     onec_cut_perp = ALOG10(onec_cut_per0)
-  ENDIF
-  ;;  Define Poisson statistics equivalent
-  IF (pstt_on[0]) THEN BEGIN
-    pstt_cut_para = ALOG10(pstt_cut_par0)
-    pstt_cut_perp = ALOG10(pstt_cut_per0)
   ENDIF
   IF (bimax_on[0]) THEN BEGIN
     bimax_cut_para = ALOG10(bimax_cpara)
@@ -1393,15 +1275,9 @@ ENDIF ELSE BEGIN
   vdf_cut_para   = vdf_cut_para0
   vdf_cut_perp   = vdf_cut_perp0
   cut_yrange     = df_ran
-  ;;  Define one-count equivalent
   IF (onec_on[0]) THEN BEGIN
     onec_cut_para = onec_cut_par0
     onec_cut_perp = onec_cut_per0
-  ENDIF
-  ;;  Define Poisson statistics equivalent
-  IF (pstt_on[0]) THEN BEGIN
-    pstt_cut_para = pstt_cut_par0
-    pstt_cut_perp = pstt_cut_per0
   ENDIF
   IF (bimax_on[0]) THEN BEGIN
     bimax_cut_para = bimax_cpara
@@ -1413,11 +1289,7 @@ ENDIF ELSE BEGIN
   ENDIF
 ENDELSE
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Define plot limits structures for contour and cuts plots
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 con_xyran      = [-1d0,1d0]*vlim[0]*1d-3     ;;  km  -->  Mm  [just looks better when plotted]
 ;;  Contour plot setup structure
@@ -1518,7 +1390,7 @@ PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=base_lim_ct,CHARTHICK=chthick[0],XTHICK=p_thick[
   OPLOT,vpara_cut,vdf_cut_para,COLOR=250,LINESTYLE=0,THICK=l_thick[0]
   OPLOT,vperp_cut,vdf_cut_perp,COLOR= 50,LINESTYLE=0,THICK=l_thick[0]
   ;;  Output cut labels
-  xyposi     = [4d-1*con_xyran[0],6d0*df_ran[0]]
+  xyposi     = [4d-1*con_xyran[0],4d0*df_ran[0]]
   XYOUTS,xyposi[0],xyposi[1],'Para. Cut',/DATA,COLOR=250,CHARTHICK=chthick[0]
   xyposi[1] *= 0.7
   XYOUTS,xyposi[0],xyposi[1],'Perp. Cut',/DATA,COLOR= 50,CHARTHICK=chthick[0]
@@ -1530,15 +1402,6 @@ PLOT,[0.0,1.0],[0.0,1.0],_EXTRA=base_lim_ct,CHARTHICK=chthick[0],XTHICK=p_thick[
     ;;  Shift in negative Y-Direction
     xyposi[1] *= 0.7
     XYOUTS,xyposi[0],xyposi[1],'One-Count',/DATA,COLOR=150,CHARTHICK=chthick[0]
-  ENDIF
-  ;;--------------------------------------------------------------------------------------
-  ;;  Plot Poisson statistics if desired
-  ;;--------------------------------------------------------------------------------------
-  IF (pstt_on[0]) THEN BEGIN
-    OPLOT,vpara_cut,pstt_cut_para,COLOR=100,LINESTYLE=4,THICK=l_thick[0]
-    ;;  Shift in negative Y-Direction
-    xyposi[1] *= 0.7
-    XYOUTS,xyposi[0],xyposi[1],'Poisson',/DATA,COLOR=100,CHARTHICK=chthick[0]
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Plot bi-Maxwellian if desired
@@ -1653,19 +1516,9 @@ ENDIF ELSE BEGIN
   onec_cut_perp  = onec_cut_para
   onec_struc     = CREATE_STRUCT(tags,df1c,onec_cut_para,onec_cut_perp)
 ENDELSE
-;;  Define structure for Poisson statistics of VDF
-IF (pstt_on[0]) THEN BEGIN
-  pstt_struc     = CREATE_STRUCT(tags,df1p,pstt_cut_para,pstt_cut_perp)
-ENDIF ELSE BEGIN
-  szdm           = SIZE(df2ds,/DIMENSIONS)
-  df1p           = REPLICATE(d,szdm[0],szdm[1])
-  pstt_cut_para  = REFORM(df1p[*,0])
-  pstt_cut_perp  = pstt_cut_para
-  pstt_struc     = CREATE_STRUCT(tags,df1p,pstt_cut_para,pstt_cut_perp)
-ENDELSE
 ;;  Define DAT_OUT
-tags           = ['CONT_DATA','CUTS_DATA','XYOUTS','ONE_CUT','POISSON']
-dat_out        = CREATE_STRUCT(tags,con_struc,cut_struc,xyouts_str,onec_struc,pstt_struc)
+tags           = ['CONT_DATA','CUTS_DATA','XYOUTS','ONE_CUT']
+dat_out        = CREATE_STRUCT(tags,con_struc,cut_struc,xyouts_str,onec_struc)
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

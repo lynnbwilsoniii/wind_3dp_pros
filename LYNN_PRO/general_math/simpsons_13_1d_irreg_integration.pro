@@ -1,24 +1,24 @@
 ;+
 ;*****************************************************************************************
 ;
-;  FUNCTION :   simpsons_13_1d_integration.pro
+;  FUNCTION :   simpsons_13_1d_irreg_integration.pro
 ;  PURPOSE  :   This routine performs a 1D integration using Simpson's 1/3 Rule
-;                 algorithm based upon user defined X and Y inputs.  Note that if
-;                 any additional factors are to be included, they should be done so
-;                 prior to calling.
+;                 algorithm based upon user defined X and Y inputs.  This routine allows
+;                 for an irregularly sampled X grid on input, unlike
+;                 simpsons_13_1d_integration.pro, which requires a regular grid spacing.
+;                 Note that if any additional factors are to be included, they should be
+;                 done so prior to calling.
 ;
 ;                 The output result is given as follows:
-;                   I = ∆x/3*(∑_k s[k] f[k])
-;                 for N input values, where the terms are defined as follows:
-;                   a(b)    =  start(end) value of abscissa, x
-;                   T       = # of intervals (= N - 1)
-;                   ∆x      =  (b - a)/T
-;                   s[0]    = 1
-;                   s[T]    = 1
-;                   s[2k+1] = 4
-;                   s[2k+2] = 2
-;                 In other words, I can be abbreviated as:
-;                   I = ∆x/3*(f[0] + 4*f[1] + 2*f[2] + 4*f[3] + 2*f[4] + ... + 4*f[T-1] + f[T])
+;                   I = ∑_k H0[k]*(H1[k] + H2[k] + H3[k])
+;                 where the Hj terms are given as follows:
+;                   H0[k] =  (h[2k] + h[2k+1])/6
+;                   H1[k] =  (2 - h[2k+1]/h[2k])*f[2k]
+;                   H2[k] =  (h[2k] + h[2k+1])^2/(h[2k] * h[2k+1])*f[2k+1]
+;                   H3[k] =  (2 - h[2k]/h[2k+1])*f[2k+2]
+;                 where the h[k] terms are defined as:
+;                   h[k]  = x[k+1] - x[k]
+;                 and f[k] is the value of the function for the kth element.
 ;
 ;                 The error of the output is define as an upper bound on the error,
 ;                 given by the following inequality:
@@ -42,13 +42,15 @@
 ;               1)  UMN Modified Wind/3DP IDL Libraries
 ;
 ;  INPUT:
-;               X       :  [N]-Element [numeric] array of x-coordinate abscissa
+;               X       :  [N]-Element [numeric] array of x-coordinate abscissa on an
+;                            irregular grid.  If X is on a regular grid, then the
+;                            simpsons_13_1d_integration.pro would be faster/better
 ;               Y       :  [N]-Element [numeric] array of y-function values for each
 ;                            X abscissa value
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               result = simpsons_13_1d_integration(x,y [,/LOG] [,MAXERR=maxerr] [,/NOMSSG])
+;               result = simpsons_13_1d_irreg_integration(x,y [,MAXERR=maxerr] [,/NOMSSG])
 ;
 ;               ;;  ***********************************************
 ;               ;;  Example comparison with IDL built-in QSIMP.PRO
@@ -56,12 +58,12 @@
 ;               ;;  Integrate the function:
 ;               ;;    f(x) = (x^4 - 2 x^2) Sin(x)
 ;               ;;  on the interval [a,b] using IDL's built-in Simpson's 1/3 Rule
-;               a     = 0d0
-;               b     = !DPI/2d0
+;               a     = 1d-3
+;               b     = !DPI/2d0 + a[0]
 ;               lam1  = LAMBDA("X: (X^4d0 - 2d0 * X^2d0) * SIN(X)")         ;;  Generates an in-line function
 ;               testi = QSIMP(lam1,a,b,/DOUBLE,EPS=1d-12,JMAX=20)           ;;  Integrate using Simpson's 1/3 Rule
 ;               testi[0]
-;                    -0.47915881010723943
+;                    -0.47800093006471039
 ;
 ;               ;;  Define exact value from integration by parts
 ;               ;;    ∫ dx f(x) = 4 x (x^2 - 7) Sin(x) - (28 + x^4 - 14 x^2) Cos(x)
@@ -70,44 +72,55 @@
 ;               fa    = 4d0*a[0]*(a[0]^2d0 - 7d0)*SIN(a[0]) - (a[0]^4d0 - 14d0*a[0]^2d0 + 28d0)*COS(a[0])
 ;               exact = fb[0] - fa[0]
 ;               exact[0]
-;                    -0.47915881010719374
+;                    -0.47800093006475208
 ;
 ;               ;;  Define percent difference between exact and numerical approximation
 ;               perc  = (testi[0] - exact[0])/exact[0]*1d2
 ;               perc[0]
-;                  9.5345585846798361e-12
+;                 -8.7215049077472035e-12
 ;
+;               ;;  Check irregular grid solutions
+;               lneab = ALOG([a[0],b[0]])
 ;               nn    = 21L
-;               xx    = DINDGEN(nn[0])*(b[0] - a[0])/(nn[0] - 1L) + a[0]
+;               lnexx = DINDGEN(nn[0])*(lneab[1] - lneab[0])/(nn[0] - 1L) + lneab[0]
+;               xx    = EXP(lnexx)
 ;               yy    = (xx^4d0 - 2d0*xx^2d0)*SIN(xx)
-;               .compile simpsons_13_1d_integration.pro
-;               test  = simpsons_13_1d_integration(xx,yy,MAXERR=maxerr,/NOMSSG)
+;               .compile simpsons_13_1d_irreg_integration.pro
+;               test  = simpsons_13_1d_irreg_integration(xx,yy,MAXERR=maxerr,/NOMSSG)
 ;               test[0], maxerr[0]
-;                    -0.47915407477924593
-;                  3.3027859454524992e-05
+;                    -0.43960694803750966
+;                   0.0016655923336171626
 ;
-;               perm  = (test[0] - exact[0])/exact[0]*1d2
-;               perm[0]
-;                 -0.00098825855810814683
+;               per0  = (test[0] - exact[0])/exact[0]*1d2
+;               per0[0]
+;                     -8.0321981846439936
 ;
 ;               ;;  Increase N to improve results
 ;               nn    = 121L
-;               xx    = DINDGEN(nn[0])*(b[0] - a[0])/(nn[0] - 1L) + a[0]
+;               lnexx = DINDGEN(nn[0])*(lneab[1] - lneab[0])/(nn[0] - 1L) + lneab[0]
+;               xx    = EXP(lnexx)
 ;               yy    = (xx^4d0 - 2d0*xx^2d0)*SIN(xx)
-;               .compile simpsons_13_1d_integration.pro
-;               test  = simpsons_13_1d_integration(xx,yy,MAXERR=maxerr,/NOMSSG)
+;               .compile simpsons_13_1d_irreg_integration.pro
+;               test  = simpsons_13_1d_irreg_integration(xx,yy,MAXERR=maxerr,/NOMSSG)
 ;               test[0], maxerr[0]
-;                    -0.47915880651072734
-;                  7.2568756213602116e-08
+;                    -0.47797643688062930
+;                  1.1597214408514790e-05
 ;
-;               perm  = (test[0] - exact[0])/exact[0]*1d2
-;               perm[0]
-;                 -7.5057920810476773e-07
+;               per1  = (test[0] - exact[0])/exact[0]*1d2
+;               per1[0]
+;                  -0.0051240871266649921
+;
+;               ;;  Print improvement in accuracy
+;               per0[0]/per1[0]
+;                      1567.5373946796535
+;
+;               ;;  Note that (121d0/21d0)^4d0 ~ 1102.20988683
+;               ;;    --> factor change in M ~ 1.42217686
 ;
 ;  KEYWORDS:    
-;               LOG     :  If set and routine needs to regrid Y, then the interpolation
+;               LOG     :  If set and routine needs to regrid Z, then the interpolation
 ;                            will be done in logarithmic space
-;                            [Default = FALSE]
+;                            [***  Obsolete  ***]
 ;               MAXERR  :  Set to a named variable to return the upper bound on the
 ;                            absolute error of the output integral result
 ;                            [Default = not calculated]
@@ -115,17 +128,19 @@
 ;                            time
 ;                            [Default = FALSE]
 ;
-;   CHANGED:  1)  Added keyword:  MAXERR
+;   CHANGED:  1)  Added keyword:  MAXERR and
+;                   fixed a typo/bug in the H3[k] term so it now correctly uses the
+;                   (2k + 2)-th element of f(x), not the (2k + 1)-th element
 ;                                                                   [01/19/2022   v1.0.1]
 ;
 ;   NOTES:      
 ;               0)  See also:  simpsons_13_2d_integration.pro and simpsons_13_3d_integration.pro
-;               1)  N should be odd and must satisfy N > 7
-;               2)  If X and Y are not on a regular, uniform grid then the routine
-;                     will regrid the results before interpolation as the algorithm
-;                     assumes a regular grid
-;               3)  Primary difference from IDL built-in QSIMP.PRO is the user need not
-;                     know the functional form of YY on input
+;               1)  N should be odd and must satisfy N > 6
+;               2)  X and Y need NOT be on a regular grid for this routine, unlike
+;                     simpsons_13_1d_integration.pro
+;               3)  Primary differences from IDL built-in QSIMP.PRO is the user need not
+;                     know the functional form of YY on input and the abscissa need not
+;                     be regularly spaced
 ;
 ;  REFERENCES:  
 ;               http://mathfaculty.fullerton.edu/mathews/n2003/SimpsonsRule2DMod.html
@@ -133,15 +148,15 @@
 ;               https://en.wikipedia.org/wiki/Simpson%27s_rule
 ;               https://openstax.org/books/calculus-volume-2/pages/3-6-numerical-integration
 ;
-;   CREATED:  08/05/2020
+;   CREATED:  01/18/2022
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  08/05/2020   v1.0.0
+;    LAST MODIFIED:  01/19/2022   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION simpsons_13_1d_integration,x,y,LOG=log,MAXERR=maxerr,NOMSSG=nomssg
+FUNCTION simpsons_13_1d_irreg_integration,x,y,LOG=log,MAXERR=maxerr,NOMSSG=nomssg
 
 ex_start       = SYSTIME(1)
 ;;----------------------------------------------------------------------------------------
@@ -171,7 +186,7 @@ IF (test[0]) THEN BEGIN
   MESSAGE,badndim__mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
-test           = (szdx[0] NE szdy[0]) OR (szdx[0] LT 8L)
+test           = (szdx[0] NE szdy[0]) OR (szdx[0] LT 6L)
 IF (test[0]) THEN BEGIN
   MESSAGE,badddim__mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
@@ -179,12 +194,12 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
-;;  Check LOG
+;;  Check LOG  ***  Obsolete  ***
 IF KEYWORD_SET(log) THEN log_on = 1b ELSE log_on = 0b
 ;;  Check MAXERR
 IF (ARG_PRESENT(maxerr) NE 0) THEN calcerr = 1b ELSE calcerr = 0b
 ;;----------------------------------------------------------------------------------------
-;;  Make sure N is odd
+;;  Make sure N is odd so that # of intervals is even
 ;;----------------------------------------------------------------------------------------
 nx             = N_ELEMENTS(x)
 IF ((nx[0] MOD 2) EQ 0) THEN BEGIN
@@ -192,81 +207,57 @@ IF ((nx[0] MOD 2) EQ 0) THEN BEGIN
   xx             = x[0L:(nx[0] - 2L)]
   yy             = y[0L:(nx[0] - 2L)]
 ENDIF ELSE BEGIN
-  ;;  N is currently odd --> leave alone
   xx             = REFORM(x)
   yy             = REFORM(y)
 ENDELSE
-xran           = [MIN(xx,/NAN),MAX(xx,/NAN)]
-yran           = [MIN(yy,/NAN),MAX(yy,/NAN)]
-nx             = N_ELEMENTS(xx)
+nx             = N_ELEMENTS(xx)             ;;  # of elements in array
 ;;----------------------------------------------------------------------------------------
-;;  Regardless, make sure on uniform grid
+;;  Compute all h_k values (i.e., bin widths)
 ;;----------------------------------------------------------------------------------------
-dx             = (xran[1] - xran[0])/(nx[0] - 1L)
-xg             = DINDGEN(nx[0])*dx[0] + xran[0]
-;;  Find closest indices of original regularly gridded input velocities
-ii             = LINDGEN(nx[0])
-testx          = VALUE_LOCATE(xx,xg)
-dfx            = testx - ii
-test           = (TOTAL(dfx NE 0) GT 0)
-IF (test[0]) THEN BEGIN
-  ;;--------------------------------------------------------------------------------------
-  ;;  Need to regrid input
-  ;;--------------------------------------------------------------------------------------
-  ;;  Calculate fraction of indices between indices
-  diffx          = (xg - xx[testx])/dx[0]
-  ;;  Define fractional indices
-  index_x        = testx + diffx
-  ;;  Regrid F
-  IF (log_on[0]) THEN BEGIN
-    fg             = 1d1^(INTERPOLATE(ALOG10(yy),index_x,MISSING=d,/DOUBLE,/GRID))
-  ENDIF ELSE BEGIN
-    fg             = INTERPOLATE(yy,index_x,MISSING=d,/DOUBLE,/GRID)
-  ENDELSE
-  ;;  Clean up
-  delete_variable,diffx,index_x
-ENDIF ELSE BEGIN
-  ;;--------------------------------------------------------------------------------------
-  ;;  No need to regrid input
-  ;;--------------------------------------------------------------------------------------
-  fg             = yy
-ENDELSE
-nx             = N_ELEMENTS(xg)
-;;  Should not have changed, but just in case...
-xran           = [MIN(xg,/NAN),MAX(xg,/NAN)]
-yran           = [MIN(fg,/NAN),MAX(fg,/NAN)]
+;;  Don't keep last element as that is negative
+h_k            = (SHIFT(xx,-1) - xx)[0L:(nx[0] - 2L)]
+nh             = N_ELEMENTS(h_k)            ;;  # of intervals
+;;  Define 2i, 2i+1, and 2i+2 indices
+ind            = LINDGEN(nh[0])
+i2i            = ind[0L:*:2L]
+i2ip1          = (i2i   + 1L) < (nx[0] - 1L)
+i2ip2          = (i2ip1 + 1L) < (nx[0] - 1L)
+;;  Define f_2i, f_2i+1, and f_2i+2 values
+f_2i           = yy[i2i]
+f_2ip1         = yy[i2ip1]
+f_2ip2         = yy[i2ip2]
+;;  Define h_2i and h_2i+1 values
+h_2i           = h_k[i2i]
+h_2ip1         = h_k[i2ip1]
+;;----------------------------------------------------------------------------------------
+;;  Compute all terms
+;;----------------------------------------------------------------------------------------
+;;  Define (h_2i + h_2i+1)/6
+term0          = (h_2i + h_2ip1)/6d0
+;;  Define (2 - h_2i+1/h_2i)*f_2i
+term1          = (2d0 - h_2ip1/h_2i)*f_2i
+;;  Define (h_2i + h_2i+1)^2/(h_2i * h_2i+1)*f_2i+1
+term2          = (h_2i + h_2ip1)^2d0/(h_2i * h_2ip1)*f_2ip1
+;;  Define (2 - h_2i/h_2i+1)*f_2i+2
+term3          = (2d0 - h_2i/h_2ip1)*f_2ip2
 ;;  *** Clean up ***
-delete_variable,xx,yy,testx,dfx,ii
+delete_variable,h_2i,h_2ip1,f_2i,f_2ip1,f_2ip2,i2i,i2ip1,ind
 ;;----------------------------------------------------------------------------------------
+;;  Sum over all terms
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;  1D Simpson's 1/3 Rule
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;  Construct Simpson's 1/3 Rule 1D coefficients
-sc             = REPLICATE(1d0,nx[0])
-sc[1:(nx[0] - 2L):2] *= 4d0              ;;  Start at 2nd element and every other element should be 4
-sc[2:(nx[0] - 3L):2] *= 2d0              ;;  Start at 3rd element and every other element should be 2
-sc[(nx[0] - 1L)]      = 1d0              ;;  Make sure last element is 1
-;;  Define h-factors for 1D Simpson's 1/3 Rule
-hfac           = dx[0]/3d0
-;;----------------------------------------------------------------------------------------
-;;  Compute 1D integral of input
-;;----------------------------------------------------------------------------------------
-output         = TOTAL(hfac[0]*sc*fg,/NAN)
+output         = TOTAL(term0*(term1 + term2 + term3),/NAN)
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate error if user so wishes
 ;;----------------------------------------------------------------------------------------
 IF (calcerr[0]) THEN BEGIN
   ;;  First, calculate d^4/dx^4 f(x)
-  d4fdx4         = DERIV(xg,DERIV(xg,DERIV(xg,DERIV(xg,fg))))
+  d4fdx4         = DERIV(xx,DERIV(xx,DERIV(xx,DERIV(xx,yy))))
   ;;  Check for "bad" outliers [be generous and allow for 100% differences]
   md_d4fdx4      = MEDIAN(ABS(d4fdx4))
   pc_d4fdx4      = (ABS(d4fdx4) - md_d4fdx4[0])/md_d4fdx4[0]*1d2
   bad_out        = WHERE(FINITE(pc_d4fdx4) EQ 0 OR ABS(pc_d4fdx4) GT 1d2,bd_out,COMPLEMENT=good_in,NCOMPLEMENT=gd_in)
   ;;  Compute maximum error:  M*(b - a)^5/(180*T^4)
-  del_ab         = MAX(xg,/NAN) - MIN(xg,/NAN)
+  del_ab         = MAX(xx,/NAN) - MIN(xx,/NAN)
   IF (gd_in[0] GT 0) THEN BEGIN
     ;;  Use only the "good" elements for computing error
     mx_d4fdx4      = MAX(ABS(d4fdx4[good_in]),/NAN)
@@ -274,7 +265,7 @@ IF (calcerr[0]) THEN BEGIN
     ;;  Use all elements for computing error
     mx_d4fdx4      = MAX(ABS(d4fdx4),/NAN)
   ENDELSE
-  maxerr         = mx_d4fdx4[0]*del_ab[0]^5d0/(18d1*(nx[0] - 1d0)^4d0)
+  maxerr         = mx_d4fdx4[0]*del_ab[0]^5d0/(18d1*nh[0]^4d0)
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
@@ -284,6 +275,19 @@ IF ~KEYWORD_SET(nomssg) THEN MESSAGE,STRING(ex_time[0])+' seconds execution time
 
 RETURN,output[0]
 END
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

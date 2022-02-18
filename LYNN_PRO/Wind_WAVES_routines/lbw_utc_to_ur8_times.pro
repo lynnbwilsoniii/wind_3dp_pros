@@ -1,10 +1,8 @@
 ;+
 ;*****************************************************************************************
 ;
-;  FUNCTION :   lbw_ur8_to_dbms_times.pro
-;  PURPOSE  :   Converts a UR8 time into a YYYY-MM-DD/hh:mm:ss.xxx UTC time.  This time
-;                 format was used by the Wind/WAVES TDS receiver and Ulysses radio
-;                 wave experiment.
+;  FUNCTION :   lbw_utc_to_ur8_times.pro
+;  PURPOSE  :   Routine converts an input UTC time to UR8 time.
 ;
 ;  CALLED BY:   
 ;               NA
@@ -14,22 +12,32 @@
 ;
 ;  CALLS:
 ;               time_double.pro
-;               is_a_number.pro
+;               str_valid_num.pro
 ;               fill_range.pro
+;               time_struct.pro
+;               time_double.pro
+;               time_double.pro
 ;
 ;  REQUIRES:    
 ;               1)  UMN Modified Wind/3DP IDL Libraries
 ;
 ;  INPUT:
-;               UR8_IN  :  [N]-Element [numeric] array of UR8 times
+;               UTC_IN  :  [N]-Element [string] array of UTC times with format:
+;                            'YYYY-MM-DD/hh:mm:ss.xxx'
+;                            where the fraction of seconds is optional
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               test = lbw_ur8_to_dbms_times(ur8_in [,DBMS1=dbms1] [,DBMS2=dbms2]   $
-;                                            [,YEAR=year] [,MONTH=month] [,DAY=day] $
-;                                            [,HOUR=hour] [,MINUTE=minute]          $
-;                                            [,SECOND=second] [,MILSEC=milsec]      $
-;                                            [,JULIAN=julian])
+;               test = lbw_utc_to_ur8_times(utc_in [,YEAR=year] [,MONTH=month] [,DAY=day]  $
+;                                           [,HOUR=hour] [,MINUTE=minute] [,SECOND=second] $
+;                                           [,MILSEC=milsec] [,JULIAN=julian] [,DOY=doy]   $
+;                                           [,UR8OUT=ur8out])
+;
+;               ;;  Example
+;               ymdb0       = ['1981-01-02','1981-12-20','1982-02-01','1994-01-01','2009-01-01','2020-01-01']+'/00:00:00.000'
+;               temp           = lbw_utc_to_ur8_times(ymdb0,JULIAN=julin0,DOY=dy0,UR8OUT=ur8out0)
+;               PRINT,';;  ',ur8out0
+;               ;;        -364.00002      -12.000012       32.000000       4382.9999       9861.9999       13879.000
 ;
 ;  KEYWORDS:    
 ;               **********************************
@@ -39,10 +47,6 @@
 ;               **********************************
 ;               ***     ALTERED ON OUTPUT      ***
 ;               **********************************
-;               DBMS1   :  Set to a named variable that will return an [N]-element array
-;                            [numeric] of date values [YYYYMMDD]
-;               DBMS2   :  Set to a named variable that will return an [N]-element array
-;                            [numeric] of time values [hhmmss, where zeros are neglected]
 ;               YEAR    :  Set to a named variable that will return an [N]-element array
 ;                            [numeric] of year values
 ;               MONTH   :  Set to a named variable that will return an [N]-element array
@@ -61,14 +65,12 @@
 ;                            [numeric] of Julian day number values
 ;               DOY     :  Set to a named variable that will return an [N]-element array
 ;                            [numeric] of day of year values
+;               UR8OUT  :  Set to a named variable that will return an [N]-element array
+;                            [numeric] of UR8 times
+;               
 ;
-;   CHANGED:  1)  Finished writing and cleaning up
-;                                                                   [06/15/2020   v1.0.0]
-;             2)  Fixed a return statement bug
-;                                                                   [06/16/2020   v1.0.1]
-;             3)  For some reason, all Julian dates returned for inputs after J2000 were
-;                   off by exactly +1
-;                                                                   [10/28/2021   v1.0.2]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  UR8 = Ulysses Real8 Format Time
@@ -81,17 +83,17 @@
 ;                      Wave Investigation on the Wind Spacecraft," Space Sci. Rev.
 ;                      Vol. 71, pp. 231-263, doi:10.1007/BF00751331.
 ;
-;   CREATED:  06/13/2020
+;   CREATED:  10/28/2021
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  10/28/2021   v1.0.2
+;    LAST MODIFIED:  10/28/2021   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION lbw_ur8_to_dbms_times,ur8_in,DBMS1=dbms1,DBMS2=dbms2,YEAR=year,MONTH=month,DAY=day,$
-                                      HOUR=hour,MINUTE=minute,SECOND=second,MILSEC=milsec,  $
-                                      JULIAN=julian,DOY=doy
+FUNCTION lbw_utc_to_ur8_times,ymdb_str,YEAR=year,MONTH=month,DAY=day,HOUR=hour,    $
+                                       MINUTE=minute,SECOND=second,MILSEC=milsec,  $
+                                       JULIAN=julian,DOY=doy,UR8OUT=ur8out
 
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
@@ -112,6 +114,7 @@ jd_J2000       = 2451545d0               ;;  " " Jan. 1st, 2000 at 12:00:00 TDB
 j1900_unix     = time_double('1900-01-01/'+noon__of_day_t[0])   ;;  J2000.0 Epoch
 j1950_unix     = time_double('1950-01-01/'+start_of_day_t[0])   ;;  J1950.0 Epoch
 j2000_unix     = time_double('2000-01-01/'+noon__of_day_t[0])   ;;  J2000.0 Epoch
+ur8___unix     = time_double('1982-01-01/'+start_of_day_t[0])   ;;  UR8 Epoch
 jdepoch_u      = {T0:j1900_unix[0],T1:j1950_unix[0],T2:j2000_unix[0]}
 jdepoch_d      = {T0:jd_J1900[0],T1:jd_J1950[0],T2:jd_J2000[0]}
 jdepoch_l      = {T0:[1900L,1L],T1:[1950L,1L],T2:[2000L,1L]}    ;;  [Year,DoY]
@@ -128,6 +131,9 @@ leap_s_dates   = ['1972-01-01','1972-07-01','1973-01-01','1974-01-01','1975-01-0
                   '1996-01-01','1997-07-01','1999-01-01','2006-01-01','2009-01-01',$
                   '2012-07-01','2015-07-01','2017-01-01']
 leap_s_unix    = time_double(leap_s_dates+start_of_day_t[0])
+leap_1982un    = time_double(leap_s_dates[11L]+start_of_day_t[0])
+leap_del_af    = leap_s_secs - leap_s_secs[11L]                     ;;  Leap seconds to remove after 1982
+leap_del_bf    = leap_s_secs[11L] - leap_s_secs
 ;;  Define days of year for non-leap years and leap years
 mdt            = LONARR(13,2)  ;;  # of days after each month [[not leap year],[leap year]]
 mdt            = [[0, 31,  59,  90, 120, 151, 181, 212, 243, 273, 304, 334, 365], $
@@ -136,66 +142,60 @@ mdt            = [[0, 31,  59,  90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
 ;;  Check input
 ;;----------------------------------------------------------------------------------------
 IF (N_PARAMS() NE 1) THEN BEGIN
-  MESSAGE,'User must supply an array of UR8 times',/INFORMATIONAL,/CONTINUE
+  MESSAGE,'User must supply an array of "YYYY-MM-DD/hh:mm:ss.xxx" times',/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
-IF (is_a_number(ur8_in,/NOMSSG) EQ 0) THEN BEGIN
-  MESSAGE,'UR8 times array must be numeric',/INFORMATIONAL,/CONTINUE
+IF (SIZE(ymdb_str,/TYPE) NE 7) THEN BEGIN
+  MESSAGE,'Times array must be string type',/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;  Compute initial year estimates
 ;;----------------------------------------------------------------------------------------
-;;  ur8_to_dbms.for
-;;  r8arg  =  UR8 value
-n0             = ur8_in
-n              = n0 + 1
-j0             = LONG(n)/days_in_4_yrs[0]
-j              = 4*j0
-year0          = 1982L + j
-i0             = LONG(n MOD days_in_4_yrs[0])
 ;;----------------------------------------------------------------------------------------
-;;  Define dummy arrays to fill
+;;  Define string array parts
 ;;----------------------------------------------------------------------------------------
-nn             = N_ELEMENTS(ur8_in)
-year           = LONARR(nn[0])
-doy            = year
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  YYYY-MM-DD/hh:mm:ss.xxx
+yr_str         = STRMID(ymdb_str,0L,4L)
+mo_str         = STRMID(ymdb_str,5L,2L)
+dy_str         = STRMID(ymdb_str,8L,2L)
+hr_str         = STRMID(ymdb_str,11L,2L)
+mn_str         = STRMID(ymdb_str,14L,2L)
+sc_str         = STRMID(ymdb_str,17L,2L)
+ms_str         = STRMID(ymdb_str,20L)
+bad_ms         = WHERE(ms_str EQ '',bd_ms)
+IF (bd_ms[0] GT 0) THEN ms_str[bad_ms] = '000'
+testyr         = str_valid_num(yr_str,  year,/INTEGER)
+testmo         = str_valid_num(mo_str, month,/INTEGER)
+testdy         = str_valid_num(dy_str,   day,/INTEGER)
+testhr         = str_valid_num(hr_str,  hour,/INTEGER)
+testmn         = str_valid_num(mn_str,minute,/INTEGER)
+testsc         = str_valid_num(sc_str,second,/INTEGER)
+testms         = str_valid_num(ms_str,milsec,/INTEGER)
+test0          = (~testyr[0] OR ~testmo[0] OR ~testdy[0] OR ~testhr[0] OR ~testmn[0] OR ~testsc[0] OR ~testms[0])
+nyr            = N_ELEMENTS(year)
+test1          = (N_ELEMENTS( month) NE nyr[0]) OR (N_ELEMENTS(   day) NE nyr[0]) OR (N_ELEMENTS(  hour) NE nyr[0]) OR (N_ELEMENTS(minute) NE nyr[0]) OR (N_ELEMENTS(second) NE nyr[0]) OR (N_ELEMENTS(milsec) NE nyr[0])
+IF (test0[0] OR test1[0]) THEN STOP
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Calculate Julian Day Numbers, Day of Year, and UR8 Times
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define quasi-Unix times
+;;    [quasi --> Not really Unix times since these still include leap seconds]
+unix           = time_double(ymdb_str)
+nn             = N_ELEMENTS(ymdb_str)
+;;  Initialize dummy arrays
+doy            = 0L*year
 isleap         = BYTARR(nn[0])
-month          = year
-day            = year
-julian         = year*1d0
-hour           = year
-minute         = year
-second         = year
-milsec         = year
-dbms1          = year
-dbms2          = year
+julian         = year*0d0
+ur8out         = year*0d0
+sod            = year*0d0
+;;  Loop through dates
 FOR jj=0L, nn[0] - 1L DO BEGIN
-  ;;--------------------------------------------------------------------------------------
-  ;;  Calculate year and day of year
-  ;;--------------------------------------------------------------------------------------
-  CASE 1 OF
-    (i0[jj] GE 1097L)  :  BEGIN
-      year[jj] = year0[jj] + 3L
-      doy[jj]  = i0[jj] - 1096L
-    END
-    (i0[jj] GE 731L)   :  BEGIN
-      year[jj] = year0[jj] + 2L
-      doy[jj]  = i0[jj] - 730L
-    END
-    (i0[jj] GE 366L)   :  BEGIN
-      year[jj] = year0[jj] + 1L
-      doy[jj]  = i0[jj] - 365L
-    END
-    (i0[jj] GT 0L) AND (i0[jj] LT 366L) :  BEGIN
-      year[jj] = year0[jj] + 0L
-      doy[jj]  = i0[jj] - 0L
-    END
-    ELSE              :  BEGIN
-      year[jj] = year0[jj] - 1L
-      doy[jj]  = 365L
-    END
-  ENDCASE
   ;;--------------------------------------------------------------------------------------
   ;;  Determine date and whether it falls in a leap year or not
   ;;--------------------------------------------------------------------------------------
@@ -205,16 +205,10 @@ FOR jj=0L, nn[0] - 1L DO BEGIN
   isleap[jj]     = leap[0]
   cumdoy         = mdt[*,leap[0]]     ;;  cumulative day of year at end of each month
   ;;--------------------------------------------------------------------------------------
-  ;;  Calculate month and day of month
+  ;;  Calculate day of year
   ;;--------------------------------------------------------------------------------------
-  good_mon       = WHERE(doy[jj] LE cumdoy,gd_mon)
-  IF (gd_mon[0] GT 0) THEN BEGIN
-    month[jj] = good_mon[0]
-    day[jj]   = doy[jj] - cumdoy[((good_mon[0] - 1L) > 0L)]
-  ENDIF ELSE BEGIN
-    month[jj] = -1L
-    day[jj]   = -1L
-  ENDELSE
+  doy0           = cumdoy[month[jj] - 1L]
+  doy[jj]        = doy0[0] + day[jj]
   ;;--------------------------------------------------------------------------------------
   ;;  Calculate Julian day number
   ;;--------------------------------------------------------------------------------------
@@ -245,34 +239,67 @@ FOR jj=0L, nn[0] - 1L DO BEGIN
     IF (good[0] EQ 2) THEN julian[jj] -= 1L
   ENDIF
   ;;--------------------------------------------------------------------------------------
-  ;;  Calculate hours, minutes, seconds, and milliseconds
-  ;;--------------------------------------------------------------------------------------
-  b0             = ur8_in[jj] - FLOOR(ur8_in[jj])
-  b              = b0[0]*msec_in_day[0]
-  a              = DOUBLE(b[0])
-  k              = a[0]
-  IF (k[0] GE i4ms_in_day[0]) THEN k = i4ms_in_day[0] - 1L
-  hour[jj]       = k[0]/(3600L*1000L)
-  k             -= (hour[jj]*3600L*1000L)
-  minute[jj]     = k[0]/(60L*1000L)
-  k             -= (minute[jj]*60L*1000L)
-  second[jj]     = k[0]/1000L
-  k             -= (second[jj]*1000L)
-  milsec[jj]     = k[0]
-  ;;--------------------------------------------------------------------------------------
   ;;  Adjust Julian day number if necessary
   ;;--------------------------------------------------------------------------------------
-  sod            = hour[jj]*36d2 + minute[jj]*6d1 + 1d0*second[jj] + 1d-3*milsec[jj]
-  IF (twelve_hour_on[0]) THEN delta = (sod[0] - hours2secs_12[0])/864d2 ELSE delta = (sod[0] - 864d2)/864d2
+  sod[jj]        = hour[jj]*36d2 + minute[jj]*6d1 + 1d0*second[jj] + 1d-3*milsec[jj]
+  IF (twelve_hour_on[0]) THEN delta = (sod[jj] - hours2secs_12[0])/864d2 ELSE delta = (sod[jj] - 864d2)/864d2
   julian[jj]    += delta[0]
   ;;--------------------------------------------------------------------------------------
-  ;;  Calculate DBMS values (remnant from Windlib code)
+  ;;  Calculate UR8 Time
   ;;--------------------------------------------------------------------------------------
-  dbms1[jj]      = (year[jj]*10000L) + (month[jj]*100L) + day[jj]
-  temp           = (hour[jj]*10000L)
-  temp          += (minute[jj]*100L)
-  temp          += (second[jj]*1L)
-  dbms2[jj]      = temp[0]
+  checks         = [(year1 LT 1982),(year1 EQ 1982),(year1 GT 1982)]
+  good           = WHERE(checks,gd)
+  gleap          = WHERE(unix[jj] GT leap_s_unix,gl)
+  CASE good[0] OF
+    0  :  BEGIN
+      ;;  Before UR8 Epoch --> check if we need to remove leap seconds
+      IF (gl[0] GT 0) THEN qunix = unix[jj] - leap_del_bf[LONG(MAX(gleap))] ELSE qunix = unix[jj]
+    END
+    1  :  BEGIN
+      ;;  Year of UR8 Epoch --> check if we need to remove one leap second
+      IF (unix[jj] GT leap_1982un[0L]) THEN qunix = unix[jj] - 1d0 ELSE qunix = unix[jj]
+    END
+    2  :  BEGIN
+      ;;  After UR8 Epoch --> check if we need to remove leap seconds
+      IF (gl[0] GT 0) THEN qunix = unix[jj] - leap_del_af[LONG(MAX(gleap))] ELSE qunix = unix[jj]
+    END
+  ENDCASE
+  ;;  Re-compute YYYY-MM-DD/hh:mm:ss.xxx
+  t_struc        = time_struct(qunix,/NO_CLEAN)
+  t_doy          = t_struc[0].DOY[0]
+  t_year         = t_struc[0].YEAR[0]
+  t_sod          = t_struc[0].SOD[0]
+  yrdiff         = t_year[0] - 1982L
+  IF (yrdiff[0] GT 0) THEN BEGIN
+    ;;  Year after UR8 Epoch
+    fyears         = fill_range(1982L,t_year[0],DIND=1)
+    nfy            = N_ELEMENTS(fyears) - 1L
+    afleap         = ((fyears MOD 4) EQ 0) - ((fyears MOD 100) EQ 0) + ((fyears MOD 400) EQ 0) $
+                        - ((fyears MOD 4000) EQ 0)
+    amdays         = mdt[*,afleap]
+    mxamds         = MAX(amdays,DIMENSION=1)
+    first_days     = TOTAL(LONG(mxamds[0L:(nfy[0] - 1L)]),/NAN)         ;;  Extra -1 to avoid counting year of input times
+    ;;  Define UR8 Time
+    ur8out[jj]     = (t_doy[0] + first_days[0] + t_sod[0]/864d2) - 1d0  ;;  Remove extra day unintentionally added in calculation
+  ENDIF ELSE BEGIN
+    IF (yrdiff[0] EQ 0) THEN BEGIN
+      ;;  Year of UR8 Epoch
+      ur8out[jj]     = t_doy[0] + t_sod[0]/864d2
+    ENDIF ELSE BEGIN
+      ;;  Year before UR8 Epoch
+      fyears         = fill_range(t_year[0],1982L,DIND=1)
+      nfy            = N_ELEMENTS(fyears) - 1L
+      afleap         = ((fyears MOD 4) EQ 0) - ((fyears MOD 100) EQ 0) + ((fyears MOD 400) EQ 0) $
+                          - ((fyears MOD 4000) EQ 0)
+      amdays         = mdt[*,afleap]
+      mxamds         = MAX(amdays,DIMENSION=1)
+      IF ((nfy[0] - 1L) LE 1L) THEN first_days = 0L ELSE first_days = TOTAL(LONG(mxamds[1L:(nfy[0] - 1L)]),/NAN)          ;;  Extra +1 to avoid counting year of input times
+;      first_days     = TOTAL(LONG(mxamds[1L:(nfy[0] - 1L)]),/NAN)          ;;  Extra +1 to avoid counting year of input times
+      ;;  Define UR8 Time
+      delta          = (mxamds[0] - t_doy[0] + 1L) + first_days[0]
+      ur8out[jj]     = -1d0*delta[0] + t_sod[0]/864d2
+    ENDELSE
+  ENDELSE
 ENDFOR
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
@@ -281,37 +308,3 @@ ENDFOR
 RETURN,1b
 END
 
-;;  .compile /Users/lbwilson/Desktop/temp_idl/lbw_ur8_to_dbms_times.pro
-
-;;  	integer*4	cdy(0:3) /0, 365, 730, 1096/ ! cumulative days/year
-;;  	integer*4	days_in_4_years
-;;  	parameter	(days_in_4_years=1461)
-;;  	parameter	(minutes_in_day=24.0*60.0)
-;;  	parameter	(seconds_in_day=minutes_in_day*60.0)
-;;  	parameter	(millisecs_in_day=seconds_in_day*1000.0)
-;;  	integer*4	i4_n_msec_in_day
-;;  	parameter	(i4_n_msec_in_day=24*60*60*1000)
-
-;;  	n = r8arg
-;;  	n = n + 1
-;;  	j = n/days_in_4_years
-;;  	j = j * 4
-;;  	year = 1982 + j
-;;  	i = mod(n,days_in_4_years)
-;;  	! '82=1,365 '83=366,730 '84L=731,1096 '85=1097,1461
-;;  	if (i .ge. 1097) then
-;;  	   year = year + 3
-;;  	   doy  = i - 1096
-;;  	else if (i .ge. 731) then
-;;  	   year = year + 2
-;;  	   doy  = i - 730
-;;  	else if (i .ge. 366) then
-;;  	   year = year + 1
-;;  	   doy  = i - 365
-;;  	else if (i .gt. 0) then
-;;  	   doy  = i
-;;  	else
-;;  	   year = year - 1
-;;  	   doy = 365
-;;  	end if
-;;	lok = julian_to_mmdd(doy, year, month, day)

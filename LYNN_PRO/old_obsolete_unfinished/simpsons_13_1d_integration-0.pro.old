@@ -7,27 +7,6 @@
 ;                 any additional factors are to be included, they should be done so
 ;                 prior to calling.
 ;
-;                 The output result is given as follows:
-;                   I = ∆x/3*(∑_k s[k] f[k])
-;                 for N input values, where the terms are defined as follows:
-;                   a(b)    =  start(end) value of abscissa, x
-;                   T       = # of intervals (= N - 1)
-;                   ∆x      =  (b - a)/T
-;                   s[0]    = 1
-;                   s[T]    = 1
-;                   s[2k+1] = 4
-;                   s[2k+2] = 2
-;                 In other words, I can be abbreviated as:
-;                   I = ∆x/3*(f[0] + 4*f[1] + 2*f[2] + 4*f[3] + 2*f[4] + ... + 4*f[T-1] + f[T])
-;
-;                 The error of the output is define as an upper bound on the error,
-;                 given by the following inequality:
-;                   E ≤ M*(b - a)^5/(180*T^4)
-;                 where the terms are defined as follows:
-;                   a(b)  =  start(end) value of abscissa, x
-;                   M     = Max(| d^4/dx^4 f(x) |)
-;                   T     = # of intervals (= N - 1)
-;
 ;  CALLED BY:   
 ;               NA
 ;
@@ -48,90 +27,30 @@
 ;
 ;  EXAMPLES:    
 ;               [calling sequence]
-;               result = simpsons_13_1d_integration(x,y [,/LOG] [,MAXERR=maxerr] [,/NOMSSG])
-;
-;               ;;  ***********************************************
-;               ;;  Example comparison with IDL built-in QSIMP.PRO
-;               ;;  ***********************************************
-;               ;;  Integrate the function:
-;               ;;    f(x) = (x^4 - 2 x^2) Sin(x)
-;               ;;  on the interval [a,b] using IDL's built-in Simpson's 1/3 Rule
-;               a     = 0d0
-;               b     = !DPI/2d0
-;               lam1  = LAMBDA("X: (X^4d0 - 2d0 * X^2d0) * SIN(X)")         ;;  Generates an in-line function
-;               testi = QSIMP(lam1,a,b,/DOUBLE,EPS=1d-12,JMAX=20)           ;;  Integrate using Simpson's 1/3 Rule
-;               testi[0]
-;                    -0.47915881010723943
-;
-;               ;;  Define exact value from integration by parts
-;               ;;    ∫ dx f(x) = 4 x (x^2 - 7) Sin(x) - (28 + x^4 - 14 x^2) Cos(x)
-;               ;;  Evaluate at end points and subtract to get exact result
-;               fb    = 4d0*b[0]*(b[0]^2d0 - 7d0)*SIN(b[0]) - (b[0]^4d0 - 14d0*b[0]^2d0 + 28d0)*COS(b[0])
-;               fa    = 4d0*a[0]*(a[0]^2d0 - 7d0)*SIN(a[0]) - (a[0]^4d0 - 14d0*a[0]^2d0 + 28d0)*COS(a[0])
-;               exact = fb[0] - fa[0]
-;               exact[0]
-;                    -0.47915881010719374
-;
-;               ;;  Define percent difference between exact and numerical approximation
-;               perc  = (testi[0] - exact[0])/exact[0]*1d2
-;               perc[0]
-;                  9.5345585846798361e-12
-;
-;               nn    = 21L
-;               xx    = DINDGEN(nn[0])*(b[0] - a[0])/(nn[0] - 1L) + a[0]
-;               yy    = (xx^4d0 - 2d0*xx^2d0)*SIN(xx)
-;               .compile simpsons_13_1d_integration.pro
-;               test  = simpsons_13_1d_integration(xx,yy,MAXERR=maxerr,/NOMSSG)
-;               test[0], maxerr[0]
-;                    -0.47915407477924593
-;                  3.3027859454524992e-05
-;
-;               perm  = (test[0] - exact[0])/exact[0]*1d2
-;               perm[0]
-;                 -0.00098825855810814683
-;
-;               ;;  Increase N to improve results
-;               nn    = 121L
-;               xx    = DINDGEN(nn[0])*(b[0] - a[0])/(nn[0] - 1L) + a[0]
-;               yy    = (xx^4d0 - 2d0*xx^2d0)*SIN(xx)
-;               .compile simpsons_13_1d_integration.pro
-;               test  = simpsons_13_1d_integration(xx,yy,MAXERR=maxerr,/NOMSSG)
-;               test[0], maxerr[0]
-;                    -0.47915880651072734
-;                  7.2568756213602116e-08
-;
-;               perm  = (test[0] - exact[0])/exact[0]*1d2
-;               perm[0]
-;                 -7.5057920810476773e-07
+;               result = simpsons_13_1d_integration(x,y [,/LOG] [,/NOMSSG])
 ;
 ;  KEYWORDS:    
-;               LOG     :  If set and routine needs to regrid Y, then the interpolation
+;               LOG     :  If set and routine needs to regrid Z, then the interpolation
 ;                            will be done in logarithmic space
 ;                            [Default = FALSE]
-;               MAXERR  :  Set to a named variable to return the upper bound on the
-;                            absolute error of the output integral result
-;                            [Default = not calculated]
 ;               NOMSSG  :  If set, routine will not inform user of elapsed computational
 ;                            time
 ;                            [Default = FALSE]
 ;
-;   CHANGED:  1)  Added keyword:  MAXERR
-;                                                                   [01/19/2022   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               0)  See also:  simpsons_13_2d_integration.pro and simpsons_13_3d_integration.pro
-;               1)  N should be odd and must satisfy N > 7
+;               1)  N should be odd and must satisfy N > 9
 ;               2)  If X and Y are not on a regular, uniform grid then the routine
 ;                     will regrid the results before interpolation as the algorithm
 ;                     assumes a regular grid
-;               3)  Primary difference from IDL built-in QSIMP.PRO is the user need not
-;                     know the functional form of YY on input
 ;
 ;  REFERENCES:  
 ;               http://mathfaculty.fullerton.edu/mathews/n2003/SimpsonsRule2DMod.html
 ;               http://www.physics.usyd.edu.au/teach_res/mp/doc/math_integration_2D.pdf
 ;               https://en.wikipedia.org/wiki/Simpson%27s_rule
-;               https://openstax.org/books/calculus-volume-2/pages/3-6-numerical-integration
 ;
 ;   CREATED:  08/05/2020
 ;   CREATED BY:  Lynn B. Wilson III
@@ -141,7 +60,7 @@
 ;*****************************************************************************************
 ;-
 
-FUNCTION simpsons_13_1d_integration,x,y,LOG=log,MAXERR=maxerr,NOMSSG=nomssg
+FUNCTION simpsons_13_1d_integration,x,y,LOG=log,NOMSSG=nomssg
 
 ex_start       = SYSTIME(1)
 ;;----------------------------------------------------------------------------------------
@@ -171,7 +90,7 @@ IF (test[0]) THEN BEGIN
   MESSAGE,badndim__mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
 ENDIF
-test           = (szdx[0] NE szdy[0]) OR (szdx[0] LT 8L)
+test           = (szdx[0] NE szdy[0]) OR (szdx[0] LT 9L)
 IF (test[0]) THEN BEGIN
   MESSAGE,badddim__mssg[0],/INFORMATIONAL,/CONTINUE
   RETURN,0b
@@ -179,10 +98,7 @@ ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
-;;  Check LOG
 IF KEYWORD_SET(log) THEN log_on = 1b ELSE log_on = 0b
-;;  Check MAXERR
-IF (ARG_PRESENT(maxerr) NE 0) THEN calcerr = 1b ELSE calcerr = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Make sure N is odd
 ;;----------------------------------------------------------------------------------------
@@ -192,7 +108,6 @@ IF ((nx[0] MOD 2) EQ 0) THEN BEGIN
   xx             = x[0L:(nx[0] - 2L)]
   yy             = y[0L:(nx[0] - 2L)]
 ENDIF ELSE BEGIN
-  ;;  N is currently odd --> leave alone
   xx             = REFORM(x)
   yy             = REFORM(y)
 ENDELSE
@@ -255,27 +170,6 @@ hfac           = dx[0]/3d0
 ;;  Compute 1D integral of input
 ;;----------------------------------------------------------------------------------------
 output         = TOTAL(hfac[0]*sc*fg,/NAN)
-;;----------------------------------------------------------------------------------------
-;;  Calculate error if user so wishes
-;;----------------------------------------------------------------------------------------
-IF (calcerr[0]) THEN BEGIN
-  ;;  First, calculate d^4/dx^4 f(x)
-  d4fdx4         = DERIV(xg,DERIV(xg,DERIV(xg,DERIV(xg,fg))))
-  ;;  Check for "bad" outliers [be generous and allow for 100% differences]
-  md_d4fdx4      = MEDIAN(ABS(d4fdx4))
-  pc_d4fdx4      = (ABS(d4fdx4) - md_d4fdx4[0])/md_d4fdx4[0]*1d2
-  bad_out        = WHERE(FINITE(pc_d4fdx4) EQ 0 OR ABS(pc_d4fdx4) GT 1d2,bd_out,COMPLEMENT=good_in,NCOMPLEMENT=gd_in)
-  ;;  Compute maximum error:  M*(b - a)^5/(180*T^4)
-  del_ab         = MAX(xg,/NAN) - MIN(xg,/NAN)
-  IF (gd_in[0] GT 0) THEN BEGIN
-    ;;  Use only the "good" elements for computing error
-    mx_d4fdx4      = MAX(ABS(d4fdx4[good_in]),/NAN)
-  ENDIF ELSE BEGIN
-    ;;  Use all elements for computing error
-    mx_d4fdx4      = MAX(ABS(d4fdx4),/NAN)
-  ENDELSE
-  maxerr         = mx_d4fdx4[0]*del_ab[0]^5d0/(18d1*(nx[0] - 1d0)^4d0)
-ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

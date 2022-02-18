@@ -14,7 +14,6 @@
 ;  CALLS:
 ;               time_double.pro
 ;               tnames.pro
-;               t_test_tplot_com_settings.pro
 ;               get_data.pro
 ;               t_get_struc_unix.pro
 ;               test_plot_axis_range.pro
@@ -40,10 +39,6 @@
 ;   CHANGED:  1)  Now allows user to input a time range, similar to operation of
 ;                   timespan.pro and now calls timespan.pro
 ;                                                                   [05/09/2019   v1.1.0]
-;             2)  Tried to optimize to avoid slow down when there are a lot of TPLOT
-;                   handles, or some TPLOT handles have tons of data within and
-;                   now calls t_test_tplot_com_settings.pro
-;                                                                   [06/30/2021   v1.1.1]
 ;
 ;   NOTES:      
 ;               1)  See also:  set_tplot_times.pro
@@ -53,7 +48,7 @@
 ;
 ;   CREATED:  08/14/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/30/2021   v1.1.1
+;    LAST MODIFIED:  05/09/2019   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -77,84 +72,70 @@ no_tran        = 'Not able to find any defined time ranges...'
 ;;----------------------------------------------------------------------------------------
 n              = N_PARAMS()
 ;;----------------------------------------------------------------------------------------
-;;  First check to see if TPLOT_COM is already set
-;;----------------------------------------------------------------------------------------
-test           = t_test_tplot_com_settings(REFDATE=refdate,TRANGE=trange_set,CUR_TRANGE=trange_cur,$
-                                           FULL_TRANGE=trange_ful,OLD_TRANGE=trange_old)
-;;  Need at minimum TRANGE and TRANGE_FULL
-;;    --> TEST = 10 or 11 or 14 or 15 or 27 or 30 or 31
-test_trset     = test_plot_axis_range(trange_set,/NOMSSG)
-test_trful     = test_plot_axis_range(trange_ful,/NOMSSG)
-;;----------------------------------------------------------------------------------------
 ;;  Determine time range
 ;;----------------------------------------------------------------------------------------
 CASE n[0] OF
   ;;00000000000000000000000000000000000000000000000000000000000000000000000000000000000000
   0    :  BEGIN
-    IF (~test_trset[0] OR ~test_trful[0]) THEN BEGIN
-      ;;----------------------------------------------------------------------------------
-      ;;  Make sure TPLOT variables exist
-      ;;----------------------------------------------------------------------------------
-      tpn_all        = tnames()
-      IF (tpn_all[0] EQ '') THEN BEGIN
-        MESSAGE,no_tplot[0],/INFORMATIONAL,/CONTINUE
-        RETURN
-      ENDIF
-      ;;----------------------------------------------------------------------------------
-      ;;  Get TPLOT data and define full time ranges
-      ;;----------------------------------------------------------------------------------
-      ntpn           = N_ELEMENTS(tpn_all)
-      FOR j=0L, ntpn[0] - 1L DO BEGIN
-        ;;  Reset variables
-        temp           = 0
-        unix           = 0
-        tra            = 0
-        ;;  Get TPLOT data
-        get_data,tpn_all[j],DATA=temp
-        ;;  Define values
-        unix           = t_get_struc_unix(temp,TSHFT_ON=tshft_on)
-        IF (SIZE(unix,/TYPE) NE 5) THEN CONTINUE
-        IF (tshft_on[0]) THEN BEGIN
-          tshift         = temp[0].TSHIFT[0]
-          IF (tshift[0] EQ 0 AND temp[0].X[0] GT 1d3) THEN BEGIN
-            ;;  TSHIFT is set but at zero --> probably not useful to have in the structure
-            tra            = [MIN(temp[0].X,/NAN),MAX(temp[0].X,/NAN)]
-          ENDIF ELSE BEGIN
-            tra            = [tshift[0],MAX(temp[0].X,/NAN)]
-          ENDELSE
-        ENDIF ELSE BEGIN
-          ;;  TSHIFT is not set
+    ;;------------------------------------------------------------------------------------
+    ;;  Make sure TPLOT variables exist
+    ;;------------------------------------------------------------------------------------
+    tpn_all        = tnames()
+    IF (tpn_all[0] EQ '') THEN BEGIN
+      MESSAGE,no_tplot[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    ENDIF
+    ;;------------------------------------------------------------------------------------
+    ;;  Get TPLOT data and define full time ranges
+    ;;------------------------------------------------------------------------------------
+    ntpn           = N_ELEMENTS(tpn_all)
+    FOR j=0L, ntpn[0] - 1L DO BEGIN
+      ;;  Reset variables
+      temp           = 0
+      unix           = 0
+      tra            = 0
+      ;;  Get TPLOT data
+      get_data,tpn_all[j],DATA=temp
+      ;;  Define values
+      unix           = t_get_struc_unix(temp,TSHFT_ON=tshft_on)
+      IF (SIZE(unix,/TYPE) NE 5) THEN CONTINUE
+      IF (tshft_on[0]) THEN BEGIN
+        tshift         = temp[0].TSHIFT[0]
+        IF (tshift[0] EQ 0 AND temp[0].X[0] GT 1d3) THEN BEGIN
+          ;;  TSHIFT is set but at zero --> probably not useful to have in the structure
           tra            = [MIN(temp[0].X,/NAN),MAX(temp[0].X,/NAN)]
-        ENDELSE
-        ;;  Sort just in case
-        sp             = SORT(tra)
-        tra            = tra[sp]
-        IF (j[0] EQ 0) THEN BEGIN
-          ;;  Initialize
-          tra_new = tra
         ENDIF ELSE BEGIN
-          ;;  Expand if necessary
-          tra_new[0] = (tra[0] < tra_new[0]) > 0d0
-          tra_new[1] = (tra[1] > tra_new[1]) < cur_unix[0]
+          tra            = [tshift[0],MAX(temp[0].X,/NAN)]
         ENDELSE
-      ENDFOR
-      ;;  Clean up
-      dumb           = TEMPORARY(temp)
-      dumb           = TEMPORARY(unix)
-      dumb           = TEMPORARY(tra)
+      ENDIF ELSE BEGIN
+        ;;  TSHIFT is not set
+        tra            = [MIN(temp[0].X,/NAN),MAX(temp[0].X,/NAN)]
+      ENDELSE
       ;;  Sort just in case
-      sp             = SORT(tra_new)
-      tra_new        = tra_new[sp]
-      ;;  Check results
-      test           = test_plot_axis_range(tra_new,/NOMSSG)
-      IF (~test[0]) THEN BEGIN
-        MESSAGE,no_tran[0],/INFORMATIONAL,/CONTINUE
-        RETURN
-      ENDIF
-    ENDIF ELSE BEGIN
-      ;;  TRANGE and TRANGE_FULL are set --> use
-      tra_new        = trange_ful
-    ENDELSE
+      sp             = SORT(tra)
+      tra            = tra[sp]
+      IF (j[0] EQ 0) THEN BEGIN
+        ;;  Initialize
+        tra_new = tra
+      ENDIF ELSE BEGIN
+        ;;  Expand if necessary
+        tra_new[0] = (tra[0] < tra_new[0]) > 0d0
+        tra_new[1] = (tra[1] > tra_new[1]) < cur_unix[0]
+      ENDELSE
+    ENDFOR
+    ;;  Clean up
+    dumb           = TEMPORARY(temp)
+    dumb           = TEMPORARY(unix)
+    dumb           = TEMPORARY(tra)
+    ;;  Sort just in case
+    sp             = SORT(tra_new)
+    tra_new        = tra_new[sp]
+    ;;  Check results
+    test           = test_plot_axis_range(tra_new,/NOMSSG)
+    IF (~test[0]) THEN BEGIN
+      MESSAGE,no_tran[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    ENDIF
   END
   ;;00000000000000000000000000000000000000000000000000000000000000000000000000000000000000
   ;;11111111111111111111111111111111111111111111111111111111111111111111111111111111111111
