@@ -38,8 +38,8 @@
 ;  KEYWORDS:    
 ;               NA
 ;
-;   CHANGED:  1)  NA
-;                                                                   [MM/DD/YYYY   v1.0.0]
+;   CHANGED:  1)  Added SST Foil and Open +Thick detector outputs
+;                                                                   [05/16/2022   v1.0.1]
 ;
 ;   NOTES:      
 ;               NA
@@ -123,7 +123,7 @@ ddate          = STRMID(tdate[0],5L,2L)+STRMID(tdate[0],8L,2L)+STRMID(tdate[0],2
 general_load_and_save_wind_3dp_data,TRANGE=trange,/LOAD_EESA,/LOAD_PESA,/NO_CLEANT,       $
                                     EESA_OUT=eesa_out,PESA_OUT=pesa_out,/NO_SAVE,         $
                                     /LOAD_WAVES,/LOAD_SWEFC,/LOAD__SST,SST_FOUT=sst_fout, $
-                                    SST_OOUT=sst_oout
+                                    SST_OOUT=sst_oout,/LOAD_SSTT,SST_TOUT=sst_tout
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
@@ -143,6 +143,9 @@ IF (SIZE(sst_fout.SF_,/TYPE) NE 8) THEN nsf_ = 0 ELSE nsf_ = N_ELEMENTS(sst_fout
 IF (SIZE(sst_fout.SFB,/TYPE) NE 8) THEN nsfb = 0 ELSE nsfb = N_ELEMENTS(sst_fout.SFB)
 IF (SIZE(sst_oout.SO_,/TYPE) NE 8) THEN nso_ = 0 ELSE nso_ = N_ELEMENTS(sst_oout.SO_)
 IF (SIZE(sst_oout.SOB,/TYPE) NE 8) THEN nsob = 0 ELSE nsob = N_ELEMENTS(sst_oout.SOB)
+IF (SIZE(sst_tout.SFT,/TYPE) NE 8) THEN nsft = 0 ELSE nsft = N_ELEMENTS(sst_tout.SFT)
+IF (SIZE(sst_tout.SOT,/TYPE) NE 8) THEN nsot = 0 ELSE nsot = N_ELEMENTS(sst_tout.SOT)
+
 
 ;;  Define structures
 IF (npl_[0] EQ 0) THEN apl_ = 0 ELSE apl_ = pesa_out.PL_
@@ -157,6 +160,10 @@ IF (nsf_[0] EQ 0) THEN asf_ = 0 ELSE asf_ = sst_fout.SF_
 IF (nsfb[0] EQ 0) THEN asfb = 0 ELSE asfb = sst_fout.SFB
 IF (nso_[0] EQ 0) THEN aso_ = 0 ELSE aso_ = sst_oout.SO_
 IF (nsob[0] EQ 0) THEN asob = 0 ELSE asob = sst_oout.SOB
+IF (nsft[0] EQ 0) THEN asft = 0 ELSE asft = sst_tout.SFT
+IF (nsot[0] EQ 0) THEN asot = 0 ELSE asot = sst_tout.SOT
+
+
 ;;  Determine which TPLOT handle to use for estimate of spacecraft potential [eV]
 IF (tnames('sc_pot_3') EQ '') THEN scp_tpn0 = 'sc_pot_2' ELSE scp_tpn0 = 'sc_pot_3'
 test           = test_tplot_handle(scp_tpn0[0],TPNMS=scp_tpn)
@@ -195,6 +202,8 @@ IF (nsf_[0] GT 0) THEN add_scpot,asf_,scp_tpn[0]
 IF (nsfb[0] GT 0) THEN add_scpot,asfb,scp_tpn[0]
 IF (nso_[0] GT 0) THEN add_scpot,aso_,scp_tpn[0]
 IF (nsob[0] GT 0) THEN add_scpot,asob,scp_tpn[0]
+IF (nsft[0] GT 0) THEN add_scpot,asft,scp_tpn[0]
+IF (nsot[0] GT 0) THEN add_scpot,asot,scp_tpn[0]
 
 IF (npl_[0] GT 0) THEN add_scpot,apl_,scp_tpn[0],/LEAVE_ALONE
 IF (nplb[0] GT 0) THEN add_scpot,aplb,scp_tpn[0],/LEAVE_ALONE
@@ -208,6 +217,8 @@ IF (nsf_[0] GT 0) THEN add_scpot,asf_,scp_tpn[0],/LEAVE_ALONE
 IF (nsfb[0] GT 0) THEN add_scpot,asfb,scp_tpn[0],/LEAVE_ALONE
 IF (nso_[0] GT 0) THEN add_scpot,aso_,scp_tpn[0],/LEAVE_ALONE
 IF (nsob[0] GT 0) THEN add_scpot,asob,scp_tpn[0],/LEAVE_ALONE
+IF (nsft[0] GT 0) THEN add_scpot,asft,scp_tpn[0],/LEAVE_ALONE
+IF (nsot[0] GT 0) THEN add_scpot,asot,scp_tpn[0],/LEAVE_ALONE
 ;;  Add B [nT, GSE]
 IF (npl_[0] GT 0) THEN add_magf2,apl_,bgse_tpn[0]
 IF (nplb[0] GT 0) THEN add_magf2,aplb,bgse_tpn[0]
@@ -221,6 +232,8 @@ IF (nsf_[0] GT 0) THEN add_magf2,asf_,bgse_tpn[0]
 IF (nsfb[0] GT 0) THEN add_magf2,asfb,bgse_tpn[0]
 IF (nso_[0] GT 0) THEN add_magf2,aso_,bgse_tpn[0]
 IF (nsob[0] GT 0) THEN add_magf2,asob,bgse_tpn[0]
+IF (nsft[0] GT 0) THEN add_magf2,asft,bgse_tpn[0]
+IF (nsot[0] GT 0) THEN add_magf2,asot,bgse_tpn[0]
 
 IF (npl_[0] GT 0) THEN add_magf2,apl_,bgse_tpn[0],/LEAVE_ALONE
 IF (nplb[0] GT 0) THEN add_magf2,aplb,bgse_tpn[0],/LEAVE_ALONE
@@ -234,6 +247,8 @@ IF (nsf_[0] GT 0) THEN add_magf2,asf_,bgse_tpn[0],/LEAVE_ALONE
 IF (nsfb[0] GT 0) THEN add_magf2,asfb,bgse_tpn[0],/LEAVE_ALONE
 IF (nso_[0] GT 0) THEN add_magf2,aso_,bgse_tpn[0],/LEAVE_ALONE
 IF (nsob[0] GT 0) THEN add_magf2,asob,bgse_tpn[0],/LEAVE_ALONE
+IF (nsft[0] GT 0) THEN add_magf2,asft,bgse_tpn[0],/LEAVE_ALONE
+IF (nsot[0] GT 0) THEN add_magf2,asot,bgse_tpn[0],/LEAVE_ALONE
 ;;  Add Vsw [km/s, GSE]
 ;;  Check if 3DP on board is available
 IF (v3dp_onbrd_on[0]) THEN vgse_tpn = Vsw_3dp_onbrd[0]
@@ -249,6 +264,8 @@ IF (v3dp_onbrd_on[0]) THEN IF (nsf_[0] GT 0) THEN add_vsw2,asf_,vgse_tpn[0]
 IF (v3dp_onbrd_on[0]) THEN IF (nsfb[0] GT 0) THEN add_vsw2,asfb,vgse_tpn[0]
 IF (v3dp_onbrd_on[0]) THEN IF (nso_[0] GT 0) THEN add_vsw2,aso_,vgse_tpn[0]
 IF (v3dp_onbrd_on[0]) THEN IF (nsob[0] GT 0) THEN add_vsw2,asob,vgse_tpn[0]
+IF (v3dp_onbrd_on[0]) THEN IF (nsft[0] GT 0) THEN add_vsw2,asft,vgse_tpn[0]
+IF (v3dp_onbrd_on[0]) THEN IF (nsot[0] GT 0) THEN add_vsw2,asot,vgse_tpn[0]
 
 IF (vswe_grndd_on[0]) THEN vgse_tpn = Vsw_swe_ground[0] ELSE IF (v3dp_grndd_on[0]) THEN vgse_tpn = Vsw_3dp_ground[0] ELSE vgse_tpn = Vsw_3dp_onbrd[0]
 IF (npl_[0] GT 0) THEN IF (v3dp_onbrd_on[0]) THEN add_vsw2,apl_,vgse_tpn[0],/LEAVE_ALONE ELSE add_vsw2,apl_,vgse_tpn[0]
@@ -263,6 +280,8 @@ IF (nsf_[0] GT 0) THEN IF (v3dp_onbrd_on[0]) THEN add_vsw2,asf_,vgse_tpn[0],/LEA
 IF (nsfb[0] GT 0) THEN IF (v3dp_onbrd_on[0]) THEN add_vsw2,asfb,vgse_tpn[0],/LEAVE_ALONE ELSE add_vsw2,asfb,vgse_tpn[0]
 IF (nso_[0] GT 0) THEN IF (v3dp_onbrd_on[0]) THEN add_vsw2,aso_,vgse_tpn[0],/LEAVE_ALONE ELSE add_vsw2,aso_,vgse_tpn[0]
 IF (nsob[0] GT 0) THEN IF (v3dp_onbrd_on[0]) THEN add_vsw2,asob,vgse_tpn[0],/LEAVE_ALONE ELSE add_vsw2,asob,vgse_tpn[0]
+IF (nsft[0] GT 0) THEN IF (v3dp_onbrd_on[0]) THEN add_vsw2,asft,vgse_tpn[0],/LEAVE_ALONE ELSE add_vsw2,asft,vgse_tpn[0]
+IF (nsot[0] GT 0) THEN IF (v3dp_onbrd_on[0]) THEN add_vsw2,asot,vgse_tpn[0],/LEAVE_ALONE ELSE add_vsw2,asot,vgse_tpn[0]
 
 IF (npl_[0] GT 0) THEN add_vsw2,apl_,vgse_tpn[0],/LEAVE_ALONE
 IF (nplb[0] GT 0) THEN add_vsw2,aplb,vgse_tpn[0],/LEAVE_ALONE
@@ -276,3 +295,5 @@ IF (nsf_[0] GT 0) THEN add_vsw2,asf_,vgse_tpn[0],/LEAVE_ALONE
 IF (nsfb[0] GT 0) THEN add_vsw2,asfb,vgse_tpn[0],/LEAVE_ALONE
 IF (nso_[0] GT 0) THEN add_vsw2,aso_,vgse_tpn[0],/LEAVE_ALONE
 IF (nsob[0] GT 0) THEN add_vsw2,asob,vgse_tpn[0],/LEAVE_ALONE
+IF (nsft[0] GT 0) THEN add_vsw2,asft,vgse_tpn[0],/LEAVE_ALONE
+IF (nsot[0] GT 0) THEN add_vsw2,asot,vgse_tpn[0],/LEAVE_ALONE

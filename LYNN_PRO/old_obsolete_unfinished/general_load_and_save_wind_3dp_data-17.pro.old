@@ -50,6 +50,10 @@
 ;                                                                   [02/05/2018   v1.1.0]
 ;             6)  Cleaned up
 ;                                                                   [05/03/2019   v1.1.1]
+;             7)  Fixed YTITLE for merged SWE FC products
+;                                                                   [01/05/2022   v1.1.2]
+;             8)  Fixed a typo in the TPLOT handle variable names for combined SWE
+;                                                                   [01/21/2022   v1.1.3]
 ;
 ;   NOTES:      
 ;               0)  User should not call this routine
@@ -75,7 +79,7 @@
 ;
 ;   CREATED:  07/18/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/03/2019   v1.1.1
+;    LAST MODIFIED:  01/21/2022   v1.1.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -143,8 +147,11 @@ no_den         = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Define new SC Potential
 ;;----------------------------------------------------------------------------------------
-tpn_swe_nitot  = scpref[0]+'Ni_tot'+swesuff[0]
-get_data,tpn_swe_nitot[0],DATA=struc,DLIM=dlim_ntot,LIM=lim_ntot
+tpn_swe_Nitot  = scpref[0]+'Ni_tot'+swesuff[0]
+tpn_swe_Vbulk  = scpref[0]+'Vbulk_'+coord_gse[0]+swesuff[0]+nonmom_suffs[0]
+options,tpn_swe_Nitot[0],YTITLE='Ni,tot [cm^(-3)]',/DEFAULT
+options,tpn_swe_Vbulk[0],YTITLE='Vi,bulk [km/s, GSE]',/DEFAULT
+get_data,tpn_swe_Nitot[0],DATA=struc,DLIM=dlim_ntot,LIM=lim_ntot
 IF (SIZE(struc,/TYPE) NE 8) THEN RETURN,0b
 unix           = t_get_struc_unix(struc)
 dens_t         = struc.Y
@@ -216,18 +223,19 @@ END
 ;               [calling sequence]
 ;               general_load_and_save_wind_3dp_data [,TDATE=tdate] [,TRANGE=trange]    $
 ;                                        [,/LOAD_EESA] [,/LOAD_PESA] [,/LOAD__SST]     $
-;                                        [,/LOAD_SWEFC] [,SAVE_DIR=save_dir]           $
-;                                        [,/NO_CLEANT] [,BURST_ON=burst_on]            $
-;                                        [,/NO_SAVE]                                   $
+;                                        [,/LOAD_SSTT] [,/LOAD_SWEFC]                  $
+;                                        [,SAVE_DIR=save_dir] [,/NO_CLEANT]            $
+;                                        [,BURST_ON=burst_on] [,/NO_SAVE]              $
 ;                                        [,EESA_OUT=eesa_out] [,PESA_OUT=pesa_out]     $
-;                                        [,SST_FOUT=sst_fout] [,SST_OOUT=sst_oout]
+;                                        [,SST_FOUT=sst_fout] [,SST_OOUT=sst_oout]     $
+;                                        [,SST_TOUT=sst_tout]
 ;
 ;  KEYWORDS:    
 ;               TDATE       :  Scalar [string] defining the start date ['YYYY-MM-DD']
 ;               TRANGE      :  [2]-Element [double] array defining the Unix time range of
 ;                                3DP, MFI, and SWE data to load into IDL
 ;               LOAD_????   :  If set, routine will load and save instrument-type data
-;                                {where ???? = EESA, PESA, or _SST}
+;                                {where ???? = EESA, PESA, _SST, or SSTT}
 ;                                [Default = FALSE]
 ;               LOAD_SWEFC  :  If set, routine will load SWE Faraday Cup (FC) data into
 ;                                TPLOT and try to use resulting data for VSW and
@@ -264,6 +272,9 @@ END
 ;               SST_OOUT    :  Set to a named variable to return a structure containing
 ;                                the SST Open velocity distributions as arrays
 ;                                of IDL structures
+;               SST_TOUT    :  Set to a named variable to return a structure containing
+;                                the SST Open+Thick and Foil+Thick velocity distributions
+;                                as arrays of IDL structures
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [07/19/2017   v1.0.0]
@@ -293,9 +304,26 @@ END
 ;            12)  Updated to get WAVES radio data using the routine
 ;                   waves_merge_tnr_rad_to_tplot.pro with the new keyword LOAD_WAVES
 ;                                                                   [05/10/2021   v1.1.2]
+;            13)  Fixed a typo in call to load WAVES data (wouldn't affect results if
+;                   TRANGE keyword was correctly used) and fixed YTITLE for merged
+;                   SWE FC products
+;                                                                   [01/05/2022   v1.1.3]
+;            14)  Fixed a typo in the TPLOT handle variable names in
+;                   load_swe_and_calc_new_vbulk_scpot.pro
+;                                                                   [01/21/2022   v1.1.4]
+;            15)  Added keywords:  LOAD_SSTT and SST_TOUT
+;                                                                   [05/12/2022   v1.2.0]
 ;
 ;   NOTES:      
-;               NA
+;               0)  On my 2019, 16-inch MacBook Pro I was only able to load 11 days
+;                     worth of 3DP lz files and still get EESA Low VDFs out.  If I made
+;                     TRANGE span any larger of an interval, the output from get_el.pro
+;                     and get_elb.pro would revert to zero files.  It wouldn't even find
+;                     the time stamps using the get_el(/TIME) call, which suggests
+;                     there's an integer designation in the shared object library code
+;                     that rolls over above ~10,000 values for the EESA VDFs.  This is
+;                     interesting as I have routinely loaded upwards of 20,000 SST VDFs
+;                     without issue...
 ;
 ;  REFERENCES:  
 ;               0)  Harten, R. and K. Clark "The Design Features of the GGS Wind and
@@ -340,10 +368,28 @@ END
 ;                     ion measurements via high-resolution magnetic field data,"
 ;                     Advances in Space Research Vol. 52, pp. 723--731,
 ;                     doi:10.1016/j.asr.2013.04.006, 2013.
+;              14)  M. Wüest, D.S. Evans, and R. von Steiger "Calibration of Particle
+;                      Instruments in Space Physics," ESA Publications Division,
+;                      Keplerlaan 1, 2200 AG Noordwijk, The Netherlands, 2007.
+;              15)  M. Wüest, et al., "Review of Instruments," ISSI Sci. Rep. Ser.
+;                      Vol. 7, pp. 11--116, 2007.
+;              16)  Lavraud, B., and D.E. Larson "Correcting moments of in situ particle
+;                      distribution functions for spacecraft electrostatic charging,"
+;                      J. Geophys. Res. 121, pp. 8462--8474, doi:10.1002/2016JA022591,
+;                      2016.
+;              17)  Meyer-Vernet, N., and C. Perche "Tool kit for antennae and thermal
+;                      noise near the plasma frequency," J. Geophys. Res. 94(A3),
+;                      pp. 2405--2415, doi:10.1029/JA094iA03p02405, 1989.
+;              18)  Meyer-Vernet, N., K. Issautier, and M. Moncuquet "Quasi-thermal noise
+;                      spectroscopy: The art and the practice," J. Geophys. Res. 122(8),
+;                      pp. 7925--7945, doi:10.1002/2017JA024449, 2017.
+;              19)  Wilson III, L.B., et al., "A Quarter Century of Wind Spacecraft
+;                      Discoveries," Reviews of Geophysics 59(2), pp. e2020RG000714,
+;                      doi:10.1029/2020RG000714, 2021.
 ;
 ;   CREATED:  07/18/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/10/2021   v1.1.2
+;    LAST MODIFIED:  05/12/2022   v1.2.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -351,12 +397,13 @@ END
 
 PRO general_load_and_save_wind_3dp_data,TDATE=tdate,TRANGE=trange,LOAD_EESA=load_eesa, $     ;;  Input
                                         LOAD_PESA=load_pesa,LOAD__SST=load__sst,       $
-                                        LOAD_SWEFC=load_swefc,SAVE_DIR=save_dir,       $
-                                        NO_CLEANT=no_cleant,NO_SAVE=no_save,           $
-                                        LOAD_WAVES=load_waves,                         $
+                                        LOAD_SSTT=load_sstt,LOAD_SWEFC=load_swefc,     $
+                                        SAVE_DIR=save_dir,NO_CLEANT=no_cleant,         $
+                                        NO_SAVE=no_save,LOAD_WAVES=load_waves,         $
                                         BURST_ON=burst_on,                             $     ;;  Output
                                         EESA_OUT=eesa_out,PESA_OUT=pesa_out,           $
-                                        SST_FOUT=sst_fout,SST_OOUT=sst_oout
+                                        SST_FOUT=sst_fout,SST_OOUT=sst_oout,           $
+                                        SST_TOUT=sst_tout
 
 tstart             = SYSTIME(1)
 ;;----------------------------------------------------------------------------------------
@@ -455,8 +502,8 @@ tpn_alpnon_var = scpref[0]+[vel_a_pref[0]+[coord_mag[0],xyz_str+coord_gse[0]],$
 ;;----------------------------------------------------------------------------------------
 lh_tag         = ['l','h']
 fo_tag         = ['f','o']
-tags           = ['e'+lh_tag,'p'+lh_tag,'s'+fo_tag]+'b'
-burst_on       = CREATE_STRUCT(tags,0b,0b,0b,0b,0b,0b)
+tags           = [['e'+lh_tag,'p'+lh_tag,'s'+fo_tag]+'b','sft','sot']
+burst_on       = CREATE_STRUCT(tags,0b,0b,0b,0b,0b,0b,0b,0b)
 ;;----------------------------------------------------------------------------------------
 ;;  Define and times/dates Probe from input
 ;;----------------------------------------------------------------------------------------
@@ -481,6 +528,9 @@ IF (test[0]) THEN pesa_on = 0b ELSE pesa_on = 1b
 ;;  Check LOAD__SST
 test           = (N_ELEMENTS(load__sst) EQ 0) OR ~KEYWORD_SET(load__sst)
 IF (test[0]) THEN sst__on = 0b ELSE sst__on = 1b
+;;  Check LOAD_SSTT
+test           = (N_ELEMENTS(load_sstt) EQ 0) OR ~KEYWORD_SET(load_sstt)
+IF (test[0]) THEN sstt_on = 0b ELSE sstt_on = 1b
 ;;  Check LOAD_SWEFC
 test           = (N_ELEMENTS(load_swefc) EQ 0) OR ~KEYWORD_SET(load_swefc)
 IF (test[0]) THEN swefc_on = 0b ELSE swefc_on = 1b
@@ -631,7 +681,7 @@ IF (swefc_on[0]) THEN BEGIN
     tpns           = tnames([tpn_swe_scpot[0],tpn_swe_vbulk[0]])
     test           = (TOTAL(tpns NE '') EQ 2)
     IF (test[0]) THEN BEGIN
-      ;;  Define new Vsw and 
+      ;;  Define new Vsw and SC Pot. TPLOT handles
       Vgse_tpnm = (tnames(tpn_swe_vbulk[0]))[0]
       scp_tpn   = (tnames(tpn_swe_scpot[0]))[0]
     ENDIF
@@ -645,10 +695,13 @@ IF (waves_on[0]) THEN BEGIN
   fupp           = 15d3                ;;  upper " "
   zran           = [1d0,1d2]           ;;  dynamic range of spectra [dB above background]
   ;;  Load radio data
-  waves_merge_tnr_rad_to_tplot,FLOW=flow,FUPP=fupp,TRANGE=trange,ZRANGE=zran
+  waves_merge_tnr_rad_to_tplot,FLOW=flow,FUPP=fupp,TRANGE=tran1d,ZRANGE=zran
+  ;;  Remove the individual receiver TPLOT handles
+  store_data,DELETE=tnames(['TNR_*','RAD1_*','RAD2_*'])
   ;;  Alter options
   waves_tpn      = scpref[0]+'WAVES_radio_spectra'
-  options,waves_tpn[0],YTICKV=[1d1,1d2,1d3,1d4],YTICKNAME=['10!U+01!N','10!U+02!N','10!U+03!N','10!U+04!N'],YTICKS=3,ZTICKS=3,/DEFAULT
+  options,waves_tpn[0],YTICKV=[1d1,1d2,1d3,1d4],YTICKNAME=['10!U+01!N','10!U+02!N','10!U+03!N','10!U+04!N'],$
+                       YTICKS=3,ZTICKS=3,PANEL_SIZE=2e0,/DEFAULT
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Inform User of TPLOT handles being used for VDF tags
@@ -676,11 +729,15 @@ ftime0         = fnm.F_TIME          ; e.g. 1998-08-09_0801x09.494
 ftimes         = STRMID(ftime0[*],0L,15L)
 tsuffx         = ftimes[0]+'_'+ftimes[1]
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Get thermal [PESA Low] and suprathermal [PESA High]
 ;;    ion velocity distribution functions (VDFs)
 ;;
 ;;    Low   :  ~0.1-10.0 keV ions
 ;;    High  :  ~0.5-28.0 keV ions
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 fpref          = 'Pesa_3DP_Structures_'
 fsuffx         = '_w-Vsw-Ni-SCPot.sav'
@@ -698,7 +755,7 @@ IF (pesa_on[0]) THEN BEGIN
   ;;  PESA Low
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(pl_dat,/TYPE) EQ 8) THEN BEGIN
-    apl_ = pl_dat.DATA
+    apl_           = pl_dat.DATA
     add_vsw2, apl_,Vgse_tpnm[0]
     add_magf2,apl_,Bgse_tpnm[0]
     add_scpot,apl_,  scp_tpn[0]
@@ -710,7 +767,7 @@ IF (pesa_on[0]) THEN BEGIN
   ;;  PESA Low Burst
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(plbdat,/TYPE) EQ 8) THEN BEGIN
-    aplb = plbdat.DATA
+    aplb           = plbdat.DATA
     add_vsw2, aplb,Vgse_tpnm[0]
     add_magf2,aplb,Bgse_tpnm[0]
     add_scpot,aplb,  scp_tpn[0]
@@ -722,7 +779,7 @@ IF (pesa_on[0]) THEN BEGIN
   ;;  PESA High
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(ph_dat,/TYPE) EQ 8) THEN BEGIN
-    tags = TAG_NAMES(ph_dat)
+    tags           = TAG_NAMES(ph_dat)
     IF (TOTAL(tags EQ 'DATA1') GT 0) THEN BEGIN
       IF (TOTAL(tags EQ 'DATA3') GT 0) THEN BEGIN
         ;;  At least 3 different mapcodes
@@ -732,7 +789,7 @@ IF (pesa_on[0]) THEN BEGIN
         pesa_high_str_fill,aph_,NAME='ph',DUM1=ph_dat.DATA1,DUM2=ph_dat.DATA2
       ENDELSE
     ENDIF ELSE BEGIN
-      aph_ = ph_dat.DATA
+      aph_           = ph_dat.DATA
     ENDELSE
     add_vsw2, aph_,Vgse_tpnm[0]
     add_magf2,aph_,Bgse_tpnm[0]
@@ -745,7 +802,7 @@ IF (pesa_on[0]) THEN BEGIN
   ;;  PESA High Burst
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(phbdat,/TYPE) EQ 8) THEN BEGIN
-    tags = TAG_NAMES(phbdat)
+    tags           = TAG_NAMES(phbdat)
     IF (TOTAL(tags EQ 'DATA1') GT 0) THEN BEGIN
       IF (TOTAL(tags EQ 'DATA3') GT 0) THEN BEGIN
         ;;  At least 3 different mapcodes
@@ -755,7 +812,7 @@ IF (pesa_on[0]) THEN BEGIN
         pesa_high_str_fill,aphb,NAME='phb',DUM1=phbdat.DATA1,DUM2=phbdat.DATA2
       ENDELSE
     ENDIF ELSE BEGIN
-      aphb = phbdat.DATA
+      aphb           = phbdat.DATA
     ENDELSE
     add_vsw2, aphb,Vgse_tpnm[0]
     add_magf2,aphb,Bgse_tpnm[0]
@@ -797,9 +854,9 @@ IF (pesa_on[0]) THEN BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  Clean up
   ;;--------------------------------------------------------------------------------------
-  dumb = TEMPORARY(apl_) & dumb = TEMPORARY(aph_) & dumb = TEMPORARY(aplb) & dumb = TEMPORARY(aphb)
-  dumb = TEMPORARY(pl_dat) & dumb = TEMPORARY(plbdat)
-  dumb = TEMPORARY(ph_dat) & dumb = TEMPORARY(phbdat)
+  dumb           = TEMPORARY(apl_) & dumb = TEMPORARY(aph_) & dumb = TEMPORARY(aplb) & dumb = TEMPORARY(aphb)
+  dumb           = TEMPORARY(pl_dat) & dumb = TEMPORARY(plbdat)
+  dumb           = TEMPORARY(ph_dat) & dumb = TEMPORARY(phbdat)
 ENDIF ELSE BEGIN
   pl_dat         = 0
   plbdat         = 0
@@ -807,11 +864,15 @@ ENDIF ELSE BEGIN
   phbdat         = 0
 ENDELSE
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Get thermal [EESA Low] and suprathermal [EESA High]
 ;;    electron velocity distribution functions (VDFs)
 ;;
 ;;    Low   :     ~5-1100  eV electrons
 ;;    High  :  ~0.14-28.0 keV electrons
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 fpref          = 'Eesa_3DP_Structures_'
 fsuffx         = '_w-Vsw-Ni-SCPot.sav'
@@ -829,7 +890,7 @@ IF (eesa_on[0]) THEN BEGIN
   ;;  EESA Low
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(el_dat,/TYPE) EQ 8) THEN BEGIN
-    ael_ = el_dat.DATA
+    ael_           = el_dat.DATA
     add_vsw2, ael_,Vgse_tpnm[0]
     add_magf2,ael_,Bgse_tpnm[0]
     add_scpot,ael_,  scp_tpn[0]
@@ -841,7 +902,7 @@ IF (eesa_on[0]) THEN BEGIN
   ;;  EESA Low Burst
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(elbdat,/TYPE) EQ 8) THEN BEGIN
-    aelb = elbdat.DATA
+    aelb           = elbdat.DATA
     add_vsw2, aelb,Vgse_tpnm[0]
     add_magf2,aelb,Bgse_tpnm[0]
     add_scpot,aelb,  scp_tpn[0]
@@ -853,7 +914,7 @@ IF (eesa_on[0]) THEN BEGIN
   ;;  EESA High
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(eh_dat,/TYPE) EQ 8) THEN BEGIN
-    aeh_ = eh_dat.DATA
+    aeh_           = eh_dat.DATA
     add_vsw2, aeh_,Vgse_tpnm[0]
     add_magf2,aeh_,Bgse_tpnm[0]
     add_scpot,aeh_,  scp_tpn[0]
@@ -865,7 +926,7 @@ IF (eesa_on[0]) THEN BEGIN
   ;;  EESA High Burst
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(ehbdat,/TYPE) EQ 8) THEN BEGIN
-    aehb = ehbdat.DATA
+    aehb           = ehbdat.DATA
     add_vsw2, aehb,Vgse_tpnm[0]
     add_magf2,aehb,Bgse_tpnm[0]
     add_scpot,aehb,  scp_tpn[0]
@@ -906,9 +967,9 @@ IF (eesa_on[0]) THEN BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  Clean up
   ;;--------------------------------------------------------------------------------------
-  dumb = TEMPORARY(ael_) & dumb = TEMPORARY(aeh_) & dumb = TEMPORARY(aelb) & dumb = TEMPORARY(aehb)
-  dumb = TEMPORARY(el_dat) & dumb = TEMPORARY(elbdat)
-  dumb = TEMPORARY(eh_dat) & dumb = TEMPORARY(ehbdat)
+  dumb           = TEMPORARY(ael_) & dumb = TEMPORARY(aeh_) & dumb = TEMPORARY(aelb) & dumb = TEMPORARY(aehb)
+  dumb           = TEMPORARY(el_dat) & dumb = TEMPORARY(elbdat)
+  dumb           = TEMPORARY(eh_dat) & dumb = TEMPORARY(ehbdat)
 ENDIF ELSE BEGIN
   el_dat         = 0
   elbdat         = 0
@@ -916,11 +977,15 @@ ENDIF ELSE BEGIN
   ehbdat         = 0
 ENDELSE
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Get solid-state telescope [SST] velocity distribution functions (VDFs)
 ;;    for electrons [Foil] and protons [Open]
 ;;
 ;;    Foil  :   ~20-550 keV electrons
 ;;    Open  :  ~70-6500 keV protons
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 fpref          = 'SST-Foil-Open_3DP_Structures_'
 fsuffx         = '_w-Vsw-Ni-SCPot.sav'
@@ -938,7 +1003,7 @@ IF (sst__on[0]) THEN BEGIN
   ;;  SST Foil
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(sf_dat,/TYPE) EQ 8) THEN BEGIN
-    asf_         = sf_dat.DATA
+    asf_           = sf_dat.DATA
     add_vsw2, asf_,Vgse_tpnm[0]
     add_magf2,asf_,Bgse_tpnm[0]
     add_scpot,asf_,  scp_tpn[0]
@@ -950,7 +1015,7 @@ IF (sst__on[0]) THEN BEGIN
   ;;  SST Foil Burst
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(sfbdat,/TYPE) EQ 8) THEN BEGIN
-    asfb         = sfbdat.DATA
+    asfb           = sfbdat.DATA
     add_vsw2, asfb,Vgse_tpnm[0]
     add_magf2,asfb,Bgse_tpnm[0]
     add_scpot,asfb,  scp_tpn[0]
@@ -962,7 +1027,7 @@ IF (sst__on[0]) THEN BEGIN
   ;;  SST Open
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(so_dat,/TYPE) EQ 8) THEN BEGIN
-    aso_         = so_dat.DATA
+    aso_           = so_dat.DATA
     add_vsw2, aso_,Vgse_tpnm[0]
     add_magf2,aso_,Bgse_tpnm[0]
     add_scpot,aso_,  scp_tpn[0]
@@ -974,7 +1039,7 @@ IF (sst__on[0]) THEN BEGIN
   ;;  SST Open Burst
   ;;--------------------------------------------------------------------------------------
   IF (SIZE(sobdat,/TYPE) EQ 8) THEN BEGIN
-    asob         = sobdat.DATA
+    asob           = sobdat.DATA
     add_vsw2, asob,Vgse_tpnm[0]
     add_magf2,asob,Bgse_tpnm[0]
     add_scpot,asob,  scp_tpn[0]
@@ -1004,28 +1069,106 @@ IF (sst__on[0]) THEN BEGIN
   IF ARG_PRESENT(sst_fout) THEN BEGIN
     IF (SIZE(asf_,/TYPE) NE 8) THEN asf_ = 0
     IF (SIZE(asfb,/TYPE) NE 8) THEN asfb = 0
-    sst_fout = {SF_:asf_,SFB:asfb}
+    sst_fout       = {SF_:asf_,SFB:asfb}
     IF (SIZE(asf_,/TYPE) NE 8) THEN dumb = TEMPORARY(asf_)
     IF (SIZE(asfb,/TYPE) NE 8) THEN dumb = TEMPORARY(asfb)
   ENDIF
   IF ARG_PRESENT(sst_oout) THEN BEGIN
     IF (SIZE(aso_,/TYPE) NE 8) THEN aso_ = 0
     IF (SIZE(asob,/TYPE) NE 8) THEN asob = 0
-    sst_oout = {SO_:aso_,SOB:asob}
+    sst_oout       = {SO_:aso_,SOB:asob}
     IF (SIZE(aso_,/TYPE) NE 8) THEN dumb = TEMPORARY(aso_)
     IF (SIZE(asob,/TYPE) NE 8) THEN dumb = TEMPORARY(asob)
   ENDIF
   ;;--------------------------------------------------------------------------------------
   ;;  Clean up
   ;;--------------------------------------------------------------------------------------
-  dumb = TEMPORARY(asf_) & dumb = TEMPORARY(aso_) & dumb = TEMPORARY(asfb) & dumb = TEMPORARY(asob)
-  dumb = TEMPORARY(sf_dat) & dumb = TEMPORARY(sfbdat)
-  dumb = TEMPORARY(so_dat) & dumb = TEMPORARY(sobdat)
+  dumb           = TEMPORARY(asf_) & dumb = TEMPORARY(aso_) & dumb = TEMPORARY(asfb) & dumb = TEMPORARY(asob)
+  dumb           = TEMPORARY(sf_dat) & dumb = TEMPORARY(sfbdat)
+  dumb           = TEMPORARY(so_dat) & dumb = TEMPORARY(sobdat)
 ENDIF ELSE BEGIN
   sf_dat         = 0
   sfbdat         = 0
   so_dat         = 0
   sobdat         = 0
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Get coincidence solid-state telescope [SST] velocity distribution functions (VDFs)
+;;    for electrons [Foil+Thick] and protons [Open+Thick]
+;;
+;;    Foil+Thick  :  ~300 -  1500 keV electrons
+;;    Open+Thick  :  ~400 - 11500 keV protons
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+fpref          = 'SST-Foil-Open-Thick_3DP_Structures_'
+fsuffx         = '_w-Vsw-Ni-SCPot.sav'
+;;  Initialize structure variables
+asft           = 0
+asot           = 0
+IF (sstt_on[0]) THEN BEGIN
+  sftdat         = get_3dp_structs('sft',TRANGE=tran1d)      ;;  SST Foil
+  sotdat         = get_3dp_structs('sot',TRANGE=tran1d)      ;;  SST Open
+  ;;--------------------------------------------------------------------------------------
+  ;;  SST Foil+Thick
+  ;;--------------------------------------------------------------------------------------
+  IF (SIZE(sftdat,/TYPE) EQ 8) THEN BEGIN
+    asft           = sftdat.DATA
+    add_vsw2, asft,Vgse_tpnm[0]
+    add_magf2,asft,Bgse_tpnm[0]
+    add_scpot,asft,  scp_tpn[0]
+    add_vsw2, asft,Vgse_tpnm[0],/LEAVE_ALONE
+    add_magf2,asft,Bgse_tpnm[0],/LEAVE_ALONE
+    add_scpot,asft,  scp_tpn[0],/LEAVE_ALONE
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  SST Open+Thick
+  ;;--------------------------------------------------------------------------------------
+  IF (SIZE(sotdat,/TYPE) EQ 8) THEN BEGIN
+    asot           = sotdat.DATA
+    add_vsw2, asot,Vgse_tpnm[0]
+    add_magf2,asot,Bgse_tpnm[0]
+    add_scpot,asot,  scp_tpn[0]
+    add_vsw2, asot,Vgse_tpnm[0],/LEAVE_ALONE
+    add_magf2,asot,Bgse_tpnm[0],/LEAVE_ALONE
+    add_scpot,asot,  scp_tpn[0],/LEAVE_ALONE
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define BURST_ON status for SFT and SOT (no burst mode)
+  ;;--------------------------------------------------------------------------------------
+  burst_on.SFT   = 0b
+  burst_on.SOT   = 0b
+  ;;--------------------------------------------------------------------------------------
+  ;;  Print out name as a check
+  ;;--------------------------------------------------------------------------------------
+  fname          = savdir[0]+fpref[0]+tsuffx[0]+fsuffx[0]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Create IDL save file
+  ;;--------------------------------------------------------------------------------------
+  IF (save_on[0]) THEN BEGIN
+    PRINT,';; ',fname[0]
+    SAVE,asft,asot,FILENAME=fname[0],DESCRIPTION=idl_save_desc[0]
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define return structure if so desired
+  ;;--------------------------------------------------------------------------------------
+  IF ARG_PRESENT(sst_tout) THEN BEGIN
+    IF (SIZE(asft,/TYPE) NE 8) THEN asft = 0
+    IF (SIZE(asot,/TYPE) NE 8) THEN asot = 0
+    sst_tout = {SFT:asft,SOT:asot}
+    IF (SIZE(asft,/TYPE) NE 8) THEN dumb = TEMPORARY(asft)
+    IF (SIZE(asot,/TYPE) NE 8) THEN dumb = TEMPORARY(asot)
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Clean up
+  ;;--------------------------------------------------------------------------------------
+  dumb           = TEMPORARY(asft) & dumb = TEMPORARY(asot)
+  dumb           = TEMPORARY(sftdat) & dumb = TEMPORARY(sotdat)
+ENDIF ELSE BEGIN
+  sftdat         = 0
+  sotdat         = 0
 ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Clean up

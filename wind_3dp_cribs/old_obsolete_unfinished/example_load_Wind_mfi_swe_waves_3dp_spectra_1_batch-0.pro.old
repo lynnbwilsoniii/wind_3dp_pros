@@ -33,8 +33,8 @@
 ;  KEYWORDS:    
 ;               NA
 ;
-;   CHANGED:  1)  Added SST Foil and Open +Thick detector outputs
-;                                                                   [05/16/2022   v1.0.1]
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  User must call example_load_Wind_mfi_swe_waves_3dp_spectra_0_batch.pro
@@ -60,16 +60,14 @@ test_pl        = TOTAL([(npl_[0] GT 0),(nplb[0] GT 0)])
 test_ph        = TOTAL([(nph_[0] GT 0),(nphb[0] GT 0)])
 test_sf        = TOTAL([(nsf_[0] GT 0),(nsfb[0] GT 0)])
 test_so        = TOTAL([(nso_[0] GT 0),(nsob[0] GT 0)])
-test_st        = TOTAL([(nsft[0] GT 0),(nsot[0] GT 0)])
 IF (test_el[0] GT 1) THEN all_el = {S:ael_,B:aelb} ELSE IF (test_el[0] EQ 1) THEN all_el = {S:ael_,B:0}
 IF (test_eh[0] GT 1) THEN all_eh = {S:aeh_,B:aehb} ELSE IF (test_eh[0] EQ 1) THEN all_eh = {S:aeh_,B:0}
 IF (test_pl[0] GT 1) THEN all_pl = {S:apl_,B:aplb} ELSE IF (test_pl[0] EQ 1) THEN all_pl = {S:apl_,B:0}
 IF (test_ph[0] GT 1) THEN all_ph = {S:aph_,B:aphb} ELSE IF (test_ph[0] EQ 1) THEN all_ph = {S:aph_,B:0}
 IF (test_sf[0] GT 1) THEN all_sf = {S:asf_,B:asfb} ELSE IF (test_sf[0] EQ 1) THEN all_sf = {S:asf_,B:0}
 IF (test_so[0] GT 1) THEN all_so = {S:aso_,B:asob} ELSE IF (test_so[0] EQ 1) THEN all_so = {S:aso_,B:0}
-IF (test_st[0] EQ 2) THEN all_st = {F:asft,O:asot} ELSE IF (test_so[0] LT 2) THEN all_st = {F:0,O:0}
 ;;  Clean up
-DELVAR,ael_,aelb,aeh_,aehb,apl_,aplb,aph_,aphb,asf_,asfb,aso_,asob,asft,asot
+DELVAR,ael_,aelb,aeh_,aehb,apl_,aplb,aph_,aphb,asf_,asfb,aso_,asob
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
@@ -88,17 +86,12 @@ DELVAR,ael_,aelb,aeh_,aehb,apl_,aplb,aph_,aphb,asf_,asfb,aso_,asob,asft,asot
 ;;  Define a time range and TPLOT handle prefix [change at will]
 tr_all_day     = trange
 tpn_prefs      = scpref[0]+'magf_'
-all_units      = ['counts','flux','eflux','e2flux','e3flux','df','rate','crate']
 ;;  Define the units of the output [change at will]
-test           = (SIZE(units,/TYPE) NE 7)
-IF (test[0]) THEN units = 'flux' ELSE test = (TOTAL(STRLOWCASE(units[0]) EQ all_units) NE 1)
-IF (test[0]) THEN units = 'flux'
-IF KEYWORD_SET(no_trans) THEN no_trans = 1b ELSE no_trans = 0b
 ;units          = 'df'       ;;  phase space density [# s^(+3) km^(-3) cm^(-3)]
-;units          = 'flux'     ;;  number flux or intensity [# cm^(-2) sr^(-1) s^(-1) eV^(-1)]
+units          = 'flux'     ;;  number flux or intensity [# cm^(-2) sr^(-1) s^(-1) eV^(-1)]
 ;units          = 'eflux'    ;;  energy flux [eV cm^(-2) sr^(-1) s^(-1) eV^(-1)]
 ;;  Define the reference frame of the output [change at will]
-;no_trans       = 0b         ;;  Output will be in bulk flow rest frame
+no_trans       = 0b         ;;  Output will be in bulk flow rest frame
 ;no_trans       = 1b         ;;  Output will be in spacecraft rest frame
 ;;--------------------------------------------
 ;;  EESA Low
@@ -149,9 +142,10 @@ IF (test_eh[0] GE 1) THEN t_stacked_ener_pad_spec_2_tplot,dat,UNITS=units,BINS=b
 ;;  Clean up
 DELVAR,dat,dat2,bins,bin2
 ;;--------------------------------------------
-;;  PESA Low [must be in SCF]
+;;  PESA Low
 ;;--------------------------------------------
 ;;  Follow rules from above for the following
+no_trans       = 1b              ;;  Calculate in SCF [this data defines Vsw so SCF is appropriate]
 erange         = [1e1,1e5]       ;;  Energy bin range to keep/use [eV]
 name           = tpn_prefs[0]+'pesa_low_spec'
 IF (test_pl[0] GE 1) THEN bins = REPLICATE(1b,all_pl.S[0].NBINS) ELSE bins = REPLICATE(0b,25)
@@ -159,14 +153,15 @@ IF (test_pl[0] GE 1) THEN dat  = all_pl[0].S ELSE dat  = 0
 IF (test_pl[0] GE 2) THEN dat2 = all_pl[0].B ELSE dat2 = 0
 IF (test_pl[0] GE 2) THEN bin2 = REPLICATE(1b,all_pl.B[0].NBINS) ELSE bin2 = 0
 IF (test_pl[0] GE 1) THEN t_stacked_ener_pad_spec_2_tplot,dat,UNITS=units,BINS=bins,NUM_PA=num_pa,        $
-                                                              ERANGE=erange,NAME=name,NO_TRANS=1b,        $
+                                                              ERANGE=erange,NAME=name,NO_TRANS=no_trans,  $
                                                               TRANGE=tr_all_day,TPN_STRUC=tpn_str_pesa_l, $
                                                               DAT_STR2=dat2,B2INS=bin2
 ;;  Clean up
 DELVAR,dat,dat2,bins,bin2
 ;;--------------------------------------------
-;;  PESA High [must be in SCF]
+;;  PESA High
 ;;--------------------------------------------
+no_trans       = 1b              ;;  Output will be in spacecraft rest frame [SCF]
 erange         = [0e0,1e9]       ;;  Energy bin range to keep/use [eV]
 name           = tpn_prefs[0]+'pesa_high_corr_spec'
 IF (test_ph[0] GE 1) THEN bins = REPLICATE(1b,all_ph.S[0].NBINS) ELSE bins = REPLICATE(0b,88)
@@ -177,7 +172,7 @@ IF (test_ph[0] GE 2) THEN dat2 = all_ph[0].B ELSE dat2 = 0
 IF (test_ph[0] GE 2) THEN bin2 = REPLICATE(1b,all_ph.B[0].NBINS) ELSE bin2 = 0
 IF (test_ph[0] GE 2) THEN pesa_high_bad_bins,dat2
 IF (test_ph[0] GE 1) THEN t_stacked_ener_pad_spec_2_tplot,dat,UNITS=units,BINS=bins,NUM_PA=num_pa,        $
-                                                              ERANGE=erange,NAME=name,NO_TRANS=1b,        $
+                                                              ERANGE=erange,NAME=name,NO_TRANS=no_trans,  $
                                                               TRANGE=tr_all_day,TPN_STRUC=tpn_str_pesa_hc,$
                                                               DAT_STR2=dat2,B2INS=bin2
 ;;  Clean up
@@ -185,6 +180,7 @@ DELVAR,dat,dat2,bins,bin2
 ;;--------------------------------------------
 ;;  SST Foil
 ;;--------------------------------------------
+no_trans       = 0b                          ;;  Output will be in bulk flow rest frame
 erange         = [1e3,1e7]                   ;;  Energy bin range to keep/use [eV]
 name           = tpn_prefs[0]+'sst_foil_corr_spec'
 ;;  Define "bad" solid-angle bins [personal communication with L. Wang, 2010]
@@ -229,40 +225,6 @@ IF (test_so[0] GE 2) THEN dat2.DATA[*,all_bad_bins]   = f
 IF (test_so[0] GE 1) THEN t_stacked_ener_pad_spec_2_tplot,dat,UNITS=units,BINS=bins,NUM_PA=num_pa,        $
                                                               ERANGE=erange,NAME=name,NO_TRANS=no_trans,  $
                                                               TRANGE=tr_all_day,TPN_STRUC=tpn_str_sst_oc, $
-                                                              DAT_STR2=dat2,B2INS=bin2
-;;  Clean up
-DELVAR,dat,dat2,bins,bin2
-;;--------------------------------------------
-;;  SST Foil+Thick
-;;--------------------------------------------
-erange         = [1e3,1e9]                   ;;  Energy bin range to keep/use [eV]
-name           = tpn_prefs[0]+'sst_foil_thick_spec'
-;;  Define "bad" solid-angle bins [personal communication with L. Wang, 2010]
-IF (test_st[0] EQ 2) THEN bins = REPLICATE(1b,all_st[0].F[0].NBINS) ELSE bins = REPLICATE(0b,16)
-;;  Define SST Foil+Thick Data
-IF (test_st[0] EQ 2) THEN dat  = all_st[0].F ELSE dat  = 0
-dat2           = 0
-bin2           = 0
-IF (test_st[0] EQ 2) THEN t_stacked_ener_pad_spec_2_tplot,dat,UNITS=units,BINS=bins,NUM_PA=4,             $
-                                                              ERANGE=erange,NAME=name,NO_TRANS=no_trans,  $
-                                                              TRANGE=tr_all_day,TPN_STRUC=tpn_str_sst_ft, $
-                                                              DAT_STR2=dat2,B2INS=bin2
-;;  Clean up
-DELVAR,dat,dat2,bins,bin2
-;;--------------------------------------------
-;;  SST Open+Thick
-;;--------------------------------------------
-erange         = [1e3,1e9]       ;;  Energy bin range to keep/use [eV]
-name           = tpn_prefs[0]+'sst_open_thick_spec'
-;;  Define "bad" solid-angle bins [personal communication with L. Wang, 2010]
-IF (test_st[0] EQ 2) THEN bins = REPLICATE(1b,all_st[0].O[0].NBINS) ELSE bins = REPLICATE(0b,16)
-;;  Define SST Open+Thick Data
-IF (test_st[0] EQ 2) THEN dat  = all_st[0].O ELSE dat  = 0
-dat2           = 0
-bin2           = 0
-IF (test_st[0] EQ 2) THEN t_stacked_ener_pad_spec_2_tplot,dat,UNITS=units,BINS=bins,NUM_PA=4,             $
-                                                              ERANGE=erange,NAME=name,NO_TRANS=no_trans,  $
-                                                              TRANGE=tr_all_day,TPN_STRUC=tpn_str_sst_ot, $
                                                               DAT_STR2=dat2,B2INS=bin2
 ;;  Clean up
 DELVAR,dat,dat2,bins,bin2

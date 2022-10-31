@@ -1,0 +1,555 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   sub_t_calc_group_vel_4sc_from_db_filt.pro
+;  PURPOSE  :   This is a subroutine used to filter the input data.
+;
+;  CALLED BY:   
+;               t_calc_group_vel_4sc_from_db.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               t_get_struc_unix.pro
+;               sample_rate.pro
+;               vector_bandpass.pro
+;               is_a_3_vector.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               BSTRUC  :  Scalar [TPLOT structure] of magnetic field data to filter
+;               FRAN    :  [2]-Element [numeric] array defining the range of
+;                            frequencies [Hz] to use to filter the data before applying
+;                            the cross-correlation algorithm
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               fstruc = sub_t_calc_group_vel_4sc_from_db_filt(bstruc,fran)
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               0)  User should not call this directly as it has little error handling
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  10/14/2022
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/14/2022   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION sub_t_calc_group_vel_4sc_from_db_filt,bstruc,fran
+
+;;----------------------------------------------------------------------------------------
+;;  Defaults and constants
+;;----------------------------------------------------------------------------------------
+;;  Error messages
+badfran_mssg   = 'FRAN frequency range cannot exceed the Nyquist frequency of the data --> returning without filtering...'
+badfilt_mssg   = 'Frequency filtering failed --> returning without filtering...'
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define and check parameters
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Get Unix time stamps
+unix           = t_get_struc_unix(bstruc)
+;;  Calculate sample rate [samples per second]
+srate          = sample_rate(bunix_1,/AVE)
+;;  Define new variable for frequency range
+frq_ran        = fran
+IF (frq_ran[0] LT (95d-2*srate[0]/2d0)) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Lower frequency bound is below Nyquist frequency --> Good
+  ;;--------------------------------------------------------------------------------------
+  nn             = N_ELEMENTS(unix)
+  frq_ran[0]     = frq_ran[0] > 0d0
+  filt           = vector_bandpass(bstruc.Y,srate[0],frq_ran[0],frq_ran[1],/MIDF)
+  ;;--------------------------------------------------------------------------------------
+  ;;  Check output
+  ;;--------------------------------------------------------------------------------------
+  szdb           = SIZE(filt,/DIMENSIONS)
+  test           = is_a_3_vector(filt,/NOMSSG) AND (nn[0] EQ szdb[0]) AND $
+                   (TOTAL(FINITE(filt)) EQ TOTAL(FINITE(bstruc.Y)))
+  IF (test[0]) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Seems like the output is okay --> Define new output structure
+    ;;------------------------------------------------------------------------------------
+    fstruc         = {X:unix,Y:filt}
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Output has incorrect form --> inform user and return
+    ;;------------------------------------------------------------------------------------
+    MESSAGE,badfilt_mssg[0],/INFORMATIONAL,/CONTINUE
+    fstruc         = bstruc
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;;  Lower frequency bound is above Nyquist frequency --> Bad
+  MESSAGE,badfran_mssg[0],/INFORMATIONAL,/CONTINUE
+  fstruc         = bstruc
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+
+RETURN,fstruc
+END
+
+
+;*****************************************************************************************
+;
+;  FUNCTION :   sub_t_calc_group_vel_4sc_from_db_trim.pro
+;  PURPOSE  :   This is a subroutine used to trim off excess edge points.
+;
+;  CALLED BY:   
+;               t_calc_group_vel_4sc_from_db.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               t_get_struc_unix.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               STR?    :  Scalar [TPLOT structure] of filtered and clipped magnetic
+;                            field data to trim
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               trimstr = sub_t_calc_group_vel_4sc_from_db_trim(str1,str2,str3,str4)
+;
+;  KEYWORDS:    
+;               NA
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               0)  User should not call this directly as it has little error handling
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  10/14/2022
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/14/2022   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION sub_t_calc_group_vel_4sc_from_db_trim,str1,str2,str3,str4
+
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define parameters from clipped structures
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+bunix_1        = t_get_struc_unix(str1)
+bunix_2        = t_get_struc_unix(str2)
+bunix_3        = t_get_struc_unix(str3)
+bunix_4        = t_get_struc_unix(str4)
+bgsev_1        = str1.Y
+bgsev_2        = str2.Y
+bgsev_3        = str3.Y
+bgsev_4        = str4.Y
+;;----------------------------------------------------------------------------------------
+;;  Determine the max # of elements to keep
+;;----------------------------------------------------------------------------------------
+nn1            = N_ELEMENTS(bunix_1) & nn2 = N_ELEMENTS(bunix_2) & nn3 = N_ELEMENTS(bunix_3) & nn4 = N_ELEMENTS(bunix_4)
+nmin           = MIN([nn1[0],nn2[0],nn3[0],nn4[0]],ln)
+;;  Define index arrays
+IF ((nmin[0] MOD 2) NE 0) THEN ishf = 1L ELSE ishf = 0L
+IF (ln[0] EQ 0L) THEN ind1 = LINDGEN(nn1[0] - ishf[0])
+IF (ln[0] EQ 1L) THEN ind2 = LINDGEN(nn2[0] - ishf[0])
+IF (ln[0] EQ 2L) THEN ind3 = LINDGEN(nn3[0] - ishf[0])
+IF (ln[0] EQ 3L) THEN ind4 = LINDGEN(nn4[0] - ishf[0])
+;;  Redefine NMIN
+nmin           = ([N_ELEMENTS(ind1),N_ELEMENTS(ind2),N_ELEMENTS(ind3),N_ELEMENTS(ind4)])[ln[0]]
+;;  Define the difference in the # of elements to trim
+ndif           = [nn1[0],nn2[0],nn3[0],nn4[0]] - nmin[0]
+;;  Define remaining index arrays that have yet to be defined (i.e., only one of the above was defined)
+IF (ln[0] NE 0L) THEN ind1 = LINDGEN(nmin[0]) + ndif[0]/2L
+IF (ln[0] NE 1L) THEN ind2 = LINDGEN(nmin[0]) + ndif[1]/2L
+IF (ln[0] NE 2L) THEN ind3 = LINDGEN(nmin[0]) + ndif[2]/2L
+IF (ln[0] NE 3L) THEN ind4 = LINDGEN(nmin[0]) + ndif[3]/2L
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define output structure
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+unix_1         = bunix_1[ind1]
+unix_2         = bunix_2[ind2]
+unix_3         = bunix_3[ind3]
+unix_4         = bunix_4[ind4]
+gsev_1         = bgsev_1[ind1,*]
+gsev_2         = bgsev_2[ind2,*]
+gsev_3         = bgsev_3[ind3,*]
+gsev_4         = bgsev_4[ind4,*]
+trimstr        = {SC1:{X:unix_1,Y:gsev_1},SC2:{X:unix_2,Y:gsev_2},SC3:{X:unix_3,Y:gsev_3},SC4:{X:unix_4,Y:gsev_4}}
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+
+RETURN,trimstr
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   t_calc_group_vel_4sc_from_db.pro
+;  PURPOSE  :   This routine takes the TPLOT handles associated with spacecraft positions
+;                 and magnetic fields, from at least 4 spacecraft, to calculate the
+;                 group speed and group velocity unit vector of an input wave time
+;                 range.  The routine calculates the time lags for each field component
+;                 and calculates the corresponding slowness vector (i.e., v/|v|^2), which
+;                 is treated as a projected magnitude along a given field component
+;                 direction.  If the user provides the bulk flow velocity of the plasma,
+;                 then the rest frame group speed and velocity can be calculated.
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               sub_t_calc_group_vel_4sc_from_db_filt.pro
+;               sub_t_calc_group_vel_4sc_from_db_trim.pro
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               TPN_POSI     :  [4]-Element [string] array defining set and valid TPLOT
+;                                 handles associated with spacecraft positions all in
+;                                 the same coordinate basis
+;               TPN_MAGF     :  [4]-Element [string] array defining set and valid TPLOT
+;                                 handles associated with magnetic field data all in
+;                                 the same coordinate basis
+;               TRAN_SE      :  [4,2]-Element [double] array defining the time stamps of
+;                                 points of interest to use for calculating the normal
+;                                 unit vector.
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               struc = t_calc_group_vel_4sc_from_db(tpn_posi,tpn_magf,tran_se     $
+;                                                  [,PERTDT=pertdt] [,VBULK=vbulk] $
+;                                                  [,DELVB=delvb] [,/NOMSSG])
+;
+;  KEYWORDS:    
+;               PERTDT       :  Scalar [numeric] defining the delta-t for the perturbing
+;                                 time stamps about the time of interest
+;                                 [Default = 0.01]
+;               VBULK        :  [3]-Element [numeric] array defining the plasma bulk
+;                                 flow velocity to use to convert the spacecraft frame
+;                                 group speed to the plasma rest frame speed [km/s]
+;                                 [Default = [0,0,0]]
+;               DELVB        :  [3]-Element [numeric] array defining the uncertainty in
+;                                 VBULK [km/s]
+;                                 [Default = [0,0,0]]
+;               FRAN         :  [2]-Element [numeric] array defining the range of
+;                                 frequencies [Hz] to use to filter the data before
+;                                 applying the cross-correlation algorithm
+;                                 [Default = FALSE]
+;               NOMSSG       :  If set, routine will not inform user of elapsed
+;                                 computational time [s]
+;                                 [Default = FALSE]
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               1)  This routine uses LU decomposition
+;                     A . X = B
+;                       (A_ijm)_i = ((∆r_ij)_m)_i
+;                       (B_ijm)_i = ((t_i - t_j)_m)_i
+;                       (X)_i     = (v/|v|^2)_i
+;                     where the ith subscript corresponds to the ith field component
+;               2)  The above is performed on each field component to get three X_i.
+;                     Then we calculate the true magnitude of the slowness vector, given
+;                     by the following:
+;                       |X| = [ (X_i*X_j*X_k)^2/(∑_i≠j X_i^2 X_j^2) ]^(1/2)
+;                     We can then compute the true slowness unit vector, given by:
+;                       X/|X| = {X_i,X_j,X_k}/[ X_i^2 + X_j^2 + X_k^2 ]^(1/2)
+;               3)  ICB  =  Input Coordinate Basis
+;               4)  Coordinate Systems
+;                     SPG    :  Spinning Probe Geometric
+;                     SSL    :  Spinning Sun-Sensor L-Vector
+;                     DSL    :  Despun Sun-L-VectorZ (THEMIS and MMS Mission)
+;                     BCS    :  Body Coordinate System (MMS Mission)
+;                     DBCS   :  despun-BCS (MMS Mission)
+;                     SMPA   :  Spinning, Major Principal Axis (MMS Mission)
+;                     DMPA   :  Despun, Major Principal Axis (MMS Mission)
+;                     GEI    :  Geocentric Equatorial Inertial
+;                     GEO    :  Geographic
+;                     GSE    :  Geocentric Solar Ecliptic
+;                     GSM    :  Geocentric Solar Magnetospheric
+;                     ICB    :  Input Coordinate Basis (e.g., GSE)
+;
+;  REFERENCES:  
+;               0)  See IDL's documentation for:
+;                     https://www.harrisgeospatial.com/docs/LA_LUDC.html
+;                     https://www.harrisgeospatial.com/docs/LA_LUSOL.html
+;                     https://www.harrisgeospatial.com/docs/C_CORRELATE.html
+;               1)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;               2)  Narita, Y., et al., "Wave telescope technique for MMS magnetometer,"
+;                      Geophys. Res. Lett. 43(10), pp. 4774--4780,
+;                      doi:10.1002/2016GL069035, 2016.
+;
+;   CREATED:  10/14/2022
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/14/2022   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION t_calc_group_vel_4sc_from_db,tpn_posi,tpn_magf,tran_se,PERTDT=pertdt,VBULK=vbulk,$
+                                    DELVB=delvb,FRAN=fran,NOMSSG=nomssg
+
+ex_start       = SYSTIME(1)
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define defaults
+npert          = 33L                                   ;;  # of perturbing points about selected time
+npmid          = 16L                                   ;;  Element of midpoint in perturbing array
+perd           = DINDGEN(npert[0]) - npmid[0]          ;;  Array of perturbing elements
+usearr         = LINDGEN(5) + (npmid[0] - 2L)          ;;  Array of perturbing elements to use in analysis
+del            = [-1d0,-5d-1,0d0,5d-1,1d0]
+nd             = N_ELEMENTS(del)
+def_dvsw       = REPLICATE(0d0,3L)
+def__vsw       = def_dvsw
+;;----------------------------------------------------------------------------------------
+;;  Coordinates and vectors
+;;----------------------------------------------------------------------------------------
+;;  Define some default strings
+coord_dsl      = 'dsl'
+coord_gse      = 'gse'
+coord_gsm      = 'gsm'
+coord_bcs      = 'bcs'                    ;;  Body Coordinate System (of MMS spacecraft)
+coord_dbcs     = 'dbcs'                   ;;  despun-BCS
+coord_dmpa     = 'dmpa'                   ;;  Despun, Major Principal Axis (coordinate system)
+coordj2000     = 'j2000'                  ;;  GEI/J2000
+coord_mag      = 'mag'
+vec_str        = ['x','y','z']
+vec_col        = [250,150, 50]
+fac_lab        = ['par','per','tot']
+start_of_day_t = '00:00:00.000000000'
+end___of_day_t = '23:59:59.999999999'
+start_of_day   = '00:00:00.000000'
+end___of_day   = '23:59:59.999999'
+;;  Error messages
+noinput_mssg   = 'No input was supplied...'
+no_tpns_mssg   = 'Not enough valid TPLOT handles supplied...'
+badinpt_mssg   = 'Incorrect input format was supplied:  TRAN_SE must be an [4,2]-element [double] array'
+battpdt_mssg   = 'The TPLOT handles supplied did not contain data...'
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+test           = ((N_PARAMS() LT 2) OR (SIZE(tpn_posi,/TYPE) NE 7) OR                 $
+                  (SIZE(tpn_magf,/TYPE) NE 7) OR (is_a_number(tran_se,/NOMSSG) EQ 0))
+IF (test[0]) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+testp          = test_tplot_handle(tpn_posi,TPNMS=tpnposi)
+testm          = test_tplot_handle(tpn_magf,TPNMS=tpnmagf)
+test           = testp[0] AND testm[0]
+goodp          = WHERE(tpnposi NE '',gdp)
+goodm          = WHERE(tpnmagf NE '',gdm)
+IF (gdp[0] LT 4 OR gdm[0] LT 4 OR ~test[0]) THEN BEGIN
+  MESSAGE,no_tpns_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+sznd           = SIZE(tran_se,/N_DIMENSIONS)
+szdd           = SIZE(tran_se,/DIMENSIONS)
+test           = ((N_ELEMENTS(tran_se) MOD 4) NE 0) OR ((sznd[0] NE 2) AND (N_ELEMENTS(tran_se) NE 8))
+IF (test[0]) THEN BEGIN
+  MESSAGE,badinpt_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;  Define time ranges
+IF (szdd[1] NE 2) THEN trans = TRANSPOSE(tran_se) ELSE trans = REFORM(tran_se,4,2)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Check PERTDT
+IF (is_a_number(pertdt,/NOMSSG)) THEN pdt = (ABS(1d0*pertdt[0]) > 1d-3) < 9d-1 ELSE pdt = 1d-2
+;;  Define perturbing time array
+pert           = perd*pdt[0]                             ;;  Converted to ∆t about t_j
+;;  Check VBULK
+IF (is_a_3_vector(vbulk,V_OUT=vswo ,/NOMSSG) EQ 0) THEN BEGIN
+  ;;  VBULK not set
+  vbulk_on       = 0b
+  delvb_on       = 0b
+ENDIF ELSE BEGIN
+  ;;  VBULK is on --> check if it's properly used
+  vbulk_on       = (TOTAL(FINITE(vswo)) EQ 3)
+  IF (vbulk_on[0]) THEN BEGIN
+    ;;  Check DELVB
+    IF (is_a_3_vector(delvb,V_OUT=dvsw,/NOMSSG) EQ 0) THEN BEGIN
+      ;;  DELVB not set
+      delvb_on       = 0b
+    ENDIF ELSE BEGIN
+      ;;  DELVB set --> check
+      delvb_on       = (TOTAL(FINITE(dvsw)) EQ 3)
+    ENDELSE
+  ENDIF ELSE delvb_on = 0b
+ENDELSE
+;;  Set values dependent on VBULK and DELVB
+IF (vbulk_on[0]) THEN vswo = REFORM(vswo)      ELSE vswo = def__vsw
+IF (delvb_on[0]) THEN dvsw = ABS(REFORM(dvsw)) ELSE dvsw = def_dvsw
+;;  Check FRAN
+IF (test_plot_axis_range(fran,/NOMSSG)) THEN BEGIN
+  ;;  FRAN is set --> Define filter frequency range
+  frq_ran        = 1d0*fran[SORT(fran)]
+  filt_on        = 1b
+ENDIF ELSE BEGIN
+  ;;  FRAN not set --> shutoff filtering
+  filt_on        = 0b
+  frq_ran        = REPLICATE(d,2L)
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Get TPLOT data
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Get Bo [nT, GSE]
+get_data,tpnmagf[0],DATA=temp_magfv_1
+get_data,tpnmagf[1],DATA=temp_magfv_2
+get_data,tpnmagf[2],DATA=temp_magfv_3
+get_data,tpnmagf[3],DATA=temp_magfv_4
+;;  Get SC positions [km, GSE]
+get_data,tpnposi[0],DATA=mms_gsepos_1
+get_data,tpnposi[1],DATA=mms_gsepos_2
+get_data,tpnposi[2],DATA=mms_gsepos_3
+get_data,tpnposi[3],DATA=mms_gsepos_4
+;;  Make sure we haven't grabbed nothing from TPLOT
+test           = (SIZE(temp_magfv_1,/TYPE) NE 8) OR (SIZE(temp_magfv_2,/TYPE) NE 8) OR $
+                 (SIZE(temp_magfv_3,/TYPE) NE 8) OR (SIZE(temp_magfv_4,/TYPE) NE 8) OR $
+                 (SIZE(mms_gsepos_1,/TYPE) NE 8) OR (SIZE(mms_gsepos_2,/TYPE) NE 8) OR $
+                 (SIZE(mms_gsepos_3,/TYPE) NE 8) OR (SIZE(mms_gsepos_4,/TYPE) NE 8)
+IF (test[0]) THEN BEGIN
+  MESSAGE,battpdt_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Filter data if user desires
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+IF (filt_on[0]) THEN BEGIN
+  ;;  Filter data
+  fstruc1        = sub_t_calc_group_vel_4sc_from_db_filt(temp_magfv_1,frq_ran)
+  fstruc2        = sub_t_calc_group_vel_4sc_from_db_filt(temp_magfv_2,frq_ran)
+  fstruc3        = sub_t_calc_group_vel_4sc_from_db_filt(temp_magfv_3,frq_ran)
+  fstruc4        = sub_t_calc_group_vel_4sc_from_db_filt(temp_magfv_4,frq_ran)
+  test           = (SIZE(fstruc1,/TYPE) NE 8) OR (SIZE(fstruc2,/TYPE) NE 8) OR $
+                   (SIZE(fstruc3,/TYPE) NE 8) OR (SIZE(fstruc4,/TYPE) NE 8)
+  IF (test[0]) THEN BEGIN
+    ;;  Filtering failed --> use original structures
+    fstruc1        = temp_magfv_1
+    fstruc2        = temp_magfv_2
+    fstruc3        = temp_magfv_3
+    fstruc4        = temp_magfv_4
+  ENDIF
+ENDIF ELSE BEGIN
+  ;;  Do not filter data
+  fstruc1        = temp_magfv_1
+  fstruc2        = temp_magfv_2
+  fstruc3        = temp_magfv_3
+  fstruc4        = temp_magfv_4
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Clip, trim, and resample positions
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Clip to time range of interest
+bgse_clip_1    = trange_clip_data(fstruc1,TRANGE=REFORM(trans[0,*]),PRECISION=3)
+bgse_clip_2    = trange_clip_data(fstruc2,TRANGE=REFORM(trans[1,*]),PRECISION=3)
+bgse_clip_3    = trange_clip_data(fstruc3,TRANGE=REFORM(trans[2,*]),PRECISION=3)
+bgse_clip_4    = trange_clip_data(fstruc4,TRANGE=REFORM(trans[3,*]),PRECISION=3)
+;;----------------------------------------------------------------------------------------
+;;  Trim off excess edge points
+;;----------------------------------------------------------------------------------------
+trimstr        = sub_t_calc_group_vel_4sc_from_db_trim(bgse_clip_1,bgse_clip_2,bgse_clip_3,bgse_clip_4)
+;;  Define relevant parameters
+bunix_1        = trimstr.SC1.X
+bunix_2        = trimstr.SC2.X
+bunix_3        = trimstr.SC3.X
+bunix_4        = trimstr.SC4.X
+bgsev_1        = trimstr.SC1.Y
+bgsev_2        = trimstr.SC2.Y
+bgsev_3        = trimstr.SC3.Y
+bgsev_4        = trimstr.SC4.Y
+;;----------------------------------------------------------------------------------------
+;;  Resample data
+;;----------------------------------------------------------------------------------------
+;;  Resample position data
+posi_clip_1    = t_resample_tplot_struc(mms_gsepos_1,bunix_1,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+posi_clip_2    = t_resample_tplot_struc(mms_gsepos_2,bunix_2,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+posi_clip_3    = t_resample_tplot_struc(mms_gsepos_3,bunix_3,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+posi_clip_4    = t_resample_tplot_struc(mms_gsepos_4,bunix_4,/ISPLINE,/NO_EXTRAPOLATE,/IGNORE_INT)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Cross-correlate field data to find best time lag
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+END

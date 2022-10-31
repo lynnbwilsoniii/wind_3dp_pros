@@ -1,0 +1,1243 @@
+;*****************************************************************************************
+;
+;  FUNCTION :   sub_combine_elhs_vframe_trans.pro
+;  PURPOSE  :   This is a subroutine used to transform an input array of VDFs to a new
+;                 reference frame, if so desired by the user.
+;
+;  CALLED BY:   
+;               t_combine_esalh_sst_spec3d.pro
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               conv_units.pro
+;               struct_value.pro
+;               transform_vframe_3d_array.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT         :  [N]-Element [structure] array of VDFs from one of the
+;                                ESAs or SSTs on Wind or THEMIS
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               struc = sub_combine_elhs_vframe_trans(dat [,FRCCNTS=frac_cnts] $
+;                                   [,RM_PHOTO_E=rmscpot] [,SC_FRAME=scframe]  $
+;                                   [,UNITS=gunits] [,TTLE_EXT=ttle_ext]       $
+;                                   [,VFRAME=vframe] [,RMSC_SUFFX=rmsc_suffx])
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***       DIRECT  INPUTS       ***
+;               **********************************
+;               FRCCNTS     :  If set, routine will allow for fractional counts in the
+;                                unit conversion routine
+;                                [Default = (set by calling routine)]
+;               RM_PHOTO_E  :  If set, routine will remove data below the spacecraft
+;                                potential defined by the structure tag SC_POT and
+;                                shift the corresponding energy bins by
+;                                CHARGE*SC_POT
+;                                [Default = (set by calling routine)]
+;               SC_FRAME    :  If set, routine will fit the data in the spacecraft frame
+;                                of reference rather than the eVDF's bulk flow frame
+;                                [Default  :  (set by calling routine)]
+;               UNITS       :  Scalar [string] defining the units to use for the
+;                                vertical axis of the plot and the outputs YDAT and DYDAT
+;                                [Default = (set by calling routine)]
+;
+;               **********************************
+;               ***     ALTERED ON OUTPUT      ***
+;               **********************************
+;               TTLE_EXT    :  Set to a named variable to return a scalar [string] that
+;                                informs the user of the reference frame of the output
+;                                data structures
+;                                  'SCF'  :  spacecraft frame
+;                                  'SWF'  :  bulk flow rest frame
+;               VFRAME      :  Set to a named variable to return an [N,3]-element array
+;                                of 3-vector velocities used to transform DAT into a
+;                                new reference frame
+;               RMSC_SUFFX  :  Set to a named variable to return a scalar [string] that
+;                                informs the user of whether the output structure
+;                                accounted for the spacecraft potential or not
+;                                  'RM-SCPot'  :  Removed photoelectrons
+;                                  'KP-SCPot'  :  Kept photoelectrons
+;
+;   CHANGED:  1)  NA
+;                                                                   [MM/DD/YYYY   v1.0.0]
+;
+;   NOTES:      
+;               0)  This routine should not be called directly by a user as it has no
+;                     error handling
+;
+;  REFERENCES:  
+;               NA
+;
+;   CREATED:  10/03/2022
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/03/2022   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+
+FUNCTION sub_combine_elhs_vframe_trans,dat,FRCCNTS=frac_cnts,RM_PHOTO_E=rmscpot,$
+                                       SC_FRAME=scframe,UNITS=gunits,           $
+                                       TTLE_EXT=ttle_ext,VFRAME=vframe,         $  ;;  Outputs
+                                       RMSC_SUFFX=rmsc_suffx
+
+;;----------------------------------------------------------------------------------------
+;;  Transform (if desired) into bulk flow rest frame
+;;----------------------------------------------------------------------------------------
+IF ~ARG_PRESENT(rmscpot) THEN rmscpot = 0b         ;;  Give it a value if calling routine did not
+;;  Convert to phase space density [] --> bc it's a Lorentz invariant (well f(v) d^3x d^3v is)
+dat0           = dat
+nvdf0          = N_ELEMENTS(dat0)
+tdatl_sw       = conv_units(dat0,'df',FRACTIONAL_COUNTS=frac_cnts)
+ IF (scframe[0]) THEN BEGIN
+  ;;  Leave alone
+  ttle_ext       = 'SCF'      ;;  string to add to plot title indicating reference frame shown
+  datl           = tdatl_sw
+ENDIF ELSE BEGIN
+  ;;  Transform into bulk flow frame
+  ttle_ext       = 'SWF'
+  temp_vsw       = struct_value(dat0,'VSW',DEFAULT=[0d0,0d0,0d0])
+  temp_vel       = struct_value(dat0,'VELOCITY',DEFAULT=[0d0,0d0,0d0])
+  test_vsw       = (N_ELEMENTS(temp_vsw) NE 3L*nvdf0[0])
+  IF (scframe[0]) THEN vframe = TRANSPOSE(temp_vel) ELSE vframe = TRANSPOSE(temp_vsw)
+  ;;  Lorentz transform data
+  datl           = transform_vframe_3d_array(tdatl_sw,vframe)
+  ;;  Shut off RM_PHOTO_E keyword in case set (Trans. routine already removes this)
+  IF (rmscpot[0]) THEN rmscpot = 0b
+ENDELSE
+;;  Define file and title suffix associated with removal of photo electrons
+IF (rmscpot[0] OR scframe[0] EQ 0) THEN BEGIN
+  rmsc_suffx  = 'RM-SCPot'       ;;  Removed photo electrons
+ENDIF ELSE BEGIN
+  rmsc_suffx  = 'KP-SCPot'       ;;  Kept photo electrons
+ENDELSE
+;;  Convert into desired units
+struc          = conv_units(datl,gunits[0],FRACTIONAL_COUNTS=frac_cnts)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+
+RETURN,struc
+END
+
+
+;+
+;*****************************************************************************************
+;
+;  PROCEDURE:   t_combine_esalh_sst_spec3d.pro
+;  PURPOSE  :   This routine generates a [UNITS] vs time spectra as a stacked line plot
+;                 from the distributions measured by three separate instruments.  The data
+;                 are regridded in both energy and time to make them uniform.
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               sub_combine_elhs_vframe_trans.pro
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               DAT_ESAL    :  [N]-Element [structure] array associated with a known low
+;                                energy ESA data structure from Wind/3DP
+;                                [see get_?.pro, ? = el, elb, pl, or plb]
+;               DAT_ESAH    :  [M]-Element [structure] array associated with a known high
+;                                energy ESA data structure from Wind/3DP
+;                                [see get_?.pro, ? = eh, ehb, ph, or phb]
+;               DAT_SST     :  [K]-Element [structure] array associated with a known SST
+;                                data structure from Wind/3DP
+;                                [see get_?.pro, ? = sf, sfb, so, sob]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               
+;
+;  KEYWORDS:    
+;               **********************************
+;               ***       DIRECT  INPUTS       ***
+;               **********************************
+;               LIM_ESAL    :  Scalar [structure] used for plotting the low energy ESA
+;                                distribution that may contain any combination of the
+;                                following structure tags or keywords accepted by
+;                                PLOT.PRO:
+;                                  XLOG,   YLOG,   ZLOG,
+;                                  XRANGE, YRANGE, ZRANGE,
+;                                  XTITLE, YTITLE,
+;                                  TITLE, POSITION, REGION, etc.
+;                                  (see IDL documentation for a description)
+;                                The structure is passed to lbw_spec3d.pro through the
+;                                LIMITS keyword.
+;               LIM_ESAH    :  Scalar [structure] used for plotting the high energy ESA
+;                                distribution with the same notes as for LIM_ESAL
+;               LIM_SST     :  Scalar [structure] used for plotting the SST distribution
+;                                that may contain any combination of the following
+;                                structure tags or keywords accepted by PLOT.PRO:
+;                                  XLOG,   YLOG,   ZLOG,
+;                                  XRANGE, YRANGE, ZRANGE,
+;                                  XTITLE, YTITLE,
+;                                  TITLE, POSITION, REGION, etc.
+;                                  (see IDL documentation for a description)
+;                                The structure is passed to lbw_spec3d.pro through the
+;                                LIMITS keyword.
+;               ESAL_ERAN   :  [2]-Element [float/double] array defining the range of
+;                                energies [eV] over which the low energy ESA data
+;                                will be plotted
+;                                [Default  :  [1,1500]]
+;               ESAH_ERAN   :  [2]-Element [float/double] array defining the range of
+;                                energies [eV] over which the high energy ESA data
+;                                will be plotted
+;                                [Default  :  [100,30000]]
+;               SST_ERAN    :  [2]-Element [float/double] array defining the range of
+;                                energies [keV] over which the ESA data will be plotted
+;                                [Default  :  [30,500]]
+;               SC_FRAME    :  If set, routine will fit the data in the spacecraft frame
+;                                of reference rather than the eVDF's bulk flow frame
+;                                [Default  :  FALSE]
+;               CUT_RAN     :  Scalar [numeric] defining the range of angles [deg] about a
+;                                center angle to use when averaging to define the spectra
+;                                along a given direction
+;                                [Default  :  22.5]
+;               P_ANGLE     :  If set, routine will use the MAGF tag within DAT_ESA and
+;                                DAT_SST to define the angular distributions for plotting
+;                                (i.e., here it would be a pitch-angle distribution)
+;                                [Default  :  TRUE]
+;               SUNDIR      :  If set, routine will use the unit vector [-1,0,0] as the
+;                                direction about which to define the angular distributions
+;                                for plotting
+;                                [Default  :  FALSE]
+;               VECTOR      :  [3]-Element [float/double] array defining the vector
+;                                direction about which to define the angular distributions
+;                                for plotting
+;                                [Default  :  determined by P_ANGLE and SUNDIR settings]
+;               UNITS       :  Scalar [string] defining the units to use for the
+;                                vertical axis of the plot and the outputs YDAT and DYDAT
+;                                [Default = 'flux' or number flux]
+;               ESAL_BINS   :  [N]-Element [byte] array defining which low energy ESA
+;                                 solid angle bins should be plotted [i.e.,
+;                                 BINS[good] = 1b] and which bins should not be plotted
+;                                 [i.e., BINS[bad] = 0b].  One can also define bins as
+;                                 an array of indices that define which solid angle bins
+;                                 to plot.  If this is the case, then on output, BINS
+;                                 will be redefined to an array of byte values
+;                                 specifying which bins are TRUE or FALSE.
+;                                 [Default:  ESAL_BINS[*] = 1b]
+;               ESAH_BINS   :  [N]-Element [byte] array defining which low energy ESA
+;                                 solid angle bins should be plotted [i.e.,
+;                                 BINS[good] = 1b] and which bins should not be plotted
+;                                 [i.e., BINS[bad] = 0b].  One can also define bins as
+;                                 an array of indices that define which solid angle bins
+;                                 to plot.  If this is the case, then on output, BINS
+;                                 will be redefined to an array of byte values
+;                                 specifying which bins are TRUE or FALSE.
+;                                 [Default:  ESAH_BINS[*] = 1b]
+;               SST_BINS    :  [N]-Element [byte] array defining which SST solid angle bins
+;                                 should be plotted [i.e., BINS[good] = 1b] and which
+;                                 bins should not be plotted [i.e., BINS[bad] = 0b].
+;                                 One can also define bins as an array of indices that
+;                                 define which solid angle bins to plot.  If this is the
+;                                 case, then on output, BINS will be redefined to an
+;                                 array of byte values specifying which bins are TRUE or
+;                                 FALSE.
+;                                 [Default:  BINS[*] = 1b]
+;               ONE_C       :  If set, routine computes one-count levels as well and
+;                                outputs an average on the plot (but returns the full
+;                                array of points on output from lbw_spec3d.pro)
+;                                [Default = FALSE]
+;               RM_PHOTO_E  :  If set, routine will remove data below the spacecraft
+;                                potential defined by the structure tag SC_POT and
+;                                shift the corresponding energy bins by
+;                                CHARGE*SC_POT
+;                                [Default = FALSE]
+;               NUM_PA      :  Scalar [integer] that defines the number of pitch-angle
+;                                bin end points to calculate for the resulting
+;                                distribution.  The number of pitch-angle bins will
+;                                actually be equal to (NUM_PA - 1)
+;                                [Default = 8]
+;               MIDN        :  Scalar [string] defining the mid-part of the TPLOT handle
+;                                for the energy spectra
+;                                [Default : '??_ener_spec', ?? = 'el','eh','elb',etc.]
+;               TRANGE      :  [2]-Element [double] array of Unix times specifying the
+;                                time range over which to calculate spectra
+;                                [Default : [MIN(DAT.TIME),MAX(DAT.END_TIME)] ]
+;               SPEC        :  If set, routine will tell TPLOT to use a spectrogram
+;                                instead of a stacked line plot
+;                                [Default = FALSE]
+;
+;               **********************************
+;               ***     ALTERED ON OUTPUT      ***
+;               **********************************
+;               XDAT_ESAL   :  Set to a named variable to return the low energy ESA X
+;                                data used in the spectra plot.
+;                                [XDAT output from lbw_spec3d.pro]
+;               YDAT_ESAL   :  Set to a named variable to return the low energy ESA Y
+;                                data used in the spectra plot
+;                                [YDAT output from lbw_spec3d.pro]
+;               XDAT_ESAH   :  Set to a named variable to return the high energy ESA X
+;                                data used in the spectra plot.
+;                                [XDAT output from lbw_spec3d.pro]
+;               YDAT_ESAH   :  Set to a named variable to return the high energy ESA Y
+;                                data used in the spectra plot
+;                                [YDAT output from lbw_spec3d.pro]
+;               XDAT_SST    :  Set to a named variable to return the ESA X data
+;                                used in the spectra plot
+;                                [XDAT output from lbw_spec3d.pro]
+;               YDAT_SST    :  Set to a named variable to return the ESA Y data
+;                                used in the spectra plot
+;                                [YDAT output from lbw_spec3d.pro]
+;               XDAT_ALL    :  Set to a named variable to return the combined X data
+;                                used in the spectra plot
+;               YDAT_ALL    :  Set to a named variable to return the combined Y data
+;                                used in the spectra plot
+;               ONEC_ALL    :  Set to a named variable to return the combined one-count
+;                                levels computed from the input distributions
+;               P_ANGLE     :  Routine will alter on output to an array of pitch-angle
+;                                mid-points [deg] used in the merged data product, if
+;                                user set the keyword properly on input
+;               OUT_STR     :  Set to a named variable to return a structure containing
+;                                all the relevant parameters and metadata from this
+;                                routine
+;
+;   CHANGED:  1)  Continued to write routine
+;                                                                   [09/30/2022   v1.0.0]
+;             2)  Continued to write routine
+;                                                                   [10/03/2022   v1.0.0]
+;
+;   NOTES:      
+;               ***  Still writing routine  ***
+;
+;               0)  For Wind 3DP electrons, remember to remove the following solid angle
+;                     bins prior to plotting to avoid "bad" data:
+;
+;                     [personal communication with Marc P. Pulupa, 2012]
+;                     EESA HIGH
+;                       badbins = [00, 02, 04, 06, 08, 09, 10, 11, 13, 15, 17, 19, $
+;                                   20, 21, 66, 68, 70, 72, 74, 75, 76, 77, 79, 81, $
+;                                   83, 85, 86, 87]
+;
+;                     SST Foil
+;                       ***  Yes, remove  ***
+;                       [personal communication with Linghua Wang, 2010]
+;                       badbins = [07, 08, 09, 15, 31, 32, 33]
+;
+;                       ***  Don't remove  ***
+;                       [personal communication with Davin Larson, 2011]
+;                       badbins = [20, 21, 22, 23, 44, 45, 46, 47]
+;                   For Wind 3DP ions, remember to remove the following solid angle
+;                     bins prior to plotting to avoid "bad" data:
+;
+;                     SST Open
+;                       ***  Yes, remove  ***
+;                       [personal communication with Linghua Wang, 2010]
+;                       sun_dir_bins   = [7,8,9,15,31,32,33]         ;;  7 bins
+;                       noisy_bins     = [0,1,24,25]                 ;;  4 bins
+;                       badbins        = [sun_dir_bins,noisy_bins]
+;               1)  Make sure to be careful in use of VECTOR, SUNDIR, and P_ANGLE keywords
+;                     If none are set, the routine will default to P_ANGLE
+;               2)  Make sure to be careful in use of CUT_RAN and NUM_PA keywords
+;                     If none are set, the routine will default to CUT_RAN and define
+;                     NUM_PA = 4L
+;               3)  Routine assumes user has run rougintes like pesa_high_bad_bins.pro on
+;                     PESA High VDFs, for instance, prior to calling this routine
+;
+;  REFERENCES:  
+;               
+;
+;   CREATED:  09/29/2022
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/03/2022   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+PRO t_combine_esalh_sst_spec3d,dat_esal,dat_esah,dat__sst,                                $
+                                   LIM_ESAL=lim_esal,LIM_ESAH=lim_esah,LIM_SST=lim__sst,  $
+                                   ESAL_ERAN=leran,ESAH_ERAN=heran,SST_ERAN=seran,        $
+                                   SC_FRAME=sc_frame,CUT_RAN=cut_ran,P_ANGLE=p_angle,     $
+                                   SUNDIR=sundir,VECTOR=vec,UNITS=units,                  $
+                                   ESAL_BINS=lbins,ESAH_BINS=hbins,SST_BINS=sbins,        $
+                                   ONE_C=one_c,RM_PHOTO_E=rm_photo_e,NUM_PA=num_pa,       $
+                                   MIDN=midn,TRANGE=trange,SPEC=spec,                     $
+                                   XDAT_ESAL=xdat_esal,YDAT_ESAL=ydat_esal,               $    ;;  Output
+                                   XDAT_ESAH=xdat_esah,YDAT_ESAH=ydat_esah,               $
+                                   XDAT_SST=xdat__sst,YDAT_SST=ydat__sst,                 $
+                                   XDAT_ALL=xdat_all,YDAT_ALL=ydat__all,                  $
+                                   ONEC_ALL=onec_all,OUT_STR=out_str
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+lim0           = {XSTYLE:1,YSTYLE:1,XMINOR:9,YMINOR:9,XMARGIN:[10,10],YMARGIN:[5,5],XLOG:1,YLOG:1}
+tlim_          = {XSTYLE:1,YSTYLE:1,PANEL_SIZE:2e0,XMINOR:5,XTICKLEN:0.04,YTICKLEN:0.01}
+def_esaleran   = [1d0,1.5d3]            ;;  Default ESA low energy range [eV]
+def_esaheran   = [10d1,25d3]            ;;  Default ESA high energy range [eV]
+def_sst_eran   = [30d0,50d1]*1d3        ;;  Default SST energy range [eV]
+def_cut_aran   = 22.5d0                 ;;  Default angular range [deg] of acceptance for averaging
+cut_mids       = [22.5d0,9d1,157.5d0]   ;;  Default mid angles [deg] about which to define a range over which to average
+def_midn       = '_ener_spec'
+frac_cnts      = 0b                     ;;  logic to use to determine whether to allow fractional counts in unit conversion (THEMIS ESA only)
+;;  Define all allowed units strings
+all_units      = ['counts','flux','eflux','e2flux','e3flux','df','rate','crate']
+;;  Dummy error messages
+noinpt_msg     = 'User must supply three velocity distribution functions as IDL structures...'
+notstr_msg     = 'DAT_ESAL, DAT_ESAH, and DAT_SST must be IDL structures...'
+notvdf_msg     = 'DAT_ESAL, DAT_ESAH, and DAT_SST must be velocity distribution functions as an IDL structures...'
+diffsc_msg     = 'DAT_ESAL, DAT_ESAH, and DAT_SST must come from the same spacecraft...'
+badvdf_msg     = 'Input must be an IDL structure with similar format to Wind/3DP or THEMIS/ESA...'
+not3dp_msg     = 'Input must be a velocity distribution IDL structure from Wind/3DP...'
+notthm_msg     = 'Input must be a velocity distribution IDL structure from THEMIS/ESA...'
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+IF (N_PARAMS() LT 3) THEN BEGIN
+  MESSAGE,noinpt_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+test           = (SIZE(dat_esal,/TYPE) NE 8L OR N_ELEMENTS(dat_esal) LT 1) OR $
+                 (SIZE(dat_esah,/TYPE) NE 8L OR N_ELEMENTS(dat_esah) LT 1) OR $
+                 (SIZE(dat__sst,/TYPE) NE 8L OR N_ELEMENTS(dat__sst) LT 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notstr_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Check to make sure distributions have the correct format
+test_esa0      = test_wind_vs_themis_esa_struct(dat_esal[0],/NOM)
+test_esa1      = test_wind_vs_themis_esa_struct(dat_esah[0],/NOM)
+test_sst0      = test_wind_vs_themis_esa_struct(dat__sst[0],/NOM)
+test           = ((test_esa0.(0) + test_esa0.(1)) NE 1) OR $
+                 ((test_esa1.(0) + test_esa1.(1)) NE 1) OR $
+                 ((test_sst0.(0) + test_sst0.(1)) NE 1)
+IF (test[0]) THEN BEGIN
+  MESSAGE,notvdf_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Make sure the distributions come from the same spacecraft (i.e., no mixing!)
+test           = (test_esa0.(0) EQ test_sst0.(0)) AND (test_esa0.(1) EQ test_sst0.(1)) $
+                 AND (test_esa1.(0) EQ test_sst0.(0)) AND (test_esa1.(1) EQ test_sst0.(1))
+IF (test[0] EQ 0) THEN BEGIN
+  MESSAGE,diffsc_msg[0],/INFORMATIONAL,/CONTINUE
+  RETURN
+ENDIF
+;;  Define new variables for structures
+dat0           = dat_esal
+dat1           = dat_esah
+dat2           = dat__sst
+dap0           = dat0
+dap1           = dat1
+dap2           = dat2
+dap0.DATA      = SQRT(dat0.DATA)        ;;  Define Poisson statistics
+dap1.DATA      = SQRT(dat1.DATA)
+dap2.DATA      = SQRT(dat2.DATA)
+;;  Define # of VDFs, # of solid-angle bins, and # of energy bins
+nvdf0          = N_ELEMENTS(dat0)
+nvdf1          = N_ELEMENTS(dat1)
+nvdf2          = N_ELEMENTS(dat2)
+n_sa0          = dat0[0].NBINS[0]
+n_sa1          = dat1[0].NBINS[0]
+n_sa2          = dat2[0].NBINS[0]
+n_en0          = dat0[0].NENERGY[0]
+n_en1          = dat1[0].NENERGY[0]
+n_en2          = dat2[0].NENERGY[0]
+;;  Define sign of particle charge and energy shift
+charge         = define_particle_charge(dat0[0],E_SHIFT=e_shift)
+species        = (['electrons','ions'])[charge[0] GT 0]
+;;  Define default TRANGE for later
+tra_min        = MIN([dat0.TIME,dat1.TIME,dat2.TIME],/NAN)
+tra_max        = MAX([dat0.END_TIME,dat1.END_TIME,dat2.END_TIME],/NAN)
+IF (test_esa0.(0)) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;  Wind
+  ;;--------------------------------------------------------------------------------------
+  mission        = 'Wind'
+  strn0          = dat_3dp_str_names(dat0[0])
+  strn1          = dat_3dp_str_names(dat1[0])
+  strn2          = dat_3dp_str_names(dat2[0])
+  IF (SIZE(strn0,/TYPE) NE 8 OR SIZE(strn1,/TYPE) NE 8 OR SIZE(strn2,/TYPE) NE 8) THEN BEGIN
+    ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+    MESSAGE,not3dp_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDIF
+  instnmmode_l   = strn0.LC[0]         ;;  e.g., 'Eesa Low Burst'
+  instnmmode_h   = strn1.LC[0]         ;;  e.g., 'Eesa High Burst'
+  instnmmode_s   = strn2.LC[0]         ;;  e.g., 'SST Foil Burst'
+  inst_shnme_l   = strn0.SN[0]         ;;  e.g., 'elb'
+  inst_shnme_h   = strn1.SN[0]         ;;  e.g., 'ehb'
+  inst_shnme_s   = strn2.SN[0]         ;;  e.g., 'sfb'
+  yttl_pref      = 'Wind 3DP'
+  ;;  Define spacecraft prefix for TPLOT handles
+  scpref         = mission[0]+'_'
+  inst_pref      = inst_shnme_l[0]+'_'+inst_shnme_h[0]+'_'+inst_shnme_s[0]
+ENDIF ELSE BEGIN
+  IF (test_esa0.(1)) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  THEMIS
+    ;;------------------------------------------------------------------------------------
+    mission        = 'THEMIS'
+    strn0          = dat_themis_esa_str_names(dat0[0])
+    strn1          = dat_themis_esa_str_names(dat1[0])
+    strn2          = dat_themis_esa_str_names(dat2[0])
+    IF (SIZE(strn0,/TYPE) NE 8 OR SIZE(strn1,/TYPE) NE 8 OR SIZE(strn2,/TYPE) NE 8) THEN BEGIN
+      ;;  Neither Wind/3DP nor THEMIS/ESA VDF
+      MESSAGE,not3dp_msg[0],/INFORMATIONAL,/CONTINUE
+      RETURN
+    ENDIF
+    probe          = STRUPCASE(dat0[0].SPACECRAFT[0])  ;;  e.g., 'C'
+    mission        = mission[0]+'-'+probe[0]
+    temp           = strn0.LC[0]                  ;;  e.g., 'IESA 3D Burst Distribution'
+    tposi          = STRPOS(temp[0],'Distribution') - 1L
+    instnmmode_l   = STRMID(temp[0],0L,tposi[0])  ;;  e.g., 'IESA 3D Burst'
+    instnmmode_h   = instnmmode_l                 ;;  THEMIS doesn't have 2 ESAs spanning different energy ranges
+    temp           = strn2.LC[0]                  ;;  e.g., 'SST Ion Burst Distribution'
+    tposi          = STRPOS(temp[0],'Distribution') - 1L
+    instnmmode_s   = STRMID(temp[0],0L,tposi[0])  ;;  e.g., 'SST Ion Burst'
+    inst_shnme_l   = strn0.SN[0]                  ;;  e.g., 'peib'
+    inst_shnme_h   = strn1.SN[0]                  ;;  e.g., 'peib'
+    inst_shnme_s   = strn2.SN[0]                  ;;  e.g., 'psib'
+    frac_cnts      = 1b
+    yttl_pref      = 'THEMIS ESA+SST'
+    ;;  Define spacecraft prefix for TPLOT handles
+    scpref         = 'THM'+probe[0]+'_'
+    inst_pref      = inst_shnme_l[0]+'_'+inst_shnme_s[0]
+  ENDIF ELSE BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  Other mission?
+    ;;------------------------------------------------------------------------------------
+    ;;  Not handling any other missions yet  [Need to know the format of their distributions]
+    MESSAGE,badvdf_msg[0],/INFORMATIONAL,/CONTINUE
+    RETURN
+  ENDELSE
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Check LIM_ESAL, LIM_ESAH, and LIM_SST
+test           = (SIZE(lim_esal,/TYPE) EQ 8L)
+IF (test[0]) THEN extract_tags,liml_str,lim_esal
+extract_tags,liml_str,lim0       ;;  Add defaults to ESA low energy structure
+test           = (SIZE(lim_esah,/TYPE) EQ 8L)
+IF (test[0]) THEN extract_tags,limh_str,lim_esah
+extract_tags,limh_str,lim0       ;;  Add defaults to ESA high energy structure
+test           = (SIZE(lim__sst,/TYPE) EQ 8L)
+IF (test[0]) THEN extract_tags,lims_str,lim__sst
+extract_tags,lims_str,lim0       ;;  Add defaults to SST structure
+;;  Check ESAL_ERAN, ESAH_ERAN, and SST_ERAN
+test           = (test_plot_axis_range(leran,/NOMSSG) EQ 0L)
+IF (test[0]) THEN eran_esl = def_esaleran ELSE eran_esl = leran
+test           = (test_plot_axis_range(heran,/NOMSSG) EQ 0L)
+IF (test[0]) THEN eran_esh = def_esaheran ELSE eran_esh = heran
+test           = (test_plot_axis_range(seran,/NOMSSG) EQ 0L)
+IF (test[0]) THEN eran_sst = def_sst_eran ELSE eran_sst = seran
+;;  Add XRANGE for each structure (for lbw_spec3d.pro)
+str_element,liml_str,'XRANGE',eran_esl,/ADD_REPLACE
+str_element,limh_str,'XRANGE',eran_esh,/ADD_REPLACE
+str_element,lims_str,'XRANGE',eran_sst,/ADD_REPLACE
+;;  Check SC_FRAME
+IF KEYWORD_SET(sc_frame) THEN scframe = 1b ELSE scframe = 0b
+;;  Check CUT_RAN
+test           = (is_a_number(cut_ran,/NOMSSG) EQ 0)
+IF (test[0]) THEN cutran = def_cut_aran[0] ELSE cutran = cut_ran[0]
+;;  Check NUM_PA
+test           = (N_ELEMENTS(num_pa) EQ 0) OR (is_a_number(num_pa,/NOMSSG) EQ 0)
+IF (KEYWORD_SET(num_pa)) THEN BEGIN
+  IF (is_a_number(num_pa,/NOMSSG)) THEN BEGIN
+    ;;  User defined the number of pitch-angles --> Redefine CUT_RAN
+    num_pa         = LONG(num_pa[0]) > 3L
+    del_pa         = 18d1/(num_pa[0] - 1L)           ;;  Width of pitch-angle bins
+    pabinend       = DINDGEN(num_pa[0])*del_pa[0]
+    indl           = LINDGEN(num_pa[0] - 1L)
+    indh           = indl + 1L
+    cut_lows       = pabinend[indl]
+    cut_high       = pabinend[indh]
+  ENDIF ELSE BEGIN
+    ;;  User did not correctly define the number of pitch-angles --> define from CUT_RAN
+    num_pa         = 4L
+    cut_lows       = cut_mids - cutran[0]
+    cut_high       = cut_mids + cutran[0]
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;;  User did not define the number of pitch-angles --> define from CUT_RAN
+  num_pa         = 4L
+  cut_lows       = cut_mids - cutran[0]
+  cut_high       = cut_mids + cutran[0]
+ENDELSE
+;;  Make sure values are not < 0 or > 180
+cut_lows       = cut_lows > 0d0
+cut_high       = cut_high < 18d1
+;;  Check P_ANGLE
+IF KEYWORD_SET(p_angle) THEN pang = 1b ELSE pang = 0b
+;;  Check SUNDIR
+IF KEYWORD_SET(sundir) THEN sun_d = 1b ELSE sun_d = 0b
+;;  Check VECTOR
+test           = is_a_3_vector(vec,V_OUT=v_out,/NOMSSG)
+IF (test[0]) THEN BEGIN
+  vecdir         = v_out
+  fsuffx         = '_vecdir'
+  sun_d          = 0b
+  pang           = 0b
+  vecon          = 1b
+ENDIF ELSE BEGIN
+  ;;  VECTOR not set --> check if P_ANGLE or SUNDIR was set
+  test           = pang[0] OR sun_d[0]
+  IF (test[0]) THEN BEGIN
+    ;;  Either P_ANGLE and/or SUNDIR was set --> define direction to use (i.e., force the other to FALSE)
+    IF (pang[0]) THEN BEGIN
+      ;;  Use MAGF for pitch-angles
+      sun_d          = 0b
+      fsuffx         = '_Bvec'
+    ENDIF ELSE BEGIN
+      ;;  Use sun direction for pitch-angles
+      pang           = 0b
+      fsuffx         = '_sundir'
+    ENDELSE
+    vecon          = 0b
+    vecdir         = 0b
+  ENDIF ELSE BEGIN
+    ;;  None of the directions were set --> default to P_ANGLE
+    fsuffx         = '_Bvec'
+    pang           = 1b
+    sun_d          = 0b
+    vecon          = 0b
+    vecdir         = 0b
+  ENDELSE
+ENDELSE
+pa_sett        = [pang[0],sun_d[0],vecon[0]]
+;;  Check UNITS
+temp           = wind_3dp_units(units)
+gunits         = temp.G_UNIT_NAME      ;;  e.g., 'flux'
+units          = gunits[0]             ;;  redefine UNITS incase it changed
+punits         = temp.G_UNIT_P_NAME    ;;  e.g., ' (# cm!U-2!Ns!U-1!Nsr!U-1!NeV!U-1!N)'
+;;  Check ESAL_BINS, ESAH_BINS, and SST_BINS
+bstr           = format_esa_bins_keyword(dat0,BINS=lbins)
+test           = (SIZE(bstr,/TYPE) NE 8)
+IF (test[0]) THEN lbins = REPLICATE(1b,dat0[0].NBINS)
+bstr           = format_esa_bins_keyword(dat1,BINS=hbins)
+test           = (SIZE(bstr,/TYPE) NE 8)
+IF (test[0]) THEN hbins = REPLICATE(1b,dat1[0].NBINS)
+bstr           = format_esa_bins_keyword(dat2,BINS=sbins)
+test           = (SIZE(bstr,/TYPE) NE 8)
+IF (test[0]) THEN sbins = REPLICATE(1b,dat2[0].NBINS)
+;;  Check ONE_C keyword
+IF KEYWORD_SET(one_c) THEN log_1c = 1b ELSE log_1c = 0b
+;;  Check RM_PHOTO_E keyword
+IF KEYWORD_SET(rm_photo_e) THEN rmscpot = 1b ELSE rmscpot = 0b
+IF (charge[0] GT 0) THEN rmscpot = 0b     ;;  Don't bother removing phi_sc for ions
+;;  Check MIDN
+IF (SIZE(midn,/TYPE) EQ 7) THEN BEGIN
+  ;;  It is set --> Make sure the format is okay
+  test           = (IDL_VALIDNAME(midn,/CONVERT_SPACES) NE '')
+  IF (test[0]) THEN mid_out = midn[0] ELSE mid_out = def_midn[0]
+ENDIF ELSE BEGIN
+  ;;  Not set --> overwrite
+  mid_out        = def_midn[0]
+ENDELSE
+;;  Check TRANGE
+IF (test_plot_axis_range(trange,/NOMSSG) EQ 0) THEN trange = [tra_min[0],tra_max[0]]
+tra_struc      = get_valid_trange(TRANGE=trange,PRECISION=3L)
+tra_unix       = tra_struc.UNIX_TRANGE
+IF (test_plot_axis_range(tra_unix,/NOMSSG) EQ 0) THEN tra_unix = [tra_min[0],tra_max[0]]
+;;  Check SPEC keyword
+IF KEYWORD_SET(spec) THEN spec_on = 1b ELSE spec_on = 0b
+;;----------------------------------------------------------------------------------------
+;;  Transform (if desired) into bulk flow rest frame
+;;----------------------------------------------------------------------------------------
+oldrmscp       = rmscpot[0]
+tdatl_sw       = sub_combine_elhs_vframe_trans(dat0,FRCCNTS=frac_cnts[0],RM_PHOTO_E=rmscpot, $
+                                               SC_FRAME=scframe[0],UNITS=gunits[0],          $
+                                               TTLE_EXT=ttle_ext,VFRAME=vframel,             $
+                                               RMSC_SUFFX=rmsc_suffx)
+tdath_sw       = sub_combine_elhs_vframe_trans(dat1,SC_FRAME=scframe[0],UNITS=gunits[0],VFRAME=vframeh)
+tdats_sw       = sub_combine_elhs_vframe_trans(dat2,SC_FRAME=scframe[0],UNITS=gunits[0],VFRAME=vframes)
+;;  Now do the same on the Poisson statistics
+tdapl_sw       = sub_combine_elhs_vframe_trans(dap0,FRCCNTS=frac_cnts[0],RM_PHOTO_E=oldrmscp, $
+                                               SC_FRAME=scframe[0],UNITS=gunits[0])
+tdaph_sw       = sub_combine_elhs_vframe_trans(dap1,SC_FRAME=scframe[0],UNITS=gunits[0])
+tdaps_sw       = sub_combine_elhs_vframe_trans(dap2,SC_FRAME=scframe[0],UNITS=gunits[0])
+IF (charge[0] GT 0) THEN rmsc_suffx  = ''      ;;  Shut off for ions
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Plot spectra and save output
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define midpoint times
+unix_l         = (tdatl_sw.TIME + tdatl_sw.END_TIME)/2d0
+unix_h         = (tdath_sw.TIME + tdath_sw.END_TIME)/2d0
+unix_s         = (tdats_sw.TIME + tdats_sw.END_TIME)/2d0
+;;  Define dummy arrays
+ener_l         = REPLICATE(d,nvdf0[0],n_en0[0],n_sa0[0])
+ener_h         = REPLICATE(d,nvdf1[0],n_en1[0],n_sa1[0])
+ener_s         = REPLICATE(d,nvdf2[0],n_en2[0],n_sa2[0])
+ydat_l         = ener_l
+ydat_h         = ener_h
+ydat_s         = ener_s
+pang_l         = REPLICATE(d,nvdf0[0],n_sa0[0])
+pang_h         = REPLICATE(d,nvdf1[0],n_sa1[0])
+pang_s         = REPLICATE(d,nvdf2[0],n_sa2[0])
+IF (log_1c[0]) THEN BEGIN
+  ;;  Yes, calculate one-count levels
+  ydat1c_l       = 1b
+  ydat1c_h       = 1b
+  ydat1c_s       = 1b
+ENDIF ELSE BEGIN
+  ydat1c_l       = 0b
+  ydat1c_h       = 0b
+  ydat1c_s       = 0b
+  yd1c_l         = ener_l
+  yd1c_h         = ener_h
+  yd1c_s         = ener_s
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;  Define low energy ESA parameters
+;;----------------------------------------------------------------------------------------
+nn_all         = [nvdf0[0],n_en0[0],n_sa0[0]]
+FOR j=0L, nn_all[0] - 1L DO BEGIN
+  ;;  Reset variables
+  pang_0         = pang[0]
+  ydat1c_0       = ydat1c_l[0]
+  xdat_0         = 0 & ydat_0 = 0
+  lims           = liml_str
+  gbins          = lbins
+  struc          = tdatl_sw[j]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Calculate pitch-angles with respect to relevant vector
+  ;;--------------------------------------------------------------------------------------
+  ener0          = struc[0].ENERGY
+  data0          = struc[0].DATA
+  phi0           = MEAN(struc[0].PHI,/NAN,DIMENSION=1)
+  the0           = MEAN(struc[0].THETA,/NAN,DIMENSION=1)
+  CASE 1 OF
+    pang[0]   :  BEGIN
+      ;;  Use Bo
+      rvec           = struc[0].MAGF
+    END
+    sun_d[0]  :  BEGIN
+      ;;  Use Sun direction
+      rvec           = [-1d0,0d0,0d0]
+    END
+    vecon[0]  :  BEGIN
+      ;;  Use user-defined vector
+      rvec           = vecdir
+    END
+    ELSE      :  BEGIN
+      ;;  Shouldn't happen --> debug
+      STOP
+    END
+  ENDCASE
+  ;;  Convert relevant vector to spherical coordinate angles
+  xyz_to_polar,rvec,THETA=vth0,PHI=vph0
+  ;;  Compute pitch-angles
+  pang_0         = pangle(the0,phi0,vth0,vph0)
+  ;;--------------------------------------------------------------------------------------
+  ;;  Remove spacecraft potential, if desired
+  ;;--------------------------------------------------------------------------------------
+  IF (rmscpot[0]) THEN BEGIN
+    ;;  User wants to remove spacecraft potential
+    scpot          = struct_value(struc,'SC_POT',DEFAULT=0d0)
+    ;;  Get particle charge and energy shift
+    charge         = define_particle_charge(struc[0],E_SHIFT=e_shift)
+    oldener        = ener0
+    tempenr        = (oldener + e_shift[0]) + (scpot[0]*charge[0])
+    bad            = WHERE(tempenr LE 0e0 OR oldener LE 1d0*scpot[0],bd)
+    IF (bd[0] GT 0) THEN BEGIN
+      ener0[bad]     = f
+      data0[bad]     = f
+    ENDIF
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define outputs
+  ;;--------------------------------------------------------------------------------------
+  ener_l[j,*,*]  = ener0
+  ydat_l[j,*,*]  = data0
+  pang_l[j,*]    = pang_0
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define high energy ESA parameters
+;;----------------------------------------------------------------------------------------
+nn_all         = [nvdf1[0],n_en1[0],n_sa1[0]]
+FOR j=0L, nn_all[0] - 1L DO BEGIN
+  ;;  Reset variables
+  pang_0         = pang[0]
+  ydat1c_0       = ydat1c_h[0]
+  xdat_0         = 0 & ydat_0 = 0
+  lims           = limh_str
+  gbins          = hbins
+  struc          = tdath_sw[j]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Calculate pitch-angles with respect to relevant vector
+  ;;--------------------------------------------------------------------------------------
+  ener0          = struc[0].ENERGY
+  data0          = struc[0].DATA
+  phi0           = MEAN(struc[0].PHI,/NAN,DIMENSION=1)
+  the0           = MEAN(struc[0].THETA,/NAN,DIMENSION=1)
+  CASE 1 OF
+    pang[0]   :  BEGIN
+      ;;  Use Bo
+      rvec           = struc[0].MAGF
+    END
+    sun_d[0]  :  BEGIN
+      ;;  Use Sun direction
+      rvec           = [-1d0,0d0,0d0]
+    END
+    vecon[0]  :  BEGIN
+      ;;  Use user-defined vector
+      rvec           = vecdir
+    END
+    ELSE      :  BEGIN
+      ;;  Shouldn't happen --> debug
+      STOP
+    END
+  ENDCASE
+  ;;  Convert relevant vector to spherical coordinate angles
+  xyz_to_polar,rvec,THETA=vth0,PHI=vph0
+  ;;  Compute pitch-angles
+  pang_0         = pangle(the0,phi0,vth0,vph0)
+  ;;--------------------------------------------------------------------------------------
+  ;;  Remove spacecraft potential, if desired
+  ;;--------------------------------------------------------------------------------------
+  IF (rmscpot[0]) THEN BEGIN
+    ;;  User wants to remove spacecraft potential
+    scpot          = struct_value(struc,'SC_POT',DEFAULT=0d0)
+    ;;  Get particle charge and energy shift
+    charge         = define_particle_charge(struc[0],E_SHIFT=e_shift)
+    oldener        = ener0
+    tempenr        = (oldener + e_shift[0]) + (scpot[0]*charge[0])
+    bad            = WHERE(tempenr LE 0e0 OR oldener LE 1d0*scpot[0],bd)
+    IF (bd[0] GT 0) THEN BEGIN
+      ener0[bad]     = f
+      data0[bad]     = f
+    ENDIF
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define outputs
+  ;;--------------------------------------------------------------------------------------
+  ener_h[j,*,*]  = ener0
+  ydat_h[j,*,*]  = data0
+  pang_h[j,*]    = pang_0
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define SST parameters
+;;----------------------------------------------------------------------------------------
+nn_all         = [nvdf2[0],n_en2[0],n_sa2[0]]
+FOR j=0L, nn_all[0] - 1L DO BEGIN
+  ;;  Reset variables
+  pang_0         = pang[0]
+  ydat1c_0       = ydat1c_s[0]
+  xdat_0         = 0 & ydat_0 = 0
+  lims           = lims_str
+  gbins          = sbins
+  struc          = tdats_sw[j]
+  ;;--------------------------------------------------------------------------------------
+  ;;  Calculate pitch-angles with respect to relevant vector
+  ;;--------------------------------------------------------------------------------------
+  ener0          = struc[0].ENERGY
+  data0          = struc[0].DATA
+  phi0           = MEAN(struc[0].PHI,/NAN,DIMENSION=1)
+  the0           = MEAN(struc[0].THETA,/NAN,DIMENSION=1)
+  CASE 1 OF
+    pang[0]   :  BEGIN
+      ;;  Use Bo
+      rvec           = struc[0].MAGF
+    END
+    sun_d[0]  :  BEGIN
+      ;;  Use Sun direction
+      rvec           = [-1d0,0d0,0d0]
+    END
+    vecon[0]  :  BEGIN
+      ;;  Use user-defined vector
+      rvec           = vecdir
+    END
+    ELSE      :  BEGIN
+      ;;  Shouldn't happen --> debug
+      STOP
+    END
+  ENDCASE
+  ;;  Convert relevant vector to spherical coordinate angles
+  xyz_to_polar,rvec,THETA=vth0,PHI=vph0
+  ;;  Compute pitch-angles
+  pang_0         = pangle(the0,phi0,vth0,vph0)
+  ;;--------------------------------------------------------------------------------------
+  ;;  Remove spacecraft potential, if desired
+  ;;--------------------------------------------------------------------------------------
+  IF (rmscpot[0]) THEN BEGIN
+    ;;  User wants to remove spacecraft potential
+    scpot          = struct_value(struc,'SC_POT',DEFAULT=0d0)
+    ;;  Get particle charge and energy shift
+    charge         = define_particle_charge(struc[0],E_SHIFT=e_shift)
+    oldener        = ener0
+    tempenr        = (oldener + e_shift[0]) + (scpot[0]*charge[0])
+    bad            = WHERE(tempenr LE 0e0 OR oldener LE 1d0*scpot[0],bd)
+    IF (bd[0] GT 0) THEN BEGIN
+      ener0[bad]     = f
+      data0[bad]     = f
+    ENDIF
+  ENDIF
+  ;;--------------------------------------------------------------------------------------
+  ;;  Define outputs
+  ;;--------------------------------------------------------------------------------------
+  ener_s[j,*,*]  = ener0
+  ydat_s[j,*,*]  = data0
+  pang_s[j,*]    = pang_0
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Average over pitch-angles
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  First average energies for each VDF, as they should not change by solid-angle
+ener_0         = MEAN(ener_l,/NAN,DIMENSION=3)                 ;;  [N,E]-element array
+ener_1         = MEAN(ener_h,/NAN,DIMENSION=3)
+ener_2         = MEAN(ener_s,/NAN,DIMENSION=3)
+ener_l         = ener_0
+ener_h         = ener_1
+ener_s         = ener_2
+;;  *** Clean up ***
+delete_variable,ener_0,ener_1,ener_2
+;;  Define structures
+struc_l        = {X:unix_l,Y:ydat_l,E:ener_l,A:pang_l}
+struc_h        = {X:unix_h,Y:ydat_h,E:ener_h,A:pang_h}
+struc_s        = {X:unix_s,Y:ydat_s,E:ener_s,A:pang_s}
+;;  Define corresponding one-count structures
+str1c_l        = {X:unix_l,Y:yd1c_l,E:ener_l,A:pang_l}
+str1c_h        = {X:unix_h,Y:yd1c_h,E:ener_h,A:pang_h}
+str1c_s        = {X:unix_s,Y:yd1c_s,E:ener_s,A:pang_s}
+;;----------------------------------------------------------------------------------------
+;;  Average over pitch-angles
+;;----------------------------------------------------------------------------------------
+n_pa           = num_pa[0] - 1L                                ;;  # of pitch-angle averages
+dumb_l         = REPLICATE(d,n_en0[0],n_pa[0])
+dumb_h         = REPLICATE(d,n_en1[0],n_pa[0])
+dumb_s         = REPLICATE(d,n_en2[0],n_pa[0])
+yavg_l         = REPLICATE(d,nvdf0[0],n_en0[0],n_pa[0])
+yavg_h         = REPLICATE(d,nvdf1[0],n_en1[0],n_pa[0])
+yavg_s         = REPLICATE(d,nvdf2[0],n_en2[0],n_pa[0])
+;;  Low energy ESA
+nn_all         = [nvdf0[0],n_en0[0],n_pa[0]]
+struc          = struc_l
+FOR j=0L, nn_all[0] - 1L DO BEGIN
+  pang_0         = REFORM(struc.A[j,*])
+  data_0         = REFORM(struc.Y[j,*,*])                      ;;  [E,A]-element array
+  temp           = dumb_l
+  FOR k=0L, n_pa[0] - 1L DO BEGIN
+    ;;  Find observed PAs within user-defined ranges
+    good           = WHERE(pang_0 GE cut_lows[k] AND pang_0 LE cut_high[k],gd)
+    IF (gd[0] GT 1) THEN BEGIN
+      ;;  PAs were found
+      dumb           = MEAN(REFORM(data_0[*,good]),/NAN,DIMENSION=2)
+      IF (N_ELEMENTS(dumb) EQ nn_all[1]) THEN temp[*,k] = dumb
+    ENDIF ELSE BEGIN
+      ;;  Check if just one element was found
+      IF (gd[0] EQ 1) THEN temp[*,k] = data_0[*,good[0]]
+    ENDELSE
+  ENDFOR
+  ;;  Fill array
+  yavg_l[j,*,*]  = temp
+ENDFOR
+;;  High energy ESA
+nn_all         = [nvdf1[0],n_en1[0],n_pa[0]]
+struc          = struc_h
+FOR j=0L, nn_all[0] - 1L DO BEGIN
+  pang_0         = REFORM(struc.A[j,*])
+  data_0         = REFORM(struc.Y[j,*,*])
+  temp           = dumb_h
+  FOR k=0L, n_pa[0] - 1L DO BEGIN
+    ;;  Find observed PAs within user-defined ranges
+    good           = WHERE(pang_0 GE cut_lows[k] AND pang_0 LE cut_high[k],gd)
+    IF (gd[0] GT 1) THEN BEGIN
+      ;;  PAs were found
+      dumb           = MEAN(REFORM(data_0[*,good]),/NAN,DIMENSION=2)
+      IF (N_ELEMENTS(dumb) EQ nn_all[1]) THEN temp[*,k] = dumb
+    ENDIF ELSE BEGIN
+      ;;  Check if just one element was found
+      IF (gd[0] EQ 1) THEN temp[*,k] = data_0[*,good[0]]
+    ENDELSE
+  ENDFOR
+  ;;  Fill array
+  yavg_h[j,*,*]  = temp
+ENDFOR
+;;  SST
+nn_all         = [nvdf2[0],n_en2[0],n_pa[0]]
+struc          = struc_s
+FOR j=0L, nn_all[0] - 1L DO BEGIN
+  pang_0         = REFORM(struc.A[j,*])
+  data_0         = REFORM(struc.Y[j,*,*])
+  temp           = dumb_s
+  FOR k=0L, n_pa[0] - 1L DO BEGIN
+    ;;  Find observed PAs within user-defined ranges
+    good           = WHERE(pang_0 GE cut_lows[k] AND pang_0 LE cut_high[k],gd)
+    IF (gd[0] GT 1) THEN BEGIN
+      ;;  PAs were found
+      dumb           = MEAN(REFORM(data_0[*,good]),/NAN,DIMENSION=2)
+      IF (N_ELEMENTS(dumb) EQ nn_all[1]) THEN temp[*,k] = dumb
+    ENDIF ELSE BEGIN
+      ;;  Check if just one element was found
+      IF (gd[0] EQ 1) THEN temp[*,k] = data_0[*,good[0]]
+    ENDELSE
+  ENDFOR
+  ;;  Fill array
+  yavg_s[j,*,*]  = temp
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Interpolate to a common time stamp
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+pang_ra        = [[cut_lows],[cut_high]]
+pang_av        = MEAN(pang_ra,/NAN,DIMENSION=2)
+pang_l0        = REPLICATE(1d0,nvdf0[0]) # pang_av
+pang_h0        = REPLICATE(1d0,nvdf1[0]) # pang_av
+pang_s0        = REPLICATE(1d0,nvdf2[0]) # pang_av
+;;  Define new structures
+strav_l0       = {X:unix_l,Y:yavg_l,V1:ener_l,V2:pang_l0}
+strav_h0       = {X:unix_h,Y:yavg_h,V1:ener_h,V2:pang_h0}
+strav_s0       = {X:unix_s,Y:yavg_s,V1:ener_s,V2:pang_s0}
+unix           = unix_l
+;;  Interpolate
+strav_l        = t_resample_tplot_struc(strav_l0,unix,/NO_EXTRAPOLATE,/IGNORE_INT)
+strav_h        = t_resample_tplot_struc(strav_h0,unix,/NO_EXTRAPOLATE,/IGNORE_INT)
+strav_s        = t_resample_tplot_struc(strav_s0,unix,/NO_EXTRAPOLATE,/IGNORE_INT)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Merge and regrid in energy
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+yavg_l         = strav_l.Y             ;;  [N,E,A]-Element array
+yavg_h         = strav_h.Y             ;;  [N,F,A]-Element array
+yavg_s         = strav_s.Y             ;;  [N,G,A]-Element array
+ener_l         = strav_l.V1            ;;  [N,E]-Element array
+ener_h         = strav_h.V1            ;;  [N,F]-Element array
+ener_s         = strav_s.V1            ;;  [N,G]-Element array
+n_ena0         = n_en0[0] + n_en1[0] + n_en2[0]
+nvdf           = N_ELEMENTS(yavg_l[*,0,0])
+yavg_a0        = REPLICATE(d,nvdf[0],n_ena0[0],n_pa[0])         ;;  [N,H,A]-Element array {where H = (E + F + G)}
+ener_a0        = REPLICATE(d,nvdf[0],n_ena0[0])                 ;;  [N,H]-Element array   {where H = (E + F + G)}
+l10ytmp        = yavg_a0                                        ;;  Dummy variable for later
+ind0           = LINDGEN(n_en0[0]) + 0L
+ind1           = LINDGEN(n_en1[0]) + MAX(ind0) + 1L
+ind2           = LINDGEN(n_en2[0]) + MAX(ind1) + 1L
+;;  Fill arrays
+yavg_a0[*,ind0,*] = yavg_l
+yavg_a0[*,ind1,*] = yavg_h
+yavg_a0[*,ind2,*] = yavg_s
+ener_a0[*,ind0]   = ener_l
+ener_a0[*,ind1]   = ener_h
+ener_a0[*,ind2]   = ener_s
+;;  Sort by energy in ascending order
+FOR j=0L, nvdf[0] - 1L DO BEGIN
+  
+ENDFOR
+;;----------------------------------------------------------------------------------------
+;;  Define new energy grid, uniform in logarithmic space
+;;----------------------------------------------------------------------------------------
+eran_all       = [MIN(ener_a0,/NAN),MAX(ener_a0,/NAN)] > 1d-2
+test           = (test_plot_axis_range(eran_all,/NOMSSG) EQ 0L)
+IF (test[0]) THEN eran_all = [MIN([eran_esl,eran_esh,eran_sst],/NAN),MAX([eran_esl,eran_esh,eran_sst],/NAN)]
+eran_all       = roundsig(eran_all,SIG=1) > 1d-2
+l10erana       = ALOG10(eran_all)
+dx             = (MAX(l10erana,/NAN) - MIN(l10erana,/NAN))/(n_ena0[0] - 1L)
+l10eners       = DINDGEN(n_ena0[0])*dx[0] + MIN(l10erana,/NAN)
+new_ener       = 1d1^(l10eners)
+;;----------------------------------------------------------------------------------------
+;;  Interpolate to new energies
+;;----------------------------------------------------------------------------------------
+l10yavg        = ALOG10(yavg_a0)
+l10ener        = ALOG10(ener_a0)
+FOR j=0L, nvdf[0] - 1L DO BEGIN
+  ;;  First sort by energy, in ascending order
+  temp           = REFORM(ener_a0[j,*])
+  sp             = SORT(temp)
+  l10y           = REFORM(l10yavg[j,sp,*])
+  l10e           = REFORM(l10ener[j,sp])
+  FOR k=0L, n_pa[0] - 1L DO BEGIN
+    ;;  First smooth the merged data to reduce the overlap discontinuities
+    l10smth        = SMOOTH(REFORM(l10y[*,k]),3L,/NAN,/EDGE_TRUNCATE)
+    ;;  Linearly interpolate to new energy grid
+    l10ytmp[j,*,k] = INTERPOL(l10smth,REFORM(l10e[*]),l10eners,/NAN)
+  ENDFOR
+ENDFOR
+;;  Define new output data
+yavg_all       = 1d1^(l10ytmp)                                ;;  All PADs in one array
+yavg_omn       = MEAN(yavg_all,/NAN,DIMENSION=3)              ;;  Ominidirectional average
+out_ener       = 1d-3*new_ener
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define output values and structures
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Calculate one-variable stats on all data to determine plot range
+conlim         = 95d-2
+onvs           = calc_1var_stats(yavg_all,/NAN,CONLIM=conlim[0],PERCENTILES=perc,/POSITIVE)
+ymin_all       = (95d-2*perc[0]) < ( 1d-2*onvs[3])
+ymax_all       = (17d-1*perc[1]) > ( 1d-2*onvs[1])
+;;----------------------------------------------------------------------------------------
+;;  Define TPLOT relevant stuff
+;;----------------------------------------------------------------------------------------
+yttl_omni      = yttl_pref[0]+punits[0]+'!C'+'['+species[0]+']'
+padstrt        = num2flt_str(pang_ra[*,0],NUM_CHAR=8,NUM_DEC=0)+'--'+num2flt_str(pang_ra[*,1],NUM_CHAR=8,NUM_DEC=0)
+padstrm        = num2flt_str(pang_ra[*,0],NUM_CHAR=8,NUM_DEC=1)+'--'+num2flt_str(pang_ra[*,1],NUM_CHAR=8,NUM_DEC=1)
+padstrs        = '['+padstrm+' deg]'
+yttl_pads      = yttl_omni[0]+'!C'+padstrs
+ener_labv      = new_ener
+ener_labs      = REPLICATE('',n_ena0[0])
+xlog__all      = 0b
+IF (spec_on[0]) THEN BEGIN
+  ;;  User wants output as spectra, i.e., Y = energy, X = time, Z = UNITS
+  zttl_omni      = yttl_omni[0]
+  zttl_pads      = REPLICATE(zttl_omni[0],n_pa[0])
+  yttl_omni      = 'Energy [keV]'
+  yttl_pads      = yttl_omni[0]+'!C'+padstrs
+  zran__all      = [ymin_all[0],ymax_all[0]]
+  yran__all      = [MIN(out_ener,/NAN),MAX(out_ener,/NAN)]*[95d-2,105d-2]
+  ylog__all      = 1b
+  zlog__all      = 1b
+ENDIF ELSE BEGIN
+  ;;  User wants output as stacked line plot, i.e., Y = UNITS, X = time, lines = energies
+  zttl_omni      = ''
+  zttl_pads      = REPLICATE('',n_pa[0])
+  yran__all      = [ymin_all[0],ymax_all[0]]
+  zran__all      = REPLICATE(d,2L)
+  good           = WHERE(out_ener GE 1d0,gd,COMPLEMENT=bad,NCOMPLEMENT=bd)
+  IF (gd[0] GT 0) THEN ener_labs[good] = num2flt_str(1d-3*ener_labv[good],NUM_CHAR=8,NUM_DEC=1)+' keV'
+  IF (bd[0] GT 0) THEN ener_labs[bad]  = num2flt_str(ener_labv[bad] ,NUM_CHAR=8,NUM_DEC=1)+' eV'
+  ylog__all      = 1b
+  zlog__all      = 0b
+ENDELSE
+IF (ylog__all[0]) THEN yminor = 9L ELSE yminor = 10L
+IF (zlog__all[0]) THEN zminor = 9L ELSE zminor =  0L
+ener_col       = LINDGEN(n_ena0[0])*(250L - 30L)/(n_ena0[0] - 1L) + 30L
+;;  Initialize omnidirectional and PADs TPLOT DLIMITS structures
+tdlimo         = {XLOG:xlog__all[0],YLOG:ylog__all[0],ZLOG:zlog__all[0],YTITLE:yttl_omni[0],$
+                  ZTITLE:zttl_omni[0],YRANGE:yran__all,ZRANGE:zran__all}
+IF (spec_on[0]) THEN BEGIN
+  str_element,tdlimo,'ZTICKS',5L,/ADD_REPLACE
+ENDIF ELSE BEGIN
+  str_element,tdlimo,'LABELS',ener_labs,/ADD_REPLACE
+  str_element,tdlimo,'COLORS',ener_col,/ADD_REPLACE
+  str_element,tdlimo,'LABFLAG',1,/ADD_REPLACE
+ENDELSE
+tdlimp0        = tdlimo
+;;  Define TPLOT handle for omnidirectional average and pitch-angles
+tplot_nmo      = scpref[0]+species[0]+'_'+inst_pref+mid_out[0]+'_'+gunits[0]+fsuffx[0]
+tplot_pad      = tplot_nmo[0]+'_'+padstrt
+;;  Define TPLOT structures and send to TPLOT
+t_str_omnidir  = {X:unix,Y:yavg_omn,V:out_ener,SPEC:spec_on[0]}
+store_data,tplot_nmo[0]+'_omni',DATA=t_str_omnidir,DLIMITS=tdlimo,LIMITS=tlim_
+t_str_pad_all  = {X:unix,Y:yavg_all,V1:out_ener,V2:strav_l.V2,SPEC:spec_on[0]}
+store_data,tplot_nmo[0]+'_pads',DATA=t_str_pad_all,DLIMITS=tdlimo,LIMITS=tlim_
+t_struc        = {OMNI:t_str_omnidir,ALLPAD:t_str_pad_all}
+FOR k=0L, n_pa[0] - 1L DO BEGIN
+  ;;  Send to TPLOT
+  tdlimp         = tdlimp0
+  str_element,tdlimp,'YTITLE',yttl_pads[k],/ADD_REPLACE
+  str_element,tdlimp,'ZTITLE',zttl_pads[k],/ADD_REPLACE
+  temp           = {X:unix,Y:REFORM(yavg_all[*,*,k]),V:out_ener,SPEC:spec_on[0]}
+  store_data,tplot_pad[k],DATA=temp,DLIMITS=tdlimp,LIMITS=tlim_
+  ;;  Add to output structure
+  kstr           = 'k'+num2int_str(k[0],NUM_CHAR=3L,/ZERO_PAD)
+  str_element,t_struc,kstr[0],temp,/ADD_REPLACE
+ENDFOR
+tpn_nall       = [tplot_nmo[0]+['_omni','_pads'],tplot_pad]
+;;----------------------------------------------------------------------------------------
+;;  Define output keyword values
+;;----------------------------------------------------------------------------------------
+p_angle        = pang_av
+xdat_esal      = ener_l
+xdat_esah      = ener_h
+xdat__sst      = ener_s
+ydat_esal      = ydat_l
+ydat_esah      = ydat_h
+ydat__sst      = ydat_s
+;;  Define merged output
+xdat__all      = new_ener
+ydat__all      = yavg_all
+;;----------------------------------------------------------------------------------------
+;;  Define output structure with relevant stuff
+;;----------------------------------------------------------------------------------------
+;tags           = ['TPLOT_STR','TPLOT_NMS','PA_RANS','PA_SET_PSV','','','','','','','','',]
+;out_str        = CREATE_STRUCT(tags,t_struc,tpn_nall,pang_ra,[pang[0],sun_d[0],vecon[0]],
+
+
+STOP
+
+
+
+
+
+
+
+
+
+
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+
+RETURN
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

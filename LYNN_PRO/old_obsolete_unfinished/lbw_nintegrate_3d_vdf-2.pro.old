@@ -95,9 +95,6 @@
 ;             2)  Fixed use of particle species keywords so user need not explicitly set
 ;                   ELECTRON to FALSE to use another species
 ;                                                                   [06/30/2021   v1.0.2]
-;             3)  Moved some calculations to speed up algorithm and removed an
-;                   unnecessary error handling check
-;                                                                   [07/26/2022   v1.0.3]
 ;
 ;   NOTES:      
 ;               Velocity moments:
@@ -211,7 +208,7 @@
 ;
 ;   CREATED:  04/08/2020
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/26/2022   v1.0.3
+;    LAST MODIFIED:  06/30/2021   v1.0.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -338,6 +335,13 @@ rt_struc       = get_rotated_and_triangulated_vdf(vels,data,VLIM=vlim,NGRID=ngri
 IF (SIZE(rt_struc,/TYPE) NE 8) THEN STOP
 ;;  Define relevant parameters
 v1dgrid        = rt_struc[0].VX2D
+nx             = N_ELEMENTS(v1dgrid)
+;;  Convert to 2D
+v2dgrid        = v1dgrid # REPLICATE(1d0,nx[0])
+;;  Convert to 3D
+v3dx           = REBIN(v2dgrid,nx[0],nx[0],nx[0])
+v3dy           = TRANSPOSE(v3dx,[2,0,1])
+v3dz           = TRANSPOSE(v3dy,[0,2,1])
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
@@ -369,14 +373,7 @@ IF (n_s_stop_on[0]) THEN BEGIN
   dumb_out[0].N_S = n_s_tot[0]
   RETURN,dumb_out
 ENDIF
-;;  Define 3D velocity grid points
-nx             = N_ELEMENTS(v1dgrid)
-;;  Convert to 2D
-v2dgrid        = v1dgrid # REPLICATE(1d0,nx[0])
-;;  Convert to 3D
-v3dx           = REBIN(v2dgrid,nx[0],nx[0],nx[0])
-v3dy           = TRANSPOSE(v3dx,[2,0,1])
-v3dz           = TRANSPOSE(v3dy,[0,2,1])
+IF KEYWORD_SET(n_s_only) THEN n_s_stop_on = 1b ELSE n_s_stop_on = 0b
 ;;  Calculate X-component of the drift velocity [km/s] in VFRAME rest frame
 ;;      Vos_x     :  X-Component drift velocity [km/s] of species s
 ;;                   = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vx_i f_ijk ]
