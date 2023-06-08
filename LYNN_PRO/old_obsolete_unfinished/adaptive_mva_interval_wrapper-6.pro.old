@@ -30,13 +30,10 @@
 ;                                      [,NSHIFT=nshift] [,NSUBINT=nsubint]            $   ;;  Inputs
 ;                                      [,NTWINDS=ntwinds] [,DNWINDS=dnwinds]          $   ;;  Inputs
 ;                                      [,NTMIN=ntmin] [,NTMAX=ntmax]                  $   ;;  Inputs
-;                                      [,MID2MIN_THRSH=mid2min_thrsh]                 $   ;;  Inputs/Outputs
-;                                      [,MAX2MID_THRSH=max2mid_thrsh]                 $   ;;  Inputs/Outputs
-;                                      [,D2N_X2D_THRSH=d2n_x2d_thrsh]                 $   ;;  Inputs/Outputs
 ;                                      [,N_MIN=n_min] [,N_MAX=n_max] [,N_SUB=n_sub]   $   ;;  Outputs
 ;                                      [,N_SFT=n_sft] [,N_WIN=n_win] [,D__NW=d__nw]   $   ;;  Outputs
 ;                                      [,N_INT=n_int] [,GIND_SE=gind_se]              $   ;;  Outputs
-;                                      [,FRANGE=frange] [,LOGIC_OUT=logic_out]            ;;  Outputs
+;                                      [,FRANGE=frange] [,LOGIC_OUT=logic_out]
 ;
 ;  KEYWORDS:    
 ;               ****************
@@ -99,18 +96,6 @@
 ;                                   to undergo minimum variance analysis.  The input must
 ;                                   be positive definite.
 ;                                   [Default = 0]
-;               MID2MIN_THRSH  :  Scalar [numeric] defining the required minimum threshold
-;                                   for the Lmid/Lmin eigenvalue ratio allowed
-;                                   for any subinterval to be considered valid
-;                                   [Default = 10]
-;               MAX2MID_THRSH  :  Scalar [numeric] defining the required maximum threshold
-;                                   for the Lmax/Lmid eigenvalue ratio allowed
-;                                   for any subinterval to be considered valid
-;                                   [Default = 3]
-;               D2N_X2D_THRSH  :  Scalar [numeric] defining the required minimum threshold
-;                                   for the eigenvalue ratio of Lmid/Lmin to Lmax/Lmid
-;                                   allowed for any subinterval to be considered valid
-;                                   [Default = 3]
 ;               *****************
 ;               ***  OUTPUTS  ***
 ;               *****************
@@ -170,18 +155,6 @@
 ;                                   steps required in the input interval for performing
 ;                                   the adaptive interval analysis
 ;                                   [Default = 50]
-;               MID2MIN_THRSH  :  On return the value of this keyword may be altered
-;                                   depending on input from the user, but will be a scalar
-;                                   [numeric] value defining the required minimum threshold
-;                                   for Lmid/Lmin
-;               MAX2MID_THRSH  :  On return the value of this keyword may be altered
-;                                   depending on input from the user, but will be a scalar
-;                                   [numeric] value defining the required maximum threshold
-;                                   for Lmax/Lmid
-;               D2N_X2D_THRSH  :  On return the value of this keyword may be altered
-;                                   depending on input from the user, but will be a scalar
-;                                   [numeric] value defining the required minimum threshold
-;                                   for the eigenvalue ratio of Lmid/Lmin to Lmax/Lmid
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [05/25/2016   v1.0.0]
@@ -211,8 +184,6 @@
 ;            12)  Adjusted the allowable minimum interval duration to 150% of maximum
 ;                   filter frequency period duration (down from 200%)
 ;                                                                   [04/16/2021   v1.2.3]
-;            13)  Added keywords:  MID2MIN_THRSH, MAX2MID_THRSH, and D2N_X2D_THRSH
-;                                                                   [11/09/2022   v1.3.0]
 ;
 ;   NOTES:      
 ;               1)  We define the following constraints for the subinterval and windows:
@@ -264,17 +235,13 @@
 ;                       ((N_MAX = N_INT)  ||  (N_SUB = 1))  &  (N_WIN ≥ 2) :
 ;                           N_SFT = 0
 ;                           D__NW = (N_INT - N_MIN)/(N_WIN - 1)
-;               2)  Eigenvalue definitions:
-;                     Lmin   :  minimum eigenvalue
-;                     Lmid   :  intermediate eigenvalue
-;                     Lmax   :  maximum eigenvalue
 ;
 ;  REFERENCES:  
 ;               NA
 ;
 ;   CREATED:  05/25/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  11/09/2022   v1.3.0
+;    LAST MODIFIED:  04/16/2021   v1.2.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -290,10 +257,7 @@ PRO adaptive_mva_interval_get_def_keywords,unixt,TRANGE=trange,PRECISION=prec,  
                                             N_SFT=n_sft,N_WIN=n_win,D__NW=d__nw,       $
                                             N_INT=n_int,GIND_SE=gind_se,FRANGE=frange, $
                                             LOGIC_OUT=logic_out,                       $
-                                            MIN_NUM_INT=min_num_int,                   $
-                                            MID2MIN_THRSH=mid2min_thrsh,               $
-                                            MAX2MID_THRSH=max2mid_thrsh,               $
-                                            D2N_X2D_THRSH=d2n_x2d_thrsh
+                                            MIN_NUM_INT=min_num_int
 
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
@@ -409,10 +373,6 @@ test_mat       = (N_ELEMENTS(min_amp_thrsh) GE 1) AND is_a_number(min_amp_thrsh,
 IF (test_mat[0]) THEN minamp = (DOUBLE(ABS(min_amp_thrsh[0])) > 0d0) ELSE minamp = 0d0
 ;;  Define MIN_AMP_THRSH output
 min_amp_thrsh  = minamp[0]
-;;  Check MID2MIN_THRSH, MAX2MID_THRSH, and D2N_X2D_THRSH
-IF (is_a_number(mid2min_thrsh,/NOMSSG)) THEN mid2min_thrsh = ABS(mid2min_thrsh[0]) ELSE mid2min_thrsh = 1d1
-IF (is_a_number(max2mid_thrsh,/NOMSSG)) THEN max2mid_thrsh = ABS(max2mid_thrsh[0]) ELSE max2mid_thrsh = 3d0
-IF (is_a_number(d2n_x2d_thrsh,/NOMSSG)) THEN d2n_x2d_thrsh = ABS(d2n_x2d_thrsh[0]) ELSE d2n_x2d_thrsh = 3d0
 ;;----------------------------------------------------------------------------------------
 ;;  Check subinterval keywords
 ;;    --> Define initial settings and/or defaults
@@ -693,12 +653,7 @@ END
 ;                                     [,HIGHFREQ=highfreq] [,NSHIFT=nshift]             $
 ;                                     [,NSUBINT=nsubint] [,NTWINDS=ntwinds]             $
 ;                                     [,DNWINDS=dnwinds] [,NTMIN=ntmin]                 $
-;                                     [,NTMAX=ntmax] [,CONS_NSHFNMIN=cons_nshfnmin]     $
-;                                     [,MIN_AMP_THRSH=min_amp_thrsh]                    $
-;                                     [,MIN_NUM_INT=min_num_int]                        $
-;                                     [,MID2MIN_THRSH=mid2min_thrsh]                    $
-;                                     [,MAX2MID_THRSH=max2mid_thrsh]                    $
-;                                     [,D2N_X2D_THRSH=d2n_x2d_thrsh])
+;                                     [,NTMAX=ntmax] )
 ;
 ;  KEYWORDS:    
 ;               ****************
@@ -765,33 +720,6 @@ END
 ;                                   steps required in the input interval for performing
 ;                                   the adaptive interval analysis
 ;                                   [Default = 50]
-;               MID2MIN_THRSH  :  Scalar [numeric] defining the required minimum threshold
-;                                   for the Lmid/Lmin eigenvalue ratio allowed
-;                                   for any subinterval to be considered valid
-;                                   [Default = 10]
-;               MAX2MID_THRSH  :  Scalar [numeric] defining the required maximum threshold
-;                                   for the Lmax/Lmid eigenvalue ratio allowed
-;                                   for any subinterval to be considered valid
-;                                   [Default = 3]
-;               D2N_X2D_THRSH  :  Scalar [numeric] defining the required minimum threshold
-;                                   for the eigenvalue ratio of Lmid/Lmin to Lmax/Lmid
-;                                   allowed for any subinterval to be considered valid
-;                                   [Default = 3]
-;               *****************
-;               ***  OUTPUTS  ***
-;               *****************
-;               MID2MIN_THRSH  :  On return the value of this keyword may be altered
-;                                   depending on input from the user, but will be a scalar
-;                                   [numeric] value defining the required minimum threshold
-;                                   for Lmid/Lmin
-;               MAX2MID_THRSH  :  On return the value of this keyword may be altered
-;                                   depending on input from the user, but will be a scalar
-;                                   [numeric] value defining the required maximum threshold
-;                                   for Lmax/Lmid
-;               D2N_X2D_THRSH  :  On return the value of this keyword may be altered
-;                                   depending on input from the user, but will be a scalar
-;                                   [numeric] value defining the required minimum threshold
-;                                   for the eigenvalue ratio of Lmid/Lmin to Lmax/Lmid
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [05/26/2016   v1.0.0]
@@ -820,8 +748,6 @@ END
 ;            12)  Adjusted the allowable minimum interval duration to 150% of maximum
 ;                   filter frequency period duration (down from 200%)
 ;                                                                   [04/16/2021   v1.2.3]
-;            13)  Added keywords:  MID2MIN_THRSH, MAX2MID_THRSH, and D2N_X2D_THRSH
-;                                                                   [11/09/2022   v1.3.0]
 ;
 ;   NOTES:      
 ;               1)  The routine uses the following picture:
@@ -885,7 +811,7 @@ END
 ;
 ;   CREATED:  05/26/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  11/09/2022   v1.3.0
+;    LAST MODIFIED:  04/16/2021   v1.2.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -897,10 +823,7 @@ FUNCTION adaptive_mva_interval_get_sub_inds,unixt,TRANGE=trange,PRECISION=prec, 
                                                   NTMIN=ntmin,NTMAX=ntmax,             $
                                                   CONS_NSHFNMIN=cons_nshfnmin,         $
                                                   MIN_AMP_THRSH=min_amp_thrsh,         $
-                                                  MIN_NUM_INT=min_num_int,             $
-                                                  MID2MIN_THRSH=mid2min_thrsh,         $
-                                                  MAX2MID_THRSH=max2mid_thrsh,         $
-                                                  D2N_X2D_THRSH=d2n_x2d_thrsh
+                                                  MIN_NUM_INT=min_num_int
 
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
@@ -938,9 +861,6 @@ adaptive_mva_interval_get_def_keywords,unix,TRANGE=trange,PRECISION=prec,       
                                             NTMIN=ntmin,NTMAX=ntmax,                   $
                                             CONS_NSHFNMIN=cons_nshfnmin,               $
                                             MIN_AMP_THRSH=min_amp_thrsh,               $
-                                            MID2MIN_THRSH=mid2min_thrsh,               $
-                                            MAX2MID_THRSH=max2mid_thrsh,               $
-                                            D2N_X2D_THRSH=d2n_x2d_thrsh,               $
                                             N_MIN=n_min,N_MAX=n_max,N_SUB=n_sub,       $   ;;  Outputs
                                             N_SFT=n_sft,N_WIN=n_win,D__NW=d__nw,       $
                                             N_INT=n_int,GIND_SE=gind_se,FRANGE=frange, $
@@ -1012,7 +932,7 @@ END
 ;                 eigenvalues and eigenvectors for each subinterval analyzed.
 ;
 ;  CALLED BY:   
-;               extract_good_mva_from_adapint.pro
+;               NA
 ;
 ;  INCLUDES:
 ;               adaptive_mva_interval_get_def_keywords.pro
@@ -1024,7 +944,7 @@ END
 ;               sample_rate.pro
 ;               adaptive_mva_interval_get_sub_inds.pro
 ;               vector_bandpass.pro
-;               lbw_la_minvar.pro
+;               lbw_minvar.pro
 ;               tplot_struct_format_test.pro
 ;
 ;  REQUIRES:    
@@ -1050,17 +970,9 @@ END
 ;                                       [,HIGHFREQ=highfreq] [,NSHIFT=nshift]          $
 ;                                       [,NSUBINT=nsubint] [,NTWINDS=ntwinds]          $
 ;                                       [,DNWINDS=dnwinds] [,NTMIN=ntmin]              $
-;                                       [,NTMAX=ntmax] [,CONS_NSHFNMIN=cons_nshfnmin]  $
-;                                       [,MIN_AMP_THRSH=min_amp_thrsh]                 $
-;                                       [,MIN_NUM_INT=min_num_int]                     $
-;                                       [,MID2MIN_THRSH=mid2min_thrsh]                 $
-;                                       [,MAX2MID_THRSH=max2mid_thrsh]                 $
-;                                       [,D2N_X2D_THRSH=d2n_x2d_thrsh])
+;                                       [,NTMAX=ntmax] )
 ;
 ;  KEYWORDS:    
-;               **********************************
-;               ***       DIRECT  INPUTS       ***
-;               **********************************
 ;               TRANGE         :  [2]-Element [double] array specifying the Unix time
 ;                                   range for which to limit the data in STRUC
 ;                                   [Default = prompted by get_valid_trange.pro]
@@ -1122,18 +1034,6 @@ END
 ;                                   steps required in the input interval for performing
 ;                                   the adaptive interval analysis
 ;                                   [Default = 50]
-;               MID2MIN_THRSH  :  Scalar [numeric] defining the required minimum threshold
-;                                   for the Lmid/Lmin eigenvalue ratio allowed
-;                                   for any subinterval to be considered valid
-;                                   [Default = 10]
-;               MAX2MID_THRSH  :  Scalar [numeric] defining the required maximum threshold
-;                                   for the Lmax/Lmid eigenvalue ratio allowed
-;                                   for any subinterval to be considered valid
-;                                   [Default = 3]
-;               D2N_X2D_THRSH  :  Scalar [numeric] defining the required minimum threshold
-;                                   for the eigenvalue ratio of Lmid/Lmin to Lmax/Lmid
-;                                   allowed for any subinterval to be considered valid
-;                                   [Default = 3]
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [05/25/2016   v1.0.0]
@@ -1170,11 +1070,6 @@ END
 ;            15)  Adjusted the allowable minimum interval duration to 150% of maximum
 ;                   filter frequency period duration (down from 200%)
 ;                                                                   [04/16/2021   v1.2.3]
-;            16)  Now calls lbw_la_minvar.pro instead of lbw_minvar.pro and
-;                   added keywords:  MID2MIN_THRSH, MAX2MID_THRSH, and D2N_X2D_THRSH
-;                                                                   [11/09/2022   v1.3.0]
-;            17)  Added keyword:  NOMSSG
-;                                                                   [11/11/2022   v1.3.1]
 ;
 ;   NOTES:      
 ;               0)  ***  STILL TESTING  ***
@@ -1202,10 +1097,6 @@ END
 ;               2)  For details of interval definitions, see NOTES section in
 ;                     adaptive_mva_interval_get_sub_inds.pro
 ;                     adaptive_mva_interval_get_def_keywords.pro
-;               3)  Eigenvalue definitions:
-;                     Lmin   :  minimum eigenvalue
-;                     Lmid   :  intermediate eigenvalue
-;                     Lmax   :  maximum eigenvalue
 ;
 ;  REFERENCES:  
 ;               1)  G. Paschmann and P.W. Daly "Analysis Methods for Multi-Spacecraft
@@ -1223,13 +1114,10 @@ END
 ;               5)  A.V. Khrabrov and B.U.Ö Sonnerup "Error estimates for minimum
 ;                     variance analysis," J. Geophys. Res. 103(A4), pp. 6641-6651,
 ;                     1998.
-;               6)  L.B. Wilson III, et al., "Revisiting the structure of low-Mach
-;                     number, low-beta, quasi-perpendicular shocks," J. Geophys. Res.
-;                     122(9), pp. 9115--9133, doi:10.1002/2017JA024352, 2017.
 ;
 ;   CREATED:  05/24/2016
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  11/11/2022   v1.3.1
+;    LAST MODIFIED:  04/16/2021   v1.2.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -1242,11 +1130,7 @@ FUNCTION adaptive_mva_interval_wrapper,struc,TRANGE=trange,PRECISION=prec,      
                                              NTMIN=ntmin,NTMAX=ntmax,                 $
                                              CONS_NSHFNMIN=cons_nshfnmin,             $
                                              MIN_AMP_THRSH=min_amp_thrsh,             $
-                                             MIN_NUM_INT=min_num_int,                 $
-                                             MID2MIN_THRSH=mid2min_thrsh,             $
-                                             MAX2MID_THRSH=max2mid_thrsh,             $
-                                             D2N_X2D_THRSH=d2n_x2d_thrsh,             $
-                                             NOMSSG=nomssg
+                                             MIN_NUM_INT=min_num_int
 
 ;;****************************************************************************************
 ex_start = SYSTIME(1)
@@ -1304,10 +1188,7 @@ mva_struc      = adaptive_mva_interval_get_sub_inds(unix,TRANGE=trange,PRECISION
                                                     NTMIN=ntmin,NTMAX=ntmax,             $
                                                     CONS_NSHFNMIN=cons_nshfnmin,         $
                                                     MIN_AMP_THRSH=min_amp_thrsh,         $
-                                                    MIN_NUM_INT=min_num_int,             $
-                                                    MID2MIN_THRSH=mid2min_thrsh,         $
-                                                    MAX2MID_THRSH=max2mid_thrsh,         $
-                                                    D2N_X2D_THRSH=d2n_x2d_thrsh)
+                                                    MIN_NUM_INT=min_num_int              )
 ;;  Make sure valid outputs were returned
 test           = (SIZE(mva_struc,/TYPE) NE 8)
 IF (test[0]) THEN BEGIN
@@ -1383,8 +1264,8 @@ FOR s=0L, n_sub[0] - 1L DO BEGIN
     pkpk_z    = DOUBLE(ABS(MAX(t_vec[*,2],/NAN) - MIN(t_vec[*,2],/NAN)))
     test      = (pkpk_x[0] LE minamp[0]) AND (pkpk_y[0] LE minamp[0]) AND (pkpk_z[0] LE minamp[0])
     IF (test[0]) THEN CONTINUE                      ;;  Jump to next iteration
-    eigvecs   = lbw_la_minvar(t_vec[*,0],t_vec[*,1],t_vec[*,2],EIG_VALS=eigvals)
-    test      = (N_ELEMENTS(eigvecs) LT 9) OR (N_ELEMENTS(eigvals) LT 3)
+    eigvecs   = lbw_minvar(t_vec[*,0],t_vec[*,1],t_vec[*,2],EIG_VALS=eigvals)
+    test      = (N_ELEMENTS(eigvecs) LT 9)
     IF (test[0]) THEN CONTINUE                      ;;  Jump to next iteration
     ;;  Fill dummy arrays
     dumb_mnval[w]   = eigvals[0]
@@ -1421,12 +1302,12 @@ ENDFOR
 ;;----------------------------------------------------------------------------------------
 mid2min_rat    = mid_eigvals/min_eigvals
 max2mid_rat    = max_eigvals/mid_eigvals
-;;  Define tests for well defined minimum variance directions (Default example shown below)
+;;  Define tests for well defined minimum variance directions
 ;;    a)  (L_mid/L_min ≥ 10)  &  (L_max/L_mid < 3)
 ;;    b)  (L_mid/L_min)/(L_max/L_mid) > 3
-test_dn        = (mid2min_rat GE mid2min_thrsh[0]) AND FINITE(mid2min_rat)
-test_xd        = (max2mid_rat LT max2mid_thrsh[0]) AND FINITE(max2mid_rat)
-test_rt        = (mid2min_rat/max2mid_rat GT d2n_x2d_thrsh[0])
+test_dn        = (mid2min_rat GE 1d1) AND FINITE(mid2min_rat)
+test_xd        = (max2mid_rat LT 3d0) AND FINITE(max2mid_rat)
+test_rt        = (mid2min_rat/max2mid_rat GT 3d0)
 test_gd        = (test_dn AND test_xd) OR test_rt
 good_mva       = WHERE(test_gd,gd_mva,COMPLEMENT=bad_mva,NCOMPLEMENT=bd_mva)
 ;;----------------------------------------------------------------------------------------
@@ -1442,7 +1323,7 @@ out_struc      = CREATE_STRUCT(tags,eigval_struc,eigvec_struc,good_mva,best_wind
 ;;----------------------------------------------------------------------------------------
 ;;****************************************************************************************
 ex_time        = SYSTIME(1) - ex_start[0]
-IF ~KEYWORD_SET(nomssg) THEN MESSAGE,'Execution Time: '+STRING(ex_time)+' seconds',/INFORMATIONAL,/CONTINUE
+MESSAGE,'Execution Time: '+STRING(ex_time)+' seconds',/INFORMATIONAL,/CONTINUE
 ;;****************************************************************************************
 
 RETURN,out_struc

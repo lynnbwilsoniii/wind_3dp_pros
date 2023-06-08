@@ -74,9 +74,6 @@
 ;                                                                   [06/12/2020   v2.1.4]
 ;             9)  Fixed an issue with conflicting map codes that is very rare
 ;                                                                   [06/13/2020   v2.1.5]
-;            10)  Fixed an indexing issue when the input time range exceeds the available
-;                   VDF time ranges
-;                                                                   [01/19/2023   v2.1.6]
 ;
 ;   NOTES:      
 ;               1)  See also:  get_??.pro (?? = eh,elb,pl,plb,ph,phb...)
@@ -121,7 +118,7 @@
 ;
 ;   CREATED:  04/10/2008
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  01/19/2023   v2.1.6
+;    LAST MODIFIED:  06/13/2020   v2.1.5
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -204,11 +201,11 @@ ENDELSE
 ;;  Keyword in call_externals which determines how data 
 ;;   structures are called { >/= 0 use index, = -1 use times}
 ;;----------------------------------------------------------------------------------------
-myopt          = LONARR(gmt[0])
+myopt          = LONARR(gmt)
 IF KEYWORD_SET(trange) THEN BEGIN
   IF (N_ELEMENTS(trange) NE 2) THEN trange = [MIN(myto,/NAN),MAX(myto,/NAN)]
   bad_tr    = WHERE(myto GE trange[0] AND myto LE trange[1],bdtr)
-  IF (bdtr[0] EQ 0) THEN BEGIN
+  IF (bdtr EQ 0) THEN BEGIN
     badtrmssg = 'There are no valid '+myn+' structures in that time range!'
     MESSAGE,badtrmssg[0],/INFORMATIONAL,/CONTINUE
     RETURN,0
@@ -216,9 +213,8 @@ IF KEYWORD_SET(trange) THEN BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  Get range of index values for calling the get_??.pro routines
   ;;--------------------------------------------------------------------------------------
-  irange = LONG(interp(FINDGEN(gmt[0]),myto,gettime(trange)))
-  IF (MAX(trange,/NAN) GT MAX(myto,/NAN) AND irange[1] LT 0) THEN irange[1] = (gmt[0] - 1L)
-  irange = (irange < (gmt[0] - 1L)) > 0
+  irange = LONG(interp(FINDGEN(gmt),myto,gettime(trange)))
+  irange = (irange < (gmt - 1L)) > 0
   irange = [MIN(irange,/NAN),MAX(irange,/NAN)]
   IF (irange[0] GE irange[1] OR TOTAL(irange LT 0) GT 0) THEN BEGIN
     ;;  Bad index range --> quit
@@ -231,48 +227,48 @@ IF KEYWORD_SET(trange) THEN BEGIN
   ;;  Make sure structure times don't over reach time range
   ;;--------------------------------------------------------------------------------------
   trch   = MIN(trange,/NAN) - MIN(myto[istart:irange[1]],/NAN)
-  IF (trch[0] GT 0d0) THEN BEGIN
+  IF (trch GT 0d0) THEN BEGIN
     TRUE      = 1
     FALSE     = 0
     searching = TRUE
     cc        = istart
-    WHILE(searching[0]) DO BEGIN
+    WHILE(searching) DO BEGIN
       trch   = MIN(trange,/NAN) - myto[cc]
-      IF (trch[0] GT 0d0 AND ABS(trch[0]) GT 2.5d0) THEN BEGIN
+      IF (trch GT 0d0 AND ABS(trch) GT 2.5d0) THEN BEGIN
         searching = TRUE
-        cc       += 1L
+        cc += 1L
       ENDIF ELSE BEGIN
         searching = FALSE
       ENDELSE
     ENDWHILE
-    istart = cc[0]
+    istart = cc
     myto   = myto[istart:irange[1]]
   ENDIF ELSE BEGIN
     myto = myto[istart:irange[1]]
   ENDELSE
   gmt    = N_ELEMENTS(myto)
-  idx    = LINDGEN(gmt[0]) + istart[0]
+  idx    = LINDGEN(gmt) + istart
   myopt  = LONG([2,47,0])
 ENDIF ELSE BEGIN
   istart = 0L
-  irange = [istart[0],N_ELEMENTS(myto) - 1L]
-  idx    = LINDGEN(gmt[0]) + istart[0]
+  irange = [istart,N_ELEMENTS(myto) - 1L]
+  idx    = LINDGEN(gmt) + istart
   myopt  = LONG([2,-1,0])
 ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  Test structure for CHARGE tag name
 ;;----------------------------------------------------------------------------------------
-test_tag       = CALL_FUNCTION('get_'+myn[0],INDEX=idx[0])
+test_tag       = CALL_FUNCTION('get_'+myn,INDEX=idx[0])
 tags_tt        = TAG_NAMES(test_tag)
 gtags          = WHERE(STRLOWCASE(tags_tt) EQ 'charge',gtg)
-IF (gtg[0] GT 0) THEN log_ch = 1 ELSE log_ch = 0
+IF (gtg GT 0) THEN log_ch = 1 ELSE log_ch = 0
 ;;----------------------------------------------------------------------------------------
 ;;  Get dummy structure for replicating
 ;;----------------------------------------------------------------------------------------
 dumb           = dummy_3dp_str(myn,INDEX=idx)
 IF (SIZE(dumb,/TYPE) NE 8) THEN RETURN,0b
 mypts          = N_ELEMENTS(myto)
-mvi            = INTARR(mypts[0])
+mvi            = INTARR(mypts)
 ;;----------------------------------------------------------------------------------------
 ;;  Get Str. Data
 ;;----------------------------------------------------------------------------------------
@@ -288,10 +284,17 @@ IF (tt_t[0] GT 0L) THEN BEGIN
   mypt2          = N_ELEMENTS(idx2)                                   ;;  # of str.'s w/ 2nd mapcode
   mvi1           = LONARR(mypt1[0])                                   ;;  Long array of "valid identifier" logic
   mvi2           = LONARR(mypt2[0])                                   ;;  Long array of "valid identifier" logic
+;  mypt1          = my_inds[1,0] - my_inds[0,0] + 1L                   ;;  # of str.'s w/ 1st mapcode
+;  mypt2          = my_inds[1,1] - my_inds[0,1] + 1L                   ;;  # of str.'s w/ 2nd mapcode
+;  idx1           = LINDGEN(mypt1[0]) + my_inds[0,0]
+;  idx2           = LINDGEN(mypt2[0])+ my_inds[0,1]
   IF (tt_n[0] GT 0L) THEN BEGIN
     idx3   = my_inds[*,2]
     mypt3  = N_ELEMENTS(idx3)                                         ;;  # of str.'s w/ 3rd mapcode
     mvi3   = LONARR(mypt3[0])                                         ;;  Long array of "valid identifier" logic
+;    mypt3  = REFORM(my_inds[1,2]) - REFORM(my_inds[0,2]) + 1L         ;;  # of str.'s w/ 3rd mapcode
+;    idx3   = LINDGEN(mypt3[0]) + REFORM(my_inds[0,2])
+;    mvi3   = LONARR(mypt3[0])                                         ;;  Long array of "valid identifier" logic
   ENDIF ELSE BEGIN
     mypt3  = 0L
     idx3   = -1L
@@ -364,7 +367,7 @@ IF (tt_t[0] GT 0L) THEN BEGIN
       k        += trk[0]
     ENDWHILE
     ;;  LBW III 2011-02-18
-    IF ((cc[0] + k[0] - 1L) GE cc[0]) THEN myval.(j) = all_v[cc[0]:(cc[0] + k[0] - 1L)] ELSE myval.(j) = -1
+    IF (cc+k-1L GE cc[0]) THEN myval.(j) = all_v[cc[0]:(cc[0] + k[0] - 1L)] ELSE myval.(j) = -1
     all_3.(j) = mydd[*]
     trj       = (j[0] LT nst[0])
     cc       += myptt[0]*trj[0]

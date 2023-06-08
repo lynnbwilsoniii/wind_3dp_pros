@@ -1,0 +1,374 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   temp_calc_mva_adaptinv_time_freq.pro
+;  PURPOSE  :   
+;
+;  CALLED BY:   
+;               
+;
+;  INCLUDES:
+;               
+;
+;  CALLS:
+;               
+;
+;  REQUIRES:    
+;               
+;
+;  INPUT:
+;               TPN_MAGF     :  [4]-Element [string] array defining set and valid TPLOT
+;                                 handles associated with magnetic field data all in
+;                                 the same coordinate basis [nT, ICB]
+;               TRAN_SE      :  [4,2]-Element [double] array defining the time stamps of
+;                                 points of interest to use for calculating the group
+;                                 velocity unit vector and MVA unit vector associated
+;                                 with a wave interval
+;               FILT_FRQ     :  [2]-Element [numeric] array defining the range of
+;                                 frequencies to use to define the frequency filters to
+;                                 apply to the data before performing MVA
+;               
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               
+;
+;  KEYWORDS:    
+;               TRAN_CLIP    :  [2]-Element [numeric] array defining the time range over
+;                                 which to clip the magnetic field data to remove
+;                                 unnecessary time periods [e.g., to isolate a burst
+;                                 interval]
+;
+;   CHANGED:  1)  Continued writing routine
+;                                                                   [11/09/2022   v1.0.0]
+;
+;   NOTES:      
+;               
+;
+;  REFERENCES:  
+;               0)  H. Kawano and T. Higuchi "The bootstrap method in space physics:
+;                     Error estimation for the minimum variance analysis," Geophys.
+;                     Res. Lett. 22(3), pp. 307-310, 1995.
+;               1)  A.V. Khrabrov and B.U.Ö Sonnerup "Error estimates for minimum
+;                     variance analysis," J. Geophys. Res. 103(A4), pp. 6641-6651,
+;                     1998.
+;
+;   CREATED:  11/03/2022
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  11/09/2022   v1.0.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION temp_calc_mva_adaptinv_time_freq,tpn_magf,tran_se,filt_frq,TRAN_CLIP=tran_clip
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+;;  Define global defaults for MVA analysis
+min_thrsh      = 5d-2                ;;  use 50 pT as the minimum threshold allowed for MVA
+d__nw          = 2L                  ;;  # of time stamps btwn size of each time window within in subinterval
+d__ns          = 4L                  ;;  # of time stamps to shift btwn each subinterval
+mxovr          = 55d-2               ;;  require 55% overlap for two subintervals to be considered the "same"
+def_min_nint   = 10L
+scpref_all     = 'SC'+['1','2','3','4']
+;;  Error messages
+noinput_mssg   = 'No input was supplied...'
+ntoosml_mssg   = 'The input interval is too short to properly filter and analyze, returning without computation...'
+;;----------------------------------------------------------------------------------------
+;;  Check input
+;;----------------------------------------------------------------------------------------
+test           = ((N_PARAMS() LT 3) OR (SIZE(tpn_magf,/TYPE) NE 7) OR                  $
+                  (is_a_number(tran_se,/NOMSSG) EQ 0) OR                               $
+                  (is_a_number(filt_frq,/NOMSSG) EQ 0))
+IF (test[0]) THEN BEGIN
+  MESSAGE,noinput_mssg[0],/INFORMATIONAL,/CONTINUE
+  RETURN,0b
+ENDIF
+;;----------------------------------------------------------------------------------------
+;;  Check keywords
+;;----------------------------------------------------------------------------------------
+;;  Check TRAN_CLIP
+IF (test_plot_axis_range(tran_clip,/NOMSSG)) THEN BEGIN
+  tran_brst      = 1d0*tran_clip[SORT(tran_clip)]
+ENDIF ELSE BEGIN
+  tran_brst      = [0d0,1d30]
+ENDELSE
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define relevant parameters from input
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Get Bo [nT, GSE]
+get_data,tpn_magf[0],DATA=temp_magfv_1
+get_data,tpn_magf[1],DATA=temp_magfv_2
+get_data,tpn_magf[2],DATA=temp_magfv_3
+get_data,tpn_magf[3],DATA=temp_magfv_4
+;;  Determine sample rate [sps]
+bunix_1        = t_get_struc_unix(temp_magfv_1)
+bunix_2        = t_get_struc_unix(temp_magfv_2)
+bunix_3        = t_get_struc_unix(temp_magfv_3)
+bunix_4        = t_get_struc_unix(temp_magfv_4)
+srate_1        = sample_rate(bunix_1,/AVE)
+srate_2        = sample_rate(bunix_2,/AVE)
+srate_3        = sample_rate(bunix_3,/AVE)
+srate_4        = sample_rate(bunix_4,/AVE)
+IF (srate_1[0] GT 1) THEN sr_1 = 1d0*ROUND(srate_1[0]) ELSE sr_1 = srate_1[0]
+IF (srate_2[0] GT 1) THEN sr_2 = 1d0*ROUND(srate_2[0]) ELSE sr_2 = srate_2[0]
+IF (srate_3[0] GT 1) THEN sr_3 = 1d0*ROUND(srate_3[0]) ELSE sr_3 = srate_3[0]
+IF (srate_4[0] GT 1) THEN sr_4 = 1d0*ROUND(srate_4[0]) ELSE sr_4 = srate_4[0]
+;;----------------------------------------------------------------------------------------
+;;  Clip B-field data
+;;----------------------------------------------------------------------------------------
+bgse_clip_1    = trange_clip_data(temp_magfv_1,TRANGE=tran_brst,PRECISION=3)
+bgse_clip_2    = trange_clip_data(temp_magfv_2,TRANGE=tran_brst,PRECISION=3)
+bgse_clip_3    = trange_clip_data(temp_magfv_3,TRANGE=tran_brst,PRECISION=3)
+bgse_clip_4    = trange_clip_data(temp_magfv_4,TRANGE=tran_brst,PRECISION=3)
+test           = (SIZE(bgse_clip_1,/TYPE) NE 8) OR (SIZE(bgse_clip_2,/TYPE) NE 8) OR $
+                 (SIZE(bgse_clip_3,/TYPE) NE 8) OR (SIZE(bgse_clip_4,/TYPE) NE 8)
+IF (test[0]) THEN RETURN,0b                             ;;  Return to user
+;;----------------------------------------------------------------------------------------
+;;  Define interval durations
+;;----------------------------------------------------------------------------------------
+bunix_1        = t_get_struc_unix(bgse_clip_1)
+bunix_2        = t_get_struc_unix(bgse_clip_2)
+bunix_3        = t_get_struc_unix(bgse_clip_3)
+bunix_4        = t_get_struc_unix(bgse_clip_4)
+trmva_se       = tran_se
+int_durat      = REPLICATE(d,4L)                        ;;  Total interval duration [s] for each SC
+int_npts       = REPLICATE(d,4L)                        ;;  Corresponding # of 3-vector time stamps
+sr_a           = [sr_1[0],sr_2[0],sr_3[0],sr_4[0]]
+FOR k=0L, 3L DO BEGIN
+  int_durat[k]    = ABS(trmva_se[k,1] - trmva_se[k,0])
+  int_npts[k]     = int_durat[k]*sr_a[k]
+ENDFOR
+min_int_npts   = FLOOR(MIN(int_npts,/NAN,lnpt))         ;;  Minimum # of 3-vectors in any given interval
+min_int_dura   = int_durat[lnpt[0]]
+min_tint_npt   = MIN([N_ELEMENTS(bunix_1),N_ELEMENTS(bunix_2),N_ELEMENTS(bunix_3),N_ELEMENTS(bunix_4)],/NAN)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Chop up frequency range
+;;
+;;  Send in a broad frequency range (i.e., original one);  {fl, fu}, ∆fa = fu - fl
+;;    Chop up into smaller ∆fs < ∆fa, options include:
+;;      i)    uniformly in linear space
+;;      ii)   "zoom-in" approach
+;;      iii)  one-sided zoom --> fix fl(fu) and decrease(increase) fu(fl)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Check FILT_FRQ format/input
+IF (test_plot_axis_range(filt_frq,/NOMSSG)) THEN BEGIN
+  ;;  Set properly
+  freq_filt      = 1d0*filt_frq[SORT(filt_frq)]
+  filt___on      = 1b
+ENDIF ELSE BEGIN
+  freq_filt      = [0d0,MAX(sr_a,/NAN)/2d0]
+  filt___on      = 0b
+ENDELSE
+;;  Define min frequency bin width based on FFT frequencies
+min_frq_fft    = (MIN(sr_a,/NAN)/(min_tint_npt[0] - 1L))*1.05d0
+;;  Define frequency range [Hz]
+fran           = MAX(freq_filt,/NAN) - MIN(freq_filt,/NAN)
+;;  Check FILT_FRQ
+IF (fran[0] LE 2d0*min_frq_fft[0]) THEN BEGIN
+  ;;  ∆fa is too small --> make sure N is not too small too
+  IF (~filt___on[0]) THEN BEGIN
+    ;;  N is too small --> Return 0 to user
+    MESSAGE,ntoosml_mssg[0],/INFORMATIONAL,/CONTINUE
+    RETURN,0b
+  ENDIF ELSE BEGIN
+    ;;  User screwed up and set too-narrow a frequency bin for filtering --> redefine as full range
+    freq_filt      = [0d0,MAX(sr_a,/NAN)/2d0]
+    fran           = MAX(freq_filt,/NAN) - MIN(freq_filt,/NAN)
+  ENDELSE
+ENDIF ELSE BEGIN
+  ;;  ∆fa is large enough --> go forth and chop up
+ENDELSE
+;;  Define the # of frequency bins for bandpass using option i
+nfr___i        = FLOOR(fran[0]/min_frq_fft[0]/3d0) > 2L
+;;  Define frequency bins [Hz]
+freq__i        = DINDGEN(nfr___i[0])*fran[0]/(nfr___i[0] - 1L) + MIN(freq_filt,/NAN)
+;;  Define lower/upper frequency bin values [Hz]
+flow__i        = freq__i[0L:(nfr___i[0] - 2L)]
+fupp__i        = freq__i[1L:(nfr___i[0] - 1L)]
+nlu___i        = (nfr___i[0] - 1L)
+;;----------------------------------------------------------------------------------------
+;;  Chop up frequency range:  Option ii
+;;----------------------------------------------------------------------------------------
+;;  Initialize lower/upper frequency bin values [Hz]
+flow_ii        = [MIN(freq_filt,/NAN)]
+fupp_ii        = [MAX(freq_filt,/NAN)]
+true           = 0b
+fact           = 5d-2*fran[0]/2d0
+jj             = 0L
+REPEAT BEGIN
+  ;;  Iteratively shrink ∆f until < 2*f_fft
+  flowupp        = [flow_ii[jj],fupp_ii[jj]] + [1,-1]*fact[0]
+  flu_ran        = MAX(flowupp,/NAN) - MIN(flowupp,/NAN)
+  true           = flu_ran[0] LT (2d0*min_frq_fft[0])
+  IF (~true[0]) THEN BEGIN
+    ;;  Add to arrays
+    flow_ii        = [flow_ii,MIN(flowupp,/NAN)]
+    fupp_ii        = [fupp_ii,MAX(flowupp,/NAN)]
+    jj            += 1L
+  ENDIF
+;  IF ((jj[0] MOD 10) EQ 0) THEN STOP
+ENDREP UNTIL true[0]
+nlu__ii        = N_ELEMENTS(flow_ii)
+;;----------------------------------------------------------------------------------------
+;;  Chop up frequency range:  Option iii
+;;----------------------------------------------------------------------------------------
+;;  Initialize lower/upper frequency bin values [Hz]
+floliii        = [MIN(freq_filt,/NAN)]                ;;  fix fl
+fupliii        = [MAX(freq_filt,/NAN)]
+flouiii        = floliii                              ;;  fix fu
+fupuiii        = fupliii
+fact           = 5d-2*fran[0]
+;;  Fix f_lower
+true           = 0b
+jj             = 0L
+REPEAT BEGIN
+  ;;  Iteratively shrink ∆f (one-sided) until < 2*f_fft
+  flowupp        = [floliii[jj],fupliii[jj]] + [0,-1]*fact[0]
+  flu_ran        = MAX(flowupp,/NAN) - MIN(flowupp,/NAN)
+  true           = flu_ran[0] LT (2d0*min_frq_fft[0])
+  IF (~true[0]) THEN BEGIN
+    ;;  Add to arrays
+    floliii        = [floliii,MIN(flowupp,/NAN)]
+    fupliii        = [fupliii,MAX(flowupp,/NAN)]
+    jj            += 1L
+  ENDIF
+;  IF ((jj[0] MOD 10) EQ 0) THEN STOP
+ENDREP UNTIL true[0]
+nluliii        = N_ELEMENTS(floliii)
+;;  Fix f_upper
+true           = 0b
+jj             = 0L
+REPEAT BEGIN
+  ;;  Iteratively shrink ∆f (one-sided) until < 2*f_fft
+  flowupp        = [flouiii[jj],fupuiii[jj]] + [1,0]*fact[0]
+  flu_ran        = MAX(flowupp,/NAN) - MIN(flowupp,/NAN)
+  true           = flu_ran[0] LT (2d0*min_frq_fft[0])
+  IF (~true[0]) THEN BEGIN
+    ;;  Add to arrays
+    flouiii        = [flouiii,MIN(flowupp,/NAN)]
+    fupuiii        = [fupuiii,MAX(flowupp,/NAN)]
+    jj            += 1L
+  ENDIF
+;  IF ((jj[0] MOD 10) EQ 0) THEN STOP
+ENDREP UNTIL true[0]
+nluuiii        = N_ELEMENTS(flouiii)
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define defaults and parameters for MVA
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+n_l_wins       = [2L,20L,40L,60L,80L,100L,200L,200L]
+n_u_wins       = [2L,REPLICATE((min_int_npts[0]/5L),6L),200L]
+test_min       = [(min_int_npts[0] GE   10L AND min_int_npts[0] LE   20L),      $
+                  (min_int_npts[0] GT   20L AND min_int_npts[0] LE  100L),      $
+                  (min_int_npts[0] GT  100L AND min_int_npts[0] LE  200L),      $
+                  (min_int_npts[0] GT  200L AND min_int_npts[0] LE  300L),      $
+                  (min_int_npts[0] GT  300L AND min_int_npts[0] LE  400L),      $
+                  (min_int_npts[0] GT  400L AND min_int_npts[0] LE  500L),      $
+                  (min_int_npts[0] GT  500L AND min_int_npts[0] LE 1000L),      $
+                  (min_int_npts[0] GT 1000L)]
+good_nwin      = WHERE(test_min,gd_nwin)
+;;  Define the number of subinterval time windows
+n_win          = n_l_wins[good_nwin[0]] < n_u_wins[good_nwin[0]]
+;;  Define structures and arrays for relevant inputs/outputs
+bgse_clip_a    = {SC1:bgse_clip_1,SC2:bgse_clip_2,SC3:bgse_clip_3,SC4:bgse_clip_4}
+bunx_clip_a    = {SC1:bunix_1,SC2:bunix_2,SC3:bunix_3,SC4:bunix_4}
+n_scp          = N_TAGS(bgse_clip_a)              ;;  # of spacecraft
+;;  Define frequency bin structures
+flow_struc     = {I:flow__i,II:flow_ii,III_L:floliii,III_U:flouiii}
+fupp_struc     = {I:fupp__i,II:fupp_ii,III_L:fupliii,III_U:fupuiii}
+n_filt         = N_TAGS(flow_struc)               ;;  # of different filter arrays
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Perform MVA
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+FOR k=0L, n_scp[0] - 1L DO BEGIN
+  ;;--------------------------------------------------------------------------------------
+  ;;--------------------------------------------------------------------------------------
+  FOR j=0L, n_filt[0] - 1L DO BEGIN
+    ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    flow_arr       = flow_struc.(j)
+    fupp_arr       = fupp_struc.(j)
+    nfl            = N_ELEMENTS(flow_arr)
+    FOR i=0L, nfl[0] - 1L DO BEGIN
+      ;;**********************************************************************************
+      ;;**********************************************************************************
+      ;;  Define eigenvalue ratio thresholds
+      rmid2min_thsh  = 1d2                              ;;  Require Lmid/Lmin ≥ 100
+      rmax2mid_thsh  = 1d1                              ;;  Require Lmax/Lmid < 10
+      rd2n_x2d_thsh  = 1d1                              ;;  Require (Lmid/Lmin)/(Lmax/Lmid) > 10
+      saved          = calc_and_save_mva_res_by_int(clip_acf,INTS_TRANGE=ints_trange,                   $
+                                                    FLOW_SUBINT=flow_subint,FHIGHSUBINT=fhighsubint,    $
+                                                    BAD_INTS=bad_ints,BAD_FLOW=bad_flow,                $
+                                                    SCPREF=scpref[0],D__NW=d__nw[0],D__NS=d__ns[0],     $
+                                                    N_WIN=n_win[0],MIN_THRSH=min_thrsh[0],              $
+                                                    MAX_OVERL=mxovr[0],FPREF_MID=fpref_mid0,            $
+                                                    MIN_NUM_INT=def_min_nint[0],                        $
+                                                    N_INT_ARR=n_int_all,FRAN_FNM_STR=freq_str_str,      $
+                                                    FRAN_YSB_STR=freq_ysub_str,N_MIN_STR=nmin_filt_str, $
+                                                    MID2MIN_THRSH=rmid2min_thsh,                        $
+                                                    MAX2MID_THRSH=rmax2mid_thsh,                        $
+                                                    D2N_X2D_THRSH=rd2n_x2d_thsh,                        $
+                                                    BEST_SUBINT=best_subint,MVA_RESULTS=mva_results     )
+      ;;  Keep only the best
+      best_res       = keep_best_mva_from_adapint(best_subint,mva_results)
+      ;;**********************************************************************************
+      ;;**********************************************************************************
+    ENDFOR
+    ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    ;;++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  ENDFOR
+  ;;--------------------------------------------------------------------------------------
+  ;;--------------------------------------------------------------------------------------
+ENDFOR
+
+
+
+STOP
+
+
+
+
+
+END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
