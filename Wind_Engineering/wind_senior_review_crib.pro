@@ -25,7 +25,7 @@ USERSYM,0.27*COS(xxo),0.27*SIN(xxo),/FILL
 ;; Define X-Axis ticks for plots
 xtn            = ['1994','1995','1996','1997','1998','1999','2000','2001','2002','2003',$
                   '2004','2005','2006','2007','2008','2009','2010','2011','2012','2013',$
-                  '2014','2015','2016','2017','2018','2019','2020']
+                  '2014','2015','2016','2017','2018','2019','2020','2021','2022','2023']
 xtn_dates      = xtn+'-01-01/00:00:00.000'
 xtv            = time_double(xtn_dates)
 xts            = N_ELEMENTS(xtv) - 1L
@@ -36,7 +36,7 @@ xtn_ps         = ['1994','!C'+'1995','1996','!C'+'1997','1998','!C'+'1999',$
                   '2000','!C'+'2001','2002','!C'+'2003','2004','!C'+'2005',$
                   '2006','!C'+'2007','2008','!C'+'2009','2010','!C'+'2011',$
                   '2012','!C'+'2013','2014','!C'+'2015','2016','!C'+'2017',$
-                  '2018','!C'+'2019','2020']
+                  '2018','!C'+'2019','2020','!C'+'2021','2022','!C'+'2023']
 ft_suffx       = 'Jan-'+xtn[0]+'_to_Jan-'+xtn[xts[0]]
 yttl_sfx       = ' [Jan. '+xtn[0]+' to Jan. '+xtn[xts[0]]+']'
 ;; compile reading functions
@@ -349,20 +349,27 @@ bt1_avg_sm     = SMOOTH(bt1_avg,wd[0],/NAN,/EDGE_TRUNCATE)  ;;  Smoothed [Daily]
 bt2_avg_sm     = SMOOTH(bt2_avg,wd[0],/NAN,/EDGE_TRUNCATE)  ;;  Smoothed [Daily] Battery-2 temperature [Avg., deg. C]
 bt3_avg_sm     = SMOOTH(bt3_avg,wd[0],/NAN,/EDGE_TRUNCATE)  ;;  Smoothed [Daily] Battery-3 temperature [Avg., deg. C]
 
-;;  Trends [use]
+;;  Trends [use] (*** 2020 Senior Review ***)
 ;;    Solar Arrays --> after Jan. 1, 2005 to Jan. 1, 2020
 ;;    Battery Temp --> after Jul. 1, 2017 to Jan. 1, 2020
 ;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2020 [Battery 1]
 ;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2020 [Battery 2]
 ;;    Battery Volt --> after Jan. 1, 2013 to Jan. 1, 2020 [Battery 3]
+;;
+;;  Trends [use] (*** 2023 Senior Review ***)
+;;    Solar Arrays --> after Jan. 1, 2016 to Apr. 1, 2023
+;;    Battery Temp --> after Jul. 1, 2018 to Apr. 1, 2023
+;;    Battery Volt --> after Aug. 1, 2018 to Apr. 1, 2023 [Battery 1]
+;;    Battery Volt --> after Jun. 1, 2018 to Apr. 1, 2023 [Battery 2]
+;;    Battery Volt --> after Jun. 1, 2018 to Apr. 1, 2023 [Battery 3]
 
 zero_t         = '00:00:00.000'
-tyear_max      = '2020'
-tra__sa        = time_double(['2005',tyear_max[0]]+'-01-01/'+zero_t[0])
-tra_bv1        = time_double(['2013',tyear_max[0]]+'-01-01/'+zero_t[0])
-tra_bv2        = time_double(['2013',tyear_max[0]]+'-01-01/'+zero_t[0])
-tra_bv3        = time_double(['2013',tyear_max[0]]+'-01-01/'+zero_t[0])
-tra_bt1        = time_double(['2017-07',tyear_max[0]+'-01']+'-01/'+zero_t[0])
+tyear_max      = '2023'
+tra__sa        = time_double(['2016-01',tyear_max[0]+'-04']+'-01/'+zero_t[0])
+tra_bt1        = time_double(['2018-01',tyear_max[0]+'-04']+'-01/'+zero_t[0])
+tra_bv1        = time_double(['2018-08',tyear_max[0]+'-04']+'-01/'+zero_t[0])
+tra_bv2        = time_double(['2018-07',tyear_max[0]+'-04']+'-01/'+zero_t[0])
+tra_bv3        = time_double(['2018-07',tyear_max[0]+'-04']+'-01/'+zero_t[0])
 good__sa       = WHERE(unix GE tra__sa[0] AND unix LE tra__sa[1],gd__sa)
 good_bv1       = WHERE(unix GE tra_bv1[0] AND unix LE tra_bv1[1],gd_bv1)
 good_bv2       = WHERE(unix GE tra_bv2[0] AND unix LE tra_bv2[1],gd_bv2)
@@ -371,10 +378,13 @@ good_bt1       = WHERE(unix GE tra_bt1[0] AND unix LE tra_bt1[1],gd_bt1)
 good_bt2       = WHERE(unix GE tra_bt1[0] AND unix LE tra_bt1[1],gd_bt2)
 good_bt3       = WHERE(unix GE tra_bt1[0] AND unix LE tra_bt1[1],gd_bt3)
 
-tra_rbc        = time_double(['2013-01','2014-06']+'-01/'+zero_t[0])
+tra_rbc        = time_double(['2016-01','2023-04']+'-01/'+zero_t[0])
 good_rbc       = WHERE(unix GE tra_rbc[0] AND unix LE tra_rbc[1],gd_rbc)
 PRINT,';;', MIN(rb__max[good_rbc],/NAN), MAX(rb__max[good_rbc],/NAN), MEAN(rb__max[good_rbc],/NAN), MEDIAN(rb__max[good_rbc])
+;;  (*** 2020 Senior Review ***)
 ;;       9.5413000       10.105800       9.8773744       9.8800000
+;;  (*** 2023 Senior Review ***)
+;;       7.5092000       28.507800       10.005189       9.8800000
 
 rbc_max_v0     = MEDIAN(rb__max[good_rbc])
 avg_rbc_xxx    = time_double(['1994','2150']+'-01-01/'+zero_t[0])
@@ -470,7 +480,8 @@ find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int__sa_sm_3
 PRINT,';;  ', time_string([xy_int__sa_sm_1[0],xy_int__sa_sm_2[0],xy_int__sa_sm_3[0]],PREC=3)
 ;;  *** Old ***   2018-05-29/18:46:21.082 2042-09-06/08:42:29.514 2055-06-25/09:38:26.444
 ;;  *** Old ***   2017-12-06/21:04:35.645 2041-12-02/03:03:51.806 2059-07-07/16:30:55.441
-;;   2017-11-26/15:21:11.407 2044-01-30/16:33:18.414 2058-08-26/19:35:49.868
+;;  *** Old ***   2017-11-26/15:21:11.407 2044-01-30/16:33:18.414 2058-08-26/19:35:49.868
+;;   2014-07-17/17:11:24.351 2059-03-16/15:00:15.572 2088-12-07/00:04:13.123
 
 ;;  Battery Voltages
 yy1            = ls_volt_yvs
@@ -484,7 +495,8 @@ PRINT,';;  ', time_string([xy_int_bv1_sm_1[0],xy_int_bv2_sm_2[0],xy_int_bv3_sm_3
 ;;  *** Old ***   2025-04-05/19:53:32.713 2025-06-02/14:39:00.790 2020-09-18/00:23:03.579
 ;;  *** Old ***   2027-04-26/02:46:17.187 2025-11-02/14:53:47.881 2021-12-18/09:21:41.164
 ;;  *** Old ***   2030-04-03/16:40:45.351 2029-07-11/21:00:00.564 2029-01-17/14:35:13.804
-;;   2056-08-26/03:10:09.182 2061-04-27/07:49:10.824 2064-09-06/09:43:15.082
+;;  *** Old ***   2056-08-26/03:10:09.182 2061-04-27/07:49:10.824 2064-09-06/09:43:15.082
+;;   2078-01-13/10:06:09.585 2112-10-25/07:28:35.624 2096-12-31/22:03:30.196
 
 ;;  Battery Temperatures
 yy1            = bt_cent_yvs
@@ -497,7 +509,8 @@ find_intersect_2_curves,xx1,yy1,xx2,yy2,XY=xy_int_bt3_sm_3
 PRINT,';;  ', time_string([xy_int_bt1_sm_1[0],xy_int_bt2_sm_2[0],xy_int_bt3_sm_3[0]],PREC=3)
 ;;  *** Old ***   2017-04-21/00:39:01.349 2017-04-13/20:16:53.985 2015-07-09/21:14:31.626
 ;;  *** Old ***   2023-02-07/00:22:24.315 2022-02-20/03:27:05.576 2020-11-01/10:26:32.179
-;;   2100-01-01/00:00:00     2100-01-01/00:00:00     2100-01-01/00:00:00
+;;  *** Old ***   2100-01-01/00:00:00     2100-01-01/00:00:00     2100-01-01/00:00:00
+;;   1970-01-01/00:00:00     1970-01-01/00:00:00     1970-01-01/00:00:00    
 
 
 
@@ -512,7 +525,7 @@ PRINT,';;  ', time_string([xy_int_bt1_sm_1[0],xy_int_bt2_sm_2[0],xy_int_bt3_sm_3
 ;; Define extended X-Axis ticks for plots
 xtn_exw        = ['1994','1996','1998','2000','2002','2004','2006','2008','2010','2012',$
                   '2014','2016','2018','2020','2022','2024','2026','2028','2030','2032',$
-                  '2034','2036','2038','2040']
+                  '2034','2036','2038','2040','2042','2044','2046','2048','2050']
 xtn_dates_ex   = xtn_exw+'-01-01/00:00:00.000'
 xtv_ex         = time_double(xtn_dates_ex)
 xts_ex         = N_ELEMENTS(xtn_exw) - 1L
@@ -555,7 +568,7 @@ WSHOW,0
 ;;-----------------------------------------
 symsz          = 1.25
 thck           = 2.0
-fname          = 'Wind_Solar-Array-Current-Output_vs_Time_'+ft_suffx[0]
+fname          = 'Wind_Solar-Array-Current-Output_vs_Time_'+ft_suffx[0]+'_with_fit_extrapolations'
 popen,fname[0],/LAND
   PLOT,unix,sa__min,_EXTRA=pstr
     ;;  Current Avg. of Max Regulated Bus Current [A]
@@ -618,7 +631,7 @@ WSHOW,1
 ;;-----------------------------------------
 symsz          = 1.25
 thck           = 2.0
-fname          = 'Wind_Avg-Battery-Bias-Voltage-Output_vs_Time_'+ft_suffx[0]
+fname          = 'Wind_Avg-Battery-Bias-Voltage-Output_vs_Time_'+ft_suffx[0]+'_with_fit_extrapolations'
 popen,fname[0],/LAND
   PLOT,unix,bv1_avg,_EXTRA=pstr
     ;; Battery 1
@@ -681,7 +694,7 @@ WSHOW,2
 ;;-----------------------------------------
 symsz          = 1.25
 thck           = 2.0
-fname          = 'Wind_Avg-Battery-Temperature_vs_Time_'+ft_suffx[0]
+fname          = 'Wind_Avg-Battery-Temperature_vs_Time_'+ft_suffx[0]+'_with_fit_extrapolations'
 popen,fname[0],/LAND
   PLOT,unix,bt1_avg,_EXTRA=pstr
     ;;  Output assumed "bad" temperature for batteries
@@ -770,7 +783,7 @@ WSHOW,0
 ;;-----------------------------------------
 symsz          = 1.25
 thck           = 2.0
-fname          = 'Wind_Solar-Array-Current-Output_vs_Time_'+ft_suffx[0]
+fname          = 'Wind_Solar-Array-Current-Output_vs_Time_'+ft_suffx[0]+'_with_fit_extrapolations_long'
 popen,fname[0],/LAND
   PLOT,unix,sa__min,_EXTRA=pstr_ps
     ;;  Current Avg. of Max Regulated Bus Current [A]
@@ -792,18 +805,18 @@ pclose
 
 
 ;; Define Y-Axis range
-yra            = [21d0,24d0]           ;; range of bias voltages
+yra            = [19d0,24d0]           ;; range of bias voltages
 ;; Define axes labels
 yttl           = 'Battery Voltage Output [Volts]'
 xttl           = 'Years'
 pttl           = 'Wind Avg Battery Bias Voltage Output'+yttl_sfx[0]
 ;; Define plot structure
 pstr           = {YRANGE:yra,XTICKNAME:xtn_ex,XTICKV:xtv_ex,XTICKS:xts_ex,YTITLE:yttl,$
-                  XTITLE:xttl,TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,YTICKS:6L,$
+                  XTITLE:xttl,TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,YTICKS:10L,$
                   XTICKLEN:1.0,XGRIDSTYLE:1,XSTYLE:1,YSTYLE:1}
 pstr_ps        = {YRANGE:yra,XTICKNAME:xtn_ex_ps,XTICKV:xtv_ex,XTICKS:xts_ex,         $
                   YTITLE:yttl,XTITLE:xttl_ps,TITLE:pttl,NODATA:1,XMINOR:12,YMINOR:4,  $
-                  YTICKS:6L,XTICKLEN:1.0,XGRIDSTYLE:1,XSTYLE:1,YSTYLE:1}
+                  YTICKS:10L,XTICKLEN:1.0,XGRIDSTYLE:1,XSTYLE:1,YSTYLE:1}
 ;;  Plot data
 symsz          = 2.00
 WSET,1
@@ -833,7 +846,7 @@ WSHOW,1
 ;;-----------------------------------------
 symsz          = 1.25
 thck           = 2.0
-fname          = 'Wind_Avg-Battery-Bias-Voltage-Output_vs_Time_'+ft_suffx[0]
+fname          = 'Wind_Avg-Battery-Bias-Voltage-Output_vs_Time_'+ft_suffx[0]+'_with_fit_extrapolations_long'
 popen,fname[0],/LAND
   PLOT,unix,bv1_avg,_EXTRA=pstr_ps
     ;; Battery 1
