@@ -14,22 +14,25 @@
 ;  INCLUDES:
 ;               NA
 ;
-;  CALLS:
+;  COMMON:
 ;               wind_com.pro
+;
+;  CALLS:
 ;               ctime.pro
 ;               gettime.pro
 ;
 ;  REQUIRES:    
 ;               1)  External Windlib shared object libraries
-;                     [e.g., ~/WIND_PRO/wind3dp_lib_darwin_i386.so]
+;                     [e.g., ~/WIND_PRO/wind3dp_lib_darwin_x86_64.so]
 ;               2)  UMN Modified Wind/3DP IDL Libraries
 ;
 ;  INPUT:
 ;               T        :  Scalar (or [2]-Element array of) [double] Unix time(s)
 ;                             defining start (and stop) time(s) of interest.  If input
 ;                             is a [2]-element array, then all the data structures
-;                             between T[0] and T[1] will be averaged together into one
-;                             IDL structure on output.
+;                             between T[0] and T[1] will be summed together into one
+;                             IDL structure on output.  The summing is performed in units
+;                             of counts and the DT and INTEG_T values change accordingly.
 ;               ADD      :  Scalar [structure, OPTIONAL] defining another distribution
 ;                             to add to the structure found for T
 ;                             ** [Obsolete] **
@@ -47,20 +50,27 @@
 ;               TIMES    :  If set, program returns the start times of all the EESA
 ;                             High distributions within the time range loaded during
 ;                             call to load_3dp_data.pro
+;                             [Default = FALSE]
 ;               INDEX    :  Scalar [integer] telling program to select data by sample
 ;                             index instead of Unix time
 ;               ADVANCE  :  If set, program gets the next distribution relative to the
 ;                             previously retrieved distribution
+;                             [Default = FALSE]
 ;
 ;   CHANGED:  1)  Peter changed something
 ;                                                                   [03/02/1999   v1.0.23]
 ;             2)  Updated Man. page and rewrote routine
 ;                                                                   [05/14/2021   v1.1.0]
+;             3)  Changed how routine handles large time ranges for determining the
+;                   number of VDFs
+;                                                                   [02/28/2024   v1.1.1]
+;             4)  Fixed a bug if e3dunk_to_idl.c returned an empty array
+;                                                                   [03/01/2024   v1.1.2]
 ;
 ;   NOTES:      
 ;               1)  The procedure "load_3dp_data" must be called prior to use
 ;               2)  Would not recommend the use of ADVANCE and ADD is obsolete
-;               3)  Safest to call get_3dp_structs.pro
+;               3)  Safest to call wrapping routine, get_3dp_structs.pro
 ;
 ;  REFERENCES:  
 ;               0)  Lin et al., "A Three-Dimensional Plasma and Energetic particle
@@ -74,10 +84,13 @@
 ;                      Keplerlaan 1, 2200 AG Noordwijk, The Netherlands, 2007.
 ;               3)  M. Wüest, et al., "Review of Instruments," ISSI Sci. Rep. Ser.
 ;                      Vol. 7, pp. 11--116, 2007.
+;               4)  Wilson III, L.B., et al., "A Quarter Century of Wind Spacecraft
+;                      Discoveries," Rev. Geophys. 59(2), pp. e2020RG000714,
+;                      doi:10.1029/2020RG000714, 2021.
 ;
 ;   CREATED:  ??/??/????
 ;   CREATED BY:  Peter Schroeder
-;    LAST MODIFIED:  05/14/2021   v1.1.0
+;    LAST MODIFIED:  03/01/2024   v1.1.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -90,6 +103,12 @@ FUNCTION get_eh,t,add,TIMES=tms,INDEX=idx,ADVANCE=adv
 ;;----------------------------------------------------------------------------------------
 f              = !VALUES.F_NAN
 d              = !VALUES.D_NAN
+;;----------------------------------------------------------------------------------------
+;;  IDL system and OS stuff
+;;----------------------------------------------------------------------------------------
+vers           = !VERSION.OS_FAMILY   ;;  e.g., 'unix'
+vern           = !VERSION.RELEASE     ;;  e.g., '7.1.1'
+verm           = !VERSION.MEMORY_BITS ;;  e.g., 64 for a 64-bit machine
 ;;----------------------------------------------------------------------------------------
 ;;  Load common blocks
 ;;----------------------------------------------------------------------------------------
@@ -152,20 +171,20 @@ options        = LONG([nt[0],a[0],i[0]])
 
 IF (N_ELEMENTS(wind_lib) EQ 0) THEN BEGIN
   ;;  User did not call load_3dp_data.pro first
-  MESSAGE,'You must first load the data',/INFORMATIONAL,/CONTINUE
+  MESSAGE,'You must first load 3DP data by calling load_3dp_data.pro',/INFORMATIONAL,/CONTINUE
   RETURN,0
 ENDIF
 ;;----------------------------------------------------------------------------------------
 ;;  Get start times, if requested
 ;;----------------------------------------------------------------------------------------
 IF KEYWORD_SET(tms) THEN BEGIN
-;   num = call_external(wind_lib,'e3dunk_to_idl')
-  num            = 10000
+  ;;  If system is 64-bit, then allow more EH VDFs
+  IF (verm[0] GE 64) THEN num = CALL_EXTERNAL(wind_lib,'e3dunk_to_idl') > 1L ELSE num = 10000L
   options[0]     = num[0]
   times          = DBLARR(num)
   ok             = CALL_EXTERNAL(wind_lib,'e3dunk_to_idl',options,times)
   IF (SIZE(ok,/TYPE) EQ 0) THEN RETURN,0d0
-  PRINT, ok[0] + 1, '  Eesa high time samples'
+  MESSAGE,STRTRIM(STRING(ok[0] + 1L,FORMAT='(I)'),2L)+'  Eesa high time samples',/CONTINUE,/INFORMATIONAL
   IF (ok[0] LT 0) THEN RETURN,0d0 ELSE RETURN,times[0L:ok[0]]
 ENDIF
 ;;----------------------------------------------------------------------------------------
@@ -198,21 +217,22 @@ REPEAT BEGIN
   ENDELSE
   options[2]     = dat[0].INDEX + 1
   IF (time[1] EQ time[0]) THEN q = 1
-ENDREP UNTIL q
+ENDREP UNTIL q[0]
 ;;  Define time range of structure
 retdat.TRANGE  = [retdat[0].TIME,retdat[0].END_TIME]
 ;;----------------------------------------------------------------------------------------
 ;;  Modify data structures
 ;;----------------------------------------------------------------------------------------
-retdat.GEOMFACTOR = retdat.GEOMFACTOR * 0.8
+retdat.GEOMFACTOR = retdat.GEOMFACTOR[0] * 0.8
 ;;  Define detector deadtime  [+LBW 05/14/2021   v1.1.0]
-retdat.DEADTIME   = 1e-7      ;;  Put a lower bound on it so the values aren't zero, which is unphysical
-
-;@get_eh2_extra.pro
+retdat.DEADTIME  += 1e-7      ;;  Put a lower bound on it so the values aren't zero, which is unphysical
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------
 
 RETURN,retdat
 END
+
+
+
 
