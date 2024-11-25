@@ -1,0 +1,309 @@
+;+
+;*****************************************************************************************
+;
+;  FUNCTION :   calc_fast_velmoms_with_uncer_from_pois.pro
+;  PURPOSE  :   This routine calculates the standard velocity moments of f(v) but includes
+;                 uncertainties by calculating f(v) ± ∂f(v).  The outputs for each
+;                 structure tag are given as [f(v) - ∂f, f(v), f(v) + ∂f], e.g., the
+;                 VOS_XYZ tag is a [3,3]-element [numeric] array where the 3-vector
+;                 from the (f(v) - ∂f) contribution is given by outstr.VOS_XYZ[*,0]
+;
+;  CALLED BY:   
+;               NA
+;
+;  INCLUDES:
+;               NA
+;
+;  CALLS:
+;               is_a_number.pro
+;               is_a_3_vector.pro
+;               lbw_fast_short_ninteg_3d_vdf.pro
+;
+;  REQUIRES:    
+;               1)  UMN Modified Wind/3DP IDL Libraries
+;
+;  INPUT:
+;               VELS       :  [K,3]-Element [numeric] array of particle velocities [km/s]
+;               DATA       :  [K]-Element [numeric] array of phase (velocity) space
+;                               densities
+;                               [e.g., s^(3) cm^(-3) km^(-3)]
+;               POIS       :  [K]-Element [numeric] array of phase space densities for
+;                               the Poisson statistics of the values in DATA
+;                               [e.g., s^(3) cm^(-3) km^(-3)]
+;
+;  EXAMPLES:    
+;               [calling sequence]
+;               test = calc_fast_velmoms_with_uncer_from_pois(vels,data,pois [,VLIM=vlim] $
+;                                   [,NGRID=ngrid] [,/SLICE2D] [,VFRAME=vframe]      $
+;                                   [,/ELECTRON] [,/PROTON] [,/ALPHA_P]              $
+;                                   [,MAG_DIR=mag_dir] [,VEC1=vec1] [,VEC2=vec2])
+;
+;  KEYWORDS:    
+;               ***  INPUTS  ***
+;               VLIM       :  Scalar [numeric] defining the speed limit for the velocity
+;                               grids over which to triangulate the data [km/s]
+;                               [Default = max vel. magnitude]
+;               NGRID      :  Scalar [numeric] defining the number of grid points in each
+;                               direction to use when triangulating the data.  The input
+;                               will be limited to values between 30 and 300.
+;                               [Default = 101]
+;               SLICE2D    :  If set, routine will return a 2D slice instead of a 3D
+;                               projection
+;                               [Default = TRUE]
+;               VFRAME     :  [3]-Element [float/double] array defining the 3-vector
+;                               velocity of the K'-frame relative to the K-frame [km/s]
+;                               to use to transform the velocity distribution into the
+;                               bulk flow reference frame
+;                               [ Default = [0,0,0] ]
+;               ELECTRON   :  If set, use electron mass [eV/(km/sec)^2]
+;                                [Default = TRUE if MASS = FALSE]
+;               PROTON     :  If set, use proton mass [eV/(km/sec)^2]
+;                                [Default = FALSE]
+;               ALPHA_P    :  If set, use alpha-particle mass [eV/(km/sec)^2]
+;                               [Default = FALSE]
+;               MAG_DIR    :  [3]-Element vector to be used to define the magnetic field
+;                               direction to which the cartesian data will be rotated
+;                               [ Default = [1,0,0] ]
+;               N_S_ONLY   :  If set, routine will return the velocity moment structure
+;                               but only with the number density value calculated
+;               ***  Pre-Set INPUTS  ***
+;               VEC1       :  [3]-Element vector to be used for X-direction in
+;                               a 3D rotation of the input data
+;                               [e.g., see rotate_3dp_structure.pro]
+;                               [ Default = [1.,0.,0.] ]
+;               VEC2       :  [3]--Element vector to be used with VEC1 to define a 3D
+;                               rotation matrix.  The new basis will have the following:
+;                                 X'  :  parallel to VEC1
+;                                 Z'  :  parallel to (VEC1 x VEC2)
+;                                 Y'  :  completes the right-handed set
+;                               [ Default = [0.,1.,0.] ]
+;
+;   CHANGED:  1)  Cleaned up and modified to reduce dependence on extra routines
+;                   within lbw_fast_short_ninteg_3d_vdf.pro
+;                                                                   [10/17/2024   v1.1.0]
+;
+;   NOTES:      0)  Adapted from calc_velmoms_with_uncer_from_pois.pro to increase
+;                     computation speed when calling 1000s of times in a row
+;               Velocity moments:
+;                 Note:  d^3v --> v_perp dv_perp dv_para dphi --> π |v_perp| dv_perp dv_para
+;                             --> dvx dvy dvz  {for cartesian coordinates}
+;
+;                 Definitions:
+;                   ms        :  particle mass [eV km^(-2) s^(+2)] of species s
+;                   h         :  Simpson's 1/3 Rule integration factor [km^(+3) s^(-3)]
+;                                = ∆vx*∆vy*∆vz/[3 (N - 1)]^3
+;                   S_ijk     :  Simpson's 1/3 Rule coefficients [N/A]
+;                   K_ijk     :  common integration factor [km^(+3) s^(-3) sr]
+;                                = (h S_ijk)
+;                   f_ijk     :  total velocity distribution function (VDF)
+;                                [# cm^(-3) km^(-3) s^(+3)]
+;                   qmax      :  free-streaming heat flux [eV km s^(-1) cm^(-3)]
+;                                = 3/2 me Ne (V_Tec,//)^3
+;
+;                 Velocity Moments:
+;                   Ns        :  Total particle density [cm^(-3)] of species s
+;                                = ∑_i ∑_j ∑_k [ K_ijk f_ijk ]
+;                   Vos_x     :  X-Component drift velocity [km/s] of species s
+;                                = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vx_i f_ijk ]
+;                   Vos_y     :  Y-Component drift velocity [km/s] of species s
+;                                = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vy_j f_ijk ]
+;                   Vos_z     :  Z-Component drift velocity [km/s] of species s
+;                                = Ns^(-1) ∑_i ∑_j ∑_k [ K_ijk vz_k f_ijk ]
+;                   Ps_xx     :  XX-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i f_ijk ]
+;                   Ps_yy     :  YY-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vy_j f_ijk ]
+;                   Ps_zz     :  ZZ-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vz_k vz_k f_ijk ]
+;                   Ps_xy     :  XY-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vy_j f_ijk ]
+;                   Ps_xz     :  XZ-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vz_k f_ijk ]
+;                   Ps_yz     :  YZ-Component pressure tensor component [eV cm^(-3)] of
+;                                species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vz_k f_ijk ]
+;                   Qs_xxx    :  XXX-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i vx_i f_ijk ]
+;                   Qs_yyy    :  YYY-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vy_j vy_j f_ijk ]
+;                   Qs_zzz    :  ZZZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vz_k vz_k vz_k f_ijk ]
+;                   Qs_xxy    :  XXY-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i vy_j f_ijk ]
+;                   Qs_xxz    :  XXZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vx_i vz_k f_ijk ]
+;                   Qs_yyz    :  YYZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vy_j vz_k f_ijk ]
+;                   Qs_xyy    :  XYY-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vy_j vy_j f_ijk ]
+;                   Qs_xzz    :  XZZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vz_k vz_k f_ijk ]
+;                   Qs_yzz    :  YZZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vy_j vz_k vz_k f_ijk ]
+;                   Qs_xyz    :  XYZ-Component of heat flux tensor [eV km s^(-1) cm^(-3)]
+;                                of species s
+;                                = ms ∑_i ∑_j ∑_k [ K_ijk vx_i vy_j vz_k f_ijk ]
+;
+;  REFERENCES:  
+;               0)  Simpson's 1/3 Rule References:
+;                 http://mathfaculty.fullerton.edu/mathews/n2003/SimpsonsRule2DMod.html
+;                 http://www.physics.usyd.edu.au/teach_res/mp/doc/math_integration_2D.pdf
+;                 https://en.wikipedia.org/wiki/Simpson%27s_rule
+;               1)  See IDL's documentation for:
+;                     QHULL.PRO:        https://harrisgeospatial.com/docs/qhull.html
+;                     QGRID3.PRO:       https://harrisgeospatial.com/docs/QGRID3.html
+;                     TRIANGULATE.PRO:  https://harrisgeospatial.com/docs/TRIANGULATE.html
+;                     TRIGRID.PRO:      https://harrisgeospatial.com/docs/TRIGRID.html
+;               2)  Carlson et al., (1983), "An instrument for rapidly measuring
+;                      plasma distribution functions with high resolution,"
+;                      Adv. Space Res. Vol. 2, pp. 67-70.
+;               3)  Curtis et al., (1989), "On-board data analysis techniques for
+;                      space plasma particle instruments," Rev. Sci. Inst. Vol. 60,
+;                      pp. 372.
+;               4)  Lin et al., (1995), "A Three-Dimensional Plasma and Energetic
+;                      particle investigation for the Wind spacecraft," Space Sci. Rev.
+;                      Vol. 71, pp. 125.
+;               5)  Paschmann, G. and P.W. Daly (1998), "Analysis Methods for Multi-
+;                      Spacecraft Data," ISSI Scientific Report, Noordwijk, 
+;                      The Netherlands., Int. Space Sci. Inst.
+;               6)  Wilson III, L.B., et al., "The Statistical Properties of Solar Wind
+;                      Temperature Parameters Near 1 au," Astrophys. J. Suppl. 236(2),
+;                      pp. 41, doi:10.3847/1538-4365/aab71c, 2018.
+;               7)  Wilson III, L.B., et al., "Electron energy partition across
+;                      interplanetary shocks: I. Methodology and Data Product,"
+;                      Astrophys. J. Suppl. 243(8), doi:10.3847/1538-4365/ab22bd, 2019a.
+;               8)  Wilson III, L.B., et al., "Electron energy partition across
+;                      interplanetary shocks: II. Statistics,"
+;                      Astrophys. J. Suppl. 245(24), doi:10.3847/1538-4365/ab5445, 2019b.
+;               9)  Wilson III, L.B., et al., "Electron energy partition across
+;                      interplanetary shocks: III. Analysis,"
+;                      Astrophys. J., Accepted Mar. 4, 2020.
+;
+;   CREATED:  03/06/2024
+;   CREATED BY:  Lynn B. Wilson III
+;    LAST MODIFIED:  10/17/2024   v1.1.0
+;    MODIFIED BY: Lynn B. Wilson III
+;
+;*****************************************************************************************
+;-
+
+FUNCTION calc_fast_velmoms_with_uncer_from_pois,vels,data,pois,VLIM=vlim,NGRID=ngrid,    $
+                                                SLICE2D=slice2d,VFRAME=vframe,           $
+                                                ELECTRON=electron,PROTON=proton,         $
+                                                ALPHA_P=alpha_p,MAG_DIR=mag_dir,         $
+                                                VEC1=vec1,VEC2=vec2
+
+;;----------------------------------------------------------------------------------------
+;;  Define some constants and dummy variables
+;;----------------------------------------------------------------------------------------
+f              = !VALUES.F_NAN
+d              = !VALUES.D_NAN
+toler          = 1d-6                                     ;;  Tolerance for jitter
+;;  Dummy error messages
+no_inpt__mssg  = 'User must supply VELS, DATA, and POIS as [numeric] arrays...'
+badndim__mssg  = 'Inputs DATA and POIS must be one-dimensional [numeric] arrays and VELS must be a two-dimensional [numeric] array...'
+badddim__mssg  = 'Inputs DATA and POIS must be [K]-element [numeric] arrays and VELS must be a [K,3]-element [numeric] array...'
+;;----------------------------------------------------------------------------------------
+;;  Define dummy output structure
+;;----------------------------------------------------------------------------------------
+tags           = ['N_S','VOS_XYZ','PRESS_TENXYZ','PRESS_TENFAC','PRESS_SCALAR',    $
+                  'TEMP_3XYZ','TAVG','VTHERMAL','TEMP_3FAC','TANISOTROPY',         $
+                  'QFLUX_TENSOR_XZY','QFLUX_FAC_VEC','QFLUX_FAC_NOR','UNITS']
+units          = ['cm^(-3)','km/s','eV cm^(-3)','eV cm^(-3)','eV','eV','km/s',     $
+                  'eV','N/A','eV km s^(-1) cm^(-3)','eV km s^(-1) cm^(-3)','N/A']
+dumb3          = REPLICATE(d,3L)                 ;;  [f(v) - ∂f, f(v), f(v) + ∂f]
+dumb33         = REPLICATE(d,3L,3L)
+dumb333        = REPLICATE(d,3L,3L,3L)
+dumb3333       = REPLICATE(d,3L,3L,3L,3L)
+dumb_one       = CREATE_STRUCT(tags,d,dumb3,dumb33,dumb33,d,dumb3,d,d,dumb3,d,dumb333,dumb3,dumb3,units)
+dumb_out       = CREATE_STRUCT(tags,dumb3,dumb33,dumb333,dumb333,dumb3,dumb33,dumb3,dumb3,dumb33,dumb3,dumb3333,dumb33,dumb33,units)
+;;----------------------------------------------------------------------------------------
+;;  Assume input is good and skip error handling for speed
+;;----------------------------------------------------------------------------------------
+;;  Define f(v) ± ∂f(v)
+vxyz           = vels
+f_of_v         = REFORM(data)
+nnd            = N_ELEMENTS(f_of_v)
+f_p_df         = f_of_v + REFORM(pois)
+f_m_df         = (f_of_v - REFORM(pois)) > 0d0
+;;----------------------------------------------------------------------------------------
+;;  Integrate f(v) ± ∂f(v)
+;;----------------------------------------------------------------------------------------
+fmdf_moms      = lbw_fast_short_ninteg_3d_vdf(vxyz,f_m_df,VLIM=vlim,NGRID=ngrid,SLICE2D=slice2d,$
+                                              VFRAME=vframe,ELECTRON=electron,PROTON=proton,    $
+                                              ALPHA_P=alpha_p,MAG_DIR=mag_dir,VEC1=vec1,        $
+                                              VEC2=vec2)
+IF (SIZE(fmdf_moms,/TYPE) NE 8) THEN BEGIN
+  fmdf_moms      = dumb_one
+  fmin_on        = 0b
+ENDIF ELSE fmin_on = 1b
+fofv_moms      = lbw_fast_short_ninteg_3d_vdf(vxyz,f_of_v,VLIM=vlim,NGRID=ngrid,SLICE2D=slice2d,$
+                                              VFRAME=vframe,ELECTRON=electron,PROTON=proton,    $
+                                              ALPHA_P=alpha_p,MAG_DIR=mag_dir,VEC1=vec1,        $
+                                              VEC2=vec2)
+IF (SIZE(fofv_moms,/TYPE) NE 8) THEN BEGIN
+  fofv_moms      = dumb_one
+  fval_on        = 0b
+ENDIF ELSE fval_on = 1b
+fpdf_moms      = lbw_fast_short_ninteg_3d_vdf(vxyz,f_p_df,VLIM=vlim,NGRID=ngrid,SLICE2D=slice2d,$
+                                              VFRAME=vframe,ELECTRON=electron,PROTON=proton,    $
+                                              ALPHA_P=alpha_p,MAG_DIR=mag_dir,VEC1=vec1,        $
+                                              VEC2=vec2)
+IF (SIZE(fpdf_moms,/TYPE) NE 8) THEN BEGIN
+  fpdf_moms      = dumb_one
+  fpls_on        = 0b
+ENDIF ELSE fpls_on = 1b
+;;  Make sure something is set
+IF (~fmin_on[0] AND ~fval_on[0] AND ~fpls_on[0]) THEN RETURN,dumb_out
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Define terms in output structure
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Scalars
+dumb_out.N_S          = [fmdf_moms.N_S[0],fofv_moms.N_S[0],fpdf_moms.N_S[0]]
+dumb_out.PRESS_SCALAR = [fmdf_moms.PRESS_SCALAR[0],fofv_moms.PRESS_SCALAR[0],fpdf_moms.PRESS_SCALAR[0]]
+dumb_out.TAVG         = [fmdf_moms.TAVG[0],fofv_moms.TAVG[0],fpdf_moms.TAVG[0]]
+dumb_out.VTHERMAL     = [fmdf_moms.VTHERMAL[0],fofv_moms.VTHERMAL[0],fpdf_moms.VTHERMAL[0]]
+dumb_out.TANISOTROPY  = [fmdf_moms.TANISOTROPY[0],fofv_moms.TANISOTROPY[0],fpdf_moms.TANISOTROPY[0]]
+;;  3-vectors
+FOR k=0L, 2L DO BEGIN
+  dumb_out.VOS_XYZ[*,k]       = [fmdf_moms.VOS_XYZ[k],fofv_moms.VOS_XYZ[k],fpdf_moms.VOS_XYZ[k]]
+  dumb_out.TEMP_3XYZ[*,k]     = [fmdf_moms.TEMP_3XYZ[k],fofv_moms.TEMP_3XYZ[k],fpdf_moms.TEMP_3XYZ[k]]
+  dumb_out.TEMP_3FAC[*,k]     = [fmdf_moms.TEMP_3FAC[k],fofv_moms.TEMP_3FAC[k],fpdf_moms.TEMP_3FAC[k]]
+  dumb_out.QFLUX_FAC_VEC[*,k] = [fmdf_moms.QFLUX_FAC_VEC[k],fofv_moms.QFLUX_FAC_VEC[k],fpdf_moms.QFLUX_FAC_VEC[k]]
+  dumb_out.QFLUX_FAC_NOR[*,k] = [fmdf_moms.QFLUX_FAC_NOR[k],fofv_moms.QFLUX_FAC_NOR[k],fpdf_moms.QFLUX_FAC_NOR[k]]
+ENDFOR
+;;  rank-2 tensors
+dumb_out.PRESS_TENXYZ[*,*,0L] = fmdf_moms.PRESS_TENXYZ
+dumb_out.PRESS_TENXYZ[*,*,1L] = fofv_moms.PRESS_TENXYZ
+dumb_out.PRESS_TENXYZ[*,*,2L] = fpdf_moms.PRESS_TENXYZ
+dumb_out.PRESS_TENFAC[*,*,0L] = fmdf_moms.PRESS_TENFAC
+dumb_out.PRESS_TENFAC[*,*,1L] = fofv_moms.PRESS_TENFAC
+dumb_out.PRESS_TENFAC[*,*,2L] = fpdf_moms.PRESS_TENFAC
+;;  rank-3 tensors
+dumb_out.QFLUX_TENSOR_XZY[*,*,*,0L] = fmdf_moms.QFLUX_TENSOR_XZY
+dumb_out.QFLUX_TENSOR_XZY[*,*,*,1L] = fofv_moms.QFLUX_TENSOR_XZY
+dumb_out.QFLUX_TENSOR_XZY[*,*,*,2L] = fpdf_moms.QFLUX_TENSOR_XZY
+;;----------------------------------------------------------------------------------------
+;;  Return to user
+;;----------------------------------------------------------------------------------------
+
+RETURN,dumb_out[0]
+END
