@@ -1,15 +1,12 @@
 ;+
 ;*****************************************************************************************
 ;
-;  PROCEDURE:   specplot_wrapper.pro
+;  FUNCTION :   specplot_wrapper.pro
 ;  PURPOSE  :   This is a wrapping program meant to create a useable interface between
 ;                 specplot.pro and the user without going through TPLOT or requiring
 ;                 the use of UNIX times as the X-Axis variable.
 ;
 ;  CALLED BY:   
-;               NA
-;
-;  INCLUDES:
 ;               NA
 ;
 ;  CALLS:
@@ -19,16 +16,15 @@
 ;               specplot.pro
 ;
 ;  REQUIRES:    
-;               1)  SPEDAS IDL libraries or UMN Modified Wind/3DP IDL Libraries
+;               UMN Modified Wind/3DP IDL Libraries
 ;
 ;  INPUT:
-;               X             : [N]-Element [numeric] array of independent abscissa
-;               Y             : [N]- or [N,M]-element [numeric] array of dependent abscissa
-;               Z             : [N,M]-Element [numeric] array of dependent data
+;               X             :  X-axis values => Dimension N.
+;               Y             :  Y-axis values => Dimension M. or [N,M]
+;               Z             :  Color axis values:  Dimension [N,M].
 ;
 ;  EXAMPLES:    
-;               [calling sequence]
-;               specplot_wrapper,x,y,z [,LIMITS=lims] [,DATA=data] [,MULTIPLOTS=multp] [,_EXTRA=extra]
+;               NA
 ;
 ;  KEYWORDS:    
 ;               LIMITS        :  A structure that may contain any combination of the 
@@ -54,11 +50,8 @@
 ;               MULTIPLOTS    :  Not finished yet, but it is intended to allow one to
 ;                                  plot as many plots as necessary while only using this
 ;                                  routine to plot the specific spectrograms desired
-;               _EXTRA        :  Any other keywords allowed by specplot.pro that are
-;                                  not explicitly labeled above
 ;
-;   CHANGED:  1)  Updated Man page and added _EXTRA keyword option
-;                                                                   [04/25/2025   v1.0.1]
+;   CHANGED:  1)  NA [MM/DD/YYYY   v1.0.0]
 ;
 ;   NOTES:      
 ;               1)  If using the DATA keyword, then make sure you use it in the following
@@ -67,22 +60,19 @@
 ;                     Y-Axis Values:  label with V structure tag
 ;                     Z-Axis Values:  label with Y structure tag
 ;
-;  REFERENCES:  
-;               NA
-;
 ;   CREATED:  03/05/2010
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/25/2025   v1.0.1
+;    LAST MODIFIED:  03/05/2010   v1.0.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-PRO specplot_wrapper,x,y,z,LIMITS=lims,DATA=data,MULTIPLOTS=multp,_EXTRA=extra
+PRO specplot_wrapper,x,y,z,LIMITS=lims,DATA=data,MULTIPLOTS=multp
 
-;;-----------------------------------------------------------------------------------------
-;;  Define some defaults
-;;-----------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Define some defaults
+;-----------------------------------------------------------------------------------------
 chsize   = !P.CHARSIZE
 IF (chsize EQ 0.) THEN chsize = 1.
 
@@ -95,9 +85,9 @@ str_element,def_opts,'YGAP',VALUE=ygap
 str_element,def_opts,'CHARSIZE',VALUE=chsize
 
 IF KEYWORD_SET(multp) THEN nd = multp[0] ELSE nd = 1
-;;---------------------------------------------------------------------------------------
-;;  Check input
-;;---------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Check input
+;-----------------------------------------------------------------------------------------
 IF (KEYWORD_SET(data) AND SIZE(data,/TYPE) EQ 8) THEN BEGIN
   tags  = TAG_NAMES(data)
   testx = WHERE(STRMATCH(tags,'x',/FOLD_CASE),gx)
@@ -110,18 +100,18 @@ IF (KEYWORD_SET(data) AND SIZE(data,/TYPE) EQ 8) THEN BEGIN
     IF N_PARAMS() NE 3 THEN RETURN
   ENDELSE
 ENDIF ELSE BEGIN
-  ;;  if you didn't enter an x, y, AND z, then leave program
+  ; => if you didn't enter an x, y, AND z, then leave program
   IF N_PARAMS() NE 3 THEN RETURN
   gdata = {X:x,V:y,Y:z}
 ENDELSE
-;;---------------------------------------------------------------------------------------
-;;  Plot and window structure info
-;;---------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Plot and window structure info
+;-----------------------------------------------------------------------------------------
 sizes = REPLICATE(2.,nd)
 plt   = {X:!x,Y:!y,Z:!z,P:!p}
-;;---------------------------------------------------------------------------------------
-;;  Get plot position(s)
-;;---------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Get plot position(s)
+;-----------------------------------------------------------------------------------------
 str_element,def_opts,'YGAP',VALUE=ygap
 str_element,def_opts,'CHARSIZE',VALUE=chsize
 nvlabs            = [0.,0.,0.,1.,0.]
@@ -130,42 +120,31 @@ def_opts.YMARGIN += [nvl,0.]
 
 !P.MULTI = 0
 pos      = plot_positions(YSIZES=sizes,OPTIONS=def_opts,YGAP=ygap)
-;;---------------------------------------------------------------------------------------
-;;  Define plot structure info
-;;---------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Define plot structure info
+;-----------------------------------------------------------------------------------------
 IF KEYWORD_SET(lims) THEN extract_tags,def_opts,lims
 
 init_opts        = def_opts
 init_opts.XSTYLE = 5
-;;  erase old window if necessary
+; => erase old window if necessary
 IF (init_opts.NOERASE EQ 0) THEN ERASE
 init_opts.NOERASE = 1
 str_element,init_opts,'YSTYLE',5,/ADD_REPLACE
 
-;;  Plot an empty axes-less box for defining window positions etc.
+; => Plot an empty axes-less box for defining window positions etc.
 box,init_opts
 
 def_opts.NOERASE  = 1
 def_opts.POSITION = pos
 newlim            = def_opts
-;;---------------------------------------------------------------------------------------
-;;  Plot spectrogram
-;;---------------------------------------------------------------------------------------
+;-----------------------------------------------------------------------------------------
+; => Plot spectrogram
+;-----------------------------------------------------------------------------------------
 IF (newlim.SPEC NE 0) THEN routine = 'specplot' ELSE routine = 'mplot'
 str_element,newlim,'TPLOT_ROUTINE',VALUE=routine
 
-specplot,DATA=gdata,LIMITS=newlim,_EXTRA=extra
-;;---------------------------------------------------------------------------------------
-;;  Return to user
-;;---------------------------------------------------------------------------------------
+specplot,DATA=gdata,LIMITS=newlim
 
 RETURN
 END
-
-
-
-
-
-
-
-
