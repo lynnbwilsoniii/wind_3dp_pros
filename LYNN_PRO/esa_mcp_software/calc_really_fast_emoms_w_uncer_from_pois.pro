@@ -80,8 +80,11 @@
 ;               V1DGRID    :  Set to a named variable to return the 1D array of regularly
 ;                               gridded velocities [km/s]
 ;
-;   CHANGED:  1)  NA
-;                                                                   [MM/DD/YYYY   v1.0.0]
+;   CHANGED:  1)  Corrected some optimization issues and forced temperatures to be
+;                   positive-definite
+;                                                                   [08/19/2025   v1.1.0]
+;             2)  Fixed some bugs in the computation of various parameters
+;                                                                   [08/19/2025   v1.1.1]
 ;
 ;   NOTES:      0)  Adapted from sub_fast_short_ninteg_3d_vdf.pro
 ;                     to increase computation speed when calling 1000s of times in a row
@@ -189,7 +192,7 @@
 ;
 ;   CREATED:  04/15/2025
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/15/2025   v1.0.0
+;    LAST MODIFIED:  08/19/2025   v1.1.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -483,6 +486,7 @@ T3inp__r1      = Qflinv_r1
 T_fac__r1      = Qflinv_r1
 Ptens__r2      = CREATE_STRUCT(tags,dumb33,dumb33,dumb33)
 Ptfac__r2      = Ptens__r2
+ones           = REPLICATE(1d0,nx[0])
 ;;  Loop through to define moments
 FOR j=0L, 2L DO BEGIN
   ;;--------------------------------------------------------------------------------------
@@ -501,19 +505,16 @@ FOR j=0L, 2L DO BEGIN
   ;;  Convert 1D random velocity variables to 3D
   ;;--------------------------------------------------------------------------------------
   ;;  X
-  v2dx           = x # REPLICATE(1d0,nx[0])
+  v2dx           = x # ones
   v3dx           = REBIN(v2dx,nx[0],nx[0],nx[0])          ;;  3rd dimension is just a copy of 2nd
   ;;  Y
-  v2dy           = y # REPLICATE(1d0,nx[0])
+  v2dy           = y # ones
   v3d0           = REBIN(v2dy,nx[0],nx[0],nx[0])
   v3dy           = TRANSPOSE(v3d0,[2,0,1])
   ;;  Z
-  v2dz           = z # REPLICATE(1d0,nx[0])
+  v2dz           = z # ones
   v3d0           = REBIN(v2dz,nx[0],nx[0],nx[0])
   v3dz           = TRANSPOSE(v3d0,[1,2,0])
-  ;;  *** Clean up ***
-;  v2dgrid        = 0 & v2dx = 0 & v2dy = 0 & v2dz = 0 & v3d0 = 0
-;  delete_variable,v2dgrid,v2dx,v2dy,v2dz,v3d0
   ;;--------------------------------------------------------------------------------------
   ;;  Update ranges and increments for h factor in Simpson's 1/3 Rule
   ;;--------------------------------------------------------------------------------------
@@ -566,25 +567,15 @@ FOR j=0L, 2L DO BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;--------------------------------------------------------------------------------------
   ;;--------------------------------------------------------------------------------------
-  ;;  Calculate 3D speed
-;  sp3d           = SQRT(v3dx^2d0 + v3dy^2d0 + v3dz^2d0)
-;  sp3d2          = (v3dx^2d0 + v3dy^2d0 + v3dz^2d0)
   ;;  Define common factor
-;  ff0            = mass[0]*fxyz_3d/2d0*sp3d2
   ff0            = mass[0]*fxyz_3d/2d0*(v3dx^2d0 + v3dy^2d0 + v3dz^2d0)
   ;;  Calculate X-component of heat flux vector [eV km s^(-1) cm^(-3)] in species rest frame
-;  ff             = mass[0]*sp3d^2d0*v3dx/2d0*fxyz_3d
-;  ff             = mass[0]*sp3d2*v3dx/2d0*fxyz_3d
   ff             = ff0*v3dx
   Qflux_x        = TOTAL(hfac[0]*TOTAL(TOTAL(scxyz*ff,3,/NAN),2,/NAN),/NAN)
   ;;  Calculate Y-component of heat flux vector [eV km s^(-1) cm^(-3)] in species rest frame
-;  ff             = mass[0]*sp3d^2d0*v3dy/2d0*fxyz_3d
-;  ff             = mass[0]*sp3d2*v3dy/2d0*fxyz_3d
   ff             = ff0*v3dy
   Qflux_y        = TOTAL(hfac[0]*TOTAL(TOTAL(scxyz*ff,3,/NAN),2,/NAN),/NAN)
   ;;  Calculate Z-component of heat flux vector [eV km s^(-1) cm^(-3)] in species rest frame
-;  ff             = mass[0]*sp3d^2d0*v3dz/2d0*fxyz_3d
-;  ff             = mass[0]*sp3d2*v3dz/2d0*fxyz_3d
   ff             = ff0*v3dz
   Qflux_z        = TOTAL(hfac[0]*TOTAL(TOTAL(scxyz*ff,3,/NAN),2,/NAN),/NAN)
   ;;--------------------------------------------------------------------------------------
@@ -606,9 +597,9 @@ FOR j=0L, 2L DO BEGIN
   ;;  Define scalar parameters
   ;;--------------------------------------------------------------------------------------
   ;;  Scalar/Avg temperature [eV]
-  Temp__avg_sc   = TOTAL(Temp__ten_r2[diagr2],/NAN)/3d0
+  Temp__avg_sc   = ABS(TOTAL(Temp__ten_r2[diagr2],/NAN))/3d0
   ;;  Scalar/Avg pressure [eV cm^(-3)]
-  Press_avg_sc   = TOTAL(Press_ten_r2[diagr2],/NAN)/3d0
+  Press_avg_sc   = ABS(TOTAL(Press_ten_r2[diagr2],/NAN))/3d0
   ;;  Scalar/Avg thermal speed [km/s]
   Vthms_avg_sc   = vtsfac[0]*SQRT(Temp__avg_sc[0])
   ;;--------------------------------------------------------------------------------------
@@ -628,7 +619,7 @@ FOR j=0L, 2L DO BEGIN
   IF (T3[sp[1]] LT (T3[sp[0]] + T3[sp[2]])/2d0) THEN num = sp[2] ELSE num = sp[0]
   ;;  Shift the eigenvalues and vectors from smallest to largest
   shft           = ([-1,1,0])[num[0]]
-  T3             = SHIFT(T3,shft)
+  T3             = ABS(SHIFT(T3,shft))
   T3_eigvec      = SHIFT(T3_eigvec,0,shft)
   ;;--------------------------------------------------------------------------------------
   ;;--------------------------------------------------------------------------------------
@@ -643,10 +634,16 @@ FOR j=0L, 2L DO BEGIN
     mrot           = rot_mat(bdir)
     ;;  Rotate pressure tensor  [xx,yy,zz,xy,xz,yz] --> [perp1,perp2,para,p1p2,p1a,p2a]
 ;    Press_fac_r2   = rotate_tensor(Press_ten_r2,mrot)
-    Press_fac_r2   = (mrot ## Press_ten_r2)
+;    Press_fac_r2   = (mrot ## Press_ten_r2)
+    rtens0         = Press_ten_r2
+    FOR itt=0L, 1L DO BEGIN
+      rtens0         = REFORM(mrot ## REFORM(rtens0,3L,3L),3L,3L)
+      rtens0         = TRANSPOSE(rtens0,[1L,0L])
+    ENDFOR
+    Press_fac_r2   = rtens0
     Press_fac_v2   = Press_fac_r2[map_v2]
     ;;  Define temperature [eV] components in FACs  [perp1,perp2,para]
-    T3FAC          = Press_fac_v2[0:2]/n_s_0[0]
+    T3FAC          = ABS(Press_fac_v2[0:2]/n_s_0[0])
     ;;  Define temperature anisotropy Tperp/Tpara
     Tanis          = (T3FAC[0] + T3FAC[1])/T3FAC[2]/2d0
     ;;  Rotate heat flux tensor [eV km s^(-1) cm^(-3)]
@@ -679,8 +676,8 @@ FOR j=0L, 2L DO BEGIN
   ;;--------------------------------------------------------------------------------------
   Ptens__r2.(j)  = Press_ten_r2
   Qflinv_r1.(j)  = Qflux_ten_r1
-  Pscalar_s.(j)  = Temp__avg_sc[0]
-  Tscalar_s.(j)  = Press_avg_sc[0]
+  Pscalar_s.(j)  = Press_avg_sc[0]
+  Tscalar_s.(j)  = Temp__avg_sc[0]
   VTscalr_s.(j)  = Vthms_avg_sc[0]
   T3inp__r1.(j)  = T3
   Ptfac__r2.(j)  = Press_fac_r2

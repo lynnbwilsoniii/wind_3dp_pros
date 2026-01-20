@@ -78,9 +78,6 @@
 ;                                                                   [07/10/2025   v1.3.0]
 ;             5)  Fixed an infinite loop bug
 ;                                                                   [07/14/2025   v1.3.1]
-;             6)  Fixed an issue where the REPEAT statement would go on until the relative
-;                   geometric factors were reaching values << 0.001 (i.e., not physical)
-;                                                                   [07/25/2025   v1.3.2]
 ;
 ;   NOTES:      
 ;               1)  This routine assumes user has already properly determined phi_sc
@@ -142,7 +139,7 @@
 ;
 ;   CREATED:  05/09/2024
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/25/2025   v1.3.2
+;    LAST MODIFIED:  07/14/2025   v1.3.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -306,11 +303,11 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  Remove non-finite values
   ;;--------------------------------------------------------------------------------------
-  test_vdf       = FINITE(data) AND (data GT 0)
+  test_vdf       = FINITE(data)
   test           = FINITE(vels[*,0]) AND FINITE(vels[*,1]) AND $
                    FINITE(vels[*,2]) AND test_vdf
   good_in        = WHERE(test,gd_in,COMPLEMENT=bad_in,NCOMPLEMENT=bd_in)
-  IF (gd_in[0] GT 5) THEN BEGIN
+  IF (gd_in[0] GT 0) THEN BEGIN
     ;;------------------------------------------------------------------------------------
     ;;------------------------------------------------------------------------------------
     ;;  Define proper input
@@ -339,7 +336,7 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
     ;;  No finite velocities or data --> inform user and continue
     ;;------------------------------------------------------------------------------------
     ;;------------------------------------------------------------------------------------
-    PRINT,'1:  No finite data for j = ',j[0]
+    PRINT,'No finite data for j = ',j[0]
     CONTINUE
   ENDELSE
   ;;--------------------------------------------------------------------------------------
@@ -364,7 +361,6 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
     ;;------------------------------------------------------------------------------------
     ;;------------------------------------------------------------------------------------
     empir_eff[j,*] = relgeom_el/4d0
-    IF ((j[0] MOD nupd[0]) EQ 0) THEN PRINT,'j = ',j[0],',  '+STRING(SYSTIME(1) - ex_start[0])+' elapsed seconds...'
     CONTINUE
   ENDIF ELSE BEGIN
     ;;------------------------------------------------------------------------------------
@@ -382,7 +378,6 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
     yes_inc        = n_s_tot[0] GT netwv[0]
     fact           = ([9d-1,11d-1])[yes_inc[0]]
     true           = 0b
-    cc             = 0L
     ;;************************************************************************************
     ;;************************************************************************************
     ;;************************************************************************************
@@ -398,13 +393,6 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
       mag_dir        = REFORM(dat0c[0].MAGF)
       vels           = datcfvxyz.VELXYZ + jitter
       data           = datcfvxyz.VDF
-      cc            += 1L
-      IF (cc[0] GT 30L) THEN BEGIN
-        PRINT,'Could not find GF correction for j = ',j[0]
-        true           = 1b
-;        IF ((j[0] MOD nupd[0]) EQ 0) THEN PRINT,'j = ',j[0],',  '+STRING(SYSTIME(1) - ex_start[0])+' elapsed seconds...'
-        CONTINUE
-      ENDIF
       ;;----------------------------------------------------------------------------------
       ;;  Remove non-finite values
       ;;----------------------------------------------------------------------------------
@@ -437,11 +425,17 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
         ;;--------------------------------------------------------------------------------
         ;;  No finite velocities or data --> inform user and continue
         ;;--------------------------------------------------------------------------------
-        PRINT,'2:  No finite data for j = ',j[0]
+        PRINT,'No finite data for j = ',j[0]
         true           = 1b
-;        IF ((j[0] MOD nupd[0]) EQ 0) THEN PRINT,'j = ',j[0],',  '+STRING(SYSTIME(1) - ex_start[0])+' elapsed seconds...'
         CONTINUE
       ENDELSE
+;      rt_struc       = get_rotated_and_triangulated_vdf(vels,data,VLIM=smax[0],NGRID=nm[0],  $
+;                                                        SLICE2D=slice_on[0],VFRAME=vframe,   $
+;                                                        VEC1=vec1,VEC2=vec2,F3D_QH=fxyz_3d)
+;      ;;----------------------------------------------------------------------------------
+;      ;;  Verify output
+;      ;;----------------------------------------------------------------------------------
+;      IF (SIZE(rt_struc,/TYPE) NE 8) THEN BREAK
       ;;----------------------------------------------------------------------------------
       ;;  Calculate number density
       ;;----------------------------------------------------------------------------------

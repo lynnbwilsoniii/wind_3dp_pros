@@ -59,7 +59,7 @@
 ;               [calling sequence]
 ;               newstr = t_resample_tplot_struc(data, new_t [,/LSQUADRATIC] $
 ;                                               [,/QUADRATIC] [,/ISPLINE]   $
-;                                               [,/NO_EXTRAPOLATE] [,/NAN])
+;                                               [,/NO_EXTRAPOLATE])
 ;
 ;               ;;  Linear interpolation example
 ;               newstr = t_resample_tplot_struc(data,new_t,/NO_EXTRAPOLATE)
@@ -83,9 +83,6 @@
 ;                                    just use the entire time range and interpolate if
 ;                                    it overlaps with the output time steps
 ;                                    [Default = FALSE]
-;               NAN             :  If set, INTERPOL.PRO routine will filter out NaNs
-;                                    during interpolation
-;                                    [Default = FALSE]
 ;
 ;   CHANGED:  1)  Continued to write routine
 ;                                                                   [11/10/2015   v1.0.0]
@@ -107,8 +104,6 @@
 ;             8)  Cleaned up and now calls struct_value.pro and extract_tags.pro and
 ;                   now handles structures with DY tag and other time-independent tags
 ;                                                                   [06/15/2016   v1.4.0]
-;             9)  Added keyword:  NAN
-;                                                                   [11/26/2025   v1.5.0]
 ;
 ;   NOTES:      
 ;               1)  See also:  trange_clip_data.pro, resample_2d_vec.pro
@@ -121,7 +116,7 @@
 ;
 ;   CREATED:  11/10/2015
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  11/26/2025   v1.5.0
+;    LAST MODIFIED:  06/15/2016   v1.4.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -129,7 +124,7 @@
 
 FUNCTION t_resample_tplot_struc,data,new_t,LSQUADRATIC=lsquadratic,QUADRATIC=quadratic,  $
                                            ISPLINE=ispline,NO_EXTRAPOLATE=no_extrapolate,$
-                                           IGNORE_INT=ignore_int,NAN=nan
+                                           IGNORE_INT=ignore_int
 
 ;;  Let IDL know that the following are functions
 FORWARD_FUNCTION is_a_number, tplot_struct_format_test, sample_rate, t_interval_find
@@ -152,11 +147,7 @@ baddinp_msg    = 'Incorrect input:  DATA must be a valid TPLOT structure with nu
 bad_tra_msg    = 'Could not define proper time range... Exiting without computation...'
 nod_tra_msg    = 'No data within user specified time range... Exiting without computation...'
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Check input
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 test           = (N_PARAMS() LT 2) OR (SIZE(data,/TYPE) NE 8) OR $
                  (is_a_number(new_t,/NOMSSG) EQ 0)
@@ -173,11 +164,7 @@ IF (test[0] EQ 0) THEN BEGIN
   RETURN,0b
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Define parameters
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 nt             = N_TAGS(data)
 time           = data.X            ;;  [N]-Element array of Unix times
@@ -197,11 +184,7 @@ IF (test[0]) THEN BEGIN
   RETURN,0b
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Check keywords
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Check interpolation types
 i_type         = [0L,KEYWORD_SET(lsquadratic),KEYWORD_SET(quadratic),KEYWORD_SET(spline)]
@@ -220,23 +203,10 @@ ENDIF ELSE BEGIN
   ENDELSE
 ENDELSE
 ;;  Check IGNORE_INT
-IF (KEYWORD_SET(ignore_int) AND (N_ELEMENTS(ignore_int) GT 0)) THEN no_int_find = 1b ELSE no_int_find = 0b
-;;  Check NAN
-IF KEYWORD_SET(nan) THEN BEGIN
-  ;;  User turned on NAN --> Check IDL version first since INTERPOL only handles
-  ;;                           NaNs after 8.0
-  vern           = FLOAT(!VERSION.RELEASE)
-  IF (vern[0] GE 8e0) THEN nan = 1b ELSE nan = 0b
-ENDIF ELSE BEGIN
-  ;;  User did not turn on NAN
-  nan            = 0b
-ENDELSE
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
+test           = KEYWORD_SET(ignore_int) AND (N_ELEMENTS(ignore_int) GT 0)
+IF (test[0]) THEN no_int_find = 1b ELSE no_int_find = 0b
 ;;----------------------------------------------------------------------------------------
 ;;  Check for other time-dependent structure tags
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Check for DY
 IF (test_dy[0] GT 0) THEN BEGIN
@@ -257,11 +227,7 @@ IF (v1_v2_on[0]) THEN BEGIN
   v2             = data.V2
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Sort time stamps [just in case]
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 sp             = SORT(time)
 xx_in          = time[sp]
@@ -304,14 +270,10 @@ xout           = newt[sp]
 IF (N_ELEMENTS(tshift) GT 0) THEN xout -= tshift[0]  ;;  Remove TSHIFT (if present)
 nx             = N_ELEMENTS(xout)
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  First, check for intervals
 ;;    --> in case of burst data, do not want to use absolute TRANGE
 ;;  Second, check for overlaps
 ;;    --> if exist, then keep only overlapping intervals and toss the rest
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 srate          = sample_rate(xx_in,/AVERAGE)
 xperd          = 1.5d0/srate[0]
@@ -375,11 +337,7 @@ ENDIF ELSE BEGIN
   yes_overlap = 0b
 ENDELSE
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Define dummy outputs
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 CASE sznd[0] OF
   1    :  BEGIN
@@ -399,11 +357,7 @@ CASE sznd[0] OF
   END
 ENDCASE
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Interpolate
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 lsquad         = 0b & quad = 0b & ispl = 0b
 CASE i_type[0] OF
@@ -418,24 +372,22 @@ CASE i_type[0] OF
   END
 ENDCASE
 int_str        = {LSQUADRATIC:lsquad,QUADRATIC:quad,SPLINE:ispl}
-;;----------------------------------------------------------------------------------------
 ;;  Interpolate [IFF overlaps exist]
-;;----------------------------------------------------------------------------------------
 IF (yes_overlap[0]) THEN BEGIN
   CASE sznd[0] OF
     1    :  BEGIN
       ;;  1D array --> just find new Y values
-      yout = INTERPOL(yy,xx_in,xout,NAN=nan,_EXTRA=int_str)
-      IF (test_uy[0]) THEN dyout = INTERPOL(dy,xx_in,xout,NAN=nan,_EXTRA=int_str)
+      yout = INTERPOL(yy,xx_in,xout,_EXTRA=int_str)
+      IF (test_uy[0]) THEN dyout = INTERPOL(dy,xx_in,xout,_EXTRA=int_str)
     END
     2    :  BEGIN
       ;;  2D array --> may have V tag
       FOR d2=0L, szdd[1] - 1L DO BEGIN
-        yout[*,d2] = INTERPOL(yy[*,d2],xx_in,xout,NAN=nan,_EXTRA=int_str)
-        IF (test_uy[0]) THEN dyout[*,d2] = INTERPOL(dy[*,d2],xx_in,xout,NAN=nan,_EXTRA=int_str)
+        yout[*,d2] = INTERPOL(yy[*,d2],xx_in,xout,_EXTRA=int_str)
+        IF (test_uy[0]) THEN dyout[*,d2] = INTERPOL(dy[*,d2],xx_in,xout,_EXTRA=int_str)
         IF (test_vv[0]) THEN BEGIN
           IF (test_vv_2d[0]) THEN BEGIN
-            vout[*,d2] = INTERPOL(vvout[*,d2],xx_in,xout,NAN=nan,_EXTRA=int_str)
+            vout[*,d2] = INTERPOL(vvout[*,d2],xx_in,xout,_EXTRA=int_str)
           ENDIF ELSE BEGIN
             vout[*,d2] = vvout
           ENDELSE
@@ -445,21 +397,17 @@ IF (yes_overlap[0]) THEN BEGIN
     3    :  BEGIN
       FOR d2=0L, szdd[1] - 1L DO BEGIN
         FOR d3=0L, szdd[2] - 1L DO BEGIN
-          yout[*,d2,d3] = INTERPOL(yy[*,d2,d3],xx_in,xout,NAN=nan,_EXTRA=int_str)
-          IF (test_uy[0]) THEN dyout[*,d2,d3] = INTERPOL(dy[*,d2,d3],xx_in,xout,NAN=nan,_EXTRA=int_str)
-          IF (v1_v2_on[0]) THEN vv2[*,d3] = INTERPOL(v2out[*,d3],xx_in,xout,NAN=nan,_EXTRA=int_str)
+          yout[*,d2,d3] = INTERPOL(yy[*,d2,d3],xx_in,xout,_EXTRA=int_str)
+          IF (test_uy[0]) THEN dyout[*,d2,d3] = INTERPOL(dy[*,d2,d3],xx_in,xout,_EXTRA=int_str)
+          IF (v1_v2_on[0]) THEN vv2[*,d3] = INTERPOL(v2out[*,d3],xx_in,xout,_EXTRA=int_str)
         ENDFOR
-        IF (v1_v2_on[0]) THEN vv1[*,d2] = INTERPOL(v1out[*,d2],xx_in,xout,NAN=nan,_EXTRA=int_str)
+        IF (v1_v2_on[0]) THEN vv1[*,d2] = INTERPOL(v1out[*,d2],xx_in,xout,_EXTRA=int_str)
       ENDFOR
     END
   ENDCASE
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Remove end points if they were extrapolated
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 test           = (N_ELEMENTS(no_extrapolate) NE 0) AND KEYWORD_SET(no_extrapolate)
 IF (test[0] AND yes_overlap[0]) THEN BEGIN
@@ -500,15 +448,14 @@ IF (test[0] AND yes_overlap[0]) THEN BEGIN
         yout[bad,*,*] = f
         IF (test_uy[0]) THEN dyout[bad,*] = f
       END
+;      1    :  yout[bad]     = f
+;      2    :  yout[bad,*]   = f
+;      3    :  yout[bad,*,*] = f
     ENDCASE
   ENDIF
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;  Define output structure
-;;----------------------------------------------------------------------------------------
-;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 test           = (v1_v2_on[0] OR test_vv[0])
 IF (test[0]) THEN BEGIN
@@ -528,6 +475,8 @@ ENDELSE
 IF (test_uy[0]) THEN str_element,struc,'DY',dyout,/ADD_REPLACE  ;;  Add DY (if present)
 ;;  Add remaining time-independent tags
 extract_tags,struc,data,EXCEPT_TAGS=excpt_tags
+;;;  Check for TSHIFT
+;IF (N_ELEMENTS(tshift) GT 0) THEN str_element,struc,'TSHIFT',tshift[0],/ADD_REPLACE  ;;  Add TSHIFT (if present)
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

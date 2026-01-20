@@ -143,9 +143,6 @@
 ;            17)  Fixed a hardcoded setting when determining the default sample rate
 ;                   that caused very low cadence data to return all NaNs
 ;                                                                   [05/09/2019   v1.3.2]
-;            18)  Attempted to correct the normalization factor to physical units following
-;                   Liu et al. [2007] JAOT
-;                                                                   [01/19/2026   v1.3.3]
 ;
 ;   NOTES:      
 ;             1)  It's probably wise to set the KILL_CONE to avoid analysis based upon
@@ -185,7 +182,7 @@
 ;
 ;   CREATED:  08/12/2009
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  01/19/2026   v1.3.3
+;    LAST MODIFIED:  05/09/2019   v1.3.2
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -307,11 +304,7 @@ test_wavelet   = CALL_FUNCTION(wavefun,data,s_period[0],S0=ss0,DJ=dd0,J=jscale,/
 ;;  Calculate wavelet power spectrum
 ;;----------------------------------------------------------------------------------------
 wv_power       = ABS(test_wavelet)^2      ;;  wavelet power spectrum [Eq. 4 squared]
-ones           = REPLICATE(1d0,nsams)
-wv_freqs       = ones # 1d0/period
-scalem         = TOTAL(scales,/NAN)
-wv_scale       = ones # scales
-;wv_scale       = ones # (scales/scalem[0])
+wv_freqs       = REPLICATE(1d0,nsams) # 1d0/period
 ;;  Check if NEW_NAME is already a defined TPLOT handle
 testns         = tnames()
 badns          = WHERE(testns EQ new_name,bdn)
@@ -362,10 +355,8 @@ num_scl        = N_ELEMENTS(scales)
 chitest        = wave_signif(data,s_period[0],scales,0)         ;;  Chi-Squared Test
 siglevl        = REBIN(TRANSPOSE(chitest),nsams,num_scl)
 conf_95lev     = wv_power/siglevl
-;STOP
 ;;  Normalize wavelet power spectrum to get physical units [units^2/Hz]
-;wv_power      *= (2d0/(SQRT(!DPI))*wv_scale)
-wv_power      *= (wv_scale/(4d0*!DPI))
+wv_power      *= (2d0/(SQRT(!DPI)*s_rate[0]))
 ;;----------------------------------------------------------------------------------------
 ;;  Re-NaN values, if present (i.e., set to zero)
 ;;----------------------------------------------------------------------------------------

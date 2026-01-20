@@ -58,12 +58,6 @@
 ;                             direction to use when triangulating the data.  The input
 ;                             will be limited to values between 30 and 300.
 ;                             [Default = 121]
-;               SCFAC    :  Scalar [numeric] defining the factor to multiply phi_sc by
-;                             to define the energies below which data will be ignored
-;                             in the calibration calculation.  For instance, if the user
-;                             enters 1.3, then all energies below 130% of phi_sc will be
-;                             kill off prior to calibration.
-;                             [Default = 1.0]
 ;
 ;   CHANGED:  1)  Removed unnecessary overhead of get_rotated_and_triangulated_vdf.pro and
 ;                   rotate_and_triangulate_dfs.pro and no calls slice2d_vdf.pro
@@ -74,13 +68,6 @@
 ;             3)  Forgot to remove get_rotated_and_triangulated_vdf.pro from adjustment
 ;                   loop and cleaned up a few minor things
 ;                                                                   [10/15/2024   v1.2.1]
-;             4)  Added keyword:  SCFAC
-;                                                                   [07/10/2025   v1.3.0]
-;             5)  Fixed an infinite loop bug
-;                                                                   [07/14/2025   v1.3.1]
-;             6)  Fixed an issue where the REPEAT statement would go on until the relative
-;                   geometric factors were reaching values << 0.001 (i.e., not physical)
-;                                                                   [07/25/2025   v1.3.2]
 ;
 ;   NOTES:      
 ;               1)  This routine assumes user has already properly determined phi_sc
@@ -142,14 +129,13 @@
 ;
 ;   CREATED:  05/09/2024
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  07/25/2025   v1.3.2
+;    LAST MODIFIED:  10/15/2024   v1.2.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
-FUNCTION fast_corr_def_gf_wind_3dp_eesa_low,in_el,net_str,THRESH=thresh,VLIM=vlim,NGRID=ngrid,$
-                                            SCFAC=scfac
+FUNCTION fast_corr_def_gf_wind_3dp_eesa_low,in_el,net_str,THRESH=thresh,VLIM=vlim,NGRID=ngrid
 
 ex_start       = SYSTIME(1)
 ;;----------------------------------------------------------------------------------------
@@ -164,7 +150,6 @@ def_ngrid      = 121L                                     ;;  Define # of grid p
 def_vlim       = 15d3                                     ;;  Default speed limit = 15,000 km/s
 min_vlim       = 10d3                                     ;;  Minimum speed limit = 10,000 km/s
 def_thrsh      = 6.5d0                                    ;;  Default threshold = 6.5%
-def_sfac       = 1e0                                      ;;  Default phi_sc factor
 vec1           = [1d0,0d0,0d0]                            ;;  Do not rotate from input GSE coordinates
 vec2           = [0d0,1d0,0d0]                            ;;  Do not rotate from input GSE coordinates
 vframe         = [0d0,0d0,0d0]                            ;;  Use spacecraft frame of reference
@@ -201,8 +186,6 @@ IF (is_a_number(vlim,/NOMSSG) EQ 0) THEN vlim = def_vlim[0] ELSE vlim = ABS(vlim
 IF (vlim[0] LE min_vlim[0]) THEN vlim = def_vlim[0]
 ;;  Check NGRID
 IF (is_a_number(ngrid,/NOMSSG) EQ 0) THEN ngrid = def_ngrid[0] ELSE ngrid = (LONG(ngrid[0]) > 30L) < 300L
-;;  Check NGRID
-IF (is_a_number(scfac,/NOMSSG) EQ 0) THEN scfac = def_sfac[0] ELSE scfac = ABS(scfac[0])
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
@@ -291,7 +274,7 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
   ;;  Remove data below phi_sc
   ;;--------------------------------------------------------------------------------------
   temp           = dat0c[0].DATA
-  bad            = WHERE(dat0c[0].ENERGY LE scfac[0]*dat0c[0].SC_POT,bd)
+  bad            = WHERE(dat0c[0].ENERGY LE 1.0e0*dat0c[0].SC_POT,bd)
   IF (bd[0] GT 0) THEN temp[bad] = f
   dat0c[0].DATA  = temp
   dat0f          = dat0c
@@ -306,11 +289,11 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  Remove non-finite values
   ;;--------------------------------------------------------------------------------------
-  test_vdf       = FINITE(data) AND (data GT 0)
+  test_vdf       = FINITE(data)
   test           = FINITE(vels[*,0]) AND FINITE(vels[*,1]) AND $
                    FINITE(vels[*,2]) AND test_vdf
   good_in        = WHERE(test,gd_in,COMPLEMENT=bad_in,NCOMPLEMENT=bd_in)
-  IF (gd_in[0] GT 5) THEN BEGIN
+  IF (gd_in[0] GT 0) THEN BEGIN
     ;;------------------------------------------------------------------------------------
     ;;------------------------------------------------------------------------------------
     ;;  Define proper input
@@ -339,7 +322,7 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
     ;;  No finite velocities or data --> inform user and continue
     ;;------------------------------------------------------------------------------------
     ;;------------------------------------------------------------------------------------
-    PRINT,'1:  No finite data for j = ',j[0]
+    PRINT,'No finite data for j = ',j[0]
     CONTINUE
   ENDELSE
   ;;--------------------------------------------------------------------------------------
@@ -364,7 +347,6 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
     ;;------------------------------------------------------------------------------------
     ;;------------------------------------------------------------------------------------
     empir_eff[j,*] = relgeom_el/4d0
-    IF ((j[0] MOD nupd[0]) EQ 0) THEN PRINT,'j = ',j[0],',  '+STRING(SYSTIME(1) - ex_start[0])+' elapsed seconds...'
     CONTINUE
   ENDIF ELSE BEGIN
     ;;------------------------------------------------------------------------------------
@@ -382,7 +364,6 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
     yes_inc        = n_s_tot[0] GT netwv[0]
     fact           = ([9d-1,11d-1])[yes_inc[0]]
     true           = 0b
-    cc             = 0L
     ;;************************************************************************************
     ;;************************************************************************************
     ;;************************************************************************************
@@ -398,13 +379,6 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
       mag_dir        = REFORM(dat0c[0].MAGF)
       vels           = datcfvxyz.VELXYZ + jitter
       data           = datcfvxyz.VDF
-      cc            += 1L
-      IF (cc[0] GT 30L) THEN BEGIN
-        PRINT,'Could not find GF correction for j = ',j[0]
-        true           = 1b
-;        IF ((j[0] MOD nupd[0]) EQ 0) THEN PRINT,'j = ',j[0],',  '+STRING(SYSTIME(1) - ex_start[0])+' elapsed seconds...'
-        CONTINUE
-      ENDIF
       ;;----------------------------------------------------------------------------------
       ;;  Remove non-finite values
       ;;----------------------------------------------------------------------------------
@@ -437,11 +411,16 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
         ;;--------------------------------------------------------------------------------
         ;;  No finite velocities or data --> inform user and continue
         ;;--------------------------------------------------------------------------------
-        PRINT,'2:  No finite data for j = ',j[0]
-        true           = 1b
-;        IF ((j[0] MOD nupd[0]) EQ 0) THEN PRINT,'j = ',j[0],',  '+STRING(SYSTIME(1) - ex_start[0])+' elapsed seconds...'
+        PRINT,'No finite data for j = ',j[0]
         CONTINUE
       ENDELSE
+;      rt_struc       = get_rotated_and_triangulated_vdf(vels,data,VLIM=smax[0],NGRID=nm[0],  $
+;                                                        SLICE2D=slice_on[0],VFRAME=vframe,   $
+;                                                        VEC1=vec1,VEC2=vec2,F3D_QH=fxyz_3d)
+;      ;;----------------------------------------------------------------------------------
+;      ;;  Verify output
+;      ;;----------------------------------------------------------------------------------
+;      IF (SIZE(rt_struc,/TYPE) NE 8) THEN BREAK
       ;;----------------------------------------------------------------------------------
       ;;  Calculate number density
       ;;----------------------------------------------------------------------------------
@@ -456,7 +435,7 @@ FOR j=0L, ncel[0] - 1L DO BEGIN
         ;;  Good enough --> Define empirical GF correction and move on
         ;;--------------------------------------------------------------------------------
         empir_eff[j,*] = relgeom_el/4d0
-        true           = 1b
+        true = 1b
       ENDIF ELSE BEGIN
         ;;--------------------------------------------------------------------------------
         ;;  Not good enough yet --> Adjust accordingly
