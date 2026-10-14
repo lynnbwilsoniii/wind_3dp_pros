@@ -13,6 +13,7 @@
 ;
 ;  CALLS:
 ;               test_wind_vs_themis_esa_struct.pro
+;               dat_3dp_str_names.pro
 ;               test_plot_axis_range.pro
 ;               struct_value.pro
 ;               plot_esa_sst_combined_spec3d.pro
@@ -201,6 +202,9 @@
 ;                                                                   [02/05/2018   v1.0.0]
 ;             2)  Finished writing routine and added keyword ONEC_ALL
 ;                                                                   [02/05/2018   v1.0.0]
+;             3)  Fixed an issue when the user entered VDFs other than EESA Low, EESA High,
+;                   and SST Foil and now calls dat_3dp_str_names.pro
+;                                                                   [01/22/2026   v1.1.0]
 ;
 ;   NOTES:      
 ;               1)  This routine is meant to be a wrapper for
@@ -266,7 +270,7 @@
 ;
 ;   CREATED:  02/02/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  02/05/2018   v1.0.0
+;    LAST MODIFIED:  01/22/2026   v1.1.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -346,12 +350,18 @@ IF (test_esa0.(0)) THEN BEGIN
   ;;  Wind
   ;;--------------------------------------------------------------------------------------
   mission      = 'Wind'
+  strn0        = dat_3dp_str_names(dat_esal[0])
+  strn1        = dat_3dp_str_names(dat_esah[0])
+  strn2        = dat_3dp_str_names(dat_sst[0])
 ENDIF ELSE BEGIN
   IF (test_esa0.(1)) THEN BEGIN
     ;;------------------------------------------------------------------------------------
     ;;  THEMIS
     ;;------------------------------------------------------------------------------------
     mission      = 'THEMIS'
+    strn0        = dat_themis_esa_str_names(dat_esal[0])
+    strn1        = dat_themis_esa_str_names(dat_esah[0])
+    strn2        = dat_themis_esa_str_names(dat_sst[0])
   ENDIF ELSE BEGIN
     ;;------------------------------------------------------------------------------------
     ;;  Other mission?
@@ -388,7 +398,11 @@ ENDIF ELSE BEGIN
   IF (test[0]) THEN extra_line = dumb_exline ELSE extra_line = {NSTR:nlab[0],NVAL:nval[0]}
 ENDELSE
 ;;----------------------------------------------------------------------------------------
-;;  Plot results
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;  Plot initial results
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Plot E[P]ESA Low with E[P]ESA High
 plot_esa_sst_combined_spec3d,dat_esal,dat_esah,LIM_ESA=lim_esal,LIM_SST=lim_esah, $
@@ -402,6 +416,7 @@ plot_esa_sst_combined_spec3d,dat_esal,dat_esah,LIM_ESA=lim_esal,LIM_SST=lim_esah
                              XDAT_SST=xdat_esah,YDAT_SST=ydat_esah,             $
                              XDAT_ALL=xdat_all0,YDAT_ALL=ydat_all0,             $
                              ONEC_ALL=onec_all0,FILE_NAME=fnamelh,PLIMITS=pstrlh
+
 ;;  Plot E[P]ESA High with SST Foil[Open]
 plot_esa_sst_combined_spec3d,dat_esaH,dat_sst,LIM_ESA=lim_esaH,LIM_SST=lim_sst, $
                              ESA_ERAN=eran_esah,SST_ERAN=eran_sst,              $
@@ -431,6 +446,13 @@ xdat_all_esah  = xdat_all0.SST         ;;  ESAH Energies [eV]
 ydat_all_esah  = ydat_all0.SST         ;;  ESAH Data [UNITS[0]]
 xdat_all_sst   = xdat_all1.SST         ;;  SST  Energies [eV]
 ydat_all_sst   = ydat_all1.SST         ;;  SST  Data [UNITS[0]]
+;;  Redefine output so the user gets the spectra, not an [E,A]-element array from .DATA tag
+xdat_esal      = xdat_all_esal
+xdat_esah      = xdat_all_esah
+xdat_sst       = xdat_all_sst
+ydat_esal      = ydat_all_esal
+ydat_esah      = ydat_all_esah
+ydat_sst       = ydat_all_sst
 ;;  Check one-count settings
 log_1clh       = 0b
 log_1chs       = 0b
@@ -500,8 +522,8 @@ str_element,lim_str,'YTITLE',esa_ytle[0],/ADD_REPLACE
 str_element,lim_str, 'TITLE', p_title[0],/ADD_REPLACE
 ;;  Get file name
 esa_fnames     = STRSPLIT(fnamelh,'para-',/EXTRACT,/REGEX)
-sst_fnames     = STRSPLIT(fnamehs,'_sfb-',/EXTRACT,/REGEX)
-fname          = esa_fnames[0]+'sfb-'+sst_fnames[1]
+sst_fnames     = STRSPLIT(fnamehs,'_'+strn2[0].SN[0]+'-',/EXTRACT,/REGEX)
+fname          = esa_fnames[0]+strn2[0].SN[0]+'-'+sst_fnames[1]
 ;;  Define fsuffx
 temp           = STRSPLIT(fnamelh,'_',/EXTRACT)
 fsuffx         = '_'+temp[N_ELEMENTS(temp) - 1L]

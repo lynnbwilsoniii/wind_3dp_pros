@@ -378,6 +378,12 @@
 ;             9)  Fixed default output when routine fails and goes to the JUMP_QUIT
 ;                   GOTO point
 ;                                                                   [04/18/2025   v1.0.9]
+;            10)  Fixed an odd bug where sometimes the format of the STATUS output was a
+;                   long integer instead of a regular integer
+;                                                                   [05/12/2026   v1.0.10]
+;            11)  Removed redundant logic testing calls to improve efficiency by
+;                   ~3-4%
+;                                                                   [05/18/2026   v1.0.11]
 ;
 ;   NOTES:      
 ;               0)  ***  Do not directly set the RMSTRAHL keyword  ***
@@ -577,7 +583,7 @@
 ;   ADAPTED FROM: wrapper_fit_vdf_2_sumof2funcs.pro
 ;   CREATED:  06/19/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  04/18/2025   v1.0.9
+;    LAST MODIFIED:  05/18/2026   v1.0.11
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -640,11 +646,11 @@ def_ssex_lim            = [2d0,1d1]       ;;  self-similar exponent:  2 ≤ p �
 def_voec_lim            = [-1d0,1d0]*1d3  ;;   -1000 km/s ≤ V_oecj ≤  +1000 km/s
 def_voic_lim            = [-1d0,1d0]*2d3  ;;   -2000 km/s ≤ V_opcj ≤  +2000 km/s
 ;;  Check IONS
-test           = (N_ELEMENTS(ions) GT 0) AND KEYWORD_SET(ions)
-IF (test[0]) THEN ion__on = 1b ELSE ion__on = 0b
+;test           = (N_ELEMENTS(ions) GT 0) AND KEYWORD_SET(ions)
+IF ((N_ELEMENTS(ions) GT 0) AND KEYWORD_SET(ions)) THEN ion__on = 1b ELSE ion__on = 0b
 ;;  Check ELECTRONS
-test           = (N_ELEMENTS(electrons) GT 0) AND KEYWORD_SET(electrons)
-IF (test[0]) THEN elec_on = 1b ELSE elec_on = ([0b,1b])[~ion__on[0]]
+;test           = (N_ELEMENTS(electrons) GT 0) AND KEYWORD_SET(electrons)
+IF ((N_ELEMENTS(electrons) GT 0) AND KEYWORD_SET(electrons)) THEN elec_on = 1b ELSE elec_on = ([0b,1b])[~ion__on[0]]
 IF (elec_on[0] AND ion__on[0]) THEN ion__on[0] = 0b                    ;;  Make sure only one particle type is set
 IF (elec_on[0]) THEN def_v_oc_lim = def_voec_lim ELSE def_v_oc_lim = def_voic_lim
 ;;  Check NOUSECTAB
@@ -666,8 +672,8 @@ def_rmstrahl            = CREATE_STRUCT(tags,[-1d0,0d0,0d0],45d0,1d3)
 ;;----------------------------------------------------------------------------------------
 IF (N_PARAMS() LT 2) THEN RETURN          ;;  Don't bother if nothing is provided
 ;;  Check parameter
-test                    = is_a_number(vdf,/NOMSSG) AND is_a_3_vector(velxyz,V_OUT=vv1,/NOMSSG)
-IF (~test[0]) THEN RETURN                 ;;  Don't bother if input is bad
+;test                    = is_a_number(vdf,/NOMSSG) AND is_a_3_vector(velxyz,V_OUT=vv1,/NOMSSG)
+IF (~(is_a_number(vdf,/NOMSSG) AND is_a_3_vector(velxyz,V_OUT=vv1,/NOMSSG))) THEN RETURN                 ;;  Don't bother if input is bad
 szdf                    = SIZE(vdf,/DIMENSIONS)
 szdv                    = SIZE(vv1,/DIMENSIONS)
 IF (szdf[0] NE szdv[0]) THEN RETURN       ;;  Don't bother if input is improperly formatted
@@ -681,8 +687,8 @@ vv1                     = 0
 dev_name                = STRLOWCASE(!D[0].NAME[0])
 os__name                = STRLOWCASE(!VERSION.OS_FAMILY)       ;;  'unix' or 'windows'
 ;;  Check device settings
-test_xwin               = (dev_name[0] EQ 'x') OR (dev_name[0] EQ 'win')
-IF (test_xwin[0]) THEN BEGIN
+;test_xwin               = (dev_name[0] EQ 'x') OR (dev_name[0] EQ 'win')
+IF ((dev_name[0] EQ 'x') OR (dev_name[0] EQ 'win')) THEN BEGIN
   ;;  Proper setting --> find out which windows are already open
   DEVICE,WINDOW_STATE=wstate
 ENDIF ELSE BEGIN
@@ -698,8 +704,8 @@ xywsz                   = [wsz[0],LONG(wsz[0]*1.375d0)]
 good_w                  = WHERE(wstate,gd_w)
 wind_ns                 = [4,5]
 ;;  Check if user specified window is already open
-test_wopen0             = (TOTAL(good_w EQ wind_ns[0]) GT 0)     ;;  TRUE --> window already open
-IF (test_wopen0[0]) THEN BEGIN
+;test_wopen0             = (TOTAL(good_w EQ wind_ns[0]) GT 0)     ;;  TRUE --> window already open
+IF ((TOTAL(good_w EQ wind_ns[0]) GT 0) ) THEN BEGIN
   ;;  Window 4 is open --> check if was opened by this routine
   WSET,wind_ns[0]
   cur_xywsz               = [!D.X_SIZE[0],!D.Y_SIZE[0]]
@@ -743,16 +749,16 @@ bf                      = bfunc[0]
 ;;  Check keywords with default options
 ;;----------------------------------------------------------------------------------------
 ;;  Check USE_MM
-test                    = (N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)
-IF (test[0]) THEN vfac = 1d-3 ELSE vfac = 1d0
+;test                    = (N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)
+IF ((N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)) THEN vfac = 1d-3 ELSE vfac = 1d0
 ffac                    = 1d0/vfac[0]^3d0                        ;;  km^(-3) --> Mm^(-3)
 pfar                    = [1d0,REPLICATE(vfac[0],4L),1d0]        ;;  Array to multiply with parameters for general_vdf_contour_plot.pro input and use for inversing:  Mm --> km
 pfar1                   = [1d0,REPLICATE(vfac[0],3L),1d0,1d0]
 ;;------------------------------
 ;;  Check COREP
 ;;------------------------------
-test                    = (N_ELEMENTS(corep) EQ 6) AND is_a_number(corep,/NOMSSG)
-IF (test[0]) THEN BEGIN
+;test                    = (N_ELEMENTS(corep) EQ 6) AND is_a_number(corep,/NOMSSG)
+IF ((N_ELEMENTS(corep) EQ 6) AND is_a_number(corep,/NOMSSG)) THEN BEGIN
   pcore        = DOUBLE(corep)
   ;;  Adjust parameters by velocity factor
   IF (cf[0] NE 'AS') THEN pcore[01:04] *= vfac[0] ELSE pcore[01:03] *= vfac[0]
@@ -787,8 +793,8 @@ ENDELSE
 ;;------------------------------
 ;;  Check HALOP
 ;;------------------------------
-test                    = (N_ELEMENTS(halop) EQ 6) AND is_a_number(halop,/NOMSSG)
-IF (test[0]) THEN BEGIN
+;test                    = (N_ELEMENTS(halop) EQ 6) AND is_a_number(halop,/NOMSSG)
+IF ((N_ELEMENTS(halop) EQ 6) AND is_a_number(halop,/NOMSSG)) THEN BEGIN
   phalo        = DOUBLE(halop)
   ;;  Adjust parameters by velocity factor
   IF (hf[0] NE 'AS') THEN phalo[01:04] *= vfac[0] ELSE phalo[01:03] *= vfac[0]
@@ -823,8 +829,8 @@ ENDELSE
 ;;------------------------------
 ;;  Check BEAMP
 ;;------------------------------
-test                    = (N_ELEMENTS(beamp) EQ 6) AND is_a_number(beamp,/NOMSSG)
-IF (test[0]) THEN BEGIN
+;test                    = (N_ELEMENTS(beamp) EQ 6) AND is_a_number(beamp,/NOMSSG)
+IF ((N_ELEMENTS(beamp) EQ 6) AND is_a_number(beamp,/NOMSSG)) THEN BEGIN
   pbeam        = DOUBLE(beamp)
   ;;  Adjust parameters by velocity factor
   IF (bf[0] NE 'AS') THEN pbeam[01:04] *= vfac[0] ELSE pbeam[01:03] *= vfac[0]
@@ -861,9 +867,11 @@ ENDELSE
 ;;------------------------------
 ;;  Check V1ISB
 ;;------------------------------
-test                    = (N_ELEMENTS(v1isb) EQ 1) AND is_a_number(v1isb,/NOMSSG)
-IF (test[0]) THEN test = (ABS(v1isb[0]) GT 0)
-IF (test[0]) THEN test = is_a_3_vector(vec1,V_OUT=vv1,/NOMSSG) ELSE vv1 = REPLICATE(d,3)
+;test                    = (N_ELEMENTS(v1isb) EQ 1) AND is_a_number(v1isb,/NOMSSG)
+;IF ((N_ELEMENTS(v1isb) EQ 1) AND is_a_number(v1isb,/NOMSSG)) THEN test = (ABS(v1isb[0]) GT 0)
+;IF ((N_ELEMENTS(v1isb) EQ 1) AND is_a_number(v1isb,/NOMSSG)) THEN IF ((ABS(v1isb[0]) GT 0)) THEN test = is_a_3_vector(vec1,V_OUT=vv1,/NOMSSG) ELSE vv1 = REPLICATE(d,3)
+;IF (test[0]) THEN test = is_a_3_vector(vec1,V_OUT=vv1,/NOMSSG) ELSE vv1 = REPLICATE(d,3)
+IF ((N_ELEMENTS(v1isb) EQ 1) AND is_a_number(v1isb,/NOMSSG)) THEN IF ((ABS(v1isb[0]) GT 0)) THEN test = is_a_3_vector(vec1,V_OUT=vv1,/NOMSSG) ELSE vv1 = REPLICATE(d,3)
 IF (test[0]) THEN BEGIN
   sb       = sign(v1isb[0])
   uv_st    = REFORM(sb[0]*unit_vec(vv1))
@@ -887,32 +895,32 @@ ENDELSE
 ;;------------------------------
 ;;  Check EMIN_CH and EMIN_B
 ;;------------------------------
-test                    = (N_ELEMENTS(emin_ch) GT 0) AND is_a_number(emin_ch,/NOMSSG)
-IF (test[0]) THEN ch_emin = 1d0*ABS(emin_ch[0]) ELSE ch_emin = 0d0
-test                    = (N_ELEMENTS(emin_b) GT 0) AND is_a_number(emin_b,/NOMSSG)
-IF (test[0]) THEN b__emin = 1d0*ABS(emin_b[0]) ELSE b__emin = 0d0
+;test                    = (N_ELEMENTS(emin_ch) GT 0) AND is_a_number(emin_ch,/NOMSSG)
+IF ((N_ELEMENTS(emin_ch) GT 0) AND is_a_number(emin_ch,/NOMSSG)) THEN ch_emin = 1d0*ABS(emin_ch[0]) ELSE ch_emin = 0d0
+;test                    = (N_ELEMENTS(emin_b) GT 0) AND is_a_number(emin_b,/NOMSSG)
+IF ((N_ELEMENTS(emin_b) GT 0) AND is_a_number(emin_b,/NOMSSG)) THEN b__emin = 1d0*ABS(emin_b[0]) ELSE b__emin = 0d0
 ;;------------------------------
 ;;  Check EMAX_CH and EMAX_B
 ;;------------------------------
-test                    = (N_ELEMENTS(emax_ch) GT 0) AND is_a_number(emax_ch,/NOMSSG)
-IF (test[0]) THEN ch_emax = 1d0*ABS(emax_ch[0]) ELSE ch_emax = 1d30
-test                    = (N_ELEMENTS(emax_b) GT 0) AND is_a_number(emax_b,/NOMSSG)
-IF (test[0]) THEN b__emax = 1d0*ABS(emax_b[0]) ELSE b__emax = 1d30
+;test                    = (N_ELEMENTS(emax_ch) GT 0) AND is_a_number(emax_ch,/NOMSSG)
+IF ((N_ELEMENTS(emax_ch) GT 0) AND is_a_number(emax_ch,/NOMSSG)) THEN ch_emax = 1d0*ABS(emax_ch[0]) ELSE ch_emax = 1d30
+;test                    = (N_ELEMENTS(emax_b) GT 0) AND is_a_number(emax_b,/NOMSSG)
+IF ((N_ELEMENTS(emax_b) GT 0) AND is_a_number(emax_b,/NOMSSG)) THEN b__emax = 1d0*ABS(emax_b[0]) ELSE b__emax = 1d30
 ;;------------------------------
 ;;  Check USE1C4WGHT
 ;;------------------------------
-test           = (N_ELEMENTS(use1c4wght) GT 0) AND KEYWORD_SET(use1c4wght)
-IF (test[0]) THEN use1c4w_on = 1b ELSE use1c4w_on = 0b
+;test           = (N_ELEMENTS(use1c4wght) GT 0) AND KEYWORD_SET(use1c4wght)
+IF ((N_ELEMENTS(use1c4wght) GT 0) AND KEYWORD_SET(use1c4wght)) THEN use1c4w_on = 1b ELSE use1c4w_on = 0b
 ;;------------------------------
 ;;  Check NO_WGHT
 ;;------------------------------
-test           = (N_ELEMENTS(no_wght) GT 0) AND KEYWORD_SET(no_wght)
-IF (test[0]) THEN use_nowght_on = 1b ELSE use_nowght_on = 0b
+;test           = (N_ELEMENTS(no_wght) GT 0) AND KEYWORD_SET(no_wght)
+IF ((N_ELEMENTS(no_wght) GT 0) AND KEYWORD_SET(no_wght)) THEN use_nowght_on = 1b ELSE use_nowght_on = 0b
 ;;------------------------------
 ;;  Check POISSON
 ;;------------------------------
-test           = (N_ELEMENTS(poisson) GT 0) AND is_a_number(poisson,/NOMSSG)
-IF (test[0]) THEN BEGIN
+;test           = (N_ELEMENTS(poisson) GT 0) AND is_a_number(poisson,/NOMSSG)
+IF ((N_ELEMENTS(poisson) GT 0) AND is_a_number(poisson,/NOMSSG)) THEN BEGIN
   poisson_on     = (N_ELEMENTS(poisson) EQ nn_f[0])
 ENDIF ELSE BEGIN
   poisson_on     = 0b
@@ -989,8 +997,9 @@ CASE gd_wts[0] OF
   ELSE :  STOP  ;;  Should not be possible --> debug
 ENDCASE
 ;;  Check CORE_THRSH
-test                    = (N_ELEMENTS(core_thrsh) GE 1) AND is_a_number(core_thrsh,/NOMSSG)
-IF (test[0]) THEN test = (ABS(core_thrsh[0]) LT 5d-1)
+;test                    = (N_ELEMENTS(core_thrsh) GE 1) AND is_a_number(core_thrsh,/NOMSSG)
+IF ((N_ELEMENTS(core_thrsh) GE 1) AND is_a_number(core_thrsh,/NOMSSG)) THEN test = (ABS(core_thrsh[0]) LT 5d-1) ELSE test = 0b
+;IF ((N_ELEMENTS(core_thrsh) GE 1) AND is_a_number(core_thrsh,/NOMSSG)) THEN IF ((ABS(core_thrsh[0]) LT 5d-1)) THEN cthrsh = ABS(core_thrsh[0]) ELSE cthrsh = 1d-2
 IF (test[0]) THEN cthrsh = ABS(core_thrsh[0]) ELSE cthrsh = 1d-2
 ;;----------------------------------------------------------------------------------------
 ;;  Plot 2D contour of VDF and return data
@@ -1002,8 +1011,8 @@ IF (rm_strahl_on[0]) THEN BEGIN
   ;;--------------------------------------------------------------------------------------
   ;;  Check if we need to alter PARINFO limits
   ;;--------------------------------------------------------------------------------------
-  test                    = is_a_3_vector(vec1,V_OUT=vv1,/NOMSSG)
-  IF (test[0]) THEN BEGIN
+;  test                    = is_a_3_vector(vec1,V_OUT=vv1,/NOMSSG)
+  IF (is_a_3_vector(vec1,V_OUT=vv1,/NOMSSG)) THEN BEGIN
     ;;------------------------------------------------------------------------------------
     ;;  VEC1 is set --> determine side to ignore
     ;;------------------------------------------------------------------------------------
@@ -1029,12 +1038,12 @@ IF (rm_strahl_on[0]) THEN BEGIN
       pbeam[3]                = pbeam[3] > 0
       def_binf[3].LIMITS[0]   = def_binf[3].LIMITS[0] > 0
       ;;  Check LIMITS
-      test                    = (def_pinf[3].LIMITS[0] GT def_pinf[3].LIMITS[1]) AND def_pinf[3].LIMITED[1]
-      IF (test[0]) THEN def_pinf[3].LIMITS[1] = -10*ABS(def_pinf[3].LIMITS[0])
-      test                    = (def_pinf[9].LIMITS[0] GT def_pinf[9].LIMITS[1]) AND def_pinf[9].LIMITED[1]
-      IF (test[0]) THEN def_pinf[9].LIMITS[1] = -10*ABS(def_pinf[9].LIMITS[0])
-      test                    = (def_binf[3].LIMITS[0] GT def_binf[3].LIMITS[1]) AND def_binf[3].LIMITED[1]
-      IF (test[0]) THEN BEGIN
+;      test                    = (def_pinf[3].LIMITS[0] GT def_pinf[3].LIMITS[1]) AND def_pinf[3].LIMITED[1]
+      IF ((def_pinf[3].LIMITS[0] GT def_pinf[3].LIMITS[1]) AND def_pinf[3].LIMITED[1]) THEN def_pinf[3].LIMITS[1] = -10*ABS(def_pinf[3].LIMITS[0])
+;      test                    = (def_pinf[9].LIMITS[0] GT def_pinf[9].LIMITS[1]) AND def_pinf[9].LIMITED[1]
+      IF ((def_pinf[9].LIMITS[0] GT def_pinf[9].LIMITS[1]) AND def_pinf[9].LIMITED[1]) THEN def_pinf[9].LIMITS[1] = -10*ABS(def_pinf[9].LIMITS[0])
+;      test                    = (def_binf[3].LIMITS[0] GT def_binf[3].LIMITS[1]) AND def_binf[3].LIMITED[1]
+      IF ((def_binf[3].LIMITS[0] GT def_binf[3].LIMITS[1]) AND def_binf[3].LIMITED[1]) THEN BEGIN
         ;;  Adjust and sort
         def_binf[3].LIMITS[1] = 10*def_binf[3].LIMITS[0]
         temp                  = def_binf[3].LIMITS
@@ -1057,12 +1066,12 @@ IF (rm_strahl_on[0]) THEN BEGIN
       pbeam[3]                = pbeam[3] < 0
       def_binf[3].LIMITS[1]   = def_binf[3].LIMITS[1] < 0
       ;;  Check LIMITS
-      test                    = (def_pinf[3].LIMITS[0] GT def_pinf[3].LIMITS[1]) AND def_pinf[3].LIMITED[1]
-      IF (test[0]) THEN def_pinf[3].LIMITS[1] = 10*def_pinf[3].LIMITS[0]
-      test                    = (def_pinf[9].LIMITS[0] GT def_pinf[9].LIMITS[1]) AND def_pinf[9].LIMITED[1]
-      IF (test[0]) THEN def_pinf[9].LIMITS[1] = 10*def_pinf[9].LIMITS[0]
-      test                    = (def_binf[3].LIMITS[0] GT def_binf[3].LIMITS[1]) AND def_binf[3].LIMITED[1]
-      IF (test[0]) THEN BEGIN
+;      test                    = (def_pinf[3].LIMITS[0] GT def_pinf[3].LIMITS[1]) AND def_pinf[3].LIMITED[1]
+      IF ((def_pinf[3].LIMITS[0] GT def_pinf[3].LIMITS[1]) AND def_pinf[3].LIMITED[1]) THEN def_pinf[3].LIMITS[1] = 10*def_pinf[3].LIMITS[0]
+;      test                    = (def_pinf[9].LIMITS[0] GT def_pinf[9].LIMITS[1]) AND def_pinf[9].LIMITED[1]
+      IF ((def_pinf[9].LIMITS[0] GT def_pinf[9].LIMITS[1]) AND def_pinf[9].LIMITED[1]) THEN def_pinf[9].LIMITS[1] = 10*def_pinf[9].LIMITS[0]
+;      test                    = (def_binf[3].LIMITS[0] GT def_binf[3].LIMITS[1]) AND def_binf[3].LIMITED[1]
+      IF ((def_binf[3].LIMITS[0] GT def_binf[3].LIMITS[1]) AND def_binf[3].LIMITED[1]) THEN BEGIN
         ;;  Adjust and sort
         def_binf[3].LIMITS[1] = -10*ABS(def_binf[3].LIMITS[0])
         temp                  = def_binf[3].LIMITS
@@ -1136,8 +1145,8 @@ n_vdf                   = N_ELEMENTS(vdf_2d)
 n_par                   = N_ELEMENTS(vx_in)
 n_per                   = N_ELEMENTS(vy_in)
 ;;  Check output so far
-test                    = (FINITE(offset) EQ 0) OR (offset[0] LE 0) OR (n_vdf[0] LT 20)
-IF (test[0]) THEN BEGIN
+;test                    = (FINITE(offset) EQ 0) OR (offset[0] LE 0) OR (n_vdf[0] LT 20)
+IF ((FINITE(offset) EQ 0) OR (offset[0] LE 0) OR (n_vdf[0] LT 20)) THEN BEGIN
   MESSAGE,'Failure after plot level output [insufficient finite output]!',/INFORMATION,/CONTINUE
   RETURN        ;;  Failed to plot!!!
 ENDIF
@@ -1288,12 +1297,14 @@ CASE good_wts[0] OF
   ELSE : STOP        ;;  Should not be possible --> debug
 ENDCASE
 ;;  Remove negatives and zeros
-test                    = (FINITE(vdf_2dc) EQ 0) OR (vdf_2dc LE 0) OR   $
-                          (FINITE(zerrc) EQ 0) OR (zerrc LE 0) OR       $
-                          (FINITE(weightc) EQ 0) OR (weightc LE 0)
-bad                     = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
-test                    = (1d0*bd[0] GT 98d-2*n_vdf[0])
-IF (test[0]) THEN BEGIN
+;test                    = (FINITE(vdf_2dc) EQ 0) OR (vdf_2dc LE 0) OR   $
+;                          (FINITE(zerrc) EQ 0) OR (zerrc LE 0) OR       $
+;                          (FINITE(weightc) EQ 0) OR (weightc LE 0)
+bad                     = WHERE((FINITE(vdf_2dc) EQ 0) OR (vdf_2dc LE 0) OR   $
+                                (FINITE(zerrc) EQ 0) OR (zerrc LE 0) OR       $
+                                (FINITE(weightc) EQ 0) OR (weightc LE 0),bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+;test                    = (1d0*bd[0] GT 98d-2*n_vdf[0])
+IF ((1d0*bd[0] GT 98d-2*n_vdf[0])) THEN BEGIN
   ;;  Too many "bad" data points --> Failure!
   MESSAGE,'Failure (Core):  Too many bad data points!',/INFORMATION,/CONTINUE
   GOTO,JUMP_QUIT
@@ -1459,21 +1470,24 @@ END
 ;;             8 = GTOL is too small. fvec is orthogonal to the columns of the
 ;;                   jacobian to machine precision.
 ;;----------------------------------------------------------------------------------------
-test           = (statc[0] LE 0) OR (N_ELEMENTS(corefit_out) NE N_ELEMENTS(dumb2d)) OR $
-                 (N_ELEMENTS(zerrorc) NE N_ELEMENTS(dumb2d))
-IF (test[0]) THEN GOTO,JUMP_QUIT
+;test           = (statc[0] LE 0) OR (N_ELEMENTS(corefit_out) NE N_ELEMENTS(dumb2d)) OR $
+;                 (N_ELEMENTS(zerrorc) NE N_ELEMENTS(dumb2d))
+IF ((statc[0] LE 0) OR (N_ELEMENTS(corefit_out) NE N_ELEMENTS(dumb2d)) OR $
+                       (N_ELEMENTS(zerrorc) NE N_ELEMENTS(dumb2d))) THEN GOTO,JUMP_QUIT
 ;;----------------------------------------------------------------------------------------
 ;;  Fit to model 2D function to halo
 ;;----------------------------------------------------------------------------------------
 ;;  Define residual between model core and data
 residualh               = lbw_diff(vdf_2dh,corefit_out,/NAN) > 0             ;;  Force values to > 1.0
 ;;  Remove negatives and zeros
-test                    = (FINITE(residualh) EQ 0) OR (residualh LE 0) OR $
-                          (FINITE(zerrh) EQ 0) OR (zerrh LE 0) OR         $
-                          (FINITE(weighth) EQ 0) OR (weighth LE 0)
-bad                     = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
-test                    = (1d0*bd[0] GT 95d-2*n_vdf[0])
-IF (test[0]) THEN BEGIN
+;test                    = (FINITE(residualh) EQ 0) OR (residualh LE 0) OR $
+;                          (FINITE(zerrh) EQ 0) OR (zerrh LE 0) OR         $
+;                          (FINITE(weighth) EQ 0) OR (weighth LE 0)
+bad                     = WHERE((FINITE(residualh) EQ 0) OR (residualh LE 0) OR $
+                                (FINITE(zerrh) EQ 0) OR (zerrh LE 0) OR         $
+                                (FINITE(weighth) EQ 0) OR (weighth LE 0),bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+;test                    = (1d0*bd[0] GT 95d-2*n_vdf[0])
+IF ((1d0*bd[0] GT 95d-2*n_vdf[0])) THEN BEGIN
   ;;  Too many "bad" data points --> Failure!
   MESSAGE,'Failure (Halo):  Too many bad data points!',/INFORMATION,/CONTINUE
   stath                     = -1
@@ -1559,12 +1573,14 @@ b_pinfo.VALUE           = pbeam                                             ;;  
 IF (stath[0] LE 0) THEN ch_fit_out = corefit_out ELSE ch_fit_out = lbw__add(corefit_out,halofit_out,/NAN)
 residualb               = lbw_diff(vdf_2db,ch_fit_out,/NAN) > 0             ;;  Force values to > 1.0
 ;;  Remove negatives and zeros
-test                    = (FINITE(residualb) EQ 0) OR (residualb LE 0) OR $
-                          (FINITE(zerrb) EQ 0) OR (zerrb LE 0) OR         $
-                          (FINITE(weightb) EQ 0) OR (weightb LE 0)
-bad                     = WHERE(test,bd,COMPLEMENT=good,NCOMPLEMENT=gd)
+;test                    = (FINITE(residualb) EQ 0) OR (residualb LE 0) OR $
+;                          (FINITE(zerrb) EQ 0) OR (zerrb LE 0) OR         $
+;                          (FINITE(weightb) EQ 0) OR (weightb LE 0)
+bad                     = WHERE((FINITE(residualb) EQ 0) OR (residualb LE 0) OR $
+                                (FINITE(zerrb) EQ 0) OR (zerrb LE 0) OR         $
+                                (FINITE(weightb) EQ 0) OR (weightb LE 0),bd,COMPLEMENT=good,NCOMPLEMENT=gd)
 test                    = (1d0*bd[0] GT 95d-2*n_vdf[0])
-IF (test[0]) THEN BEGIN
+IF ((1d0*bd[0] GT 95d-2*n_vdf[0])) THEN BEGIN
   ;;  Too many "bad" data points --> Failure!
   MESSAGE,'Failure (Beam):  Too many bad data points!',/INFORMATION,/CONTINUE
   statb                     = -1
@@ -1760,9 +1776,10 @@ ENDCASE
 ;;----------------------------------------------------------------------------------------
 model_tot               = lbw__add(corefit_out,lbw__add(halofit_out,beamfit_out,/NAN),/NAN)
 measr_tot               = lbw__add(vdf_2dc0,lbw__add(residualh,residualb,/NAN),/NAN)
-test_tot                = (FINITE(measr_tot) EQ 0) OR (measr_tot LE 0) OR   $
-                          (FINITE(weighttot) EQ 0) OR (weighttot LE 0)
-bad_tot                 = WHERE(test_tot,bd_tot,COMPLEMENT=good_tot,NCOMPLEMENT=gd_tot)
+;test_tot                = (FINITE(measr_tot) EQ 0) OR (measr_tot LE 0) OR   $
+;                          (FINITE(weighttot) EQ 0) OR (weighttot LE 0)
+bad_tot                 = WHERE((FINITE(measr_tot) EQ 0) OR (measr_tot LE 0) OR   $
+                                (FINITE(weighttot) EQ 0) OR (weighttot LE 0),bd_tot,COMPLEMENT=good_tot,NCOMPLEMENT=gd_tot)
 IF (bd_tot[0] GT 0) THEN BEGIN
   measr_tot[bad]            = 0d0
   weighttot[bad]            = 0d0
@@ -1814,12 +1831,12 @@ test_ff9                = (r_val_3 LT 15d0) AND ((tot_rchisq_3 LT 15d0) AND (tot
 ;;   10  :  (0 ≤ X_tot < 7) AND ((Ω < 5) OR (X_s ≤ 3)) AND (∂R ≤ 10%)
 test_f10                = (r_val_3 LE 10d0) AND ((tot_rchisq_3 LT 7d0) AND (tot_rchisq_3 GE 0d0)) AND ((Sig_by_comps LT 5d0) OR (rchisq_by_comps LE 3d0))
 ;;  Determine maximum flag criteria satisfied
-test_call               = [test_ff0[0],test_ff1[0],test_ff2[0],test_ff3[0],test_ff4[0],test_ff5[0],test_ff6[0],test_ff7[0],test_ff8[0],test_ff9[0],test_f10[0]]
-test_hall               = [test_ff0[1],test_ff1[1],test_ff2[1],test_ff3[1],test_ff4[1],test_ff5[1],test_ff6[1],test_ff7[1],test_ff8[1],test_ff9[1],test_f10[1]]
-test_ball               = [test_ff0[2],test_ff1[2],test_ff2[2],test_ff3[2],test_ff4[2],test_ff5[2],test_ff6[2],test_ff7[2],test_ff8[2],test_ff9[2],test_f10[2]]
-good_call               = WHERE(test_call,gd_call)
-good_hall               = WHERE(test_hall,gd_hall)
-good_ball               = WHERE(test_ball,gd_ball)
+;test_call               = [test_ff0[0],test_ff1[0],test_ff2[0],test_ff3[0],test_ff4[0],test_ff5[0],test_ff6[0],test_ff7[0],test_ff8[0],test_ff9[0],test_f10[0]]
+;test_hall               = [test_ff0[1],test_ff1[1],test_ff2[1],test_ff3[1],test_ff4[1],test_ff5[1],test_ff6[1],test_ff7[1],test_ff8[1],test_ff9[1],test_f10[1]]
+;test_ball               = [test_ff0[2],test_ff1[2],test_ff2[2],test_ff3[2],test_ff4[2],test_ff5[2],test_ff6[2],test_ff7[2],test_ff8[2],test_ff9[2],test_f10[2]]
+good_call               = WHERE([test_ff0[0],test_ff1[0],test_ff2[0],test_ff3[0],test_ff4[0],test_ff5[0],test_ff6[0],test_ff7[0],test_ff8[0],test_ff9[0],test_f10[0]],gd_call)
+good_hall               = WHERE([test_ff0[1],test_ff1[1],test_ff2[1],test_ff3[1],test_ff4[1],test_ff5[1],test_ff6[1],test_ff7[1],test_ff8[1],test_ff9[1],test_f10[1]],gd_hall)
+good_ball               = WHERE([test_ff0[2],test_ff1[2],test_ff2[2],test_ff3[2],test_ff4[2],test_ff5[2],test_ff6[2],test_ff7[2],test_ff8[2],test_ff9[2],test_f10[2]],gd_ball)
 IF (gd_call[0] GT 0) THEN fflag_c = LONG(MAX(good_call)) ELSE fflag_c = 0L
 IF (gd_hall[0] GT 0) THEN fflag_h = LONG(MAX(good_hall)) ELSE fflag_h = 0L
 IF (gd_ball[0] GT 0) THEN fflag_b = LONG(MAX(good_ball)) ELSE fflag_b = 0L
@@ -1831,15 +1848,15 @@ out_tags                = ['X_IN','Y_IN','Z_IN','WEIGHTS','YFIT','FIT_PARAMS','S
                            'CHISQ','DOF','N_ITER','STATUS','YERROR','FUNC','PARINFO',     $
                            'PFREE_INDEX','NPEGGED','Z_ORIG','OFFSET','NTRIALS']
 core_strc               = CREATE_STRUCT(out_tags,vx_in,vy_in,vdf_2dc,weightc,corefit_out,c_fit,  $
-                                        f_sigc,chisqc[0],dofc[0],iterc[0],statc[0],zerrorc,      $
+                                        f_sigc,chisqc[0],dofc[0],iterc[0],FIX(statc[0]),zerrorc, $
                                         cfun[0],c_pinfo,cfree_ind,cpegged,vdf_2d,offset[0],      $
                                         c__trial[0])
 halo_strc               = CREATE_STRUCT(out_tags,vx_in,vy_in,residualh,weighth,halofit_out,h_fit,$
-                                        f_sigh,chisqh[0],dofh[0],iterh[0],stath[0],zerrorh,      $
+                                        f_sigh,chisqh[0],dofh[0],iterh[0],FIX(stath[0]),zerrorh, $
                                         hfun[0],h_pinfo,hfree_ind,hpegged,vdf_2dh,offset[0],     $
                                         h__trial[0])
 beam_strc               = CREATE_STRUCT(out_tags,vx_in,vy_in,residualb,weightb,beamfit_out,b_fit,$
-                                        f_sigb,chisqb[0],dofb[0],iterb[0],statb[0],zerrorb,      $
+                                        f_sigb,chisqb[0],dofb[0],iterb[0],FIX(statb[0]),zerrorb, $
                                         bfun[0],b_pinfo,bfree_ind,bpegged,vdf_2db,offset[0],     $
                                         b__trial[0])
 tags                    = ['CORE','HALO','BEAM','MODEL_TOT','VDF_FIT_TOT','WEIGHT_TOT','CHISQ_TOT','RED_CHISQ_TOT','FIT_FLAGS']

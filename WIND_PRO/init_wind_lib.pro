@@ -73,6 +73,8 @@
 ;            12)  Forgot to allow for the new shared object library when checking for
 ;                   64-bit architectures
 ;                                                                   [08/09/2016   v1.4.3]
+;            13)  Updated to accommodate Mac OS arm64 architecture
+;                                                                   [05/11/2026   v1.5.0]
 ;
 ;   NOTES:      
 ;               1)  The shared object libraries listed above are pre-compiled
@@ -100,7 +102,7 @@
 ;
 ;   CREATED:  ??/??/????
 ;   CREATED BY:  Davin Larson
-;    LAST MODIFIED:  08/09/2016   v1.4.3
+;    LAST MODIFIED:  05/11/2026   v1.5.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -114,7 +116,7 @@ PRO init_wind_lib,WLIB=wlib,MASTFILE=mastfile
 slash          = get_os_slash()
 ;;  Define strings identifying the possible shared object libraries
 ;mac_sofs       = ['wind3dp_lib_darwin_ppc.so','wind3dp_lib_darwin_i386.so']
-mac_sofs       = ['wind3dp_lib_darwin_ppc.so','wind3dp_lib_darwin_i386.so','wind3dp_lib_darwin_x86_64.so']
+mac_sofs       = ['wind3dp_lib_darwin_ppc.so','wind3dp_lib_darwin_i386.so','wind3dp_lib_darwin_x86_64.so','wind3dp_lib_arm64_m1_mac.so']
 sun_sofs       = ['wind3dp_lib_sunos_sparc.so','wind3dp_lib_sunos_unix_x86_64.so']
 ;sun_sofs       = ['wind3dp_lib_sunos_sparc.so']
 unx_sofs       = ['wind3dp_lib_ss32.so','wind3dp_lib_ls32.so']
@@ -245,6 +247,7 @@ CASE osname[0] OF
     CASE arch[0] OF
       'i386'    :  libname = mac_sofs[1]   ;;  Intel chip [32-bit]
       'x86_64'  :  libname = mac_sofs[2]   ;;  Intel chip [64-bit]
+      'arm64'   :  libname = mac_sofs[3]   ;;  Mac M chip [64-bit]
       ELSE      :  libname = mac_sofs[0]   ;;  PowerPC chip [32-bit]
     ENDCASE
 ;    IF (arch[0] EQ 'i386') THEN libname = mac_sofs[1] ELSE libname = mac_sofs[0]

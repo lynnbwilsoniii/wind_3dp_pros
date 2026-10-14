@@ -74,8 +74,9 @@
 ;                                          and vertical axis (V1 x V2)
 ;                             [Default = 'xy']
 ;
-;   CHANGED:  1)  NA
-;                                                                   [MM/DD/YYYY   v1.0.0]
+;   CHANGED:  1)  Fixed a bug in the error handling for the VEC[1,2] keywords and
+;                   added some progress output
+;                                                                   [04/27/2026   v1.0.1]
 ;
 ;   NOTES:      
 ;               0)  For MMS structures, there may also be a UNIX structure tag but it
@@ -136,7 +137,7 @@
 ;
 ;   CREATED:  10/28/2024
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  10/28/2024   v1.0.0
+;    LAST MODIFIED:  04/27/2026   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -145,6 +146,7 @@
 FUNCTION get_1d_cuts_of_vdf_from_struc,struc,VFRAME=vframe,VEC1=vec1,VEC2=vec2,VLIM=vlim,  $
                                              PLANE=plane,NGRID=ngrid
 
+tstart         = SYSTIME(1)
 ;;----------------------------------------------------------------------------------------
 ;;  Constants
 ;;----------------------------------------------------------------------------------------
@@ -165,6 +167,8 @@ def_vec1       = [1d0,0d0,0d0]
 def_vec2       = [0d0,1d0,0d0]
 def_ngrid      = 101L
 def_plane      = 'xy'
+outstrs        = ['Elapsed time [s] = ',',  j   =  ',',  % Complete = ']
+jupdats        = [1L,5L,10L,50L,100L,500L,1000L]
 ;;----------------------------------------------------------------------------------------
 ;;  Check input
 ;;----------------------------------------------------------------------------------------
@@ -243,16 +247,30 @@ IF (TOTAL(FINITE(vframe)) EQ nexfv[0]) THEN BEGIN
   ENDELSE
 ENDIF ELSE BEGIN
   ;;  VFRAME is not finite --> zero out
-  IF (mms_on[0]) THEN vframe = REPLICATE(0d0,szdvdf[0],3L) ELSE vframe = REPLICATE(0d0,3L)
+  IF (mms_on[0]) THEN BEGIN
+    ;;  Replace only NaN elements with zeros
+    bad            = WHERE(FINITE(vframe[*,0]) EQ 0 OR FINITE(vframe[*,1]) EQ 0 OR FINITE(vframe[*,2]) EQ 0,bd)
+    IF (bd[0] GT 0) THEN vframe[bad,*] = 0d0
+    ;;  Now adjust VDFs accordingly
+    FOR j=0L, szdvdf[0] - 1L DO BEGIN
+      FOR k=0L, 2L DO vf_new[j,*,k] -= vframe[j,k]
+    ENDFOR
+    IF (bd[0] GT 0) THEN vdf[bad,*] = d            ;;  Do not bother with VDFs when VFRAME was not valid
+  ENDIF ELSE BEGIN
+    ;;  Just use spacecraft frame for input with one VDF
+    vframe         = REPLICATE(0d0,3L)
+  ENDELSE
 ENDELSE
-vmag_new       = mag__vec(vf_new,/NAN)
+IF (mms_on[0]) THEN vmag_new = mag__vec(REFORM(vf_new,szdvel[0]*szdvel[1],3L),/NAN) ELSE vmag_new = mag__vec(vf_new,/NAN)
 ;;----------------------------------------------------------------------------------------
 ;;  Check VEC1 and VEC2
 ;;----------------------------------------------------------------------------------------
 IF (is_a_3_vector(vec1,V_OUT=v1out,/NOMSSG) EQ 0) THEN vec1 = def_vec1 ELSE vec1 = REFORM(v1out)
 IF (is_a_3_vector(vec2,V_OUT=v2out,/NOMSSG) EQ 0) THEN vec2 = def_vec2 ELSE vec2 = REFORM(v2out)
-IF (TOTAL(FINITE(vec1)) NE 3) THEN vec1 = def_vec1
-IF (TOTAL(FINITE(vec2)) NE 3) THEN vec2 = def_vec2
+IF ((TOTAL(FINITE(vec1)) MOD 3) NE 0) THEN vec1 = def_vec1
+IF ((TOTAL(FINITE(vec2)) MOD 3) NE 0) THEN vec2 = def_vec2
+;IF (TOTAL(FINITE(vec1)) NE 3) THEN vec1 = def_vec1
+;IF (TOTAL(FINITE(vec2)) NE 3) THEN vec2 = def_vec2
 IF (mms_on[0]) THEN BEGIN
   ;;  Check if user supplied T input 3-vectors or just one
   ones           = REPLICATE(1d0,szdvdf[0])
@@ -303,6 +321,19 @@ IF (mms_on[0]) THEN BEGIN
   fperp_1d       = fpara_1d
   vpara_1d       = fpara_1d
   vperp_1d       = fpara_1d
+  CASE 1 OF
+    (szdvdf[0] LE    10L)                          :  jmod = jupdats[0]
+    (szdvdf[0] GT    10L AND szdvdf[0] LE    50L)  :  jmod = jupdats[1]
+    (szdvdf[0] GT    50L AND szdvdf[0] LE   200L)  :  jmod = jupdats[2]
+    (szdvdf[0] GT   200L AND szdvdf[0] LE  1000L)  :  jmod = jupdats[3]
+    (szdvdf[0] GT  1000L AND szdvdf[0] LE  5000L)  :  jmod = jupdats[4]
+    (szdvdf[0] GT  5000L AND szdvdf[0] LE 15000L)  :  jmod = jupdats[5]
+    (szdvdf[0] GT 15000L)                          :  jmod = jupdats[6]
+    ELSE                                           :  jmod = jupdats[6]
+  ENDCASE
+  ;;--------------------------------------------------------------------------------------
+  ;;  Loop
+  ;;--------------------------------------------------------------------------------------
   FOR j=0L, szdvdf[0] - 1L DO BEGIN
     ;;------------------------------------------------------------------------------------
     ;;------------------------------------------------------------------------------------
@@ -317,7 +348,14 @@ IF (mms_on[0]) THEN BEGIN
                                                       NGRID=ngrid[0],/SLICE2D,VFRAME=vfr0, $
                                                       VEC1=vv1,VEC2=vv2,P_LOG=0b)
     ;;  Check output
-    IF (SIZE(r_vels,/TYPE) NE 8) THEN CONTINUE
+    IF (SIZE(r_vels,/TYPE) NE 8) THEN BEGIN
+      ;;  Inform user then skip to next iteration
+      IF ((j[0] MOD jmod[0]) EQ 0) THEN BEGIN
+        outvals        = [(SYSTIME(1) - tstart[0]),1d2*j[0]/(1d0*szdvdf[0])]
+        PRINT,outstrs[0],outvals[0],outstrs[1],j[0],outstrs[2],outvals[1]
+      ENDIF
+      CONTINUE
+    ENDIF
     vx2d           = r_vels.VX2D
     vy2d           = r_vels.VY2D
     CASE plane[0] OF
@@ -331,12 +369,24 @@ IF (mms_on[0]) THEN BEGIN
     ;;------------------------------------------------------------------------------------
     cuts_struc     = find_1d_cuts_2d_dist(df2d,vx2d,vy2d,X_0=0d0,Y_0=0d0)
     ;;  Check output
-    IF (SIZE(cuts_struc,/TYPE) NE 8) THEN CONTINUE
+    IF (SIZE(cuts_struc,/TYPE) NE 8) THEN BEGIN
+      ;;  Inform user then skip to next iteration
+      IF ((j[0] MOD jmod[0]) EQ 0) THEN BEGIN
+        outvals        = [(SYSTIME(1) - tstart[0]),1d2*j[0]/(1d0*szdvdf[0])]
+        PRINT,outstrs[0],outvals[0],outstrs[1],j[0],outstrs[2],outvals[1]
+      ENDIF
+      CONTINUE
+    ENDIF
     ;;  Fill output arrays
     fpara_1d[j,*]  = cuts_struc.X_1D_FXY
     fperp_1d[j,*]  = cuts_struc.Y_1D_FXY
     vpara_1d[j,*]  = cuts_struc.X_CUT_COORD
     vperp_1d[j,*]  = cuts_struc.Y_CUT_COORD
+    ;;  Inform user then move to next iteration
+    IF ((j[0] MOD jmod[0]) EQ 0) THEN BEGIN
+      outvals        = [(SYSTIME(1) - tstart[0]),1d2*j[0]/(1d0*szdvdf[0])]
+      PRINT,outstrs[0],outvals[0],outstrs[1],j[0],outstrs[2],outvals[1]
+    ENDIF
     ;;------------------------------------------------------------------------------------
     ;;------------------------------------------------------------------------------------
   ENDFOR
@@ -393,6 +443,7 @@ out_str        = CREATE_STRUCT(tags,vpara_1d,vperp_1d,fpara_1d,fperp_1d)
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
+MESSAGE,STRING(SYSTIME(1) - tstart[0])+' seconds [total] execution time.',/CONTINUE,/INFORMATIONAL
 
 RETURN,out_str
 END

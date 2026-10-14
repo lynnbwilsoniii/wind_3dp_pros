@@ -274,6 +274,8 @@
 ;             2)  Updated self-similar model function normalization constants and Man.
 ;                   page and cleaned up a little
 ;                                                                   [05/13/2021   v1.0.2]
+;             3)  Reduced redundant calculations to optimize
+;                                                                   [08/25/2026   v1.0.3]
 ;
 ;   NOTES:      
 ;               1)  VDF = velocity distribution function
@@ -300,7 +302,7 @@
 ;   ADAPTED FROM: get_default_pinfo_4_fitvdf2sumof2funcs.pro
 ;   CREATED:  06/19/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/13/2021   v1.0.2
+;    LAST MODIFIED:  08/25/2026   v1.0.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -461,18 +463,22 @@ def_pinf[11].LIMITED[*] = 1b
 def_pinf[11].LIMITS[0]  = def_kapp_lim[0]
 def_pinf[11].LIMITS[1]  = def_kapp_lim[1]
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check keywords with default options
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check IONS
-test           = (N_ELEMENTS(ions) GT 0) AND KEYWORD_SET(ions)
-IF (test[0]) THEN ion__on = 1b ELSE ion__on = 0b
+;test           = (N_ELEMENTS(ions) GT 0) AND KEYWORD_SET(ions)
+IF ((N_ELEMENTS(ions) GT 0) AND KEYWORD_SET(ions)) THEN ion__on = 1b ELSE ion__on = 0b
 ;;  Check ELECTRONS
-test           = (N_ELEMENTS(electrons) GT 0) AND KEYWORD_SET(electrons)
-IF (test[0]) THEN elec_on = 1b ELSE elec_on = ([0b,1b])[~ion__on[0]]
+;test           = (N_ELEMENTS(electrons) GT 0) AND KEYWORD_SET(electrons)
+IF ((N_ELEMENTS(electrons) GT 0) AND KEYWORD_SET(electrons)) THEN elec_on = 1b ELSE elec_on = ([0b,1b])[~ion__on[0]]
 IF (elec_on[0] AND ion__on[0]) THEN ion__on[0] = 0b                    ;;  Make sure only one particle type is set
 ;;  Check CFUNC
-test                    = (SIZE(cfunc,/TYPE) EQ 7)
-IF (test[0]) THEN cf = STRUPCASE(STRMID(cfunc[0],0,2)) ELSE cf = 'MM'
+;test                    = (SIZE(cfunc,/TYPE) EQ 7)
+IF ((SIZE(cfunc,/TYPE) EQ 7)) THEN cf = STRUPCASE(STRMID(cfunc[0],0,2)) ELSE cf = 'MM'
 CASE cf[0] OF               ;;  Redefine output to proper/allowed format
   'MM'  :  BEGIN
     cfunc       = 'MM'
@@ -506,8 +512,8 @@ CASE cf[0] OF               ;;  Redefine output to proper/allowed format
   END
 ENDCASE
 ;;  Check HFUNC
-test                    = (SIZE(hfunc,/TYPE) EQ 7)
-IF (test[0]) THEN hf = STRUPCASE(STRMID(hfunc[0],0,2)) ELSE hf = 'KK'
+;test                    = (SIZE(hfunc,/TYPE) EQ 7)
+IF ((SIZE(hfunc,/TYPE) EQ 7)) THEN hf = STRUPCASE(STRMID(hfunc[0],0,2)) ELSE hf = 'KK'
 CASE hf[0] OF               ;;  Redefine output to proper/allowed format
   'MM'  :  BEGIN
     hfunc       = 'MM'
@@ -541,8 +547,8 @@ CASE hf[0] OF               ;;  Redefine output to proper/allowed format
   END
 ENDCASE
 ;;  Check BFUNC
-test                    = (SIZE(bfunc,/TYPE) EQ 7)
-IF (test[0]) THEN bf = STRUPCASE(STRMID(bfunc[0],0,2)) ELSE bf = 'KK'
+;test                    = (SIZE(bfunc,/TYPE) EQ 7)
+IF ((SIZE(bfunc,/TYPE) EQ 7)) THEN bf = STRUPCASE(STRMID(bfunc[0],0,2)) ELSE bf = 'KK'
 CASE bf[0] OF               ;;  Redefine output to proper/allowed format
   'MM'  :  BEGIN
     bfunc       = 'MM'
@@ -576,15 +582,15 @@ CASE bf[0] OF               ;;  Redefine output to proper/allowed format
   END
 ENDCASE
 ;;  Check FTOL, GTOL, and XTOL
-test                    = (N_ELEMENTS(ftol) GT 0) AND is_a_number(ftol,/NOMSSG)
-IF (test[0]) THEN ftol = DOUBLE(ftol[0]) ELSE ftol = 1d-14
-test                    = (N_ELEMENTS(gtol) GT 0) AND is_a_number(gtol,/NOMSSG)
-IF (test[0]) THEN gtol = DOUBLE(gtol[0]) ELSE gtol = 1d-14
-test                    = (N_ELEMENTS(xtol) GT 0) AND is_a_number(xtol,/NOMSSG)
-IF (test[0]) THEN xtol = DOUBLE(xtol[0]) ELSE xtol = 1d-12
+;test                    = (N_ELEMENTS(ftol) GT 0) AND is_a_number(ftol,/NOMSSG)
+IF ((N_ELEMENTS(ftol) GT 0) AND is_a_number(ftol,/NOMSSG)) THEN ftol = DOUBLE(ftol[0]) ELSE ftol = 1d-14
+;test                    = (N_ELEMENTS(gtol) GT 0) AND is_a_number(gtol,/NOMSSG)
+IF ((N_ELEMENTS(gtol) GT 0) AND is_a_number(gtol,/NOMSSG)) THEN gtol = DOUBLE(gtol[0]) ELSE gtol = 1d-14
+;test                    = (N_ELEMENTS(xtol) GT 0) AND is_a_number(xtol,/NOMSSG)
+IF ((N_ELEMENTS(xtol) GT 0) AND is_a_number(xtol,/NOMSSG)) THEN xtol = DOUBLE(xtol[0]) ELSE xtol = 1d-12
 ;;  Check USE_MM
-test                    = (N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)
-IF (test[0]) THEN vfac = 1d-3 ELSE vfac = 1d0
+;test                    = (N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)
+IF ((N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)) THEN vfac = 1d-3 ELSE vfac = 1d0
 ;;----------------------------------------------------------------------------------------
 ;;  Define species-dependent limits
 ;;----------------------------------------------------------------------------------------
@@ -610,18 +616,22 @@ ENDIF ELSE BEGIN
   def_offst    = def_ei_offst[1]
 ENDELSE
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check PARINFO keywords
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check FIXED_C
-test                    = (N_ELEMENTS(fixed_c) EQ 6) AND is_a_number(fixed_c,/NOMSSG)
-IF (test[0]) THEN fixc = (REFORM(fixed_c) EQ 1) ELSE fixc = REPLICATE(0b,6)
+;test                    = (N_ELEMENTS(fixed_c) EQ 6) AND is_a_number(fixed_c,/NOMSSG)
+IF ((N_ELEMENTS(fixed_c) EQ 6) AND is_a_number(fixed_c,/NOMSSG)) THEN fixc = (REFORM(fixed_c) EQ 1) ELSE fixc = REPLICATE(0b,6)
 ;;  Check FIXED_H
-test                    = (N_ELEMENTS(fixed_h) EQ 6) AND is_a_number(fixed_h,/NOMSSG)
-IF (test[0]) THEN fixh = (REFORM(fixed_h) EQ 1) ELSE fixh = REPLICATE(0b,6)
+;test                    = (N_ELEMENTS(fixed_h) EQ 6) AND is_a_number(fixed_h,/NOMSSG)
+IF ((N_ELEMENTS(fixed_h) EQ 6) AND is_a_number(fixed_h,/NOMSSG)) THEN fixh = (REFORM(fixed_h) EQ 1) ELSE fixh = REPLICATE(0b,6)
 fixch                   = [fixc,fixh]
 ;;  Check FIXED_B
-test                    = (N_ELEMENTS(fixed_b) EQ 6) AND is_a_number(fixed_b,/NOMSSG)
-IF (test[0]) THEN fixb = (REFORM(fixed_b) EQ 1) ELSE fixb = REPLICATE(0b,6)
+;test                    = (N_ELEMENTS(fixed_b) EQ 6) AND is_a_number(fixed_b,/NOMSSG)
+IF ((N_ELEMENTS(fixed_b) EQ 6) AND is_a_number(fixed_b,/NOMSSG)) THEN fixb = (REFORM(fixed_b) EQ 1) ELSE fixb = REPLICATE(0b,6)
 ;;  Check N[CORE,HALO,BEAM]_RAN
 test                    = test_ranges_4_mpfitparinfostruc(RKEY_IN=ncore_ran,DEF_RAN=def_denc_lim,LIMS_OUT=lims_ncore,LIMD_OUT=limd_ncore,RKEY_ON=ncore_on)
 test                    = test_ranges_4_mpfitparinfostruc(RKEY_IN=nhalo_ran,DEF_RAN=def_denh_lim,LIMS_OUT=lims_nhalo,LIMD_OUT=limd_nhalo,RKEY_ON=nhalo_on)
@@ -669,55 +679,179 @@ IF (bfunc[0] EQ 'AS') THEN BEGIN
   test        = test_ranges_4_mpfitparinfostruc(RKEY_IN=es2beamrn,DEF_RAN=def_es2bran,LIMS_OUT=lims_es2_b,LIMD_OUT=limd_es2_b,RKEY_ON=es2_b_on)
 ENDIF
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Impose limits on default PARINFO structure
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Define default beam structure BARINFO
 def_binf                = def_pinf[6L:11L]
 ;;  Impose FIXED settings for PARINFO and BARINFO
 def_pinf[*].FIXED       = fixch
 def_binf[*].FIXED       = fixb
+;;----------------------------------------------------------------------------------------
 ;;  Limit number densities [cm^(-3)]
-IF (ncore_on[0]) THEN def_pinf[00].LIMITED[*] = limd_ncore ELSE def_pinf[00].LIMITED[*] = 1b
-IF (ncore_on[0]) THEN def_pinf[00].LIMITS[*]  = lims_ncore ELSE def_pinf[00].LIMITS[*]  = def_denc_lim
-IF (nhalo_on[0]) THEN def_pinf[06].LIMITED[*] = limd_nhalo ELSE def_pinf[06].LIMITED[*] = 1b
-IF (nhalo_on[0]) THEN def_pinf[06].LIMITS[*]  = lims_nhalo ELSE def_pinf[06].LIMITS[*]  = def_denh_lim
-IF (nbeam_on[0]) THEN def_binf[00].LIMITED[*] = limd_nbeam ELSE def_binf[00].LIMITED[*] = 1b
-IF (nbeam_on[0]) THEN def_binf[00].LIMITS[*]  = lims_nbeam ELSE def_binf[00].LIMITS[*]  = def_denb_lim
+;;----------------------------------------------------------------------------------------
+IF (ncore_on[0]) THEN BEGIN
+  def_pinf[00].LIMITED[*] = limd_ncore
+  def_pinf[00].LIMITS[*]  = lims_ncore
+ENDIF ELSE BEGIN
+  def_pinf[00].LIMITED[*] = 1b
+  def_pinf[00].LIMITS[*]  = def_denc_lim
+ENDELSE
+IF (nhalo_on[0]) THEN BEGIN
+  def_pinf[06].LIMITED[*] = limd_nhalo
+  def_pinf[06].LIMITS[*]  = lims_nhalo
+ENDIF ELSE BEGIN
+  def_pinf[06].LIMITED[*] = 1b
+  def_pinf[06].LIMITS[*]  = def_denh_lim
+ENDELSE
+IF (nbeam_on[0]) THEN BEGIN
+  def_binf[00].LIMITED[*] = limd_nbeam
+  def_binf[00].LIMITS[*]  = lims_nbeam
+ENDIF ELSE BEGIN
+  def_binf[00].LIMITED[*] = 1b
+  def_binf[00].LIMITS[*]  = def_denb_lim
+ENDELSE
+;IF (ncore_on[0]) THEN def_pinf[00].LIMITED[*] = limd_ncore ELSE def_pinf[00].LIMITED[*] = 1b
+;IF (ncore_on[0]) THEN def_pinf[00].LIMITS[*]  = lims_ncore ELSE def_pinf[00].LIMITS[*]  = def_denc_lim
+;IF (nhalo_on[0]) THEN def_pinf[06].LIMITED[*] = limd_nhalo ELSE def_pinf[06].LIMITED[*] = 1b
+;IF (nhalo_on[0]) THEN def_pinf[06].LIMITS[*]  = lims_nhalo ELSE def_pinf[06].LIMITS[*]  = def_denh_lim
+;IF (nbeam_on[0]) THEN def_binf[00].LIMITED[*] = limd_nbeam ELSE def_binf[00].LIMITED[*] = 1b
+;IF (nbeam_on[0]) THEN def_binf[00].LIMITS[*]  = lims_nbeam ELSE def_binf[00].LIMITS[*]  = def_denb_lim
+;;----------------------------------------------------------------------------------------
 ;;  Limit parallel thermal speeds [km/s]
-IF (v_tca_on[0]) THEN def_pinf[01].LIMITED[*] = limd_v_tca ELSE def_pinf[01].LIMITED[*] = 1b
-IF (v_tha_on[0]) THEN def_pinf[07].LIMITED[*] = limd_v_tha ELSE def_pinf[07].LIMITED[*] = 1b
-IF (v_tba_on[0]) THEN def_binf[01].LIMITED[*] = limd_v_tba ELSE def_binf[01].LIMITED[*] = 1b
-IF (v_tca_on[0]) THEN def_pinf[01].LIMITS[*]  = lims_v_tca ELSE def_pinf[01].LIMITS[*]  = def_vthc_lim
-IF (v_tha_on[0]) THEN def_pinf[07].LIMITS[*]  = lims_v_tha ELSE def_pinf[07].LIMITS[*]  = def_vthh_lim
-IF (v_tba_on[0]) THEN def_binf[01].LIMITS[*]  = lims_v_tba ELSE def_binf[01].LIMITS[*]  = def_vthh_lim
+;;----------------------------------------------------------------------------------------
+IF (v_tca_on[0]) THEN BEGIN
+  def_pinf[01].LIMITED[*] = limd_v_tca
+  def_pinf[01].LIMITS[*]  = lims_v_tca
+ENDIF ELSE BEGIN
+  def_pinf[01].LIMITED[*] = 1b
+  def_pinf[01].LIMITS[*]  = def_vthc_lim
+ENDELSE
+IF (v_tha_on[0]) THEN BEGIN
+  def_pinf[07].LIMITED[*] = limd_v_tha
+  def_pinf[07].LIMITS[*]  = lims_v_tha
+ENDIF ELSE BEGIN
+  def_pinf[07].LIMITED[*] = 1b
+  def_pinf[07].LIMITS[*]  = def_vthh_lim
+ENDELSE
+IF (v_tba_on[0]) THEN BEGIN
+  def_binf[01].LIMITED[*] = limd_v_tba
+  def_binf[01].LIMITS[*]  = lims_v_tba
+ENDIF ELSE BEGIN
+  def_binf[01].LIMITED[*] = 1b
+  def_binf[01].LIMITS[*]  = def_vthh_lim
+ENDELSE
+;IF (v_tca_on[0]) THEN def_pinf[01].LIMITED[*] = limd_v_tca ELSE def_pinf[01].LIMITED[*] = 1b
+;IF (v_tca_on[0]) THEN def_pinf[01].LIMITS[*]  = lims_v_tca ELSE def_pinf[01].LIMITS[*]  = def_vthc_lim
+;IF (v_tha_on[0]) THEN def_pinf[07].LIMITED[*] = limd_v_tha ELSE def_pinf[07].LIMITED[*] = 1b
+;IF (v_tha_on[0]) THEN def_pinf[07].LIMITS[*]  = lims_v_tha ELSE def_pinf[07].LIMITS[*]  = def_vthh_lim
+;IF (v_tba_on[0]) THEN def_binf[01].LIMITED[*] = limd_v_tba ELSE def_binf[01].LIMITED[*] = 1b
+;IF (v_tba_on[0]) THEN def_binf[01].LIMITS[*]  = lims_v_tba ELSE def_binf[01].LIMITS[*]  = def_vthh_lim
+;;----------------------------------------------------------------------------------------
 ;;  Limit perpendicular thermal speeds [km/s]
-IF (v_tce_on[0]) THEN def_pinf[02].LIMITED[*] = limd_v_tce ELSE def_pinf[02].LIMITED[*] = 1b
-IF (v_the_on[0]) THEN def_pinf[08].LIMITED[*] = limd_v_the ELSE def_pinf[08].LIMITED[*] = 1b
-IF (v_tbe_on[0]) THEN def_binf[02].LIMITED[*] = limd_v_tbe ELSE def_binf[02].LIMITED[*] = 1b
-IF (v_tce_on[0]) THEN def_pinf[02].LIMITS[*]  = lims_v_tce ELSE def_pinf[02].LIMITS[*]  = def_vthc_lim
-IF (v_the_on[0]) THEN def_pinf[08].LIMITS[*]  = lims_v_the ELSE def_pinf[08].LIMITS[*]  = def_vthh_lim
-IF (v_tbe_on[0]) THEN def_binf[02].LIMITS[*]  = lims_v_tbe ELSE def_binf[02].LIMITS[*]  = def_vthh_lim
+;;----------------------------------------------------------------------------------------
+IF (v_tce_on[0]) THEN BEGIN
+  def_pinf[02].LIMITED[*] = limd_v_tce
+  def_pinf[02].LIMITS[*]  = lims_v_tce
+ENDIF ELSE BEGIN
+  def_pinf[02].LIMITED[*] = 1b
+  def_pinf[02].LIMITS[*]  = def_vthc_lim
+ENDELSE
+IF (v_the_on[0]) THEN BEGIN
+  def_pinf[08].LIMITED[*] = limd_v_the
+  def_pinf[08].LIMITS[*]  = lims_v_the
+ENDIF ELSE BEGIN
+  def_pinf[08].LIMITED[*] = 1b
+  def_pinf[08].LIMITS[*]  = def_vthh_lim
+ENDELSE
+IF (v_tbe_on[0]) THEN BEGIN
+  def_binf[02].LIMITED[*] = limd_v_tbe
+  def_binf[02].LIMITS[*]  = lims_v_tbe
+ENDIF ELSE BEGIN
+  def_binf[02].LIMITED[*] = 1b
+  def_binf[02].LIMITS[*]  = def_vthh_lim
+ENDELSE
+;IF (v_tce_on[0]) THEN def_pinf[02].LIMITED[*] = limd_v_tce ELSE def_pinf[02].LIMITED[*] = 1b
+;IF (v_tce_on[0]) THEN def_pinf[02].LIMITS[*]  = lims_v_tce ELSE def_pinf[02].LIMITS[*]  = def_vthc_lim
+;IF (v_the_on[0]) THEN def_pinf[08].LIMITED[*] = limd_v_the ELSE def_pinf[08].LIMITED[*] = 1b
+;IF (v_the_on[0]) THEN def_pinf[08].LIMITS[*]  = lims_v_the ELSE def_pinf[08].LIMITS[*]  = def_vthh_lim
+;IF (v_tbe_on[0]) THEN def_binf[02].LIMITED[*] = limd_v_tbe ELSE def_binf[02].LIMITED[*] = 1b
+;IF (v_tbe_on[0]) THEN def_binf[02].LIMITS[*]  = lims_v_tbe ELSE def_binf[02].LIMITS[*]  = def_vthh_lim
+;;----------------------------------------------------------------------------------------
 ;;  Limit parallel drift speeds [km/s]
-IF (v_oca_on[0]) THEN def_pinf[03].LIMITED[*] = limd_v_oca ELSE def_pinf[03].LIMITED[*] = 1b
-IF (v_oha_on[0]) THEN def_pinf[09].LIMITED[*] = limd_v_oha ELSE def_pinf[09].LIMITED[*] = 1b
-IF (v_oba_on[0]) THEN def_binf[03].LIMITED[*] = limd_v_oba ELSE def_binf[03].LIMITED[*] = 1b
-IF (v_oca_on[0]) THEN def_pinf[03].LIMITS[*]  = lims_v_oca ELSE def_pinf[03].LIMITS[*]  = def_v_oc_lim
-IF (v_oha_on[0]) THEN def_pinf[09].LIMITS[*]  = lims_v_oha ELSE def_pinf[09].LIMITS[*]  = def_v_oh_lim
-IF (v_oba_on[0]) THEN def_binf[03].LIMITS[*]  = lims_v_oba ELSE def_binf[03].LIMITS[*]  = def_v_oh_lim
+;;----------------------------------------------------------------------------------------
+IF (v_oca_on[0]) THEN BEGIN
+  def_pinf[03].LIMITED[*] = limd_v_oca
+  def_pinf[03].LIMITS[*]  = lims_v_oca
+ENDIF ELSE BEGIN
+  def_pinf[03].LIMITED[*] = 1b
+  def_pinf[03].LIMITS[*]  = def_v_oc_lim
+ENDELSE
+IF (v_oha_on[0]) THEN BEGIN
+  def_pinf[09].LIMITED[*] = limd_v_oha
+  def_pinf[09].LIMITS[*]  = lims_v_oha
+ENDIF ELSE BEGIN
+  def_pinf[09].LIMITED[*] = 1b
+  def_pinf[09].LIMITS[*]  = def_v_oh_lim
+ENDELSE
+IF (v_oba_on[0]) THEN BEGIN
+  def_binf[03].LIMITED[*] = limd_v_oba
+  def_binf[03].LIMITS[*]  = lims_v_oba
+ENDIF ELSE BEGIN
+  def_binf[03].LIMITED[*] = 1b
+  def_binf[03].LIMITS[*]  = def_v_oh_lim
+ENDELSE
+;IF (v_oca_on[0]) THEN def_pinf[03].LIMITED[*] = limd_v_oca ELSE def_pinf[03].LIMITED[*] = 1b
+;IF (v_oca_on[0]) THEN def_pinf[03].LIMITS[*]  = lims_v_oca ELSE def_pinf[03].LIMITS[*]  = def_v_oc_lim
+;IF (v_oha_on[0]) THEN def_pinf[09].LIMITED[*] = limd_v_oha ELSE def_pinf[09].LIMITED[*] = 1b
+;IF (v_oha_on[0]) THEN def_pinf[09].LIMITS[*]  = lims_v_oha ELSE def_pinf[09].LIMITS[*]  = def_v_oh_lim
+;IF (v_oba_on[0]) THEN def_binf[03].LIMITED[*] = limd_v_oba ELSE def_binf[03].LIMITED[*] = 1b
+;IF (v_oba_on[0]) THEN def_binf[03].LIMITS[*]  = lims_v_oba ELSE def_binf[03].LIMITS[*]  = def_v_oh_lim
+;;----------------------------------------------------------------------------------------
 ;;  Limit perpendicular drift speeds [km/s]
-IF (v_oce_on[0]) THEN def_pinf[04].LIMITED[*] = limd_v_oce ELSE def_pinf[04].LIMITED[*] = 1b
-IF (v_ohe_on[0]) THEN def_pinf[10].LIMITED[*] = limd_v_ohe ELSE def_pinf[10].LIMITED[*] = 1b
-IF (v_obe_on[0]) THEN def_binf[04].LIMITED[*] = limd_v_obe ELSE def_binf[04].LIMITED[*] = 1b
-IF (v_oce_on[0]) THEN def_pinf[04].LIMITS[*]  = lims_v_oce ELSE def_pinf[04].LIMITS[*]  = def_v_oc_lim
-IF (v_ohe_on[0]) THEN def_pinf[10].LIMITS[*]  = lims_v_ohe ELSE def_pinf[10].LIMITS[*]  = def_v_oh_lim
-IF (v_obe_on[0]) THEN def_binf[04].LIMITS[*]  = lims_v_obe ELSE def_binf[04].LIMITS[*]  = def_v_oh_lim
-
+;;----------------------------------------------------------------------------------------
+IF (v_oce_on[0]) THEN BEGIN
+  def_pinf[04].LIMITED[*] = limd_v_oce
+  def_pinf[04].LIMITS[*]  = lims_v_oce
+ENDIF ELSE BEGIN
+  def_pinf[04].LIMITED[*] = 1b
+  def_pinf[04].LIMITS[*]  = def_v_oc_lim
+ENDELSE
+IF (v_ohe_on[0]) THEN BEGIN
+  def_pinf[10].LIMITED[*] = limd_v_ohe
+  def_pinf[10].LIMITS[*]  = lims_v_ohe
+ENDIF ELSE BEGIN
+  def_pinf[10].LIMITED[*] = 1b
+  def_pinf[10].LIMITS[*]  = def_v_oh_lim
+ENDELSE
+IF (v_obe_on[0]) THEN BEGIN
+  def_binf[04].LIMITED[*] = limd_v_obe
+  def_binf[04].LIMITS[*]  = lims_v_obe
+ENDIF ELSE BEGIN
+  def_binf[04].LIMITED[*] = 1b
+  def_binf[04].LIMITS[*]  = def_v_oh_lim
+ENDELSE
+;IF (v_oce_on[0]) THEN def_pinf[04].LIMITED[*] = limd_v_oce ELSE def_pinf[04].LIMITED[*] = 1b
+;IF (v_oce_on[0]) THEN def_pinf[04].LIMITS[*]  = lims_v_oce ELSE def_pinf[04].LIMITS[*]  = def_v_oc_lim
+;IF (v_ohe_on[0]) THEN def_pinf[10].LIMITED[*] = limd_v_ohe ELSE def_pinf[10].LIMITED[*] = 1b
+;IF (v_ohe_on[0]) THEN def_pinf[10].LIMITS[*]  = lims_v_ohe ELSE def_pinf[10].LIMITS[*]  = def_v_oh_lim
+;IF (v_obe_on[0]) THEN def_binf[04].LIMITED[*] = limd_v_obe ELSE def_binf[04].LIMITED[*] = 1b
+;IF (v_obe_on[0]) THEN def_binf[04].LIMITS[*]  = lims_v_obe ELSE def_binf[04].LIMITS[*]  = def_v_oh_lim
+;;----------------------------------------------------------------------------------------
 ;;  Adjust limits by velocity factor
+;;----------------------------------------------------------------------------------------
 def_pinf[1:4].LIMITS   *= vfac[0]
 def_pinf[7:10].LIMITS  *= vfac[0]
 def_binf[1:4].LIMITS   *= vfac[0]
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Define model- and species-dependent parameters
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  CORE:
 CASE cfunc[0] OF               ;;  Redefine output to proper/allowed format

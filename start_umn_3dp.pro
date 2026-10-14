@@ -15,6 +15,7 @@
 ;               umn_graphics_config.pro
 ;               wind_3dp_umn_init.pro
 ;               plot3d_options.pro
+;               test_file_path_format.pro
 ;               TMlib_wrapper.pro
 ;
 ;  REQUIRES:    
@@ -72,6 +73,9 @@
 ;                                                                  [08/20/2015   v1.8.0]
 ;            21)  Moved some of the routines within ~/LYNN_PRO/
 ;                                                                  [06/06/2016   v1.9.0]
+;            22)  Updated to accommodate Mac OS arm64 architecture and
+;                   now calls test_file_path_format.pro
+;                                                                  [05/11/2026   v1.9.1]
 ;
 ;   NOTES:      
 ;               0)  Still in production...
@@ -109,7 +113,7 @@
 ;
 ;   CREATED:  09/16/2009
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/06/2016   v1.9.0
+;    LAST MODIFIED:  05/11/2026   v1.9.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -135,6 +139,8 @@ slash          = get_os_slash()         ;;  '/' for Unix, '\' for Windows
 
 vers           = !VERSION.OS_FAMILY     ;;  e.g., 'unix'
 vern           = !VERSION.RELEASE       ;;  e.g., '7.1.1'
+arch           = !VERSION.ARCH          ;;  e.g., 'arm64'
+osnm           = !VERSION.OS            ;;  e.g., 'darwin'
 ;;    --> LBW III  08/20/2015   v1.8.0
 windows        = (STRLOWCASE(vers[0]) EQ 'windows')    ;;  logic test for Windows OS
 ;;  Define the current working location
@@ -323,11 +329,11 @@ CD,cur_wdir[0]                 ;;  Return to current working directory
 ;;----------------------------------------------------------------------------------------
 ;;  Check for TMlib_wrapper
 ;;----------------------------------------------------------------------------------------
-test           = slash[0]+'Applications'+slash[0]+'STEREO'+slash[0]+'TMlib_Client'+$
+dire           = slash[0]+'Applications'+slash[0]+'STEREO'+slash[0]+'TMlib_Client'+$
                  slash[0]+'lib'+slash[0]+'idl'+slash[0]
-tdir           = FILE_EXPAND_PATH(test)
-test           = FILE_TEST(tdir,/DIRECTORY)
-IF (test EQ 0) THEN STOP
+test           = test_file_path_format(dire[0],EXISTS=exists,DIR_OUT=TMlib_dir)
+IF (exists[0] NE 0b) THEN IF (osnm[0] EQ 'darwin') THEN IF (arch[0] EQ 'arm64') THEN exists = 0b
+IF (exists[0] EQ 0b) THEN STOP
 @TMlib_wrapper
 ;;  Clean up
 DELVAR,tmfile,old_dir,test,tdir

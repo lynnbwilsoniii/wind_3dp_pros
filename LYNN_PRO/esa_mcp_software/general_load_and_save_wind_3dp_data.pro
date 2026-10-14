@@ -193,10 +193,12 @@ END
 ;               load_3dp_data.pro
 ;               timespan.pro
 ;               lbw_window.pro
-;               tplot.pro
-;               wind_orbit_to_tplot.pro
-;               options.pro
 ;               tplot_options.pro
+;               wind_h0_mfi_2_tplot.pro
+;               get_data.pro
+;               t_get_struc_unix.pro
+;               options.pro
+;               tplot.pro
 ;               pesa_low_moment_calibrate.pro
 ;               get_pmom2.pro
 ;               load_swe_and_calc_new_vbulk_scpot.pro
@@ -316,6 +318,10 @@ END
 ;            16)  Changed so VDF structures are output even if user did not want to load
 ;                   them but are filled with zeros
 ;                                                                   [05/16/2022   v1.2.1]
+;            17)  Routine now calls wind_h0_mfi_2_tplot.pro and t_get_struc_unix and
+;                   no longer calls wind_orbit_to_tplot.pro
+;                   (i.e., orbit info comes directly from MFI files)
+;                                                                   [02/05/2026   v1.3.0]
 ;
 ;   NOTES:      
 ;               0)  On my 2019, 16-inch MacBook Pro I was only able to load 11 days
@@ -392,7 +398,7 @@ END
 ;
 ;   CREATED:  07/18/2017
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  05/12/2022   v1.2.0
+;    LAST MODIFIED:  02/05/2026   v1.3.0
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -590,16 +596,13 @@ memsz          = 200.*memfac[0]
 ;;  Define the packet quality [2 allows "invalid" distributions through]
 qual           = 2
 ;;  Load the level zero data files and store in pointer memory
-load_3dp_data,start_t[0],dur[0],QUALITY=qual[0],MEMSIZE=memsz[0]
+load_3dp_data,start_t[0],dur[0],QUALITY=qual[0],MEMSIZE=memsz[0],/NOMAG
 ;;  Make sure data was loaded
 nna            = tnames()
 IF (nna[0] EQ '') THEN STOP  ;;  Something failed --> Debug
 ;;  Set TPLOT time range
 delt           = tran1d[1] - tran1d[0]
 timespan,tran1d[0],delt[0],/SECONDS
-;;  Define the default TPLOT handle used by load_wi_h0_mfi.pro
-def_wibmag_tpn = 'wi_B3_MAG(GSE)'
-def_wibgse_tpn = 'wi_B3(GSE)'
 ;;----------------------------------------------------------------------------------------
 ;;  Open window and plot
 ;;----------------------------------------------------------------------------------------
@@ -608,42 +611,81 @@ wsz            = s_size*7d-1
 win_ttl        = 'Wind Plots ['+tdate[0]+']'
 win_str        = {RETAIN:2,XSIZE:wsz[0],YSIZE:wsz[1],TITLE:win_ttl[0],XPOS:10,YPOS:10}
 lbw_window,WIND_N=0,_EXTRA=win_str
-;;  Plot MFI data for date of interest
-tplot,[def_wibmag_tpn[0],def_wibgse_tpn[0]],TRANGE=tran1d
+;;  Alter global TPLOT options
+tplot_options,WINDOW=0            ;;  Forces tplot to use only window 0 for all time plots
+tplot_options,'WSHOW',1           ;;  Raises tplot window when tplot is called
+tplot_options,'CHARSIZE',1.25e0
+tplot_options,'CHARTHICK',1.5
+tplot_options,'THICK',2e0
+tplot_options,'PANEL_SIZE',2e0
+tplot_options,'XMARGIN',[15,25]
+tplot_options,'YMARGIN',[5,5]
 ;;----------------------------------------------------------------------------------------
-;;  Rename MFI TPLOT handles from default
+;;  Load MFI data
 ;;----------------------------------------------------------------------------------------
-;;  Get |Bo|
-get_data,def_wibmag_tpn[0],DATA=temp_bo,DLIMIT=dlim_bo,LIMIT=lim_bo
+wind_h0_mfi_2_tplot,/B3SEC,/SCPOSI,/LOAD_GSE,TRANGE=trange
+;;  Define the default TPLOT handle used by wind_h0_mfi_2_tplot.pro
+def_wibgse_tpn = 'Wind_B_3sec_gse'
 ;;  Get Bo
 get_data,def_wibgse_tpn[0],DATA=temp_bb,DLIMIT=dlim_bb,LIMIT=lim_bb
 ;;  Define new TPLOT handles
 new_wibmag_tpn = scpref[0]+'magf_3s_'+coord_mag[0]
 new_wibgse_tpn = scpref[0]+'magf_3s_'+coord_gse[0]
+;;  Define new TPLOT structures
+bunix          = t_get_struc_unix(temp_bb)
+temp_bo        = {X:bunix,Y:temp_bb.Y[*,3L]}
+temp_bv        = {X:bunix,Y:temp_bb.Y[*,0L:2L]}
 ;;  Store new TPLOT variables and remove old
-store_data,DELETE=tnames()
-store_data,new_wibmag_tpn[0],DATA=temp_bo,DLIMIT=dlim_bo,LIMIT=lim_bo
-store_data,new_wibgse_tpn[0],DATA=temp_bb,DLIMIT=dlim_bb,LIMIT=lim_bb
+store_data,DELETE=tnames(def_wibgse_tpn[0])
+;;  Create new TPLOT variables
+store_data,new_wibmag_tpn[0],DATA=temp_bo,DLIMIT=dlim_bb,LIMIT=lim_bb
+store_data,new_wibgse_tpn[0],DATA=temp_bv,DLIMIT=dlim_bb,LIMIT=lim_bb
 ;;  Erase old YTITLEs
 options,[new_wibmag_tpn[0],new_wibgse_tpn[0]],'YTITLE'
-options,[new_wibmag_tpn[0],new_wibgse_tpn[0]],'YTITLE',/DEF
+options,[new_wibmag_tpn[0],new_wibgse_tpn[0]],'YTITLE',/DEFAULT
 ;;  Define new
-options,new_wibmag_tpn[0],YTITLE='|Bo| [nT]',/DEF
-options,new_wibgse_tpn[0],YTITLE='Bo [nT,'+coord_gseu[0]+']',/DEF
+options,new_wibmag_tpn[0],YTITLE='|Bo| [nT]',/DEFAULT
+options,new_wibgse_tpn[0],YTITLE='Bo [nT,'+coord_gseu[0]+']',/DEFAULT
+;;  Fix labels and colors
+options,new_wibmag_tpn[0],LABELS=dlim_bb.LABELS[3L],COLORS=dlim_bb.COLORS[3L],/DEFAULT
+options,new_wibgse_tpn[0],LABELS=dlim_bb.LABELS[0L:2L],COLORS=dlim_bb.COLORS[0L:2L],/DEFAULT
 ;;  Replot
 tplot,[new_wibmag_tpn[0],new_wibgse_tpn[0]],TRANGE=trange
 ;;----------------------------------------------------------------------------------------
-;;  Load orbit data
+;;  Modify orbit data
 ;;----------------------------------------------------------------------------------------
-Bgse_tpnm      = new_wibgse_tpn[0]        ;;  TPLOT handle associated with Bo [GSE, nT]
-wind_orbit_to_tplot,BNAME=Bgse_tpnm[0],TRANGE=tran1d
-;;  Change Y-Axis titles
-options,'Wind_Radial_Distance','YTITLE','Radial Dist. (R!DE!N)'
-options,'Wind_GSE_Latitude','YTITLE','GSE Lat. [deg]'
-options,'Wind_GSE_Longitude','YTITLE','GSE Lon. [deg]'
-;;  Add these variables as tick mark labels
-gnames         = ['Wind_Radial_Distance','Wind_GSE_Latitude','Wind_GSE_Longitude','Wind_MLT']
-tplot_options,VAR_LABEL=gnames
+def_worbit_tpn = 'Wind_SCPos_1min_gse'
+;;  Get Wind Orbit data
+get_data,def_worbit_tpn[0],DATA=temp_wo,DLIMIT=dlim_wo,LIMIT=lim_wo
+ounix          = t_get_struc_unix(temp_wo)
+temp_wrad      = {X:ounix,Y:temp_wo.Y[*,3L]}
+temp_wvec      = {X:ounix,Y:temp_wo.Y[*,0L:2L]}
+;;  Define latitude and longitude [deg]
+wi_gse_lat     = 9d1 - (ACOS(temp_wvec.Y[*,2L]/temp_wrad.Y)*18d1/!DPI)    ;;  -90 ≤ lat ≤ +90
+wi_gse_lon0    = ATAN(temp_wvec.Y[*,1L],temp_wvec.Y[*,0L])*18d1/!DPI      ;;  -180 ≤ lon ≤ +180
+wi_gse_lon     = ((36d1 + wi_gse_lon0) MOD 36d1)
+temp_wlat      = {X:ounix,Y:wi_gse_lat}
+temp_wlon      = {X:ounix,Y:wi_gse_lon}
+;;  Define new TPLOT handles
+new_wo_rad_tpn = scpref[0]+'orbit_1min_rad_dist'
+new_wo_gse_tpn = scpref[0]+'orbit_1min_gse_cart'
+new_wo_lat_tpn = scpref[0]+'orbit_1min_gse_lat'
+new_wo_lon_tpn = scpref[0]+'orbit_1min_gse_lon'
+
+;;  Create new TPLOT variables
+store_data,new_wo_rad_tpn[0],DATA=temp_wrad,DLIMIT=dlim_wo,LIMIT=lim_wo
+store_data,new_wo_gse_tpn[0],DATA=temp_wvec,DLIMIT=dlim_wo,LIMIT=lim_wo
+store_data,new_wo_lat_tpn[0],DATA=temp_wlat,DLIMIT=dlim_wo,LIMIT=lim_wo
+store_data,new_wo_lon_tpn[0],DATA=temp_wlon,DLIMIT=dlim_wo,LIMIT=lim_wo
+;;  Change TPLOT options
+options,new_wo_rad_tpn[0],YTITLE='Rad. Dist. [R!DE!N]',LABELS=dlim_wo.LABELS[3L],COLORS=dlim_wo.COLORS[3L],/DEFAULT
+options,new_wo_gse_tpn[0],YTITLE='Position [R!DE!N]',LABELS=dlim_wo.LABELS[0L:2L],COLORS=dlim_wo.COLORS[0L:2L],/DEFAULT
+options,new_wo_lat_tpn[0],YTITLE='GSE Lat. [deg]',LABELS='lat',COLORS=50L,/DEFAULT
+options,new_wo_lon_tpn[0],YTITLE='GSE Lon. [deg]',LABELS='lon',COLORS=50L,/DEFAULT
+;;  Add as tick mark labels
+tplot_options,VAR_LABEL=[new_wo_rad_tpn[0],new_wo_lat_tpn[0],new_wo_lon_tpn[0]]
+;;  Update plot
+tplot
 ;;----------------------------------------------------------------------------------------
 ;;  Load PESA Low ion moments
 ;;----------------------------------------------------------------------------------------

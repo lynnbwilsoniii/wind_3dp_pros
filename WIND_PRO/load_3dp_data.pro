@@ -1,7 +1,7 @@
 ;+
 ;*****************************************************************************************
 ;
-;  FUNCTION :   load_3dp_data.pro
+;  PROCEDURE:   load_3dp_data.pro
 ;  PURPOSE  :   Opens and loads into memory the 3DP LZ data file(s) within the given time
 ;                 range specified by user.  This must be called prior to any data 
 ;                 retrieval program (e.g. get_el.pro)!
@@ -9,10 +9,13 @@
 ;  CALLED BY:   
 ;               NA
 ;
+;  INCLUDES:
+;               NA
+;
 ;  CALLS:
 ;               init_wind_lib.pro
-;               wind_com.pro
-;               tplot_com.pro
+;               @wind_com.pro
+;               @tplot_com.pro
 ;               get_timespan.pro
 ;               time_double.pro
 ;               timespan.pro
@@ -30,15 +33,23 @@
 ;                     wind3dp_lib_darwin_ppc.so    ;;  for Macs with PowerPC CPUs [32-bit]
 ;                     wind3dp_lib_linux_x86.so     ;;  Linux machines [32-bit]
 ;                     wind3dp_lib_linux_x86_64.so  ;;  Linux machines [64-bit]
+;                     wind3dp_lib_darwin_x86_64.so ;;  for Macs with Intel CPUs   [64-bit]
 ;
 ;  INPUT:
-;               TIME       :  Scalar [string] with formats accepted by time_string.pro,
-;                               for example the following work:
+;               TIME       :  Scalar [string] defining the start time of the data to load
+;                               with formats accepted by time_string.pro, for example the
+;                               following work:
 ;                                 'YY-MM-DD/hh:mm:ss'
 ;                                 'YYYY-MM-DD/hh:mm:ss'
 ;               DELTAT     :  Scalar [double] defining the number of hours to load
 ;
 ;  EXAMPLES:    
+;               [calling sequence]
+;               load_3dp_data,time,deltat [,MEMSIZE=memsize] [,QUALITY=quality]        $
+;                                         [,IF_NEEDED=if_needed] [,NOSET=noset]        $
+;                                         [,NOMAG=nomag]
+;
+;               ;;  Examples
 ;               ;;  Load 24 hours of data starting on Feb. 21, 1996 and allow
 ;               ;;    invalid packets to come through
 ;               UMN> load_3dp_data,'1996-02-21/00:00:00',24,QUALITY=2,MEMSIZE=150
@@ -65,40 +76,64 @@
 ;                                 2  :  Packets can be invalid
 ;                                 4  :  Packets can contain fill data
 ;               MEMSIZE    :  Scalar [long] that defines the amount of memory to
-;                               allocate in IDL
+;                               allocate in IDL (benefitted older machines)
 ;                               {Default = 30}
 ;               IF_NEEDED  :  If set, stops routine from re-loading data if already
 ;                               loaded
 ;               NOSET      :  If set, routine will not use timespan.pro to set the
 ;                               time ranges in the tplot_com.pro common block
+;               NOMAG      :  If set, routine will not load the MFI magnetic field
+;                               data using load_wi_h0_mfi.pro
 ;
-;   CHANGED:  1)  Davin Larson changed something...          [11/05/2002   v1.0.20]
+;   CHANGED:  1)  Davin Larson changed something...
+;                                                                   [11/05/2002   v1.0.20]
 ;             2)  Changed the source location of Level Zero data files to:
 ;                   '/data1/wind/3dp/lz/wi_lz_3dp_files'
-;                   => Specific to the University of Minnesotat
-;                                                                  [06/19/2008   v1.0.22]
+;                   => Specific to the University of Minnesota
+;                                                                   [06/19/2008   v1.0.22]
 ;             3)  Updated man page
-;                                                                  [08/05/2009   v1.1.0]
+;                                                                   [08/05/2009   v1.1.0]
 ;             4)  Fixed minor syntax error
-;                                                                  [08/26/2009   v1.1.1]
+;                                                                   [08/26/2009   v1.1.1]
 ;             5)  Updated man page, added shared object library and added error handling
-;                                                                  [08/05/2010   v1.2.0]
+;                                                                   [08/05/2010   v1.2.0]
 ;             6)  Master file path location no longer hard coded into init_wind_lib.pro
 ;                   call
-;                                                                  [07/25/2011   v1.2.1]
+;                                                                   [07/25/2011   v1.2.1]
 ;             7)  Cleaned up and updated Man. page
-;                                                                  [08/08/2013   v1.2.2]
+;                                                                   [08/08/2013   v1.2.2]
+;             8)  Added keyword:  NOMAG
+;                                                                   [02/05/2026   v1.2.3]
+;
+;   NOTES:      
+;               0)  This routine MUST be run prior to grabbing any 3DP distributions
+;                     from the level zero (lz) files
+;
+;  REFERENCES:  
+;               0)  Harten, R. and K. Clark "The Design Features of the GGS Wind and
+;                      Polar Spacecraft," Space Sci. Rev. Vol. 71, pp. 23--40, 1995.
+;               1)  Carlson et al., "An instrument for rapidly measuring plasma
+;                      distribution functions with high resolution," Adv. Space Res.
+;                      2, pp. 67--70, 1983.
+;               2)  Curtis et al., "On-board data analysis techniques for space plasma
+;                      particle instruments," Rev. Sci. Inst. 60, pp. 372--380, 1989.
+;               3)  Lin et al., "A Three-Dimensional Plasma and Energetic particle
+;                      investigation for the Wind spacecraft," Space Sci. Rev.
+;                      71, pp. 125--153, 1995.
+;               4)  Wilson III, L.B., et al., "A Quarter Century of Wind Spacecraft
+;                      Discoveries," Reviews of Geophysics 59(2), pp. e2020RG000714,
+;                      doi:10.1029/2020RG000714, 2021.
 ;
 ;   CREATED:  ??/??/????
 ;   CREATED BY:  Davin Larson
-;    LAST MODIFIED:  08/08/2013   v1.2.2
+;    LAST MODIFIED:  02/05/2026   v1.2.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
 ;-
 
 PRO load_3dp_data,time,deltat,MEMSIZE=memsize,QUALITY=quality, $
-                  IF_NEEDED=if_needed,NOSET=noset
+                  IF_NEEDED=if_needed,NOSET=noset,NOMAG=nomag
 
 ;;----------------------------------------------------------------------------------------
 ;;  Initialize file locations and save in common block
@@ -165,7 +200,7 @@ str_element,tplot_vars,'OPTIONS.REFDATE',refdate[0],/ADD_REPLACE
 ;;----------------------------------------------------------------------------------------
 ;;  Load magnetic field data
 ;;----------------------------------------------------------------------------------------
-load_wi_h0_mfi,TIME_RANGE=t
+IF NOT KEYWORD_SET(nomag) THEN load_wi_h0_mfi,TIME_RANGE=t
 ;;  Save time range as TPLOT variable
 store_data,'TIME',DATA={STTR:t[0],ETTR:t[1]}
 

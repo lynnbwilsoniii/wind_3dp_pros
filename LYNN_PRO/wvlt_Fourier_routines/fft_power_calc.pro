@@ -97,6 +97,8 @@
 ;                                                                  [02/05/2017   v3.5.5]
 ;            22)  Fixed the normalization factor for the last positive frequency bin
 ;                                                                  [02/08/2017   v3.5.6]
+;            23)  Fixed windowing normalization (again)
+;                                                                  [01/28/2026   v3.5.7]
 ;
 ;   NOTES:      
 ;               1)  The power spectrum units are now correctly in [units^2/Hz]
@@ -138,7 +140,7 @@
 ;
 ;   CREATED:  08/26/2008
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  02/08/2017   v3.5.6
+;    LAST MODIFIED:  01/28/2026   v3.5.7
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -188,15 +190,6 @@ IF (test[0]) THEN BEGIN
   RETURN,dum
 ENDIF
 ;;----------------------------------------------------------------------------------------
-;;  Define variables
-;;----------------------------------------------------------------------------------------
-;nt             = N_ELEMENTS(tt)
-;d              = REFORM(dat)               ;;  Prevent any [1,n] or [n,1] array from going on
-;px             = DBLARR(nt)                ;;  dummy power associated w/ X-comp. if dat is a vector
-;py             = DBLARR(nt)                ;;  dummy power associated w/ Y-comp. if dat is a vector
-;pz             = DBLARR(nt)                ;;  dummy power associated w/ Z-comp. if dat is a vector
-;dum = CREATE_STRUCT('POWER_X',px,'POWER_Y',py,'POWER_Z',pz,'POWER_RA',pr,'FREQ',fr)
-;;----------------------------------------------------------------------------------------
 ;;  Define data range
 ;;----------------------------------------------------------------------------------------
 IF KEYWORD_SET(range) THEN BEGIN
@@ -220,7 +213,7 @@ ENDELSE
 ;;  Set up vars for power spectrum
 ;;----------------------------------------------------------------------------------------
 evlength       = tt[e] - tt[s]                  ;;  length of data record [s]
-nfbins         = 1L + e - s                     ;;  Initial # of frequency bins
+nfbins         = 1L + e[0] - s[0]               ;;  Initial # of elements = 2*number of frequency bins
 test           = KEYWORD_SET(sra) AND (N_ELEMENTS(sra) EQ 1)
 IF (test) THEN BEGIN
   nsps = (DOUBLE(sra))[0]                       ;;  Avg. sample rate (# points/time)
@@ -242,58 +235,50 @@ ENDELSE
 ;;----------------------------------------------------------------------------------------
 ;;  LBW III  [04/12/2012   v3.5.0]
 ;;      the zero-padding should actually be done AFTER the window is applied [see ref.]
-fft_win        = FLTARR(nfbins)                 ;;  Var. used for FFT windowing routine
+fft_win        = FLTARR(nfbins[0])                 ;;  Var. used for FFT windowing routine
 test           = KEYWORD_SET(read_win) AND (N_ELEMENTS(read_win) EQ 1)
 IF (test[0]) THEN BEGIN
-;  ;;  Use a Hanning Window
-;  my_windowf,nfbins - 1L,2,fft_win
-;;  LBW III  [05/27/2014   v3.5.3]
-  my_windowf,nfbins - 1L,win_num[0],fft_win
+  ;;  LBW III  [05/27/2014   v3.5.3]
+  my_windowf,nfbins[0] - 1L,win_num[0],fft_win
 ENDIF ELSE BEGIN
   fft_win = REPLICATE(1.,nfbins)
 ENDELSE
-;;  Define the mean-square value of the windowing function for normalization purposes
-;;  LBW III  [05/27/2014   v3.5.3]
-;win_avg2       = MEAN(fft_win^2,/NAN)
+;;  Calculate the mean square value of window [Eq. 1.27 in Paschmann and Daly, (1998)]
+sumsq      = TOTAL(fft_win^2d0,/NAN)
+rmsw       = sumsq[0]/(1d0*nfbins[0])
 ;;  Apply windowing function to signal
-wsign          = dd[s:e]*fft_win
-;;  LBW III  [05/27/2014   v3.5.3]
-;wsign          = dd[s:e]*fft_win/win_avg2[0]
-;;  LBW III  [05/07/2014   v3.5.2]
-;wsign     = d[s:e]*fft_win
-
+wsign          = dd[s[0]:e[0]]*fft_win
+;;  Check if user wants to force the number elements
 IF KEYWORD_SET(force_n) THEN BEGIN
-  focn = force_n
+  focn           = force_n[0]
 ENDIF ELSE BEGIN
-  focn = nt
+  focn           = nt[0]
 ENDELSE
 ;;  --> pad with zeroes
 signal         = power_of_2(wsign,FORCE_N=focn)
 ;;  Redefine # of frequency bins, but NOT sample rate
 nfbins2        = N_ELEMENTS(signal)
 ;;  Define normalization parameter due to zero-padding
-zfact          = 2d0*(1d0*nfbins2[0])^2/(1d0*nfbins[0]*nsps[0])
+zfact          = 2d0*(1d0*nfbins2[0])^2d0/(1d0*nfbins[0]*nsps[0])
+;;  Now adjust normalization for windowing function
+zfact         /= rmsw[0]
 ;;----------------------------------------------------------------------------------------
 ;;  Calculate Power Spectral Density (PSD)
 ;;----------------------------------------------------------------------------------------
-;wsign     = signal*fft_win
-freqbins       = DINDGEN(nfbins2/2L)*(nsps/(nfbins2 - 1L))    ;;  use Hz scale on FFT power spec.
-nevlength      = evlength + (nfbins2*1d0 - nfbins*1d0)/nsps   ;;  New effective event length
-
-;;  LBW III  [04/12/2012   v3.5.0]
-t_fftx         = ABS(FFT(signal))^2
-;t_fftx    = ABS(FFT(wsign))^2     ;;  LBW III 09/26/2011   v3.4.0
-;t_powx    = (2d0*(1d0*nfbins2)^2)/(1d0*nfbins*nsps[0])*t_fftx ;;  [units^2/Hz]
-;;  LBW III  [05/07/2014   v3.5.2]
+;;  Define the FFT frequency bins
+freqbins       = DINDGEN(nfbins2[0]/2L)*(nsps/(nfbins2[0] - 1L))          ;;  use Hz scale on FFT power spec.
+nevlength      = evlength[0] + (nfbins2[0]*1d0 - nfbins[0]*1d0)/nsps[0]   ;;  New effective event length
+;;  Calculate |FFT|^2 [units^2]
+t_fftx         = ABS(FFT(signal))^2d0
+;;  Convert to [units^2/Hz]
 t_powx         = zfact[0]*t_fftx                              ;;  [units^2/Hz]
 ;;  [only keep positive frequencies]
-tpx            = t_powx[0L:(nfbins2/2L - 1L)]                 ;;  PSD [units^2/Hz]
+tpx            = t_powx[0L:(nfbins2[0]/2L - 1L)]              ;;  PSD [units^2/Hz]
 ;;  Remove factor of 2 from zeroth frequency bin (i.e., it's not repeated)
-;;  LBW III  [02/05/2017   v3.5.5]
-tpx[0]        /= 2e0
+tpx[0]        /= 2d0
 ;;  Remove factor of 2 from last positive frequency bin if even number of points
 test           = ((N_ELEMENTS(tpx) MOD 2) EQ 0)
-IF (test[0]) THEN tpx[N_ELEMENTS(tpx) - 1L] /= 2e0
+IF (test[0]) THEN tpx[N_ELEMENTS(tpx) - 1L] /= 2d0
 ;;----------------------------------------------------------------------------------------
 ;;  Convert power to dB above background
 ;;----------------------------------------------------------------------------------------
@@ -308,7 +293,6 @@ pr             = [rz,ry]                 ;;  Power range [MIN,MAX]
 ;;----------------------------------------------------------------------------------------
 tags           = ['POWER_X','POWER_RA','FREQ','POWER_A']
 p_str          = CREATE_STRUCT(tags,px,pr,freqbins,tpx)
-;p_str = CREATE_STRUCT('POWER_X',px,'POWER_RA',pr,'FREQ',freqbins,'POWER_A',tpx)
 ;;----------------------------------------------------------------------------------------
 ;;  Return to user
 ;;----------------------------------------------------------------------------------------

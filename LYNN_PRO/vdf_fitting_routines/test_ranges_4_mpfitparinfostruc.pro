@@ -43,8 +43,8 @@
 ;                               the user as to whether the input keyword was set and
 ;                               properly formatted
 ;
-;   CHANGED:  1)  NA
-;                                                                   [MM/DD/YYYY   v1.0.0]
+;   CHANGED:  1)  Reduced redundant calculations to optimize
+;                                                                   [08/25/2026   v1.0.1]
 ;
 ;   NOTES:      
 ;               0)  Make sure to set RKEY_IN properly!!!
@@ -56,7 +56,7 @@
 ;   ADAPTED FROM: test_range_keys_4_fitvdf2sumof2funcs.pro
 ;   CREATED:  06/19/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/19/2018   v1.0.0
+;    LAST MODIFIED:  08/25/2026   v1.0.1
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -81,14 +81,14 @@ limd_out                = dumb0b
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
 ;;  Check DEF_RAN
-test                    = (N_ELEMENTS(def_ran) GE 2) AND is_a_number(def_ran,/NOMSSG)
-IF (test[0]) THEN def_range = DOUBLE(REFORM(def_ran[0L:1L])) ELSE def_range = REPLICATE(d,2)
+;test                    = (N_ELEMENTS(def_ran) GE 2) AND is_a_number(def_ran,/NOMSSG)
+IF ((N_ELEMENTS(def_ran) GE 2) AND is_a_number(def_ran,/NOMSSG)) THEN def_range = DOUBLE(REFORM(def_ran[0L:1L])) ELSE def_range = REPLICATE(d,2)
 ;;  Check RKEY_IN
-test                    = (N_ELEMENTS(rkey_in) EQ 4) AND is_a_number(rkey_in,/NOMSSG)
-IF (test[0]) THEN BEGIN
+;test                    = (N_ELEMENTS(rkey_in) EQ 4) AND is_a_number(rkey_in,/NOMSSG)
+IF ((N_ELEMENTS(rkey_in) EQ 4) AND is_a_number(rkey_in,/NOMSSG)) THEN BEGIN
   ;;  So far so good, now check elements
-  test                    = (TOTAL(rkey_in[0L:1L] EQ 0 OR rkey_in[0L:1L] EQ 1) EQ 2)
-  IF (test[0]) THEN BEGIN
+;  test                    = (TOTAL(rkey_in[0L:1L] EQ 0 OR rkey_in[0L:1L] EQ 1) EQ 2)
+  IF ((TOTAL(rkey_in[0L:1L] EQ 0 OR rkey_in[0L:1L] EQ 1) EQ 2)) THEN BEGIN
     limd_out                = BYTE(rkey_in[0L:1L])
   ENDIF ELSE BEGIN
     ;;  Check if default range is okay to use
@@ -96,8 +96,8 @@ IF (test[0]) THEN BEGIN
     IF (gd[0] GT 0) THEN limd_out[good] = dumb1b[good] ELSE limd_out = REPLICATE(0b,2)
     rkey_on                 = 0b
   ENDELSE
-  test                    = (TOTAL(FINITE(rkey_in[2L:3L])) EQ TOTAL(limd_out))
-  IF (test[0]) THEN BEGIN
+;  test                    = (TOTAL(FINITE(rkey_in[2L:3L])) EQ TOTAL(limd_out))
+  IF ((TOTAL(FINITE(rkey_in[2L:3L])) EQ TOTAL(limd_out))) THEN BEGIN
     ;;  RKEY_IN properly formatted --> define output range
     lims_out                = DOUBLE(rkey_in[2L:3L])
   ENDIF ELSE BEGIN

@@ -140,6 +140,8 @@
 ;                                                                   [06/21/2018   v1.0.1]
 ;             2)  Added keywords:  SPTHRSHS and MAXFACS
 ;                                                                   [06/25/2018   v1.0.2]
+;             3)  Reduced redundant calculations to optimize
+;                                                                   [08/25/2026   v1.0.3]
 ;
 ;   NOTES:      
 ;               0)  User should not call this routine directly
@@ -150,7 +152,7 @@
 ;   ADAPTED FROM: plotting part of wrapper_fit_vdf_2_sumof2funcs.pro
 ;   CREATED:  06/19/2018
 ;   CREATED BY:  Lynn B. Wilson III
-;    LAST MODIFIED:  06/25/2018   v1.0.2
+;    LAST MODIFIED:  08/25/2026   v1.0.3
 ;    MODIFIED BY: Lynn B. Wilson III
 ;
 ;*****************************************************************************************
@@ -168,14 +170,18 @@ PRO plot_vdfs_4_fitvdf2sumof3funcs,vdf,velxyz,out_struc,VFRAME=vframe,VEC1=vec1,
                                    _EXTRA=extrakey
 
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Constants
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 f                       = !VALUES.F_NAN
 d                       = !VALUES.D_NAN
-verns                   = !VERSION.RELEASE     ;;  e.g., '7.1.1'
-vernn                   = LONG(STRMID(verns[0],0L,1L))
+;verns                   = !VERSION.RELEASE     ;;  e.g., '7.1.1'
+;vernn                   = LONG(STRMID(verns[0],0L,1L))
 ;;  Check IDL version
-IF (vernn[0] LT 8) THEN nan_on = 0b ELSE nan_on = 1b
+IF (LONG(STRMID(!VERSION.RELEASE[0],0L,1L)) LT 8) THEN nan_on = 0b ELSE nan_on = 1b
 ;;----------------------------------------------------------------------------------------
 ;;  Defaults
 ;;----------------------------------------------------------------------------------------
@@ -202,10 +208,16 @@ popen_str               = {PORT:1,UNITS:'inches',XSIZE:8e0,YSIZE:11e0,ASPECT:0}
 def_spdthrfac           = [15d-2,20d-2,20d-2]           ;;  Fraction of maximum speeds
 def_maxfacs             = [4d0,1d0,1d0]*2.25d0          ;;  Fraction of maximum peak ratios
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check NOUSECTAB
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 IF ((N_ELEMENTS(nousectab) EQ 0) OR ~KEYWORD_SET(nousectab)) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
   ;;  Force new color table that minimizes amount of green and yellow on output
+  ;;--------------------------------------------------------------------------------------
   SET_PLOT,'X'
   LOADCT,def_ctab[0]
   SET_PLOT,'PS'
@@ -213,12 +225,16 @@ IF ((N_ELEMENTS(nousectab) EQ 0) OR ~KEYWORD_SET(nousectab)) THEN BEGIN
   SET_PLOT,'X'
 ENDIF
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check input
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 IF (N_PARAMS() LT 3) THEN RETURN          ;;  Don't bother if nothing is provided
 ;;  Check parameter
-test                    = is_a_number(vdf,/NOMSSG) AND is_a_3_vector(velxyz,V_OUT=vv1,/NOMSSG)
-IF (~test[0]) THEN RETURN                 ;;  Don't bother if input is bad
+;test                    = is_a_number(vdf,/NOMSSG) AND is_a_3_vector(velxyz,V_OUT=vv1,/NOMSSG)
+IF (~(is_a_number(vdf,/NOMSSG) AND is_a_3_vector(velxyz,V_OUT=vv1,/NOMSSG))) THEN RETURN                 ;;  Don't bother if input is bad
 szdf                    = SIZE(vdf,/DIMENSIONS)
 szdv                    = SIZE(vv1,/DIMENSIONS)
 IF (szdf[0] NE szdv[0]) THEN RETURN       ;;  Don't bother if input is improperly formatted
@@ -244,17 +260,25 @@ n_vdf                   = N_ELEMENTS(core_strc.Z_IN)
 n_par                   = N_ELEMENTS(core_strc.X_IN)
 n_per                   = N_ELEMENTS(core_strc.Y_IN)
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Open 1 plot window
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 dev_name                = STRLOWCASE(!D[0].NAME[0])
 os__name                = STRLOWCASE(!VERSION.OS_FAMILY)       ;;  'unix' or 'windows'
 ;;  Check device settings
-test_xwin               = (dev_name[0] EQ 'x') OR (dev_name[0] EQ 'win')
-IF (test_xwin[0]) THEN BEGIN
+;test_xwin               = (dev_name[0] EQ 'x') OR (dev_name[0] EQ 'win')
+IF ((dev_name[0] EQ 'x') OR (dev_name[0] EQ 'win')) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
   ;;  Proper setting --> find out which windows are already open
+  ;;--------------------------------------------------------------------------------------
   DEVICE,WINDOW_STATE=wstate
 ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
   ;;  Switch to proper device
+  ;;--------------------------------------------------------------------------------------
   IF (os__name[0] EQ 'windows') THEN SET_PLOT,'win' ELSE SET_PLOT,'x'
   ;;  Determine which windows are already open
   DEVICE,WINDOW_STATE=wstate
@@ -266,9 +290,11 @@ xywsz                   = [wsz[0],LONG(wsz[0]*1.375d0)]
 good_w                  = WHERE(wstate,gd_w)
 wind_ns                 = [4,5]
 ;;  Check if user specified window is already open
-test_wopen1             = (TOTAL(good_w EQ wind_ns[1]) GT 0)     ;;  TRUE --> window already open
-IF (test_wopen1[0]) THEN BEGIN
+;test_wopen1             = (TOTAL(good_w EQ wind_ns[1]) GT 0)     ;;  TRUE --> window already open
+IF (TOTAL(good_w EQ wind_ns[1]) GT 0) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
   ;;  Window 5 is open --> check if was opened by this routine
+  ;;--------------------------------------------------------------------------------------
   WSET,wind_ns[1]
   cur_xywsz               = [!D.X_SIZE[0],!D.Y_SIZE[0]]
   new_w_1                 = (xywsz[0] NE cur_xywsz[0]) OR (xywsz[1] NE cur_xywsz[1])
@@ -284,33 +310,37 @@ win_str                 = {RETAIN:2,XSIZE:xywsz[0],YSIZE:xywsz[1],TITLE:win_ttl[
 lbw_window,WIND_N=wind_ns[1],NEW_W=new_w_1[0],_EXTRA=win_str,/CLEAN
 IF ((N_ELEMENTS(nousectab) EQ 0) OR ~KEYWORD_SET(nousectab)) THEN LOADCT,def_ctab[0]
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check keywords
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check USE_MM
-test                    = (N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)
-IF (test[0]) THEN vfac = 1d-3 ELSE vfac = 1d0
+;test                    = (N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)
+IF ((N_ELEMENTS(use_mm) GT 0) AND KEYWORD_SET(use_mm)) THEN vfac = 1d-3 ELSE vfac = 1d0
 ffac                    = 1d0/vfac[0]^3d0                        ;;  km^(-3) --> Mm^(-3)
 pfar                    = [1d0,REPLICATE(vfac[0],4L),1d0]        ;;  Array to multiply with parameters for general_vdf_contour_plot.pro input and use for inversing:  Mm --> km
-;;------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check ONLY_TOT
-;;------------------------------
-test           = (N_ELEMENTS(only_tot) GT 0) AND KEYWORD_SET(only_tot)
-IF (test[0]) THEN plottot_on = 1b ELSE plottot_on = 0b
-;;------------------------------
+;;----------------------------------------------------------------------------------------
+;test           = (N_ELEMENTS(only_tot) GT 0) AND KEYWORD_SET(only_tot)
+IF ((N_ELEMENTS(only_tot) GT 0) AND KEYWORD_SET(only_tot)) THEN plottot_on = 1b ELSE plottot_on = 0b
+;;----------------------------------------------------------------------------------------
 ;;  Check PLOT_BOTH
-;;------------------------------
-test           = (N_ELEMENTS(plot_both) GT 0) AND KEYWORD_SET(plot_both)
-IF (test[0]) THEN BEGIN
+;;----------------------------------------------------------------------------------------
+;test           = (N_ELEMENTS(plot_both) GT 0) AND KEYWORD_SET(plot_both)
+IF ((N_ELEMENTS(plot_both) GT 0) AND KEYWORD_SET(plot_both)) THEN BEGIN
   both_on    = 1b
   plottot_on = 0b  ;;  Shut off only total
 ENDIF ELSE BEGIN
   both_on    = 0b
 ENDELSE
-;;------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check [C,H,B]FUNC
-;;------------------------------
-test                    = (SIZE(cfunc,/TYPE) EQ 7)
-IF (test[0]) THEN cf = STRUPCASE(STRMID(cfunc[0],0,2)) ELSE cf = 'MM'
+;;----------------------------------------------------------------------------------------
+;test                    = (SIZE(cfunc,/TYPE) EQ 7)
+IF ((SIZE(cfunc,/TYPE) EQ 7)) THEN cf = STRUPCASE(STRMID(cfunc[0],0,2)) ELSE cf = 'MM'
 CASE cf[0] OF               ;;  Redefine output to proper/allowed format
   'MM'  :  cfunc       = 'MM'
   'KK'  :  cfunc       = 'KK'
@@ -318,8 +348,8 @@ CASE cf[0] OF               ;;  Redefine output to proper/allowed format
   'AS'  :  cfunc       = 'AS'
   ELSE  :  cfunc       = 'MM'     ;;  Default
 ENDCASE
-test                    = (SIZE(hfunc,/TYPE) EQ 7)
-IF (test[0]) THEN hf = STRUPCASE(STRMID(hfunc[0],0,2)) ELSE hf = 'KK'
+;test                    = (SIZE(hfunc,/TYPE) EQ 7)
+IF ((SIZE(hfunc,/TYPE) EQ 7)) THEN hf = STRUPCASE(STRMID(hfunc[0],0,2)) ELSE hf = 'KK'
 CASE hf[0] OF               ;;  Redefine output to proper/allowed format
   'MM'  :  hfunc       = 'MM'
   'KK'  :  hfunc       = 'KK'
@@ -327,8 +357,8 @@ CASE hf[0] OF               ;;  Redefine output to proper/allowed format
   'AS'  :  hfunc       = 'AS'
   ELSE  :  hfunc       = 'MM'     ;;  Default
 ENDCASE
-test                    = (SIZE(bfunc,/TYPE) EQ 7)
-IF (test[0]) THEN bf = STRUPCASE(STRMID(bfunc[0],0,2)) ELSE bf = 'KK'
+;test                    = (SIZE(bfunc,/TYPE) EQ 7)
+IF ((SIZE(bfunc,/TYPE) EQ 7)) THEN bf = STRUPCASE(STRMID(bfunc[0],0,2)) ELSE bf = 'KK'
 CASE bf[0] OF               ;;  Redefine output to proper/allowed format
   'MM'  :  bfunc       = 'MM'
   'KK'  :  bfunc       = 'KK'
@@ -336,37 +366,39 @@ CASE bf[0] OF               ;;  Redefine output to proper/allowed format
   'AS'  :  bfunc       = 'AS'
   ELSE  :  bfunc       = 'MM'     ;;  Default
 ENDCASE
-;;------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check SPTHRSHS
-;;------------------------------
-test                    = (N_ELEMENTS(spthrshs) GE 3) AND is_a_number(spthrshs,/NOMSSG)
-IF (test[0]) THEN spd_thrsh_on = 1b ELSE spd_thrsh_on = 0b
+;;----------------------------------------------------------------------------------------
+;test                    = (N_ELEMENTS(spthrshs) GE 3) AND is_a_number(spthrshs,/NOMSSG)
+IF ((N_ELEMENTS(spthrshs) GE 3) AND is_a_number(spthrshs,/NOMSSG)) THEN spd_thrsh_on = 1b ELSE spd_thrsh_on = 0b
 IF (spd_thrsh_on[0]) THEN spd_fracs = ABS(DOUBLE(spthrshs[0:2])) > 1d-2 ELSE spd_fracs = def_spdthrfac
-;;------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Check MAXFACS
-;;------------------------------
-test                    = (N_ELEMENTS(maxfac0) GE 3) AND is_a_number(maxfac0,/NOMSSG)
-IF (test[0]) THEN maxfacs = ABS(DOUBLE(maxfac0[0:2])) > 1.1 ELSE maxfacs = def_maxfacs
-;;------------------------------
+;;----------------------------------------------------------------------------------------
+;test                    = (N_ELEMENTS(maxfac0) GE 3) AND is_a_number(maxfac0,/NOMSSG)
+IF ((N_ELEMENTS(maxfac0) GE 3) AND is_a_number(maxfac0,/NOMSSG)) THEN maxfacs = ABS(DOUBLE(maxfac0[0:2])) > 1.1 ELSE maxfacs = def_maxfacs
+;;----------------------------------------------------------------------------------------
 ;;  Check SAVEF
-;;------------------------------
-test           = (N_ELEMENTS(savef) GT 0) AND KEYWORD_SET(savef)
-IF (test[0]) THEN save_on = 1b ELSE save_on = 0b
-;;------------------------------
+;;----------------------------------------------------------------------------------------
+;test           = (N_ELEMENTS(savef) GT 0) AND KEYWORD_SET(savef)
+IF ((N_ELEMENTS(savef) GT 0) AND KEYWORD_SET(savef)) THEN save_on = 1b ELSE save_on = 0b
+;;----------------------------------------------------------------------------------------
 ;;  Check FILENAME
-;;------------------------------
-test                    = (N_ELEMENTS(filename) GT 0) AND (SIZE(filename,/TYPE) EQ 7)
-IF (test[0]) THEN fname = filename[0] ELSE IF (save_on[0]) THEN fname = 'vdf_fit_plot_0' ELSE fname = ''
-test                    = ~save_on[0] AND ((SIZE(fname[0],/TYPE) EQ 7) AND (fname[0] NE ''))
-IF (test[0]) THEN save_on = 1b  ;;  Turn on file saving in case it was not set but FILENAME was
-;;------------------------------
+;;----------------------------------------------------------------------------------------
+;test                    = (N_ELEMENTS(filename) GT 0) AND (SIZE(filename,/TYPE) EQ 7)
+IF ((N_ELEMENTS(filename) GT 0) AND (SIZE(filename,/TYPE) EQ 7)) THEN fname = filename[0] ELSE IF (save_on[0]) THEN fname = 'vdf_fit_plot_0' ELSE fname = ''
+;test                    = ~save_on[0] AND ((SIZE(fname[0],/TYPE) EQ 7) AND (fname[0] NE ''))
+IF (~save_on[0] AND ((SIZE(fname[0],/TYPE) EQ 7) AND (fname[0] NE ''))) THEN save_on = 1b  ;;  Turn on file saving in case it was not set but FILENAME was
+;;----------------------------------------------------------------------------------------
 ;;  Check format of file name
-;;------------------------------
-test                    = (fname[0] EQ '') OR $
-                          ((IDL_VALIDNAME(fname[0],/CONVERT_SPACES) EQ '') AND $
-                           (IDL_VALIDNAME(fname[0],/CONVERT_ALL)    EQ '')     )
-IF (test[0]) THEN BEGIN
+;;----------------------------------------------------------------------------------------
+;test                    = (fname[0] EQ '') OR $
+;                          ((IDL_VALIDNAME(fname[0],/CONVERT_SPACES) EQ '') AND $
+;                           (IDL_VALIDNAME(fname[0],/CONVERT_ALL)    EQ '')     )
+IF ((fname[0] EQ '') OR ((IDL_VALIDNAME(fname[0],/CONVERT_SPACES) EQ '') AND (IDL_VALIDNAME(fname[0],/CONVERT_ALL)    EQ ''))) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
   ;;  format is bad --> shut off file saving
+  ;;--------------------------------------------------------------------------------------
   IF (save_on[0]) THEN BEGIN
     ;;  Let user know something went wrong
     MESSAGE,'Bad FILENAME input format --> No file will be saved!',/INFORMATIONAL,/CONTINUE
@@ -374,14 +406,20 @@ IF (test[0]) THEN BEGIN
   f_name  = ''
   save_on = 0b  ;;  Turn off file saving
 ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
   ;;  get current working directory
+  ;;--------------------------------------------------------------------------------------
   test    = test_file_path_format('.',EXISTS=exists,DIR_OUT=savdir)
   ;;  format is good --> remove any leading or trailing spaces
   f_name  = savdir[0]+STRTRIM(fname[0],2L)
   save_on = 1b  ;;  Turn on file saving in case it was not set but FILENAME was
 ENDELSE
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Setup plot parameters for VDFs
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 IF (vfac[0] LT 1d0) THEN BEGIN
   ;;  Used Mm
@@ -416,7 +454,11 @@ good_lspc               = WHERE(speed LE spdthr[0],gd_lspc,COMPLEMENT=bad_lspc,N
 good_lsph               = WHERE(speed LE spdthr[1],gd_lsph,COMPLEMENT=bad_lsph,NCOMPLEMENT=bd_lsph)
 good_lspb               = WHERE(speed LE spdthr[2],gd_lspb,COMPLEMENT=bad_lspb,NCOMPLEMENT=bd_lspb)
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Define core fit strings for output
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 ;;  Defaults
 units_out               = '  '+['cm^(-3)',REPLICATE('km s^(-1)',4L),'']
@@ -427,8 +469,8 @@ b_units                 = units_out
 IF (cfunc[0] EQ 'AS') THEN c_units[4] = ''
 IF (hfunc[0] EQ 'AS') THEN h_units[4] = ''
 IF (bfunc[0] EQ 'AS') THEN b_units[4] = ''
-;;  GOTO:  Used if fits produced bad results where model exceeded data by threshold factor
 ;;========================================================================================
+;;  GOTO:  Used if fits produced bad results where model exceeded data by threshold factor
 JUMP_RECORE:
 ;;========================================================================================
 c__trial               += 1
@@ -463,10 +505,14 @@ csig_str                =         STRTRIM(STRING(ABS(csigp),FORMAT=sform[0]),2L)
 core_xyout              = core_labs+cfit_str+midf[0]+csig_str+c_units
 cstatxyout              = pre_pre_str[0]+fitstat_mid+cfitstatsuf
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Define halo fit strings for output
 ;;----------------------------------------------------------------------------------------
-;;  GOTO:  Used if fits produced bad results where model exceeded data by threshold factor
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;========================================================================================
+;;  GOTO:  Used if fits produced bad results where model exceeded data by threshold factor
 JUMP_REHALO:
 ;;========================================================================================
 h__trial               += 1
@@ -500,10 +546,14 @@ hsig_str                =         STRTRIM(STRING(ABS(hsigp),FORMAT=sform[0]),2L)
 halo_xyout              = halo_labs+hfit_str+midf[0]+hsig_str+h_units
 hstatxyout              = pre_pre_str[0]+fitstat_mid+hfitstatsuf
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Define beam fit strings for output
 ;;----------------------------------------------------------------------------------------
-;;  GOTO:  Used if fits produced bad results where model exceeded data by threshold factor
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;========================================================================================
+;;  GOTO:  Used if fits produced bad results where model exceeded data by threshold factor
 JUMP_REBEAM:
 ;;========================================================================================
 b__trial               += 1
@@ -592,13 +642,17 @@ bitot_para              = lbw__add(temp,bbeam_para,/NAN)
 temp                    = lbw__add(bicor_perp,bihal_perp,/NAN)
 bitot_perp              = lbw__add(temp,bbeam_perp,/NAN)
 IF (test_trial[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
   ;;  Check if the total or any component is bad
+  ;;--------------------------------------------------------------------------------------
 ;  maxfacs                 = [4d0,1d0,1d0]*2.25d0
   z_orig                  = core_strc.Z_ORIG
   cor2zori                = ABS(core_2d/z_orig)
   hal2zori                = ABS(halo_2d/z_orig)
   bea2zori                = ABS(beam_2d/z_orig)
+  ;;--------------------------------------------------------------------------------------
   ;;  Only look at the low energy/core region for deviations from model
+  ;;--------------------------------------------------------------------------------------
   IF (bd_lspc[0] GT 0) THEN cor2zori[bad_lspc] = f
   IF (bd_lsph[0] GT 0) THEN hal2zori[bad_lsph] = f
   IF (bd_lspb[0] GT 0) THEN bea2zori[bad_lspb] = f
@@ -609,9 +663,14 @@ IF (test_trial[0]) THEN BEGIN
 ;  check                   = [(MAX(cor2zori,/NAN) GT maxfac[0]),(MAX(hal2zori,/NAN) GT maxfac[0]),(MAX(bea2zori,/NAN) GT maxfac[0])]
   bad                     = WHERE(check,bd)
   IF (bd[0] GT 0) THEN BEGIN
+    ;;------------------------------------------------------------------------------------
+    ;;  At least one is bad
+    ;;------------------------------------------------------------------------------------
     CASE bd[0] OF
       1    :  BEGIN
+        ;;--------------------------------------------------------------------------------
         ;;  Only 1 is bad
+        ;;--------------------------------------------------------------------------------
         CASE bad[0] OF
           0    :  BEGIN
             statc                 = -20
@@ -631,7 +690,9 @@ IF (test_trial[0]) THEN BEGIN
         ENDCASE
       END
       2    :  BEGIN
+        ;;--------------------------------------------------------------------------------
         ;;  2 are bad
+        ;;--------------------------------------------------------------------------------
         IF (bad[0] EQ 0) THEN BEGIN
           ;;  Core is bad
           statc                 = -20
@@ -654,7 +715,9 @@ IF (test_trial[0]) THEN BEGIN
         ENDELSE
       END
       3    :  BEGIN
+        ;;--------------------------------------------------------------------------------
         ;;  All are bad!?
+        ;;--------------------------------------------------------------------------------
         statc                 = -20
         stath                 = -20
         statb                 = -20
@@ -688,7 +751,9 @@ ENDIF ELSE BEGIN
   IF (plottot_on[0]) THEN f_name1 = f_name[0]+'_only_tot' ELSE f_name1 = f_name[0]+'_show_comps'
 ENDELSE
 IF (save_on[0]) THEN BEGIN
+  ;;--------------------------------------------------------------------------------------
   ;;  User wants to save --> do not plot to screen
+  ;;--------------------------------------------------------------------------------------
   IF (now_save[0]) THEN BEGIN
     ;;  Now save plot
     popen,f_name1[0],_EXTRA=popen_str
@@ -697,7 +762,9 @@ IF (save_on[0]) THEN BEGIN
     WSHOW,wind_ns[1]
   ENDELSE
 ENDIF ELSE BEGIN
+  ;;--------------------------------------------------------------------------------------
   ;;  User did not want to save --> plot to screen
+  ;;--------------------------------------------------------------------------------------
   WSET,wind_ns[1]
   WSHOW,wind_ns[1]
 ENDELSE
@@ -719,7 +786,9 @@ IF (plottot_on[0] OR (both_on[0] AND both_plotted[0] EQ 0)) THEN BEGIN
   ;;--------------------------------------------------------------------------------------
   OPLOT,vx_Mm,bitot_para,COLOR=t_cols[0],LINESTYLE=3,THICK=l_thick[0]
   OPLOT,vy_Mm,bitot_perp,COLOR=t_cols[1],LINESTYLE=3,THICK=l_thick[0]
+  ;;--------------------------------------------------------------------------------------
   ;;  Output labels
+  ;;--------------------------------------------------------------------------------------
   cutstruc   = dat_out.CUTS_DATA.CUT_LIM
   xyposi     = [3d-1*cutstruc.XRANGE[1],1d1*cutstruc.YRANGE[0]]
   XYOUTS,xyposi[0],xyposi[1],'Total Para.',/DATA,COLOR=t_cols[0],CHARTHICK=chthick[0]
@@ -738,7 +807,9 @@ ENDIF ELSE BEGIN
     OPLOT,vx_Mm,bbeam_para,COLOR=b_cols[0],LINESTYLE=3,THICK=l_thick[0]
     OPLOT,vy_Mm,bbeam_perp,COLOR=b_cols[1],LINESTYLE=3,THICK=l_thick[0]
   ENDIF
+  ;;--------------------------------------------------------------------------------------
   ;;  Output labels
+  ;;--------------------------------------------------------------------------------------
   cutstruc   = dat_out.CUTS_DATA.CUT_LIM
   xyposi     = [3d-1*cutstruc.XRANGE[1],1d1*cutstruc.YRANGE[0]]
   XYOUTS,xyposi[0],xyposi[1],xylabpre[0]+' Para. Core',/DATA,COLOR=c_cols[0],CHARTHICK=chthick[0]
@@ -757,7 +828,11 @@ ENDIF ELSE BEGIN
   ENDIF
 ENDELSE
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Print out fit results to plot
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 xyposi                  = [0.785,0.06,0.02]
 temp_outc               = STRTRIM(STRMID(core_xyout[0L:4L],2L),2L)
@@ -776,7 +851,11 @@ temp_out[0]            += ';  '+STRTRIM(STRMID(beam_xyout[5L],2L),2L)
 xyposi[0]              += xyposi[2]
 XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=chthick[0]
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Output fit status etc.
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 fitstat_mid             = ['Model Fit Status  ','# of Iterations   ','Deg. of Freedom   ',$
                            'Chi-Squared       ','Red. Chi-Squared  ']+'[C,H,B] = '
@@ -791,7 +870,11 @@ temp_out                = temp_outc[4]
 xyposi[0]              += xyposi[2]
 XYOUTS,xyposi[0],xyposi[1],temp_out[0],CHARSIZE=.65,/NORMAL,ORIENTATION=90.,CHARTHICK=chthick[0]
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Close file if saving
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 IF (save_on[0]) THEN BEGIN
   IF (now_save[0]) THEN BEGIN
@@ -808,7 +891,11 @@ IF (save_on[0]) THEN BEGIN
   ENDELSE
 ENDIF
 ;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;  Return to user
+;;----------------------------------------------------------------------------------------
+;;----------------------------------------------------------------------------------------
 ;;----------------------------------------------------------------------------------------
 
 RETURN
